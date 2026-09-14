@@ -1,6 +1,9 @@
 import {
   buildReconciliationIssues,
+  loadPaymentAdjudicationEvidence,
+  type PaymentAdjudication,
   planTransferAudit,
+  type ProviderPayment,
   runTransferAudit,
 } from "./diff.ts";
 
@@ -20,6 +23,550 @@ const empty = {
   providerTransfers: [],
   localTransfers: [],
 };
+
+function adjudicationFixture(
+  disposition: "IMPORT_UNASSIGNED" | "DUPLICATE_OF",
+) {
+  const source: ProviderPayment = {
+    id: "pay_adjudicated",
+    customer: "cus_adjudicated",
+    status: "RECEIVED",
+    value: 300,
+    dueDate: "2026-09-01",
+    paymentDate: "2026-09-01",
+    creditDate: "2026-09-02",
+    subscription: null,
+    externalReference: null,
+    deleted: false,
+    refundedValue: 0,
+    refunds: [],
+  };
+  const canonical: ProviderPayment = {
+    ...source,
+    id: "pay_canonical",
+    status: "RECEIVED_IN_CASH",
+    creditDate: null,
+  };
+  const localId = "97000000-0000-4000-8000-000000000001";
+  const studentId = "97000000-0000-4000-8000-000000000002";
+  const duplicate = disposition === "DUPLICATE_OF";
+  const decision: PaymentAdjudication = {
+    id: "97000000-0000-4000-8000-000000000003",
+    disposition,
+    provider_payment_id: source.id,
+    local_payment_id: localId,
+    canonical_provider_payment_id: duplicate ? canonical.id : null,
+    student_id: duplicate ? studentId : null,
+    expected_payment: { ...source },
+    expected_canonical: duplicate ? { ...canonical } : null,
+    valid: true,
+  };
+  const input: Parameters<typeof buildReconciliationIssues>[0] = {
+    ...empty,
+    referenceTenantId: "school-wise-wolf",
+    // The canonical cash receipt predates the audit window but must still be
+    // checked by exact GET; it is not invented or copied into a second ledger.
+    windowStart: duplicate ? "2026-09-02" : "2026-09-01",
+    windowEnd: "2026-09-30",
+    providerPayments: [source],
+    localPayments: [{
+      id: localId,
+      tenant_id: "school-wise-wolf",
+      student_id: duplicate ? studentId : null,
+      asaas_payment_id: duplicate ? canonical.id : source.id,
+      asaas_id: null,
+      payment_type: duplicate ? "SUBSCRIPTION" : "UNASSIGNED_RECEIPT",
+      raw_payload: duplicate ? null : { source: "OPERATOR_ADJUDICATION" },
+      status: duplicate ? "RECEIVED_IN_CASH" : "RECEIVED",
+      provider_status: duplicate ? "RECEIVED_IN_CASH" : "RECEIVED",
+      value: 300,
+      due_date: "2026-09-01",
+      payment_date: "2026-09-01",
+      paid_at: duplicate ? "2026-09-01T12:00:00Z" : "2026-09-02T12:00:00Z",
+      credited_at: duplicate ? null : "2026-09-02T12:00:00Z",
+      refunded_amount: 0,
+      ledger_entry_created: true,
+    }],
+    statement: [{
+      id: "statement_adjudicated",
+      type: "PAYMENT_RECEIVED",
+      paymentId: source.id,
+      value: 300,
+      date: "2026-09-02",
+    }],
+    grossLedgerByPaymentId: new Map([[localId, [{
+      id: "ledger-original",
+      student_payment_id: localId,
+      type: "ENTRADA",
+      category: duplicate ? "MENSALIDADE" : "RECEBIMENTO_NAO_CLASSIFICADO",
+      amount: 300,
+      occurred_at: duplicate ? "2026-09-01T12:00:00Z" : "2026-09-02T12:00:00Z",
+    }]]]),
+    customerByStudentId: duplicate
+      ? new Map([[studentId, source.customer!]])
+      : new Map(),
+    studentByCustomerId: duplicate
+      ? new Map([[source.customer!, [{
+        id: studentId,
+        tenantId: "school-wise-wolf",
+      }]]])
+      : new Map(),
+    paymentAdjudications: [decision],
+    adjudicationProviderPayments: duplicate ? [source, canonical] : [source],
+  };
+  return { input, source, canonical, decision, localId, studentId };
+}
+
+Deno.test("adjudicated unassigned receipt suppresses only its acknowledged owner warning, without binding a student", () => {
+  const { input } = adjudicationFixture("IMPORT_UNASSIGNED");
+  const original = JSON.stringify(input.localPayments);
+  const without = buildReconciliationIssues({
+    ...input,
+    paymentAdjudications: [],
+  });
+  if (
+    !without.some((issue) =>
+      issue.kind === "PAYMENT_TENANT_OR_STUDENT_UNRESOLVED"
+    )
+  ) throw new Error("fixture lacks baseline warning");
+  const result = buildReconciliationIssues(input);
+  if (
+    result.length || JSON.stringify(input.localPayments) !== original ||
+    input.localPayments[0].student_id !== null
+  ) {
+    throw new Error(
+      "valid unassigned acknowledgement changed ownership or retained its expected warning",
+    );
+  }
+  const wrongValue = buildReconciliationIssues({
+    ...input,
+    localPayments: [{ ...input.localPayments[0], value: 299 }],
+  });
+  if (
+    !wrongValue.some((issue) => issue.kind === "PAYMENT_VALUE_MISMATCH") ||
+    !wrongValue.some((issue) =>
+      issue.kind === "PAYMENT_TENANT_OR_STUDENT_UNRESOLVED"
+    )
+  ) throw new Error("changed financial fact was hidden");
+});
+
+Deno.test("duplicate adjudication needs fresh source and canonical cash proof and never manufactures revenue", () => {
+  const { input } = adjudicationFixture("DUPLICATE_OF");
+  const localBefore = JSON.stringify(input.localPayments),
+    ledgerBefore = JSON.stringify([...input.grossLedgerByPaymentId]);
+  const baseline = buildReconciliationIssues({
+    ...input,
+    paymentAdjudications: [],
+  });
+  if (
+    !baseline.some((issue) =>
+      issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL"
+    ) ||
+    !baseline.some((issue) =>
+      issue.kind === "STATEMENT_RECEIPT_MISSING_LOCAL_PAYMENT"
+    )
+  ) throw new Error("missing duplicate fixture warnings");
+  const result = buildReconciliationIssues(input);
+  if (
+    result.length || JSON.stringify(input.localPayments) !== localBefore ||
+    JSON.stringify([...input.grossLedgerByPaymentId]) !== ledgerBefore ||
+    input.localPayments.length !== 1
+  ) {
+    throw new Error(
+      "duplicate receipt was imported, counted twice, or not acknowledged",
+    );
+  }
+});
+
+Deno.test("unclassified cash category is exclusive to unassigned receipts and does not relax tuition proof", () => {
+  const { input, localId } = adjudicationFixture("IMPORT_UNASSIGNED");
+  const gross = input.grossLedgerByPaymentId.get(localId)!;
+  for (
+    const candidate of [
+      {
+        ...input,
+        localPayments: [{
+          ...input.localPayments[0],
+          payment_type: "SUBSCRIPTION",
+        }],
+      },
+      {
+        ...input,
+        localPayments: [{ ...input.localPayments[0], raw_payload: null }],
+      },
+      {
+        ...input,
+        grossLedgerByPaymentId: new Map([[localId, [{
+          ...gross[0],
+          category: "MENSALIDADE",
+        }]]]),
+      },
+    ]
+  ) {
+    const issues = buildReconciliationIssues(candidate);
+    if (
+      !issues.some((issue) =>
+        issue.kind === "PAYMENT_TENANT_OR_STUDENT_UNRESOLVED"
+      ) ||
+      !issues.some((issue) =>
+        issue.kind === "LEDGER_GROSS_CLASSIFICATION_MISMATCH"
+      )
+    ) {
+      throw new Error(
+        "wrong origin/category was accepted as an unclassified receipt",
+      );
+    }
+  }
+  const duplicate = adjudicationFixture("DUPLICATE_OF");
+  const tuitionIssues = buildReconciliationIssues({
+    ...duplicate.input,
+    grossLedgerByPaymentId: new Map([[duplicate.localId, [{
+      ...duplicate.input.grossLedgerByPaymentId.get(duplicate.localId)![0],
+      category: "RECEBIMENTO_NAO_CLASSIFICADO",
+    }]]]),
+  });
+  if (
+    !tuitionIssues.some((issue) =>
+      issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL"
+    )
+  ) {
+    throw new Error(
+      "unclassified ledger satisfied canonical tuition receipt proof",
+    );
+  }
+});
+
+Deno.test("a valid duplicate acknowledgement never consumes other missing payments or statement receipts", () => {
+  const { input, source } = adjudicationFixture("DUPLICATE_OF");
+  const unrelated = {
+    ...source,
+    id: "pay_unrelated",
+    customer: "cus_unresolved",
+  };
+  const issues = buildReconciliationIssues({
+    ...input,
+    providerPayments: [...input.providerPayments, unrelated],
+    statement: [...input.statement, {
+      ...input.statement[0],
+      id: "statement-unrelated",
+      paymentId: unrelated.id,
+    }],
+  });
+  for (
+    const kind of [
+      "PROVIDER_PAYMENT_MISSING_LOCAL",
+      "PROVIDER_CUSTOMER_UNRESOLVED",
+      "STATEMENT_RECEIPT_MISSING_LOCAL_PAYMENT",
+    ]
+  ) {
+    if (
+      !issues.some((issue) =>
+        issue.kind === kind && issue.provider_entity_id === unrelated.id
+      )
+    ) {
+      throw new Error(
+        `unrelated ${kind} was hidden by another payment's acknowledgement`,
+      );
+    }
+  }
+});
+
+Deno.test("unclassified receipt refund keeps explicit cash reversal checks after its acknowledgement expires", () => {
+  const { input, source, localId } = adjudicationFixture("IMPORT_UNASSIGNED");
+  const refunded: Parameters<typeof buildReconciliationIssues>[0] = {
+    ...input,
+    paymentAdjudications: [],
+    providerPayments: [{ ...source, status: "REFUNDED", refundedValue: 300 }],
+    localPayments: [{
+      ...input.localPayments[0],
+      status: "REFUNDED",
+      provider_status: "REFUNDED",
+      refunded_amount: 300,
+      last_provider_event_id: "evt_unclassified_refund",
+      last_provider_event_at: "2026-09-03T12:00:00Z",
+    }],
+    refundLedgerByPaymentId: new Map([[localId, [{
+      id: "refund-unclassified",
+      refund_student_payment_id: localId,
+      type: "SAIDA",
+      category: "ESTORNO_RECEBIMENTO_NAO_CLASSIFICADO",
+      amount: 300,
+      provider_event_id: "evt_unclassified_refund",
+      occurred_at: "2026-09-03T12:00:00Z",
+    }]]]),
+  };
+  const valid = buildReconciliationIssues(refunded);
+  if (
+    valid.some((issue) =>
+      issue.kind === "LEDGER_GROSS_CLASSIFICATION_MISMATCH" ||
+      issue.kind === "LEDGER_REFUND_CLASSIFICATION_MISMATCH" ||
+      issue.kind === "LEDGER_REFUND_TOTAL_MISMATCH"
+    )
+  ) {
+    throw new Error(
+      "properly classified unassigned cash reversal was rejected",
+    );
+  }
+  const wrong = buildReconciliationIssues({
+    ...refunded,
+    refundLedgerByPaymentId: new Map([[localId, [{
+      ...refunded.refundLedgerByPaymentId.get(localId)![0],
+      category: "ESTORNO_MENSALIDADE",
+      amount: 299,
+    }]]]),
+  });
+  if (
+    !wrong.some((issue) =>
+      issue.kind === "LEDGER_REFUND_CLASSIFICATION_MISMATCH"
+    ) ||
+    !wrong.some((issue) => issue.kind === "LEDGER_REFUND_TOTAL_MISMATCH")
+  ) {
+    throw new Error("wrong refund category or amount was ignored");
+  }
+});
+
+Deno.test("invalid, missing, changed, conflicting, or cross-tenant adjudication proof leaves normal issues intact", () => {
+  const { input, decision, canonical, localId } = adjudicationFixture(
+    "DUPLICATE_OF",
+  );
+  const variants: Parameters<typeof buildReconciliationIssues>[0][] = [
+    { ...input, paymentAdjudications: [] },
+    { ...input, paymentAdjudications: [{ ...decision, valid: false }] },
+    {
+      ...input,
+      paymentAdjudications: [decision, { ...decision, id: "conflicting" }],
+    },
+    {
+      ...input,
+      paymentAdjudications: [{ ...decision, disposition: "IMPORT_STUDENT" }],
+    },
+    { ...input, adjudicationProviderPayments: [input.providerPayments[0]] },
+    {
+      ...input,
+      adjudicationProviderPayments: [input.providerPayments[0], {
+        ...canonical,
+        value: 301,
+      }],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        customer: "cus_changed",
+      }, canonical],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        creditDate: "2026-09-03",
+      }, canonical],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        deleted: true,
+      }, canonical],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        refundedValue: 1,
+      }, canonical],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        refunds: [{ status: "REQUESTED", value: 1 }],
+      }, canonical],
+    },
+    {
+      ...input,
+      adjudicationProviderPayments: [{
+        ...input.providerPayments[0],
+        chargeback: { status: "REQUESTED" },
+      }, canonical],
+    },
+    {
+      ...input,
+      localPayments: [{ ...input.localPayments[0], status: "CONFIRMED" }],
+    },
+    {
+      ...input,
+      localPayments: [{ ...input.localPayments[0], tenant_id: "other-school" }],
+    },
+    { ...input, referenceTenantId: "other-school" },
+    { ...input, grossLedgerByPaymentId: new Map([[localId, []]]) },
+    {
+      ...input,
+      grossLedgerByPaymentId: new Map([[localId, [{
+        ...input.grossLedgerByPaymentId.get(localId)![0],
+        occurred_at: "2026-08-31T12:00:00Z",
+      }]]]),
+    },
+    {
+      ...input,
+      grossLedgerByPaymentId: new Map([[localId, [
+        ...input.grossLedgerByPaymentId.get(localId)!,
+        ...input.grossLedgerByPaymentId.get(localId)!,
+      ]]]),
+    },
+  ];
+  for (const candidate of variants) {
+    if (
+      !buildReconciliationIssues(candidate).some((issue) =>
+        issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL"
+      )
+    ) {
+      throw new Error(
+        "unproven adjudication hid ordinary missing-source issue",
+      );
+    }
+  }
+  const collision = buildReconciliationIssues({
+    ...input,
+    providerPayments: [...input.providerPayments, input.providerPayments[0]],
+  });
+  if (
+    !collision.some((issue) =>
+      issue.kind === "PROVIDER_PAYMENT_ID_COLLISION"
+    ) ||
+    !collision.some((issue) => issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL")
+  ) throw new Error("collision was silently adjudicated");
+});
+
+Deno.test("adjudication never suppresses reversals or mismatched/duplicate statement receipts", () => {
+  const { input } = adjudicationFixture("DUPLICATE_OF");
+  const refund = buildReconciliationIssues({
+    ...input,
+    statement: [...input.statement, {
+      id: "refund-real",
+      paymentId: input.providerPayments[0].id,
+      type: "PAYMENT_REVERSAL",
+      value: -50,
+      date: "2026-09-03",
+    }],
+  });
+  if (
+    !refund.some((issue) =>
+      issue.kind === "STATEMENT_REFUND_MISSING_LOCAL_PAYMENT"
+    ) ||
+    !refund.some((issue) => issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL")
+  ) throw new Error("refund fact was hidden by duplicate acknowledgement");
+  for (
+    const statement of [
+      [{ ...input.statement[0], value: 301 }],
+      [{ ...input.statement[0], date: "2026-09-03" }],
+      [...input.statement, {
+        ...input.statement[0],
+        id: "second-real-receipt",
+      }],
+    ]
+  ) {
+    if (
+      !buildReconciliationIssues({ ...input, statement }).some((issue) =>
+        issue.kind === "STATEMENT_RECEIPT_MISSING_LOCAL_PAYMENT"
+      )
+    ) {
+      throw new Error("different statement cash was hidden");
+    }
+  }
+});
+
+Deno.test("unavailable adjudication reader and failed exact GETs fail closed without provider writes", async () => {
+  const { input, decision, source, canonical } = adjudicationFixture(
+    "DUPLICATE_OF",
+  );
+  let getCalls = 0;
+  for (
+    const rpc of [
+      async () => ({ data: null, error: { code: "42501" } }),
+      async () => ({ data: {}, error: null }),
+      async () => {
+        throw new Error("reader unavailable");
+      },
+    ]
+  ) {
+    const evidence = await loadPaymentAdjudicationEvidence(
+      { rpc },
+      input.providerPayments,
+      async () => {
+        getCalls++;
+        return source;
+      },
+    );
+    if (
+      evidence.available || evidence.adjudications.length ||
+      evidence.providerPayments.length
+    ) throw new Error("unavailable reader fabricated acknowledgement");
+  }
+  if (getCalls) throw new Error("provider was queried without valid decisions");
+  const ignored = await loadPaymentAdjudicationEvidence(
+    {
+      rpc: async () => ({
+        data: [
+          { ...decision, disposition: "IMPORT_STUDENT" },
+          { ...decision, disposition: "UNKNOWN" },
+        ],
+        error: null,
+      }),
+    },
+    input.providerPayments,
+    async () => {
+      getCalls++;
+      return source;
+    },
+  );
+  if (
+    ignored.adjudications.length || ignored.providerPayments.length || getCalls
+  ) {
+    throw new Error(
+      "normal student imports or unknown dispositions triggered exception rechecks",
+    );
+  }
+  const ids: string[] = [];
+  const loaded = await loadPaymentAdjudicationEvidence(
+    {
+      rpc: async (name) => {
+        if (name !== "get_asaas_payment_adjudications") {
+          throw new Error(
+            "unexpected RPC/write",
+          );
+        }
+        return { data: [decision], error: null };
+      },
+    },
+    input.providerPayments,
+    async (id) => {
+      ids.push(id);
+      return id === source.id ? source : canonical;
+    },
+  );
+  if (
+    ids.join() !== [source.id, canonical.id].join() ||
+    loaded.providerPayments.length !== 2
+  ) throw new Error("canonical outside window was not fetched");
+  const failed = await loadPaymentAdjudicationEvidence(
+    { rpc: async () => ({ data: [decision], error: null }) },
+    input.providerPayments,
+    async (id) => {
+      if (id === canonical.id) throw new Error("GET failed");
+      return source;
+    },
+  );
+  const issues = buildReconciliationIssues({
+    ...input,
+    paymentAdjudications: failed.adjudications,
+    adjudicationProviderPayments: failed.providerPayments,
+  });
+  if (
+    failed.recheckFailures !== 1 ||
+    !issues.some((issue) => issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL")
+  ) throw new Error("failed canonical GET suppressed missing cash");
+});
 
 Deno.test("transfer audit skips provider endpoint only when disabled and empty", () => {
   const plan = planTransferAudit(false, 0);

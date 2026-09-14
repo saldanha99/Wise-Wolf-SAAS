@@ -441,6 +441,9 @@ node --test scripts/generate-hub-static-html.test.mjs
 node --test scripts/operational-tracking-privacy.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
+  scripts/asaas-adjudication/core.ts \
+  scripts/asaas-adjudication/run.ts \
+  scripts/asaas-adjudication/core.test.ts \
   supabase/functions/_shared/lesson-quality-reply.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.ts \
@@ -545,6 +548,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-webhook/billing-safety.ts \
   supabase/functions/asaas-webhook/event-contract.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
+  supabase/functions/asaas-webhook/bound-payment-observation.ts \
+  supabase/functions/asaas-webhook/bound-payment-observation.test.ts \
   supabase/functions/asaas-webhook/enrollment-payment-completion.test.ts \
   supabase/functions/asaas-webhook/payment-classification.test.ts \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
@@ -582,6 +587,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/safety.test.ts \
   supabase/functions/payment-split-notify/index.ts \
+  supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/cancel-prepaid-invoice/index.ts \
+  supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/dre-report/safety.test.ts \
   supabase/functions/weekly-director-digest/index.ts \
@@ -702,6 +711,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
+  supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/payment-split-notify/management-outbound-fence.test.ts \
   supabase/functions/payment-split-notify/management-summary.test.ts \
   supabase/functions/monthly-teacher-closing/tenant-closing.test.ts \
@@ -736,12 +747,14 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   scripts/tests/wolfie-experience-catalog.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 npx --yes deno@2.9.5 test --allow-read --frozen \
+  scripts/asaas-adjudication/core.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
+  supabase/functions/asaas-webhook/bound-payment-observation.test.ts \
   supabase/functions/asaas-webhook/enrollment-payment-completion.test.ts \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
@@ -774,6 +787,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/school-admin/offboarding-provider-proof.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno@2.9.5 check --frozen \
+  scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
@@ -868,6 +882,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
+  supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/cancel-prepaid-invoice/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/search-slots/index.ts \
@@ -1230,6 +1246,12 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260912203245_google_meet_pedagogical_documentation.sql"
   "supabase/migrations/20260914020000_cobranca_respeita_estado_do_asaas.sql"
   "supabase/migrations/20260914100000_competencia_e_pagamento_completo.sql"
+  "supabase/migrations/20260914195230_monthly_reserve_notification_outbox.sql"
+  "supabase/migrations/20260914195606_prepayment_coverage_and_management.sql"
+  "supabase/migrations/20260914200843_cancel_prepaid_invoice_intents.sql"
+  "supabase/migrations/20260914202244_corroborated_bound_payment_observation.sql"
+  "supabase/migrations/20260914205041_private_asaas_payment_adjudication.sql"
+  "supabase/migrations/20260914210351_unclassified_receipt_reporting.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1339,6 +1361,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/google_meet_pedagogical_documentation.sql"
   "supabase/tests/cobranca_respeita_estado_do_asaas.sql"
   "supabase/tests/competencia_e_pagamento_completo.sql"
+  # Global queue/clock and canonical-root observation tests run first in the
+  # network-less finance QA runner; never claim real work or replace a real
+  # integration with a test fixture in a production release savepoint.
+  "supabase/tests/prepayment_coverage_and_management.sql"
+  "supabase/tests/cancel_prepaid_invoice_intents.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1432,6 +1459,8 @@ HARDENED_FUNCTIONS=(
   dre-categorize
   dre-report
   payment-split-notify
+  monthly-reserve-notify
+  cancel-prepaid-invoice
   sync-plan-change-billing
   search-slots
   sync-payments
@@ -4146,6 +4175,8 @@ wait_for_http_status 410 "desativação do webhook legado Kiwify" \
   --data '{}'
 for protected_function in \
   accept-opportunity \
+  cancel-prepaid-invoice \
+  monthly-reserve-notify \
   asaas-reconcile \
   broadcast-opportunity \
   coverage-admin \
@@ -4277,6 +4308,14 @@ wait_for_service_http_status 403 "bloqueio de service role em notify-claim" \
   -X POST "$api_url/functions/v1/notify-claim" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_service_http_status 403 "cancelamento de cobrança exige direção autenticada" \
+  -X POST "$api_url/functions/v1/cancel-prepaid-invoice" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+service_http_status_once 200 "fila de reserva em testMode sem consultas ou efeitos" \
+  -X POST "$api_url/functions/v1/monthly-reserve-notify" \
+  -H 'Content-Type: application/json' \
+  --data '{"sweep":true,"testMode":true}'
 unset service_role_key
 wait_for_http_status 400 "validação pública de indicação" \
   -X POST "$api_url/functions/v1/referral-welcome" \

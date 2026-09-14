@@ -173,12 +173,14 @@ insert into public.management_payment_notification_outbox (
   submit_attempt_count, configured_destination_snapshot, provider_destination,
   provider_instance_name, provider_integration_id, provider_integration_version,
   provider_endpoint_hash, provider_credential_hash, message_body,
-  source_snapshot, source_snapshot_hash, snapshot_hash, last_error
+  source_snapshot, source_snapshot_hash, snapshot_hash, last_error,
+  provider_message_id, provider_delivery_status, delivered_at
 )
-select 'fin-competencia-school', s.payment_id, 'PAYMENT_SPLIT', 'SUBMITTING', gen_random_uuid(),
+select 'fin-competencia-school', s.payment_id, 'PAYMENT_SPLIT', 'SENT', gen_random_uuid(),
        now() + interval '5 minutes', 1, '120363000000000001@g.us', '120363000000000001@g.us',
        'fincomp-test', gen_random_uuid(), 1, repeat('a', 64), repeat('b', 64), 'aviso de teste',
-       s.snap, repeat('c', 64), repeat('d', 64), null
+       s.snap, repeat('c', 64), repeat('d', 64), null,
+       'fixture_' || s.payment_id::text, 'delivered', now()
   from (values
           ('5e000000-0000-4000-8000-0000000000a1'::uuid,
            jsonb_build_object('tenant_id', 'fin-competencia-school', 'month', '2026-09',
@@ -208,6 +210,9 @@ on conflict (tenant_id, payment_id) do update
        source_snapshot = excluded.source_snapshot,
        source_snapshot_hash = excluded.source_snapshot_hash,
        snapshot_hash = excluded.snapshot_hash,
+       provider_message_id = excluded.provider_message_id,
+       provider_delivery_status = excluded.provider_delivery_status,
+       delivered_at = excluded.delivered_at,
        last_error = null;
 
 create temporary table fincomp_b (k text primary key, b jsonb not null);
@@ -299,7 +304,7 @@ select pg_temp.assert_true(
         ->> 'error' = 'pagamento_ja_tem_parcelas',
   'repetir o registro duplicou ou aceitou outro parcelamento');
 
--- Cancelar e registrar de novo reaproveita as linhas.
+-- Cancelar preserva o ciclo antigo; recadastrar cria novas linhas auditáveis.
 -- ⚠️ Cada passo num statement próprio: um SELECT não enxerga o que as funções
 -- chamadas por ele gravaram (o snapshot é o do início do statement). Juntar
 -- cancelar + registrar + contar numa asserção só falha mesmo com a função certa.
@@ -318,24 +323,23 @@ select pg_temp.assert_true(
   (public.cancel_prepayment('5e000000-0000-4000-8000-0000000000a4') ->> 'already_cancelled')::boolean,
   'cancelar duas vezes não foi idempotente');
 
--- Registrar de novo com OUTRO parcelamento (5 meses a partir de outubro):
--- setembro fica cancelado, outubro..fevereiro voltam com nova sequência, e o
--- índice de mês ativo não reclama.
+-- Registrar de novo com OUTRO parcelamento: cinco meses no mês do recebimento.
+-- O ciclo antigo não é sobrescrito, e o índice de mês ativo não reclama.
 insert into fincomp_b values
-  ('reg_p4_5m', public.register_prepayment('5e000000-0000-4000-8000-0000000000a4', date '2026-10-01', 5, 'MENSAL'));
+  ('reg_p4_5m', public.register_prepayment('5e000000-0000-4000-8000-0000000000a4', date '2026-09-01', 5, 'MENSAL'));
 select pg_temp.assert_true(
   (select (b ->> 'ok')::boolean and not (b ->> 'already_registered')::boolean
      from fincomp_b where k = 'reg_p4_5m')
-  and (select count(*) = 6 from public.student_payment_allocations
+  and (select count(*) = 11 from public.student_payment_allocations
         where payment_id = '5e000000-0000-4000-8000-0000000000a4')
-  and (select count(*) = 5 and sum(valor) = 1300.00 and min(competencia) = date '2026-10-01'
+  and (select count(*) = 5 and sum(valor) = 1300.00 and min(competencia) = date '2026-09-01'
               and array_agg(sequencia order by competencia) = array[1, 2, 3, 4, 5]
          from public.student_payment_allocations
         where payment_id = '5e000000-0000-4000-8000-0000000000a4' and status = 'ACTIVE')
-  and (select status = 'CANCELLED' from public.student_payment_allocations
+  and (select count(*) = 6 from public.student_payment_allocations
         where payment_id = '5e000000-0000-4000-8000-0000000000a4'
-          and competencia = date '2026-09-01'),
-  'registrar de outro jeito depois de cancelar não reaproveitou as linhas');
+          and status = 'CANCELLED'),
+  'recadastro não preservou as linhas do ciclo cancelado');
 insert into fincomp_b values
   ('cancel_p4_5m', public.cancel_prepayment('5e000000-0000-4000-8000-0000000000a4'));
 
@@ -347,7 +351,7 @@ select pg_temp.assert_true(
   and (select (b ->> 'ok')::boolean and not (b ->> 'already_registered')::boolean
          from fincomp_b where k = 'reg_p4_de_novo')
   and (select count(*) from public.student_payment_allocations
-        where payment_id = '5e000000-0000-4000-8000-0000000000a4') = 6
+        where payment_id = '5e000000-0000-4000-8000-0000000000a4') = 17
   and (select count(*) from public.student_payment_allocations
         where payment_id = '5e000000-0000-4000-8000-0000000000a4' and status = 'ACTIVE') = 6
   and (select array_agg(valor order by sequencia)
@@ -355,12 +359,12 @@ select pg_temp.assert_true(
               and bool_and(cancelled_at is null and cancelled_by is null)
          from public.student_payment_allocations
         where payment_id = '5e000000-0000-4000-8000-0000000000a4' and status = 'ACTIVE'),
-  'cancelar e registrar de novo não reativou as parcelas');
+  'cancelar e registrar de novo perdeu o histórico ou duplicou parcelas ativas');
 
 select pg_temp.assert_true(
-  (select paid_through = date '2027-02-28' and prepaid_months = 6 and monthly_fee = 216.67
+  (select paid_through is null and prepaid_months is null and monthly_fee = 0
      from public.profiles where id = '5e000000-0000-4000-8000-000000000012'),
-  'perfil não recebeu paid_through/prepaid_months/mensalidade');
+  'o parcelamento alterou o perfil ou inferiu uma mensalidade contratada');
 
 insert into fincomp_b values
   ('p4', public.payment_split_breakdown('5e000000-0000-4000-8000-0000000000a4')),
@@ -518,15 +522,15 @@ insert into fincomp_b values
   ('cx_ago', public.caixinha_fechamento('2026-08', 'fin-competencia-school')),
   ('cx_out', public.caixinha_fechamento('2026-10', 'fin-competencia-school'));
 
--- Professor: folha 40+32+32+32 = 136. Caixinha: aviso de P1 (32) + P7 sem
--- aviso, recalculado (32). Os dois LEGADO não separaram nada em agosto.
+-- Professor: folha 40+32+32+32 = 136. Caixinha confirmada: P1 (32).
+-- P7 é somente previsão (32), separada; LEGADO não reserva em agosto.
 select pg_temp.assert_true(
   (select b ->> 'tenant' = 'fin-competencia-school'
       and (b #>> '{totais,folha}')::numeric = 136.00
-      and (b #>> '{totais,caixinha}')::numeric = 64.00
+      and (b #>> '{totais,caixinha}')::numeric = 32.00
       and (b #>> '{totais,caixinha_sem_aviso}')::numeric = 32.00
-      and (b #>> '{totais,diferenca}')::numeric = 72.00
-      and (b #>> '{totais,completar}')::numeric = 72.00
+      and (b #>> '{totais,diferenca}')::numeric = 104.00
+      and (b #>> '{totais,completar}')::numeric = 104.00
       and (b #>> '{totais,devolver}')::numeric = 0
       and b #>> '{professores,0,acao}' = 'COMPLETAR'
      from fincomp_b where k = 'cx_ago'),
@@ -553,10 +557,10 @@ select pg_temp.assert_true(
   and exists (select 1 from fincomp_itens where aluno = 'Aluno Competencia Quatro'
                 and motivo = 'PREPAGO_SEM_RESERVA' and caixinha = 0 and diferenca = 32.00)
   and exists (select 1 from fincomp_itens where aluno = 'Aluno Competencia Cinco'
-                and motivo = 'SEM_AVISO' and sem_aviso and caixinha = 32.00 and diferenca = 0),
+                and motivo = 'SEM_AVISO' and sem_aviso and caixinha = 0 and diferenca = 32),
   'motivos do fechamento de agosto');
 
--- Outubro: a parcela 2 do pagamento completo é caixinha reservada (via parcela).
+-- Outubro: sem entrega confirmada, a parcela 2 é somente previsão.
 select pg_temp.assert_true(
   exists (
     select 1
@@ -564,10 +568,11 @@ select pg_temp.assert_true(
       cross join lateral jsonb_array_elements(b #> '{professores,0,itens}') as item
      where k = 'cx_out'
        and item ->> 'aluno' = 'Aluno Competencia Dois'
-       and (item ->> 'caixinha')::numeric = 40.00
-       and not (item ->> 'sem_aviso')::boolean
+       and (item ->> 'caixinha')::numeric = 0
+       and (item ->> 'caixinha_sem_aviso')::numeric = 40.00
+       and (item ->> 'sem_aviso')::boolean
   ),
-  'parcela MENSAL do mês não entrou na caixinha');
+  'parcela MENSAL sem aviso foi tratada como reserva confirmada');
 
 -------------------------------------------------------------------------------
 -- 7. Mês coberto não é pendência
@@ -719,7 +724,7 @@ begin
 end;
 $$;
 select pg_temp.assert_true(
-  (public.teacher_payroll_reconciliation('2026-08') #>> '{totais,caixinha}')::numeric = 64.00
+  (public.teacher_payroll_reconciliation('2026-08') #>> '{totais,caixinha}')::numeric = 32.00
   and (public.teacher_payroll_reconciliation('2026-08') #>> '{totais,folha}')::numeric = 136.00
   and (public.teacher_payroll_reconciliation('2026-08') #> '{professores,0}') ?& array[
         'teacher_id', 'teacher_name', 'previsto', 'previsto_aulas', 'folha', 'folha_aulas',

@@ -25,15 +25,121 @@ export type ProviderPayment = {
   paymentDate?: string | null;
   creditDate?: string | null;
   refundedValue?: number | null;
+  refunds?:
+    | Array<
+      { id?: string | null; status?: string | null; value?: number | null }
+    >
+    | null;
+  chargeback?: unknown;
   installment?: string | null;
   deleted?: boolean | null;
 };
+
+export type PaymentAdjudication = {
+  id: string;
+  disposition: string;
+  provider_payment_id: string;
+  local_payment_id: string | null;
+  canonical_provider_payment_id: string | null;
+  student_id: string | null;
+  expected_payment: Record<string, unknown>;
+  expected_canonical: Record<string, unknown> | null;
+  valid: boolean;
+};
+
+type AdjudicationClient = {
+  rpc(name: string): PromiseLike<{ data: unknown; error: unknown }>;
+};
+const object = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** Optional audit context, never a source of money or ownership. If the
+ * service-only reader is unavailable/malformed, all ordinary issues remain.
+ * Exact GET failures likewise disable that exception instead of hiding it. */
+export async function loadPaymentAdjudicationEvidence(
+  client: AdjudicationClient,
+  scopedProviderPayments: ProviderPayment[],
+  getPayment: (id: string) => Promise<ProviderPayment>,
+): Promise<{
+  available: boolean;
+  adjudications: PaymentAdjudication[];
+  providerPayments: ProviderPayment[];
+  recheckFailures: number;
+}> {
+  const unavailable = {
+    available: false,
+    adjudications: [],
+    providerPayments: [],
+    recheckFailures: 0,
+  };
+  let response: { data: unknown; error: unknown };
+  try {
+    response = await client.rpc("get_asaas_payment_adjudications");
+  } catch {
+    return unavailable;
+  }
+  if (response.error || !Array.isArray(response.data)) return unavailable;
+  const scoped = new Set(scopedProviderPayments.map((payment) => payment.id));
+  const adjudications: PaymentAdjudication[] = [];
+  for (const value of response.data) {
+    if (
+      !object(value) || typeof value.id !== "string" ||
+      !["IMPORT_UNASSIGNED", "DUPLICATE_OF"].includes(
+        String(value.disposition),
+      ) ||
+      typeof value.provider_payment_id !== "string" ||
+      !/^pay_[A-Za-z0-9]+$/.test(value.provider_payment_id) ||
+      !scoped.has(value.provider_payment_id) || value.valid !== true ||
+      !object(value.expected_payment) ||
+      !(value.expected_canonical === null ||
+        object(value.expected_canonical)) ||
+      !(value.local_payment_id === null ||
+        typeof value.local_payment_id === "string") ||
+      !(value.student_id === null || typeof value.student_id === "string") ||
+      !(value.canonical_provider_payment_id === null ||
+        (typeof value.canonical_provider_payment_id === "string" &&
+          /^pay_[A-Za-z0-9]+$/.test(value.canonical_provider_payment_id)))
+    ) continue;
+    adjudications.push(value as PaymentAdjudication);
+  }
+  // A bounded optional pass cannot turn an audit into unbounded provider work.
+  // Unchecked records retain all of their normal discrepancies.
+  const bounded = adjudications.slice(0, 64);
+  const ids = [
+    ...new Set(bounded.flatMap((entry) => [
+      entry.provider_payment_id,
+      ...(entry.canonical_provider_payment_id
+        ? [entry.canonical_provider_payment_id]
+        : []),
+    ])),
+  ];
+  const providerPayments: ProviderPayment[] = [];
+  let recheckFailures = 0;
+  for (const id of ids) {
+    try {
+      const payment = await getPayment(id);
+      if (!payment || payment.id !== id) {
+        throw new Error("adjudication_get_identity_mismatch");
+      }
+      providerPayments.push(payment);
+    } catch {
+      recheckFailures++;
+    }
+  }
+  return {
+    available: true,
+    adjudications: bounded,
+    providerPayments,
+    recheckFailures,
+  };
+}
 
 export type LocalPayment = {
   id: string;
   tenant_id?: string | null;
   student_id?: string | null;
   asaas_payment_id?: string | null;
+  asaas_id?: string | null;
   value?: number | null;
   status?: string | null;
   provider_status?: string | null;
@@ -47,6 +153,7 @@ export type LocalPayment = {
   last_provider_event_at?: string | null;
   ledger_entry_created?: boolean | null;
   billing_type?: string | null;
+  payment_type?: string | null;
   raw_payload?: unknown;
 };
 
@@ -191,6 +298,93 @@ function addIssue(
   map.set(issue.fingerprint, issue);
 }
 
+function adjudicatedSnapshotMatches(
+  expected: Record<string, unknown>,
+  current: ProviderPayment | undefined,
+): boolean {
+  const keys = [
+    "id",
+    "customer",
+    "status",
+    "value",
+    "dueDate",
+    "paymentDate",
+    "creditDate",
+    "subscription",
+    "externalReference",
+  ];
+  if (
+    !current ||
+    !["id", "customer", "status", "value", "dueDate", "paymentDate"].every((
+      key,
+    ) => Object.hasOwn(expected, key)) ||
+    (current.deleted != null && current.deleted !== false) ||
+    Number(current.refundedValue ?? 0) !== 0 ||
+    current.chargeback != null || expected.chargeback != null ||
+    (current.refunds != null && !Array.isArray(current.refunds)) ||
+    (current.refunds ?? []).some((refund) =>
+      !object(refund) ||
+      !["CANCELLED", "DENIED"].includes(
+        String(refund.status || "").toUpperCase(),
+      )
+    ) ||
+    !["RECEIVED", "RECEIVED_IN_CASH"].includes(current.status || "") ||
+    (current.status === "RECEIVED" && !dateOnly(current.creditDate)) ||
+    (current.status === "RECEIVED_IN_CASH" && !dateOnly(current.paymentDate)) ||
+    typeof expected.id !== "string" || expected.id !== current.id ||
+    !current.customer || !Number.isFinite(Number(current.value)) ||
+    Number(current.value) <= 0 || !Number.isFinite(Number(expected.value)) ||
+    Number(expected.value) !== Number(current.value)
+  ) return false;
+  for (const key of keys.filter((key) => key !== "value")) {
+    const actual = current[key as keyof ProviderPayment] ?? null;
+    const proof = expected[key] ?? null;
+    if (typeof actual !== "string" && actual !== null) return false;
+    if (typeof proof !== "string" && proof !== null) return false;
+    if (actual !== proof) return false;
+  }
+  if (
+    Number(expected.refundedValue ?? 0) !== 0 ||
+    (expected.deleted != null && expected.deleted !== false)
+  ) return false;
+  const refundSnapshot = (value: unknown): string | null => {
+    if (value == null) return "[]";
+    if (!Array.isArray(value) || value.some((item) => !object(item))) {
+      return null;
+    }
+    return JSON.stringify(
+      value.map((
+        item,
+      ) => [item.id ?? null, item.status ?? null, item.value ?? null]),
+    );
+  };
+  const expectedRefunds = refundSnapshot(expected.refunds);
+  if (
+    expectedRefunds === null ||
+    expectedRefunds !== refundSnapshot(current.refunds)
+  ) return false;
+  return true;
+}
+
+function businessDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function isUnclassifiedReceipt(payment: LocalPayment): boolean {
+  return payment.payment_type === "UNASSIGNED_RECEIPT" &&
+    payment.student_id == null && object(payment.raw_payload) &&
+    payment.raw_payload.source === "OPERATOR_ADJUDICATION";
+}
+
 export function buildReconciliationIssues(input: {
   windowStart: string;
   windowEnd: string;
@@ -209,6 +403,8 @@ export function buildReconciliationIssues(input: {
   productReferenceByExternalReference: Map<string, LocalProductReference[]>;
   providerTransfers: ProviderTransfer[];
   localTransfers: LocalTransferAttempt[];
+  paymentAdjudications?: PaymentAdjudication[];
+  adjudicationProviderPayments?: ProviderPayment[];
 }): ReconciliationIssue[] {
   const issues = new Map<string, ReconciliationIssue>();
   const providerCandidatesById = new Map<string, ProviderPayment[]>();
@@ -353,6 +549,145 @@ export function buildReconciliationIssues(input: {
     });
   }
 
+  const freshCandidates = new Map<string, ProviderPayment[]>();
+  for (const payment of input.adjudicationProviderPayments || []) {
+    const candidates = freshCandidates.get(payment.id) || [];
+    candidates.push(payment);
+    freshCandidates.set(payment.id, candidates);
+  }
+  const decisions = new Map<string, PaymentAdjudication[]>();
+  for (const decision of input.paymentAdjudications || []) {
+    if (decision.valid !== true) continue;
+    const candidates = decisions.get(decision.provider_payment_id) || [];
+    candidates.push(decision);
+    decisions.set(decision.provider_payment_id, candidates);
+  }
+  const adjudicated = new Map<string, PaymentAdjudication>();
+  const matchingReceipt = (
+    local: LocalPayment,
+    proof: ProviderPayment,
+    status: string,
+    category: string,
+  ): boolean => {
+    const gross = input.grossLedgerByPaymentId.get(local.id) || [];
+    const refunds = input.refundLedgerByPaymentId.get(local.id) || [];
+    return local.tenant_id === "school-wise-wolf" && local.status === status &&
+      local.provider_status === status &&
+      Number(local.value) === Number(proof.value) &&
+      Number(local.refunded_amount || 0) === 0 && refunds.length === 0 &&
+      local.due_date === proof.dueDate &&
+      local.payment_date === proof.paymentDate &&
+      businessDate(local.paid_at) ===
+        (status === "RECEIVED" ? proof.creditDate : proof.paymentDate) &&
+      (status !== "RECEIVED" ||
+        businessDate(local.credited_at) === proof.creditDate) &&
+      local.ledger_entry_created === true && gross.length === 1 &&
+      gross[0].type === "ENTRADA" && gross[0].category === category &&
+      gross[0].student_payment_id === local.id &&
+      businessDate(gross[0].occurred_at) ===
+        (status === "RECEIVED" ? proof.creditDate : proof.paymentDate) &&
+      !gross[0].refund_student_payment_id &&
+      Number(gross[0].amount) === Number(proof.value);
+  };
+  for (const [providerId, entries] of decisions) {
+    if (
+      input.referenceTenantId !== "school-wise-wolf" || entries.length !== 1
+    ) continue;
+    const decision = entries[0];
+    const fresh = freshCandidates.get(providerId) || [];
+    const current = providerById.get(providerId);
+    if (
+      fresh.length !== 1 ||
+      !adjudicatedSnapshotMatches(decision.expected_payment, fresh[0]) ||
+      !adjudicatedSnapshotMatches(decision.expected_payment, current) ||
+      (input.productPaymentByProviderId.get(providerId) || []).length > 0 ||
+      productFamilyFromReference(current?.externalReference) ||
+      input.statement.some((entry) =>
+        entry.type === "PAYMENT_REVERSAL" &&
+        [providerId, decision.canonical_provider_payment_id].includes(
+          statementPaymentId(entry),
+        )
+      )
+    ) continue;
+    if (decision.disposition === "IMPORT_UNASSIGNED") {
+      const local = localByProviderId.get(providerId);
+      if (
+        !local || local.id !== decision.local_payment_id ||
+        local.student_id != null ||
+        !isUnclassifiedReceipt(local) ||
+        decision.student_id !== null ||
+        decision.canonical_provider_payment_id !== null ||
+        decision.expected_canonical !== null ||
+        !matchingReceipt(
+          local,
+          fresh[0],
+          "RECEIVED",
+          "RECEBIMENTO_NAO_CLASSIFICADO",
+        ) ||
+        (input.studentByCustomerId.get(fresh[0].customer || "") || [])
+            .length !== 0
+      ) continue;
+      adjudicated.set(providerId, decision);
+    } else if (decision.disposition === "DUPLICATE_OF") {
+      const canonicalId = decision.canonical_provider_payment_id;
+      const canonicalFresh = canonicalId
+        ? freshCandidates.get(canonicalId) || []
+        : [];
+      const canonical = input.localPayments.filter((local) =>
+        local.id === decision.local_payment_id
+      );
+      if (
+        !canonicalId || canonicalId === providerId ||
+        !decision.expected_canonical ||
+        canonicalFresh.length !== 1 || canonical.length !== 1 ||
+        !adjudicatedSnapshotMatches(
+          decision.expected_canonical,
+          canonicalFresh[0],
+        ) ||
+        !matchingReceipt(
+          canonical[0],
+          canonicalFresh[0],
+          "RECEIVED_IN_CASH",
+          "MENSALIDADE",
+        ) ||
+        (canonical[0].asaas_payment_id &&
+          canonical[0].asaas_payment_id !== canonicalId) ||
+        (canonical[0].asaas_id && canonical[0].asaas_id !== canonicalId) ||
+        ![canonical[0].asaas_payment_id, canonical[0].asaas_id].includes(
+          canonicalId,
+        ) ||
+        !canonical[0].student_id ||
+        (decision.student_id !== null &&
+          decision.student_id !== canonical[0].student_id) ||
+        input.customerByStudentId.get(canonical[0].student_id) !==
+          fresh[0].customer ||
+        canonicalFresh[0].customer !== fresh[0].customer ||
+        Number(canonicalFresh[0].value) !== Number(fresh[0].value) ||
+        canonicalFresh[0].paymentDate !== fresh[0].paymentDate ||
+        input.localPayments.some((local) =>
+          [local.asaas_payment_id, local.asaas_id].includes(providerId)
+        ) ||
+        input.localPayments.filter((local) =>
+            [local.asaas_payment_id, local.asaas_id].includes(canonicalId)
+          ).length !== 1 ||
+        (input.productPaymentByProviderId.get(canonicalId) || []).length > 0 ||
+        (providerCandidatesById.get(canonicalId) || []).length > 1 ||
+        (providerById.has(canonicalId) &&
+          !adjudicatedSnapshotMatches(
+            decision.expected_canonical,
+            providerById.get(canonicalId),
+          )) ||
+        (input.studentByCustomerId.get(fresh[0].customer || "") || [])
+            .length !== 1 ||
+        input.studentByCustomerId.get(fresh[0].customer || "")?.[0].id !==
+          canonical[0].student_id ||
+        input.studentByCustomerId.get(fresh[0].customer || "")?.[0].tenantId !==
+          "school-wise-wolf"
+      ) continue;
+      adjudicated.set(providerId, decision);
+    }
+  }
+
   for (const provider of input.providerPayments) {
     const externalReference = provider.externalReference?.trim() || "";
     const knownProductPayments = input.productPaymentByProviderId.get(
@@ -429,6 +764,11 @@ export function buildReconciliationIssues(input: {
 
     const local = localByProviderId.get(provider.id);
     if (!local) {
+      // A duplicate acknowledgement is an exception to exactly this missing
+      // source, not a synthesized local receipt or a second ledger entry.
+      if (adjudicated.get(provider.id)?.disposition === "DUPLICATE_OF") {
+        continue;
+      }
       const canonicalStudentCandidates = provider.customer
         ? input.studentByCustomerId.get(provider.customer) || []
         : [];
@@ -471,6 +811,7 @@ export function buildReconciliationIssues(input: {
       .trim().toUpperCase();
     if (
       (!local.tenant_id || !local.student_id) &&
+      adjudicated.get(provider.id)?.disposition !== "IMPORT_UNASSIGNED" &&
       !["CANCELLED", "NAO_RECEITA"].includes(
         localAccountingStatusForBinding,
       )
@@ -507,7 +848,10 @@ export function buildReconciliationIssues(input: {
     const canonicalStudent = canonicalStudentCandidates.length === 1
       ? canonicalStudentCandidates[0]
       : null;
-    if (!provider.customer) {
+    if (
+      !provider.customer &&
+      adjudicated.get(provider.id)?.disposition !== "IMPORT_UNASSIGNED"
+    ) {
       addIssue(issues, {
         tenant_id: local.tenant_id || null,
         source: "PAYMENT",
@@ -892,6 +1236,8 @@ export function buildReconciliationIssues(input: {
       }
       const expectedCategory = localStatus === "NAO_RECEITA"
         ? "aporte_ou_movimentacao"
+        : isUnclassifiedReceipt(local)
+        ? "RECEBIMENTO_NAO_CLASSIFICADO"
         : "MENSALIDADE";
       const invalidGrossClassification = grossEntries.some((entry) =>
         entry.type !== "ENTRADA" ||
@@ -1001,6 +1347,8 @@ export function buildReconciliationIssues(input: {
 
     const expectedRefundCategory = localStatus === "NAO_RECEITA"
       ? "estorno_aporte_ou_movimentacao"
+      : isUnclassifiedReceipt(local)
+      ? "ESTORNO_RECEBIMENTO_NAO_CLASSIFICADO"
       : "ESTORNO_MENSALIDADE";
     const invalidRefundClassification = refundEntries.some((entry) => {
       const amount = Number(entry.amount);
@@ -1151,6 +1499,16 @@ export function buildReconciliationIssues(input: {
 
     const local = localByProviderId.get(paymentId);
     if (!local) {
+      const duplicate = adjudicated.get(paymentId);
+      if (
+        !isRefund && duplicate?.disposition === "DUPLICATE_OF" &&
+        Number(entry.value) === Number(duplicate.expected_payment.value) &&
+        dateOnly(entry.date) === duplicate.expected_payment.creditDate &&
+        input.statement.filter((candidate) =>
+            candidate.type === "PAYMENT_RECEIVED" &&
+            statementPaymentId(candidate) === paymentId
+          ).length === 1
+      ) continue;
       addIssue(issues, {
         tenant_id: input.referenceTenantId || null,
         source: "STATEMENT",

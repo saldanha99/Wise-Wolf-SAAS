@@ -9,6 +9,7 @@ import {
 } from "../_shared/tenant-integration-broker.ts";
 import {
   buildReconciliationIssues,
+  loadPaymentAdjudicationEvidence,
   type LocalLedgerEntry,
   type LocalPayment,
   type LocalProductPayment,
@@ -34,6 +35,10 @@ import {
   sameIntegrationIdentity,
   subscriptionBindingSnapshot,
 } from "./unlinked-repair.ts";
+import {
+  BoundPaymentObservationError,
+  observeBoundPayment,
+} from "../asaas-webhook/bound-payment-observation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -720,7 +725,7 @@ async function fetchAllLocalPayments(
     const { data, error } = await supabase
       .from("student_payments")
       .select(
-        "id,tenant_id,student_id,asaas_payment_id,value,status,provider_status,created_at,due_date,payment_date,credited_at,paid_at,refunded_amount,last_provider_event_id,last_provider_event_at,ledger_entry_created,billing_type,raw_payload",
+        "id,tenant_id,student_id,asaas_payment_id,asaas_id,value,status,provider_status,created_at,due_date,payment_date,credited_at,paid_at,refunded_amount,last_provider_event_id,last_provider_event_at,ledger_entry_created,billing_type,payment_type,raw_payload",
       )
       .eq("tenant_id", tenantId)
       .order("id")
@@ -1080,7 +1085,56 @@ serve(async (req) => {
     repairHistoricalCredits?: unknown;
     repairHistoricalDeletedPayments?: unknown;
     repairUnlinkedPayment?: unknown;
+    repairBoundPayment?: unknown;
   };
+  if (Object.prototype.hasOwnProperty.call(request, "repairBoundPayment")) {
+    if (!auth.context.isService) {
+      return new Response(
+        JSON.stringify({ error: "SERVICE_ACCESS_REQUIRED_FOR_REPAIR" }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+    const target = request.repairBoundPayment as
+      | { localPaymentId?: unknown }
+      | null;
+    if (
+      !target || typeof target !== "object" || Array.isArray(target) ||
+      Object.keys(target).join() !== "localPaymentId" ||
+      typeof target.localPaymentId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(target.localPaymentId) ||
+      request.repairUnlinkedPayment !== undefined ||
+      request.repairHistoricalFacts === true ||
+      request.repairHistoricalCredits === true ||
+      request.repairHistoricalDeletedPayments === true
+    ) {
+      return new Response(
+        JSON.stringify({ error: "INVALID_BOUND_PAYMENT_REPAIR" }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+    try {
+      const result = await observeBoundPayment(
+        auth.context.admin,
+        target.localPaymentId,
+        REFERENCE_TENANT_ID,
+      );
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        status: 200,
+        headers: corsHeaders,
+      });
+    } catch (error) {
+      const known = error instanceof BoundPaymentObservationError;
+      return new Response(
+        JSON.stringify({
+          success: false,
+          reason: known ? error.code : "AUTHORITATIVE_BOUND_REPAIR_FAILED",
+          retryable: known && error.retryable,
+        }),
+        { status: known && !error.retryable ? 409 : 503, headers: corsHeaders },
+      );
+    }
+  }
   const repairHistoricalCredits = request.repairHistoricalFacts === true ||
     request.repairHistoricalCredits === true;
   const repairHistoricalDeletedPayments =
@@ -1535,6 +1589,20 @@ serve(async (req) => {
         fetchLedgerState(auth.context.admin, REFERENCE_TENANT_ID),
       ]);
     }
+    // Read-only operational acknowledgements may explain an intentional
+    // unassigned receipt or duplicate representation. Recheck both provider
+    // identities even when the canonical receipt falls outside this window;
+    // unavailable evidence leaves all ordinary discrepancies visible.
+    const adjudicationEvidence = await loadPaymentAdjudicationEvidence(
+      auth.context.admin,
+      providerPayments,
+      (providerId) =>
+        providerGet<ProviderPayment>(
+          integration,
+          `/payments/${encodeURIComponent(providerId)}`,
+          repairAuditProviderGetOptions,
+        ),
+    );
     const issues = buildReconciliationIssues({
       windowStart,
       windowEnd,
@@ -1551,6 +1619,8 @@ serve(async (req) => {
         productPaymentState.referenceByExternalReference,
       providerTransfers,
       localTransfers,
+      paymentAdjudications: adjudicationEvidence.adjudications,
+      adjudicationProviderPayments: adjudicationEvidence.providerPayments,
     });
     for (let offset = 0; offset < issues.length; offset += 500) {
       const batch = issues.slice(offset, offset + 500).map((issue) => ({
@@ -1577,6 +1647,12 @@ serve(async (req) => {
       localProductPaymentIds: productPaymentState.paymentByProviderId.size,
       tenantId: REFERENCE_TENANT_ID,
       historicalRepairs,
+      adjudications: {
+        available: adjudicationEvidence.available,
+        considered: adjudicationEvidence.adjudications.length,
+        providerRechecks: adjudicationEvidence.providerPayments.length,
+        failedRechecks: adjudicationEvidence.recheckFailures,
+      },
       issues: issues.length,
       severity: {
         critical: issues.filter((issue) => issue.severity === "CRITICAL")

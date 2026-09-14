@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatLocalDateBr, localMonth, monthRange } from '../lib/dateUtils';
 import { Download, Search, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
+
+const PrepaymentManager = lazy(() => import('./PrepaymentManager'));
 
 const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const [payments, setPayments] = useState<any[]>([]);
@@ -11,6 +13,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const [month, setMonth] = useState(localMonth());
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [errorMessage, setErrorMessage] = useState('');
+    const [showPrepayments, setShowPrepayments] = useState(false);
     const requestSequence = useRef(0);
 
     const fetchPayments = async () => {
@@ -88,6 +91,14 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     };
 
     return (
+        <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-border bg-brand-surface p-4">
+                <div><h2 className="font-bold text-brand-text">Mensalidades dos Alunos</h2><p className="text-sm text-brand-muted">Pagamentos completos cobrem vários meses sem duplicar recebimentos.</p></div>
+                <button type="button" aria-expanded={showPrepayments} aria-controls="student-prepayments-panel" onClick={() => setShowPrepayments(value => !value)} className="rounded-xl border border-brand-border px-4 py-2 text-sm font-bold text-brand-text">
+                    {showPrepayments ? 'Fechar pagamentos completos' : 'Gerenciar pagamentos completos'}
+                </button>
+            </div>
+            {showPrepayments ? <div id="student-prepayments-panel"><Suspense fallback={<p role="status" className="p-4 text-sm text-brand-muted">Carregando pagamentos completos…</p>}><PrepaymentManager key={tenantId} tenantId={tenantId} /></Suspense></div> : null}
         <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-xl overflow-hidden">
             <div className="p-8 border-b dark:border-brand-border flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
@@ -194,6 +205,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
     );
 };

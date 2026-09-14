@@ -39,18 +39,39 @@
 -------------------------------------------------------------------------------
 -- 1. Parcelas de pagamento completo
 -------------------------------------------------------------------------------
+create or replace function private.prepayment_caller_can_read(p_tenant text)
+returns boolean
+language sql stable security definer set search_path = ''
+as $function$
+  select p_tenant is not null
+     and private.can_execute_legacy_role_rpc(array['SCHOOL_ADMIN','SUPER_ADMIN','COORDINATOR']::text[])
+     and (
+       coalesce(auth.jwt() ->> 'role', '') = 'service_role'
+       or (coalesce(auth.jwt() ->> 'role', '') = '' and session_user in ('postgres','supabase_admin'))
+       or public.is_super_admin()
+       or private.active_tenant_id(auth.uid()) = p_tenant
+     )
+$function$;
+alter function private.prepayment_caller_can_read(text) owner to postgres;
+revoke all on function private.prepayment_caller_can_read(text) from public, anon;
+grant execute on function private.prepayment_caller_can_read(text) to authenticated, service_role;
+
 create table if not exists public.student_payment_allocations (
   id uuid primary key default gen_random_uuid(),
   tenant_id text not null references public.tenants(id) on delete restrict,
   -- Agrupa as N parcelas de UM pagamento completo. Pagamento Asaas: é o próprio
   -- payment_id. Recebido por fora: um uuid novo, devolvido pela RPC.
   grupo_id uuid not null,
+  -- A new immutable registration, including after cancellation. Never reuse
+  -- an allocation identity already present in a notification/audit snapshot.
+  registration_id uuid not null default gen_random_uuid(),
   payment_id uuid references public.student_payments(id) on delete restrict,
   student_id uuid not null references public.profiles(id) on delete restrict,
   competencia date not null,
   sequencia integer not null,
   meses integer not null,
   valor numeric(12, 2) not null,
+  source_payment_value numeric(12, 2),
   modo text not null,
   origem text not null,
   recebido_em date,
@@ -60,6 +81,7 @@ create table if not exists public.student_payment_allocations (
   created_by uuid,
   cancelled_at timestamptz,
   cancelled_by uuid,
+  status_reason text,
   constraint student_payment_allocations_competencia_check
     check (extract(day from competencia) = 1),
   constraint student_payment_allocations_meses_check
@@ -75,19 +97,48 @@ create table if not exists public.student_payment_allocations (
   constraint student_payment_allocations_origem_payment_check
     check ((origem = 'ASAAS') = (payment_id is not null)),
   constraint student_payment_allocations_status_check
-    check (status in ('ACTIVE', 'CANCELLED')),
-  constraint student_payment_allocations_payment_competencia_key
-    unique (payment_id, competencia)
+    check (status in ('ACTIVE', 'REVIEW', 'CANCELLED'))
 );
+
+-- Convergent on the second application of this unpublished migration.
+-- Refuse an older unpublished WIP with populated rows instead of fabricating
+-- one registration per row or guessing which historical intent they belonged
+-- to. This migration has never been shipped with those old table definitions.
+do $prepayment_upgrade_guard$
+begin
+  if (not exists(select 1 from pg_attribute where attrelid='public.student_payment_allocations'::regclass
+          and attname='registration_id' and not attisdropped)
+      or not exists(select 1 from pg_attribute where attrelid='public.student_payment_allocations'::regclass
+          and attname='source_payment_value' and not attisdropped))
+     and exists(select 1 from public.student_payment_allocations) then
+    raise exception 'prepayment_unpublished_legacy_rows_require_explicit_migration'
+      using errcode='55000',hint='Preserve these rows and their source evidence; do not infer registration history or delete them to retry.';
+  end if;
+end;
+$prepayment_upgrade_guard$;
+alter table public.student_payment_allocations
+  add column if not exists registration_id uuid not null default gen_random_uuid(),
+  add column if not exists source_payment_value numeric(12, 2),
+  add column if not exists status_reason text;
+alter table public.student_payment_allocations
+  drop constraint if exists student_payment_allocations_payment_competencia_key;
+alter table public.student_payment_allocations
+  drop constraint if exists student_payment_allocations_status_check;
+alter table public.student_payment_allocations
+  add constraint student_payment_allocations_status_check check (status in ('ACTIVE','REVIEW','CANCELLED'));
 
 -- Um mês não pode ser coberto duas vezes (dois pagamentos completos, ou um
 -- completo e um recebido por fora, sobre o mesmo mês).
-create unique index if not exists uq_student_payment_allocations_student_month_active
+drop index if exists public.uq_student_payment_allocations_student_month_active;
+create unique index uq_student_payment_allocations_student_month_active
   on public.student_payment_allocations (student_id, competencia)
-  where status = 'ACTIVE';
-create unique index if not exists uq_student_payment_allocations_group_sequence_active
+  where status in ('ACTIVE','REVIEW');
+drop index if exists public.uq_student_payment_allocations_group_sequence_active;
+create unique index uq_student_payment_allocations_group_sequence_active
   on public.student_payment_allocations (grupo_id, sequencia)
-  where status = 'ACTIVE';
+  where status in ('ACTIVE','REVIEW');
+create index if not exists idx_student_payment_allocations_registration
+  on public.student_payment_allocations(registration_id);
 create index if not exists idx_student_payment_allocations_tenant_month_active
   on public.student_payment_allocations (tenant_id, competencia)
   where status = 'ACTIVE';
@@ -106,17 +157,217 @@ create policy student_payment_allocations_admin_read
   on public.student_payment_allocations
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-        from public.profiles as actor
-       where actor.id = (select auth.uid())
-         and actor.role in ('SCHOOL_ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
-         and lower(btrim(coalesce(actor.lifecycle_status, ''))) = 'active'
-         and (actor.role = 'SUPER_ADMIN'
-              or actor.tenant_id = student_payment_allocations.tenant_id)
-    )
+  using (private.prepayment_caller_can_read(tenant_id));
+
+create table if not exists private.prepayment_allocation_events (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null,
+  student_id uuid not null,
+  payment_id uuid,
+  grupo_id uuid not null,
+  registration_id uuid not null,
+  allocation_id uuid not null,
+  event_type text not null check (event_type in ('REGISTER','CANCEL','REVIEW')),
+  actor_id uuid,
+  occurred_at timestamptz not null default clock_timestamp(),
+  before_state jsonb,
+  after_state jsonb not null,
+  reason text,
+  provider_event_id text
+);
+alter table private.prepayment_allocation_events owner to postgres;
+alter table private.prepayment_allocation_events enable row level security;
+alter table private.prepayment_allocation_events force row level security;
+revoke all on private.prepayment_allocation_events from public, anon, authenticated, service_role;
+create index if not exists idx_prepayment_events_student
+  on private.prepayment_allocation_events(tenant_id, student_id, occurred_at desc, id);
+create index if not exists idx_prepayment_events_group
+  on private.prepayment_allocation_events(grupo_id, registration_id, occurred_at, id);
+
+-- Transactional dirty queue: never lock a profile from the payment/allocation
+-- trigger. Claim commits before the service worker calls the lifecycle RPC,
+-- so financial-source -> allocation cannot deadlock profile -> billing.
+create table if not exists private.prepayment_financial_recompute_queue (
+  tenant_id text not null,
+  student_id uuid not null,
+  version bigint not null default 1,
+  processed_version bigint not null default 0,
+  requested_at timestamptz not null default clock_timestamp(),
+  claimed_version bigint,
+  claim_token uuid,
+  lease_expires_at timestamptz,
+  next_attempt_at timestamptz not null default clock_timestamp(),
+  attempt_count integer not null default 0,
+  last_error text,
+  primary key(tenant_id,student_id),
+  check (processed_version >= 0 and processed_version <= version)
+);
+alter table private.prepayment_financial_recompute_queue owner to postgres;
+alter table private.prepayment_financial_recompute_queue enable row level security;
+alter table private.prepayment_financial_recompute_queue force row level security;
+revoke all on private.prepayment_financial_recompute_queue from public,anon,authenticated,service_role;
+create index if not exists idx_prepayment_recompute_pending
+  on private.prepayment_financial_recompute_queue(next_attempt_at,requested_at)
+  where processed_version < version;
+
+-- A future entitlement needs a fresh access derivation when its month starts,
+-- even when no invoice generator or WhatsApp setting is enabled. One marker
+-- per student/month makes the minute-based watchdog bounded and idempotent.
+create table if not exists private.prepayment_financial_maturity_markers (
+  tenant_id text not null,
+  student_id uuid not null,
+  competencia date not null check (competencia=date_trunc('month',competencia::timestamp)::date),
+  created_at timestamptz not null default clock_timestamp(),
+  primary key(tenant_id,student_id,competencia)
+);
+alter table private.prepayment_financial_maturity_markers owner to postgres;
+alter table private.prepayment_financial_maturity_markers enable row level security;
+alter table private.prepayment_financial_maturity_markers force row level security;
+revoke all on private.prepayment_financial_maturity_markers from public,anon,authenticated,service_role;
+create index if not exists idx_prepayment_allocations_maturity
+  on public.student_payment_allocations(competencia,tenant_id,student_id)
+  where status in ('ACTIVE','REVIEW');
+
+create or replace function private.enqueue_matured_prepayment_recomputations(p_now timestamptz)
+returns integer language plpgsql security definer set search_path='' as $function$
+declare v_month date; v_count integer;
+begin
+  if p_now is null or not isfinite(p_now) then
+    raise exception 'invalid_prepayment_maturity_clock' using errcode='22023';
+  end if;
+  v_month:=date_trunc('month',p_now at time zone 'America/Sao_Paulo')::date;
+  with candidates as (
+    select distinct a.tenant_id,a.student_id
+      from public.student_payment_allocations a
+      join public.profiles p on p.id=a.student_id and p.tenant_id=a.tenant_id
+     where a.competencia=v_month and a.status in ('ACTIVE','REVIEW')
+       and p.role='STUDENT' and lower(btrim(coalesce(p.lifecycle_status,'')))='active'
+       and not exists(select 1 from private.prepayment_financial_maturity_markers m
+         where m.tenant_id=a.tenant_id and m.student_id=a.student_id and m.competencia=v_month)
+     order by a.tenant_id,a.student_id limit 500
+  ), marked as (
+    insert into private.prepayment_financial_maturity_markers(tenant_id,student_id,competencia)
+      select c.tenant_id,c.student_id,v_month from candidates c
+      on conflict(tenant_id,student_id,competencia) do nothing
+      returning tenant_id,student_id
+  )
+  insert into private.prepayment_financial_recompute_queue(tenant_id,student_id)
+    select m.tenant_id,m.student_id from marked m order by m.tenant_id,m.student_id
+    on conflict(tenant_id,student_id) do update set
+      version=prepayment_financial_recompute_queue.version+1,
+      requested_at=clock_timestamp(),next_attempt_at=clock_timestamp();
+  get diagnostics v_count=row_count;
+  return v_count;
+end;
+$function$;
+alter function private.enqueue_matured_prepayment_recomputations(timestamptz) owner to postgres;
+revoke all on function private.enqueue_matured_prepayment_recomputations(timestamptz) from public,anon,authenticated,service_role;
+
+create or replace function public.claim_prepayment_financial_recomputations(p_limit integer default 25)
+returns jsonb language plpgsql security definer set search_path = '' as $function$
+declare v_result jsonb;
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+  perform private.enqueue_matured_prepayment_recomputations(clock_timestamp());
+  with pending as (
+    select q.tenant_id,q.student_id from private.prepayment_financial_recompute_queue q
+    where q.processed_version < q.version and q.next_attempt_at <= clock_timestamp()
+      and (q.claim_token is null or q.lease_expires_at <= clock_timestamp())
+    order by q.requested_at,q.tenant_id,q.student_id
+    limit greatest(1,least(coalesce(p_limit,25),100))
+    for update skip locked
+  ), claimed as (
+    update private.prepayment_financial_recompute_queue q
+    set claimed_version=q.version,claim_token=gen_random_uuid(),lease_expires_at=clock_timestamp()+interval '2 minutes',
+        attempt_count=q.attempt_count+1
+    from pending p where q.tenant_id=p.tenant_id and q.student_id=p.student_id
+    returning q.tenant_id,q.student_id,q.claimed_version as version,q.claim_token
+  ) select coalesce(jsonb_agg(to_jsonb(c)),'[]'::jsonb) into v_result from claimed c;
+  return v_result;
+end;
+$function$;
+alter function public.claim_prepayment_financial_recomputations(integer) owner to postgres;
+revoke all on function public.claim_prepayment_financial_recomputations(integer) from public,anon,authenticated;
+grant execute on function public.claim_prepayment_financial_recomputations(integer) to service_role;
+
+create or replace function public.complete_prepayment_financial_recompute(
+  p_tenant text,p_student uuid,p_claim_token uuid,p_version bigint,p_error text default null
+)
+returns jsonb language plpgsql security definer set search_path = '' as $function$
+declare v_updated integer;
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+  update private.prepayment_financial_recompute_queue q
+    set processed_version=case when p_error is null then greatest(q.processed_version,p_version) else q.processed_version end,
+        claimed_version=null,claim_token=null,lease_expires_at=null,
+        next_attempt_at=clock_timestamp()+case when p_error is null then interval '0 seconds' else interval '3 minutes' end,
+        last_error=left(nullif(btrim(p_error),''),400)
+    where q.tenant_id=p_tenant and q.student_id=p_student and q.claim_token=p_claim_token
+      and q.claimed_version=p_version and q.lease_expires_at>clock_timestamp();
+  get diagnostics v_updated=row_count;
+  return jsonb_build_object('ok',v_updated=1,'stale_claim',v_updated=0);
+end;
+$function$;
+alter function public.complete_prepayment_financial_recompute(text,uuid,uuid,bigint,text) owner to postgres;
+revoke all on function public.complete_prepayment_financial_recompute(text,uuid,uuid,bigint,text) from public,anon,authenticated;
+grant execute on function public.complete_prepayment_financial_recompute(text,uuid,uuid,bigint,text) to service_role;
+
+create or replace function private.guard_prepayment_audit_immutable()
+returns trigger language plpgsql set search_path = '' as $function$
+begin
+  raise exception 'prepayment_audit_is_immutable' using errcode = '55000';
+end;
+$function$;
+alter function private.guard_prepayment_audit_immutable() owner to postgres;
+revoke all on function private.guard_prepayment_audit_immutable() from public, anon, authenticated, service_role;
+drop trigger if exists prepayment_audit_immutable on private.prepayment_allocation_events;
+create trigger prepayment_audit_immutable before update or delete or truncate
+  on private.prepayment_allocation_events for each statement
+  execute function private.guard_prepayment_audit_immutable();
+
+create or replace function private.audit_prepayment_allocation()
+returns trigger language plpgsql security definer set search_path = '' as $function$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'prepayment_allocation_history_cannot_be_deleted' using errcode = '55000';
+  end if;
+  if tg_op = 'UPDATE' then
+    if (to_jsonb(new) - array['status','status_reason','cancelled_at','cancelled_by'])
+       is distinct from (to_jsonb(old) - array['status','status_reason','cancelled_at','cancelled_by'])
+       or not ((old.status = 'ACTIVE' and new.status in ('REVIEW','CANCELLED'))
+               or (old.status = 'REVIEW' and new.status = 'CANCELLED')) then
+      raise exception 'prepayment_allocation_is_immutable' using errcode = '55000';
+    end if;
+  end if;
+  insert into private.prepayment_allocation_events(
+    tenant_id,student_id,payment_id,grupo_id,registration_id,allocation_id,
+    event_type,actor_id,before_state,after_state,reason,provider_event_id
+  ) values (
+    new.tenant_id,new.student_id,new.payment_id,new.grupo_id,new.registration_id,new.id,
+    case when tg_op = 'INSERT' then 'REGISTER' when new.status = 'REVIEW' then 'REVIEW' else 'CANCEL' end,
+    auth.uid(),case when tg_op = 'UPDATE' then to_jsonb(old) end,to_jsonb(new),new.status_reason,
+    (select p.last_provider_event_id from public.student_payments p where p.id = new.payment_id)
   );
+  insert into private.prepayment_financial_recompute_queue(tenant_id,student_id)
+    values(new.tenant_id,new.student_id)
+    on conflict(tenant_id,student_id) do update set
+      version=prepayment_financial_recompute_queue.version+1,
+      requested_at=clock_timestamp(),next_attempt_at=clock_timestamp();
+  return new;
+end;
+$function$;
+alter function private.audit_prepayment_allocation() owner to postgres;
+revoke all on function private.audit_prepayment_allocation() from public, anon, authenticated, service_role;
+drop trigger if exists prepayment_allocation_audit on public.student_payment_allocations;
+create trigger prepayment_allocation_audit before insert or update or delete
+  on public.student_payment_allocations for each row execute function private.audit_prepayment_allocation();
+drop trigger if exists prepayment_allocation_no_truncate on public.student_payment_allocations;
+create trigger prepayment_allocation_no_truncate before truncate
+  on public.student_payment_allocations for each statement execute function private.guard_prepayment_audit_immutable();
 
 comment on table public.student_payment_allocations is
   'Parcelas de pagamento completo (vários meses de uma vez). MENSAL: o rateio '
@@ -211,6 +462,167 @@ alter function private.payment_is_enrollment_fee(text, text) owner to postgres;
 revoke all on function private.payment_is_enrollment_fee(text, text)
   from public, anon, authenticated, service_role;
 
+-- Shared with the collection/closure integration below: classify at the
+-- source too, not only when hiding an already covered tuition invoice.
+create or replace function private.payment_is_tuition(p_type text, p_description text)
+returns boolean language sql immutable set search_path = '' as $$
+  select upper(btrim(coalesce(p_type, ''))) in ('SUBSCRIPTION', 'MONTHLY', 'TUITION')
+    and not private.payment_is_enrollment_fee(p_type, p_description)
+    and lower(translate(btrim(coalesce(p_description, '')),
+      'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç',
+      'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'))
+      !~ '(^|[^a-z])(taxa|multa|cancelamento|extra|extras|material|reposicao)([^a-z]|$)'
+$$;
+alter function private.payment_is_tuition(text, text) owner to postgres;
+revoke all on function private.payment_is_tuition(text, text) from public, anon, authenticated, service_role;
+
+-- A partial refund cannot be allocated to arbitrary months automatically.
+-- Any financial uncertainty stops settlement/reserve release and requires an
+-- explicit review. Provider observations may block, never manufacture money.
+create or replace function private.prepayment_payment_review_reason(p_payment uuid)
+returns text language sql stable security definer set search_path = '' as $function$
+  select case
+    when not private.payment_is_tuition(p.payment_type,p.description) then 'PAYMENT_NOT_TUITION'
+    when coalesce(p.refunded_amount,0) > 0 then 'PAYMENT_REFUNDED_OR_PARTIALLY_REFUNDED'
+    when upper(btrim(coalesce(p.status,''))) not in ('RECEIVED','RECEIVED_IN_CASH') then 'PAYMENT_NOT_RECEIVED'
+    when p.value is null or p.value::text in ('NaN','Infinity','-Infinity') or p.value <= 0 then 'PAYMENT_VALUE_INVALID'
+    when upper(btrim(coalesce(p.provider_status,''))) in (
+      'REFUNDED','REFUND_REQUESTED','REFUND_IN_PROGRESS','CHARGEBACK_REQUESTED',
+      'CHARGEBACK_DISPUTE','AWAITING_CHARGEBACK_REVERSAL','DELETED','CANCELLED'
+    ) then 'PAYMENT_PROVIDER_REVIEW'
+    when observation.event_name in (
+      'PAYMENT_REFUNDED','PAYMENT_PARTIALLY_REFUNDED','PAYMENT_REFUND_IN_PROGRESS',
+      'PAYMENT_CHARGEBACK_REQUESTED','PAYMENT_CHARGEBACK_DISPUTE',
+      'PAYMENT_AWAITING_CHARGEBACK_REVERSAL','PAYMENT_DELETED','PAYMENT_RECEIVED_IN_CASH_UNDONE'
+    ) or upper(btrim(coalesce(observation.provider_status,''))) in (
+      'REFUNDED','REFUND_REQUESTED','REFUND_IN_PROGRESS','CHARGEBACK_REQUESTED',
+      'CHARGEBACK_DISPUTE','AWAITING_CHARGEBACK_REVERSAL','DELETED','CANCELLED'
+    ) then 'PAYMENT_PROVIDER_OBSERVATION_REVIEW'
+    else null end
+  from public.student_payments p
+  left join lateral (
+    select i.event_name, i.payload #>> '{payment,status}' as provider_status
+    from public.asaas_webhook_inbox i
+    where i.provider_entity_id in (
+      nullif(btrim(coalesce(p.asaas_payment_id,'')),''),nullif(btrim(coalesce(p.asaas_id,'')),'')
+    ) and jsonb_typeof(i.payload -> 'payment') = 'object'
+    order by i.event_created_at desc nulls last,i.received_at desc nulls last,i.provider_event_id desc
+    limit 1
+  ) observation on true
+  where p.id = p_payment
+$function$;
+alter function private.prepayment_payment_review_reason(uuid) owner to postgres;
+revoke all on function private.prepayment_payment_review_reason(uuid) from public, anon, authenticated, service_role;
+
+create or replace function private.prepayment_allocation_is_valid(p_allocation uuid)
+returns boolean language sql stable security definer set search_path = '' as $function$
+  select coalesce((select a.status = 'ACTIVE' and (
+      (a.origem = 'EXTERNO' and a.payment_id is null)
+      or (a.origem = 'ASAAS' and p.id is not null
+          and p.student_id = a.student_id and p.tenant_id = a.tenant_id
+          and a.source_payment_value = p.value
+          and private.prepayment_payment_review_reason(p.id) is null)
+    )
+    from public.student_payment_allocations a
+    left join public.student_payments p on p.id = a.payment_id
+    where a.id = p_allocation),false)
+$function$;
+alter function private.prepayment_allocation_is_valid(uuid) owner to postgres;
+revoke all on function private.prepayment_allocation_is_valid(uuid) from public, anon, authenticated, service_role;
+
+create or replace function private.review_prepayment_on_financial_change()
+returns trigger language plpgsql security definer set search_path = '' as $function$
+declare v_reason text;
+begin
+  v_reason := case
+    when not private.payment_is_tuition(new.payment_type,new.description) then 'PAYMENT_NOT_TUITION'
+    when coalesce(new.refunded_amount,0) > 0 then 'PAYMENT_REFUNDED_OR_PARTIALLY_REFUNDED'
+    when upper(btrim(coalesce(new.status,''))) not in ('RECEIVED','RECEIVED_IN_CASH') then 'PAYMENT_NOT_RECEIVED'
+    when upper(btrim(coalesce(new.provider_status,''))) in (
+      'REFUNDED','REFUND_REQUESTED','REFUND_IN_PROGRESS','CHARGEBACK_REQUESTED',
+      'CHARGEBACK_DISPUTE','AWAITING_CHARGEBACK_REVERSAL','DELETED','CANCELLED'
+    ) then 'PAYMENT_PROVIDER_REVIEW'
+    when new.value is distinct from old.value then 'PAYMENT_VALUE_CHANGED'
+    when new.student_id is distinct from old.student_id or new.tenant_id is distinct from old.tenant_id
+      then 'PAYMENT_IDENTITY_CHANGED'
+    else null end;
+  if v_reason is not null then
+    -- The payment row is already locked. Never reject a valid provider fact
+    -- merely because an old allocation or notification needs reconciliation.
+    update public.student_payment_allocations
+       set status = 'REVIEW', status_reason = v_reason
+     where payment_id = new.id and status = 'ACTIVE';
+  end if;
+  return new;
+end;
+$function$;
+alter function private.review_prepayment_on_financial_change() owner to postgres;
+revoke all on function private.review_prepayment_on_financial_change() from public, anon, authenticated, service_role;
+drop trigger if exists prepayment_financial_source_review on public.student_payments;
+create trigger prepayment_financial_source_review
+  after update of status, provider_status, refunded_amount, value, student_id, tenant_id, payment_type, description
+  on public.student_payments for each row
+  execute function private.review_prepayment_on_financial_change();
+
+-- A provider observation can invalidate coverage before its payment worker
+-- updates student_payments. Queue the access re-evaluation in the SAME commit,
+-- without locking profiles, changing money, or cancelling an entitlement.
+-- Matching both the old and new entity keeps a corrected observation from
+-- leaving either affected student's access stale. Delivery/lease-only retries
+-- do not generate work because they do not change the observed financial fact.
+create or replace function private.queue_prepayment_provider_observation()
+returns trigger language plpgsql security definer set search_path = '' as $function$
+declare v_old_entity text;
+begin
+  if tg_op = 'UPDATE' then
+    if (new.provider_entity_id,new.event_name,new.event_created_at,new.payload,new.received_at)
+       is not distinct from
+       (old.provider_entity_id,old.event_name,old.event_created_at,old.payload,old.received_at) then
+      return new;
+    end if;
+    v_old_entity := old.provider_entity_id;
+  end if;
+  -- Serialize with FIRST registration as well, even if there is no allocation
+  -- yet. Otherwise an uncommitted inbox observation could miss the allocation
+  -- while registration misses that observation, losing the dirty generation.
+  -- Source locks precede allocation/queue work; no profile lock is taken here.
+  perform p.id from public.student_payments p
+   where nullif(btrim(p.asaas_payment_id),'') in (new.provider_entity_id,v_old_entity)
+      or nullif(btrim(p.asaas_id),'') in (new.provider_entity_id,v_old_entity)
+   order by p.id for update;
+  insert into private.prepayment_financial_recompute_queue(tenant_id,student_id)
+    select distinct a.tenant_id,a.student_id
+      from public.student_payments p
+      join public.student_payment_allocations a on a.payment_id=p.id
+     where a.status in ('ACTIVE','REVIEW')
+       and a.tenant_id=p.tenant_id and a.student_id=p.student_id
+       and (nullif(btrim(p.asaas_payment_id),'') in (new.provider_entity_id,v_old_entity)
+         or nullif(btrim(p.asaas_id),'') in (new.provider_entity_id,v_old_entity))
+     order by a.tenant_id,a.student_id
+    on conflict(tenant_id,student_id) do update set
+      version=prepayment_financial_recompute_queue.version+1,
+      requested_at=clock_timestamp(),next_attempt_at=clock_timestamp();
+  return new;
+end;
+$function$;
+alter function private.queue_prepayment_provider_observation() owner to postgres;
+revoke all on function private.queue_prepayment_provider_observation() from public,anon,authenticated,service_role;
+drop trigger if exists prepayment_provider_observation_recompute on public.asaas_webhook_inbox;
+create trigger prepayment_provider_observation_recompute
+  after insert or update of provider_entity_id,event_name,event_created_at,payload,received_at
+  on public.asaas_webhook_inbox for each row
+  execute function private.queue_prepayment_provider_observation();
+
+create or replace function private.student_month_prepayment_review(p_student uuid,p_month date)
+returns boolean language sql stable security definer set search_path = '' as $function$
+  select exists (select 1 from public.student_payment_allocations a
+    where a.student_id = p_student
+      and a.competencia = date_trunc('month',p_month::timestamp)::date
+      and (a.status = 'REVIEW' or (a.status = 'ACTIVE' and not private.prepayment_allocation_is_valid(a.id))))
+$function$;
+alter function private.student_month_prepayment_review(uuid,date) owner to postgres;
+revoke all on function private.student_month_prepayment_review(uuid,date) from public, anon, authenticated, service_role;
+
 create or replace function private.student_month_covered(
   p_student uuid,
   p_month date
@@ -230,6 +642,7 @@ as $function$
           and allocation.competencia =
               pg_catalog.date_trunc('month', p_month::timestamp)::date
           and allocation.status = 'ACTIVE'
+          and private.prepayment_allocation_is_valid(allocation.id)
      )
 $function$;
 
@@ -411,6 +824,7 @@ declare
   v_alloc_meses int;
   v_alloc_valor numeric;
   v_alloc_modo text;
+  v_alloc_registration uuid;
   v_inicio date;
   v_fim date;
 begin
@@ -448,13 +862,27 @@ begin
   );
   v_total := round(coalesce(v_pay.value, 0), 2);
 
-  select a.id, a.competencia, a.sequencia, a.meses, a.valor, a.modo
-    into v_alloc_id, v_alloc_comp, v_alloc_seq, v_alloc_meses, v_alloc_valor, v_alloc_modo
+  if exists (select 1 from public.student_payment_allocations a
+    where a.payment_id = v_pay.id and (a.status = 'REVIEW'
+      or (a.status = 'ACTIVE' and not private.prepayment_allocation_is_valid(a.id)))) then
+    return jsonb_build_object('error','pagamento_completo_em_revisao','payment_id',v_pay.id,
+      'tenant_id',v_tenant,'recebido_total',v_total,'review_required',true);
+  end if;
+
+  select a.id, a.competencia, a.sequencia, a.meses, a.valor, a.modo,a.registration_id
+    into v_alloc_id, v_alloc_comp, v_alloc_seq, v_alloc_meses, v_alloc_valor, v_alloc_modo,v_alloc_registration
     from public.student_payment_allocations as a
    where a.payment_id = v_pay.id
      and a.status = 'ACTIVE'
+     and private.prepayment_allocation_is_valid(a.id)
    order by a.sequencia
    limit 1;
+
+  if v_alloc_id is null and exists (select 1 from public.student_payment_allocations a
+      where a.payment_id = v_pay.id and a.modo = 'MENSAL') then
+    return jsonb_build_object('error','pagamento_completo_cancelado','payment_id',v_pay.id,
+      'tenant_id',v_tenant,'recebido_total',v_total,'review_required',true);
+  end if;
 
   if v_alloc_id is not null then
     select min(g.competencia), max(g.competencia)
@@ -495,6 +923,7 @@ begin
            'modo',             v_alloc_modo,
            'sequencia',        case when v_alloc_modo = 'MENSAL' then v_alloc_seq end,
            'allocation_id',    case when v_alloc_modo = 'MENSAL' then v_alloc_id end,
+           'registration_id',  v_alloc_registration,
            'origem',           case when v_alloc_id is not null then 'ASAAS' end,
            'recebido_total',   v_total,
            'recebido_em',      v_recebido_em,
@@ -518,15 +947,8 @@ security definer
 set search_path = 'public'
 as $function$
 declare
-  v_jwt_role text; v_caller_role text; v_caller_tenant text;
   v_tenant text; v_student uuid;
 begin
-  select coalesce(
-           nullif(btrim(current_setting('request.jwt.claims', true)), '')::jsonb ->> 'role',
-           ''
-         )
-    into v_jwt_role;
-
   select sp.tenant_id, sp.student_id into v_tenant, v_student
     from student_payments sp where sp.id = p_payment_id;
   if not found then return jsonb_build_object('error', 'pagamento_nao_encontrado'); end if;
@@ -534,15 +956,8 @@ begin
   v_tenant := coalesce(v_tenant, (select p.tenant_id from profiles p where p.id = v_student));
   if v_tenant is null then return jsonb_build_object('error', 'escola_nao_identificada'); end if;
 
-  if v_jwt_role in ('anon', 'authenticated') then
-    select role, tenant_id into v_caller_role, v_caller_tenant
-      from profiles where id = auth.uid();
-    if v_caller_role is null or v_caller_role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
-      return jsonb_build_object('error', 'sem_permissao');
-    end if;
-    if v_caller_role <> 'SUPER_ADMIN' and v_caller_tenant is distinct from v_tenant then
-      return jsonb_build_object('error', 'sem_permissao');
-    end if;
+  if not private.prepayment_caller_can_read(v_tenant) then
+    return jsonb_build_object('error', 'sem_permissao');
   end if;
 
   return private.payment_split_breakdown_unchecked(p_payment_id);
@@ -587,8 +1002,11 @@ begin
   if not found then
     return jsonb_build_object('error', 'parcela_nao_encontrada');
   end if;
-  if v_alloc.status <> 'ACTIVE' then
+  if v_alloc.status = 'CANCELLED' then
     return jsonb_build_object('error', 'parcela_cancelada', 'allocation_id', v_alloc.id);
+  end if;
+  if not private.prepayment_allocation_is_valid(v_alloc.id) then
+    return jsonb_build_object('error','parcela_em_revisao','allocation_id',v_alloc.id,'review_required',true);
   end if;
   -- LEGADO já foi rateado no recebimento: repetir aqui dobraria o dízimo.
   if v_alloc.modo <> 'MENSAL' then
@@ -607,7 +1025,7 @@ begin
          max(g.competencia)
     into v_soma, v_acumulado, v_inicio, v_fim
     from public.student_payment_allocations as g
-   where g.grupo_id = v_alloc.grupo_id
+   where g.registration_id = v_alloc.registration_id
      and g.status = 'ACTIVE';
 
   v_total := round(coalesce(v_pay_value, v_soma, 0), 2);
@@ -626,6 +1044,7 @@ begin
       || jsonb_build_object(
            'payment_id',       v_alloc.payment_id,
            'allocation_id',    v_alloc.id,
+           'registration_id',  v_alloc.registration_id,
            'tenant_id',        v_alloc.tenant_id,
            'paid_at',          v_recebido,
            'ref_date',         v_alloc.competencia,
@@ -662,27 +1081,14 @@ security definer
 set search_path = 'public'
 as $function$
 declare
-  v_jwt_role text; v_caller_role text; v_caller_tenant text; v_tenant text;
+  v_tenant text;
 begin
-  select coalesce(
-           nullif(btrim(current_setting('request.jwt.claims', true)), '')::jsonb ->> 'role',
-           ''
-         )
-    into v_jwt_role;
-
   select a.tenant_id into v_tenant
     from student_payment_allocations a where a.id = p_allocation_id;
   if not found then return jsonb_build_object('error', 'parcela_nao_encontrada'); end if;
 
-  if v_jwt_role in ('anon', 'authenticated') then
-    select role, tenant_id into v_caller_role, v_caller_tenant
-      from profiles where id = auth.uid();
-    if v_caller_role is null or v_caller_role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
-      return jsonb_build_object('error', 'sem_permissao');
-    end if;
-    if v_caller_role <> 'SUPER_ADMIN' and v_caller_tenant is distinct from v_tenant then
-      return jsonb_build_object('error', 'sem_permissao');
-    end if;
+  if not private.prepayment_caller_can_read(v_tenant) then
+    return jsonb_build_object('error', 'sem_permissao');
   end if;
 
   return private.payment_split_installment_unchecked(p_allocation_id);
@@ -729,42 +1135,10 @@ alter function private.prepayment_caller_can_write(text) owner to postgres;
 revoke all on function private.prepayment_caller_can_write(text)
   from public, anon, authenticated, service_role;
 
--- Mesmo caminho de register_advance_payment: UPDATE simples no perfil, por um
--- dono privilegiado. A mensalidade só é tocada quando está zerada, e em um
--- UPDATE separado: as travas de ciclo de vida disparam por COLUNA citada.
-create or replace function private.prepayment_apply_profile(
-  p_student uuid,
-  p_monthly numeric,
-  p_meses integer,
-  p_through date
-)
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $function$
-begin
-  update public.profiles as profile
-     set paid_through = greatest(coalesce(profile.paid_through, p_through), p_through),
-         prepaid_months = p_meses
-   where profile.id = p_student
-     and profile.role = 'STUDENT'
-     and (profile.paid_through is distinct from
-            greatest(coalesce(profile.paid_through, p_through), p_through)
-          or profile.prepaid_months is distinct from p_meses);
-
-  update public.profiles as profile
-     set monthly_fee = p_monthly
-   where profile.id = p_student
-     and profile.role = 'STUDENT'
-     and coalesce(profile.monthly_fee, 0) = 0
-     and coalesce(p_monthly, 0) > 0;
-end;
-$function$;
-
-alter function private.prepayment_apply_profile(uuid, numeric, integer, date) owner to postgres;
-revoke all on function private.prepayment_apply_profile(uuid, numeric, integer, date)
-  from public, anon, authenticated, service_role;
+-- Explicit month coverage cannot be represented
+-- by one paid_through date (gaps are legal). Never mutate a legacy entitlement,
+-- infer a contract monthly_fee from a discounted package, or change access.
+drop function if exists private.prepayment_apply_profile(uuid,numeric,integer,date);
 
 -- Insere as N parcelas com centavos exatos: base = total/N truncado em
 -- centavos, e o resto (em centavos) vai 1 centavo para cada uma das primeiras.
@@ -791,13 +1165,15 @@ declare
   v_total_cents bigint := round(p_total * 100)::bigint;
   v_base_cents bigint;
   v_resto integer;
+  v_registration uuid := gen_random_uuid();
 begin
   v_base_cents := v_total_cents / p_meses;
   v_resto := (v_total_cents - v_base_cents * p_meses)::integer;
 
   insert into public.student_payment_allocations (
     tenant_id, grupo_id, payment_id, student_id, competencia, sequencia, meses,
-    valor, modo, origem, recebido_em, observacao, status, created_by
+    valor, modo, origem, recebido_em, observacao, status, created_by,
+    registration_id, source_payment_value, status_reason
   )
   select p_tenant,
          p_grupo,
@@ -812,23 +1188,8 @@ begin
          p_recebido_em,
          p_observacao,
          'ACTIVE',
-         auth.uid()
-    from pg_catalog.generate_series(1, p_meses) as k
-  -- Recadastro depois de cancelar: a linha (pagamento, mês) volta a valer.
-  on conflict (payment_id, competencia) do update
-     set grupo_id = excluded.grupo_id,
-         sequencia = excluded.sequencia,
-         meses = excluded.meses,
-         valor = excluded.valor,
-         modo = excluded.modo,
-         origem = excluded.origem,
-         recebido_em = excluded.recebido_em,
-         observacao = excluded.observacao,
-         status = 'ACTIVE',
-         created_at = now(),
-         created_by = excluded.created_by,
-         cancelled_at = null,
-         cancelled_by = null;
+         auth.uid(),v_registration,p_total,'REGISTRATION_CONFIRMED_BY_SCHOOL'
+    from pg_catalog.generate_series(1, p_meses) as k;
 end;
 $function$;
 
@@ -848,6 +1209,7 @@ set search_path = ''
 as $function$
   select coalesce(jsonb_agg(jsonb_build_object(
            'allocation_id', a.id,
+           'registration_id',a.registration_id,
            'competencia', pg_catalog.to_char(a.competencia, 'YYYY-MM'),
            'sequencia', a.sequencia,
            'valor', a.valor
@@ -892,6 +1254,10 @@ declare
   v_iguais boolean;
   v_conflitos text[];
   v_outbox_status text;
+  v_source_reason text;
+  v_outbox_snapshot jsonb;
+  v_outbox_attempts integer;
+  v_frozen_reserve boolean := false;
 begin
   if p_payment_id is null then
     return jsonb_build_object('ok', false, 'error', 'pagamento_obrigatorio');
@@ -903,11 +1269,7 @@ begin
     return jsonb_build_object('ok', false, 'error', 'meses_invalidos');
   end if;
 
-  select sp.tenant_id, sp.student_id, sp.value,
-         pg_catalog.upper(pg_catalog.btrim(coalesce(sp.status, ''))),
-         sp.payment_type, sp.description, sp.due_date, sp.paid_at, sp.payment_date, sp.created_at
-    into v_tenant, v_student, v_value, v_status,
-         v_payment_type, v_description, v_due, v_paid_at, v_payment_date, v_created
+  select sp.tenant_id, sp.student_id into v_tenant, v_student
     from public.student_payments as sp
    where sp.id = p_payment_id;
   if not found then
@@ -916,17 +1278,40 @@ begin
   if not private.prepayment_caller_can_write(v_tenant) then
     return jsonb_build_object('ok', false, 'error', 'sem_permissao');
   end if;
+  -- Same notification fence as authorize_management_payment_notification:
+  -- advisory -> financial source -> allocation/student -> outbox. Validate
+  -- again AFTER waiting; a refund/rebind cannot race a stale initial read.
+  perform pg_advisory_xact_lock(hashtextextended(
+    'management-payment-notification:' || v_tenant || ':' || p_payment_id::text,0));
+  select sp.value, upper(btrim(coalesce(sp.status,''))), sp.payment_type,
+         sp.description,sp.due_date,sp.paid_at,sp.payment_date,sp.created_at
+    into v_value,v_status,v_payment_type,v_description,v_due,v_paid_at,v_payment_date,v_created
+    from public.student_payments sp
+   where sp.id = p_payment_id and sp.tenant_id = v_tenant
+     and sp.student_id is not distinct from v_student
+   for update;
+  if not found then
+    return jsonb_build_object('ok',false,'error','origem_financeira_alterada');
+  end if;
   if v_status not in ('RECEIVED', 'RECEIVED_IN_CASH') then
     return jsonb_build_object('ok', false, 'error', 'pagamento_nao_recebido');
   end if;
   if v_student is null then
     return jsonb_build_object('ok', false, 'error', 'pagamento_sem_aluno');
   end if;
-  if coalesce(v_value, 0) <= 0 then
+  if v_value is null or v_value::text in ('NaN','Infinity','-Infinity')
+     or v_value < p_meses::numeric / 100 then
     return jsonb_build_object('ok', false, 'error', 'valor_invalido');
   end if;
   if private.payment_is_enrollment_fee(v_payment_type, v_description) then
     return jsonb_build_object('ok', false, 'error', 'pagamento_de_matricula');
+  end if;
+  if not private.payment_is_tuition(v_payment_type,v_description) then
+    return jsonb_build_object('ok',false,'error','pagamento_nao_e_mensalidade');
+  end if;
+  v_source_reason := private.prepayment_payment_review_reason(p_payment_id);
+  if v_source_reason is not null then
+    return jsonb_build_object('ok',false,'error','pagamento_requer_revisao','reason',v_source_reason);
   end if;
   select p.tenant_id into v_student_tenant
     from public.profiles as p where p.id = v_student and p.role = 'STUDENT';
@@ -943,16 +1328,40 @@ begin
   )::date;
   v_last := (v_first + pg_catalog.make_interval(months => p_meses - 1))::date;
   v_through := (v_last + interval '1 month - 1 day')::date;
+  if v_first is null or not isfinite(v_first) or not isfinite(v_last) then
+    return jsonb_build_object('ok',false,'error','competencia_invalida');
+  end if;
+  -- The existing cash notification releases installment 1. Until a separate
+  -- first-installment scheduler exists, do not release a future month's money
+  -- early or double-release late receipts alongside installment 2.
+  if v_modo = 'MENSAL' and v_first is distinct from date_trunc('month',
+      coalesce((v_paid_at at time zone 'America/Sao_Paulo')::date,v_payment_date,v_due)::timestamp)::date then
+    return jsonb_build_object('ok',false,'error','mensal_deve_iniciar_no_mes_do_recebimento',
+      'hint','O rateio MENSAL começa no mês em que o dinheiro entrou. Outros períodos exigem revisão da direção.');
+  end if;
 
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('student-payment-allocation:' || v_student::text, 0)
   );
 
+  if not private.prepayment_caller_can_write(v_tenant) then
+    return jsonb_build_object('ok',false,'error','sem_permissao');
+  end if;
+
+  if exists (select 1 from public.student_payment_allocations a
+    where a.payment_id = p_payment_id and a.status = 'REVIEW') then
+    return jsonb_build_object('ok',false,'error','pagamento_completo_em_revisao');
+  end if;
+
   -- Idempotência: a mesma chamada devolve o que já existe.
   select count(*)::integer,
-         coalesce(bool_and(a.modo = v_modo and a.meses = p_meses), false)
+         coalesce(bool_and(a.modo = v_modo and a.meses = p_meses
+           and a.tenant_id = v_tenant and a.student_id = v_student
+           and a.source_payment_value = v_value
+           and private.prepayment_allocation_is_valid(a.id)), false)
            and min(a.competencia) = v_first
            and count(*) = p_meses
+           and sum(a.valor) = v_value
     into v_existentes, v_iguais
     from public.student_payment_allocations as a
    where a.payment_id = p_payment_id
@@ -981,12 +1390,25 @@ begin
 
   -- MENSAL só enquanto o aviso do rateio não saiu. Se o grupo já leu o
   -- rateio do valor cheio, ratear de novo mês a mês dobraria o dízimo.
-  select o.status into v_outbox_status
+  select o.status,o.source_snapshot,o.submit_attempt_count
+    into v_outbox_status,v_outbox_snapshot,v_outbox_attempts
     from public.management_payment_notification_outbox as o
    where o.tenant_id = v_tenant
      and o.payment_id = p_payment_id
      and o.notification_kind = 'PAYMENT_SPLIT'
    for update;
+  if to_regclass('public.management_reserve_notification_outbox') is not null then
+    execute $reserve_history$
+      select exists(select 1 from public.management_reserve_notification_outbox o
+        join public.student_payment_allocations a on a.id=o.allocation_id
+        where a.payment_id=$1 and o.submit_attempt_count>0)
+    $reserve_history$ into v_frozen_reserve using p_payment_id;
+  end if;
+  if v_frozen_reserve or (v_outbox_snapshot->>'modo'='MENSAL'
+       and (coalesce(v_outbox_attempts,0)>0 or v_outbox_status='PREPARED')) then
+    return jsonb_build_object('ok',false,'error','parcelamento_mensal_ja_avisado_requer_reconciliacao',
+      'hint','Há rateio mensal já preparado ou submetido. Cancelar não desfaz a reserva nem autoriza ratear o valor cheio como LEGADO.');
+  end if;
   if v_modo = 'MENSAL'
      and v_outbox_status is not null
      and v_outbox_status not in ('PENDING', 'SUPPRESSED', 'FAILED') then
@@ -1002,7 +1424,7 @@ begin
     into v_conflitos
     from public.student_payment_allocations as a
    where a.student_id = v_student
-     and a.status = 'ACTIVE'
+     and a.status in ('ACTIVE','REVIEW')
      and a.competencia between v_first and v_last;
   if v_conflitos is not null then
     return jsonb_build_object(
@@ -1018,9 +1440,6 @@ begin
     coalesce((v_paid_at at time zone 'America/Sao_Paulo')::date, v_payment_date, v_due),
     null
   );
-  perform private.prepayment_apply_profile(
-    v_student, round(v_value / p_meses, 2), p_meses, v_through
-  );
 
   return jsonb_build_object(
     'ok', true,
@@ -1032,7 +1451,8 @@ begin
     'primeira_competencia', pg_catalog.to_char(v_first, 'YYYY-MM'),
     'ultima_competencia', pg_catalog.to_char(v_last, 'YYYY-MM'),
     'recebido_total', round(v_value, 2),
-    'paid_through', v_through,
+    'coverage_through', v_through,
+    'profile_unchanged', true,
     'aviso_status', v_outbox_status,
     'parcelas', private.prepayment_group_json(p_payment_id)
   );
@@ -1076,16 +1496,17 @@ begin
   if p_student is null then
     return jsonb_build_object('ok', false, 'error', 'aluno_obrigatorio');
   end if;
-  if v_modo not in ('MENSAL', 'LEGADO') then
+  if v_modo <> 'LEGADO' then
     return jsonb_build_object('ok', false, 'error', 'modo_invalido');
   end if;
   if p_meses is null or p_meses < 2 or p_meses > 24 then
     return jsonb_build_object('ok', false, 'error', 'meses_invalidos');
   end if;
-  if p_total is null or p_total <= 0 or v_total <> p_total then
+  if p_total is null or p_total::text in ('NaN','Infinity','-Infinity')
+     or p_total < p_meses::numeric / 100 or v_total <> p_total then
     return jsonb_build_object('ok', false, 'error', 'valor_invalido');
   end if;
-  if p_received_on is null or p_received_on > v_hoje then
+  if p_received_on is null or not isfinite(p_received_on) or p_received_on > v_hoje then
     return jsonb_build_object('ok', false, 'error', 'data_de_recebimento_invalida');
   end if;
 
@@ -1104,10 +1525,16 @@ begin
   )::date;
   v_last := (v_first + pg_catalog.make_interval(months => p_meses - 1))::date;
   v_through := (v_last + interval '1 month - 1 day')::date;
+  if v_first is null or not isfinite(v_first) or not isfinite(v_last) then
+    return jsonb_build_object('ok',false,'error','competencia_invalida');
+  end if;
 
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('student-payment-allocation:' || p_student::text, 0)
   );
+  if not private.prepayment_caller_can_write(v_tenant) then
+    return jsonb_build_object('ok',false,'error','sem_permissao');
+  end if;
 
   -- Idempotência: mesmo aluno, mesmo recebimento, mesmos meses e valor.
   select a.grupo_id into v_grupo
@@ -1141,7 +1568,7 @@ begin
     into v_conflitos
     from public.student_payment_allocations as a
    where a.student_id = p_student
-     and a.status = 'ACTIVE'
+     and a.status in ('ACTIVE','REVIEW')
      and a.competencia between v_first and v_last;
   if v_conflitos is not null then
     return jsonb_build_object(
@@ -1158,9 +1585,6 @@ begin
     v_tenant, v_grupo, null, p_student, v_first, p_meses, v_total, v_modo,
     'EXTERNO', p_received_on, nullif(btrim(coalesce(p_observacao, '')), '')
   );
-  perform private.prepayment_apply_profile(
-    p_student, round(v_total / p_meses, 2), p_meses, v_through
-  );
 
   return jsonb_build_object(
     'ok', true,
@@ -1171,7 +1595,8 @@ begin
     'primeira_competencia', pg_catalog.to_char(v_first, 'YYYY-MM'),
     'ultima_competencia', pg_catalog.to_char(v_last, 'YYYY-MM'),
     'recebido_total', v_total,
-    'paid_through', v_through,
+    'coverage_through', v_through,
+    'profile_unchanged', true,
     'parcelas', private.prepayment_group_json(v_grupo)
   );
 end;
@@ -1188,7 +1613,9 @@ revoke all on function public.register_external_prepayment(uuid, numeric, date, 
 grant execute on function public.register_external_prepayment(uuid, numeric, date, date, integer, text, text)
   to authenticated, service_role;
 
-create or replace function public.cancel_prepayment(p_payment_id uuid)
+create or replace function private.cancel_prepayment_core(
+  p_payment_id uuid,p_reason text,p_expected_registration uuid default null
+)
 returns jsonb
 language plpgsql
 security definer
@@ -1197,83 +1624,102 @@ as $function$
 declare
   v_tenant text;
   v_student uuid;
-  v_through date;
   v_cancelados integer;
-  v_restante date;
-  v_restante_meses integer;
   v_outbox_status text;
+  v_source_payment uuid;
+  v_registration uuid;
+  v_current_registration uuid;
 begin
   if p_payment_id is null then
     return jsonb_build_object('ok', false, 'error', 'referencia_obrigatoria');
   end if;
+  if p_reason is null or char_length(btrim(p_reason)) not between 12 and 500 then
+    return jsonb_build_object('ok',false,'error','motivo_obrigatorio_12_a_500_caracteres');
+  end if;
 
   -- Aceita o id do pagamento Asaas ou o grupo_id de um recebimento por fora.
-  select a.tenant_id, a.student_id,
-         (max(a.competencia) + interval '1 month - 1 day')::date
-    into v_tenant, v_student, v_through
+  select a.tenant_id,a.student_id,a.payment_id,a.registration_id
+    into v_tenant,v_student,v_source_payment,v_registration
     from public.student_payment_allocations as a
-   where (a.payment_id = p_payment_id or a.grupo_id = p_payment_id)
-     and a.status = 'ACTIVE'
-   group by a.tenant_id, a.student_id;
+   where a.payment_id = p_payment_id or a.grupo_id = p_payment_id
+   order by (a.status in ('ACTIVE','REVIEW')) desc,a.created_at desc,a.id desc
+   limit 1;
   if v_student is null then
-    if exists (
-      select 1 from public.student_payment_allocations as a
-       where a.payment_id = p_payment_id or a.grupo_id = p_payment_id
-    ) then
-      select a.tenant_id into v_tenant
-        from public.student_payment_allocations as a
-       where a.payment_id = p_payment_id or a.grupo_id = p_payment_id
-       limit 1;
-      if not private.prepayment_caller_can_write(v_tenant) then
-        return jsonb_build_object('ok', false, 'error', 'sem_permissao');
-      end if;
-      return jsonb_build_object('ok', true, 'cancelled', 0, 'already_cancelled', true);
-    end if;
     return jsonb_build_object('ok', false, 'error', 'nada_a_cancelar');
   end if;
   if not private.prepayment_caller_can_write(v_tenant) then
     return jsonb_build_object('ok', false, 'error', 'sem_permissao');
   end if;
 
+  if v_source_payment is not null then
+    perform pg_advisory_xact_lock(hashtextextended(
+      'management-payment-notification:' || v_tenant || ':' || v_source_payment::text,0));
+    perform 1 from public.student_payments where id = v_source_payment for update;
+  end if;
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('student-payment-allocation:' || v_student::text, 0)
   );
 
-  update public.student_payment_allocations as a
-     set status = 'CANCELLED',
-         cancelled_at = now(),
-         cancelled_by = auth.uid()
+  select a.registration_id into v_current_registration
+    from public.student_payment_allocations a
    where (a.payment_id = p_payment_id or a.grupo_id = p_payment_id)
-     and a.status = 'ACTIVE';
-  get diagnostics v_cancelados = row_count;
-
-  -- Desfaz no perfil só o que este pagamento completo tinha gravado.
-  select max(a.competencia),
-         (array_agg(a.meses order by a.competencia desc))[1]
-    into v_restante, v_restante_meses
-    from public.student_payment_allocations as a
-   where a.student_id = v_student
-     and a.status = 'ACTIVE';
-  update public.profiles as profile
-     set paid_through = case when v_restante is null then null
-                             else (v_restante + interval '1 month - 1 day')::date end,
-         prepaid_months = v_restante_meses
-   where profile.id = v_student
-     and profile.paid_through = v_through;
+     and a.status in ('ACTIVE','REVIEW')
+   limit 1;
+  if not private.prepayment_caller_can_write(v_tenant) then
+    return jsonb_build_object('ok',false,'error','sem_permissao');
+  end if;
+  if v_current_registration is null then
+    return jsonb_build_object('ok',true,'cancelled',0,'already_cancelled',true,'profile_unchanged',true);
+  end if;
+  if v_current_registration is distinct from coalesce(p_expected_registration,v_registration) then
+    return jsonb_build_object('ok',false,'error','registro_alterado_recarregue');
+  end if;
 
   select o.status into v_outbox_status
     from public.management_payment_notification_outbox as o
-   where o.payment_id = p_payment_id
-     and o.notification_kind = 'PAYMENT_SPLIT';
+   where o.payment_id = v_source_payment
+     and o.notification_kind = 'PAYMENT_SPLIT'
+   for update;
+
+  update public.student_payment_allocations as a
+     set status = 'CANCELLED',
+         cancelled_at = now(),
+         cancelled_by = auth.uid(),
+         status_reason = btrim(p_reason)
+   where a.registration_id = v_current_registration
+     and a.tenant_id = v_tenant and a.student_id = v_student
+     and a.status in ('ACTIVE','REVIEW');
+  get diagnostics v_cancelados = row_count;
 
   return jsonb_build_object(
     'ok', true,
     'cancelled', v_cancelados,
     'already_cancelled', false,
+    'registration_id', v_current_registration,
+    'profile_unchanged', true,
     -- O aviso da 1ª parcela pode já ter saído: quem cancela precisa saber.
     'aviso_ja_enviado', coalesce(v_outbox_status in ('PREPARED', 'SUBMITTING', 'SENT', 'UNKNOWN'), false)
   );
 end;
+$function$;
+
+alter function private.cancel_prepayment_core(uuid,text,uuid) owner to postgres;
+revoke all on function private.cancel_prepayment_core(uuid,text,uuid) from public, anon, authenticated, service_role;
+
+create or replace function public.cancel_prepayment_with_reason(
+  p_reference uuid,p_reason text,p_expected_registration uuid default null
+)
+returns jsonb language sql security definer set search_path = '' as $function$
+  select private.cancel_prepayment_core(p_reference,p_reason,p_expected_registration)
+$function$;
+alter function public.cancel_prepayment_with_reason(uuid,text,uuid) owner to postgres;
+revoke all on function public.cancel_prepayment_with_reason(uuid,text,uuid) from public, anon;
+grant execute on function public.cancel_prepayment_with_reason(uuid,text,uuid) to authenticated, service_role;
+
+create or replace function public.cancel_prepayment(p_payment_id uuid)
+returns jsonb language sql security definer set search_path = '' as $function$
+  select private.cancel_prepayment_core(p_payment_id,
+    'Cancelamento solicitado pela direção via API legada',null)
 $function$;
 
 alter function public.cancel_prepayment(uuid) owner to postgres;
@@ -1286,6 +1732,28 @@ grant execute on function public.cancel_prepayment(uuid) to authenticated, servi
 -------------------------------------------------------------------------------
 -- 7. Relatório do mês: caixa pelo valor cheio, rateio pela parcela
 -------------------------------------------------------------------------------
+-- Dependências do guard de cobrança SQL são definidas antes dos seus leitores.
+create or replace function private.student_payment_prepayment_state(p_payment uuid)
+returns text language sql stable security definer set search_path = '' as $$
+  select case
+    when private.student_month_prepayment_review(p.student_id, p.due_date) then 'REVIEW'
+    when private.student_month_covered(p.student_id, p.due_date) then 'COVERED'
+    else null end
+  from public.student_payments p
+  join public.profiles s on s.id = p.student_id and s.tenant_id = p.tenant_id
+  where p.id = p_payment
+    and private.payment_is_tuition(p.payment_type, p.description)
+$$;
+alter function private.student_payment_prepayment_state(uuid) owner to postgres;
+revoke all on function private.student_payment_prepayment_state(uuid) from public, anon, authenticated, service_role;
+
+create or replace function private.student_payment_is_covered(p_payment uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select coalesce(private.student_payment_prepayment_state(p_payment) = 'COVERED', false)
+$$;
+alter function private.student_payment_is_covered(uuid) owner to postgres;
+revoke all on function private.student_payment_is_covered(uuid) from public, anon, authenticated, service_role;
+
 create or replace function public.payment_split_report(p_month text default null::text, p_tenant text default null::text)
 returns jsonb
 language plpgsql
@@ -1294,20 +1762,11 @@ security definer
 set search_path to 'public'
 as $function$
 declare
-  v_jwt_role text; v_caller_role text; v_tenant text; v_month text; v_ini date;
+  v_tenant text; v_month text; v_ini date;
 begin
-  v_jwt_role := coalesce(
-    nullif(btrim(current_setting('request.jwt.claims', true)), '')::jsonb ->> 'role',
-    ''
-  );
-  select role, tenant_id into v_caller_role, v_tenant from profiles where id = auth.uid();
-  if v_jwt_role in ('anon','authenticated') then
-    if v_caller_role is null or v_caller_role not in ('SCHOOL_ADMIN','SUPER_ADMIN') then
-      return jsonb_build_object('error','sem_permissao');
-    end if;
-    if v_caller_role = 'SUPER_ADMIN' then v_tenant := coalesce(p_tenant, v_tenant); end if;
-  else
-    v_tenant := coalesce(p_tenant, v_tenant);
+  v_tenant := coalesce(nullif(btrim(p_tenant),''),private.active_tenant_id(auth.uid()));
+  if not private.prepayment_caller_can_read(v_tenant) then
+    return jsonb_build_object('error','sem_permissao');
   end if;
   if v_tenant is null then return jsonb_build_object('error','escola_nao_identificada'); end if;
 
@@ -1332,6 +1791,7 @@ begin
       from student_payment_allocations a
      where a.tenant_id = v_tenant
        and a.status = 'ACTIVE'
+       and private.prepayment_allocation_is_valid(a.id)
        and a.modo = 'MENSAL'
        and a.competencia = v_ini
        and (a.payment_id is null or a.sequencia > 1)
@@ -1446,26 +1906,60 @@ begin
   ),
   -- pagamentos da COMPETÊNCIA. Pagamento completo MENSAL entra pelas parcelas.
   pagos as (
-    select sp.id, sp.student_id
+    select sp.id, sp.student_id,
+           (sp.status not in ('RECEIVED', 'RECEIVED_IN_CASH') or coalesce(sp.refunded_amount, 0) > 0) as revisao
       from public.student_payments as sp
      where sp.tenant_id = p_tenant
-       and sp.status in ('RECEIVED', 'RECEIVED_IN_CASH')
+       and (sp.status in ('RECEIVED', 'RECEIVED_IN_CASH') or exists (
+         select 1 from public.management_payment_notification_outbox ob
+         where ob.tenant_id = p_tenant and ob.payment_id = sp.id
+           and ob.notification_kind = 'PAYMENT_SPLIT' and ob.status = 'SENT'
+           and (ob.delivered_at is not null or ob.read_at is not null)
+       ))
        and coalesce(sp.value, 0) > 0
        and private.payment_competencia_of(sp.due_date, sp.paid_at, sp.payment_date, sp.created_at) = v_ini
        and not exists (
          select 1 from public.student_payment_allocations as a
-          where a.payment_id = sp.id and a.status = 'ACTIVE' and a.modo = 'MENSAL'
+          where a.payment_id = sp.id and a.modo = 'MENSAL'
+            and (a.status in ('ACTIVE','REVIEW') or exists (
+              -- Preserve a delivered monthly slice after cancellation/refund;
+              -- a cancelled, NEVER sent registration must not hide a later
+              -- full LEGADO notice for the same source payment.
+              select 1 from public.management_payment_notification_outbox ob
+               where ob.tenant_id=p_tenant and ob.payment_id=sp.id
+                 and ob.notification_kind='PAYMENT_SPLIT' and ob.status='SENT'
+                 and (ob.delivered_at is not null or ob.read_at is not null)
+                 and ob.source_snapshot->>'allocation_id'=a.id::text
+            ) or exists (
+              select 1 from public.management_reserve_notification_outbox ob
+               where ob.tenant_id=p_tenant and ob.allocation_id=a.id
+                 and ob.notification_kind='INSTALLMENT_SPLIT' and ob.status='SENT'
+                 and (ob.delivered_at is not null or ob.read_at is not null)
+            ))
        )
   ),
   parcelas as (
-    select a.id, a.student_id, a.payment_id, a.sequencia
+    select a.id, a.student_id, a.payment_id, a.sequencia,
+           not private.prepayment_allocation_is_valid(a.id) as revisao
       from public.student_payment_allocations as a
      where a.tenant_id = p_tenant
-       and a.status = 'ACTIVE'
        and a.modo = 'MENSAL'
        and a.competencia = v_ini
+       and (private.prepayment_allocation_is_valid(a.id) or exists (
+         select 1 from public.management_reserve_notification_outbox ob
+         where ob.tenant_id = p_tenant and ob.allocation_id = a.id
+           and ob.notification_kind = 'INSTALLMENT_SPLIT' and ob.status = 'SENT'
+           and (ob.delivered_at is not null or ob.read_at is not null)
+       ) or (a.sequencia = 1 and exists (
+         select 1 from public.management_payment_notification_outbox ob
+         where ob.tenant_id = p_tenant and ob.payment_id = a.payment_id
+           and ob.notification_kind = 'PAYMENT_SPLIT' and ob.status = 'SENT'
+           and ob.source_snapshot ->> 'allocation_id' = a.id::text
+           and (ob.delivered_at is not null or ob.read_at is not null)
+       )))
   ),
-  -- Avisado = o que o grupo LEU: snapshot congelado no outbox. Sem aviso
+  -- Avisado = entrega confirmada pelo provedor (não comprova separação bancária).
+  -- Snapshot congelado no outbox. Sem aviso
   -- (suprimido, falhou, antes da ativação), recalcula e marca sem_aviso.
   fontes as (
     select 'PAGAMENTO'::text as tipo, p.id as fonte_id, p.student_id,
@@ -1473,6 +1967,7 @@ begin
            -- Mês da agenda que o aviso usou. Avisos da regra antiga usavam o
            -- mês do CAIXA; quando difere da competência, a diferença tem nome.
            aviso.snap ->> 'month' as aviso_mes,
+           p.revisao,
            coalesce(aviso.snap, private.payment_split_breakdown_unchecked(p.id)) as b
       from pagos as p
       left join lateral (
@@ -1481,7 +1976,8 @@ begin
          where ob.tenant_id = p_tenant
            and ob.payment_id = p.id
            and ob.notification_kind = 'PAYMENT_SPLIT'
-           and ob.status in ('PREPARED', 'SUBMITTING', 'SENT', 'UNKNOWN')
+           and ob.status = 'SENT'
+           and (ob.delivered_at is not null or ob.read_at is not null)
            and jsonb_typeof(ob.source_snapshot) = 'object'
          limit 1
       ) as aviso on true
@@ -1489,8 +1985,9 @@ begin
     -- Parcela k: a 1ª de pagamento Asaas saiu no aviso do próprio pagamento;
     -- as outras são reserva, calculadas pela agenda do mês da parcela.
     select 'PARCELA'::text, pa.id, pa.student_id,
-           (aviso.snap is null and pa.sequencia = 1 and pa.payment_id is not null),
+           (aviso.snap is null),
            aviso.snap ->> 'month',
+           pa.revisao,
            coalesce(aviso.snap, private.payment_split_installment_unchecked(pa.id))
       from parcelas as pa
       left join lateral (
@@ -1501,18 +1998,29 @@ begin
            and ob.tenant_id = p_tenant
            and ob.payment_id = pa.payment_id
            and ob.notification_kind = 'PAYMENT_SPLIT'
-           and ob.status in ('PREPARED', 'SUBMITTING', 'SENT', 'UNKNOWN')
+           and ob.source_snapshot ->> 'allocation_id' = pa.id::text
+           and ob.status = 'SENT'
+           and (ob.delivered_at is not null or ob.read_at is not null)
            and jsonb_typeof(ob.source_snapshot) = 'object'
+        union all
+        select ro.source_snapshot as snap
+          from public.management_reserve_notification_outbox ro
+         where ro.tenant_id = p_tenant and ro.allocation_id = pa.id
+           and ro.notification_kind = 'INSTALLMENT_SPLIT' and ro.status = 'SENT'
+           and (ro.delivered_at is not null or ro.read_at is not null)
+           and jsonb_typeof(ro.source_snapshot) = 'object'
          limit 1
       ) as aviso on true
   ),
   caixinha as (
     select (prof ->> 'teacher_id')::uuid as teacher_id,
            f.student_id,
-           round(sum((prof ->> 'custo')::numeric), 2) as valor,
+           round(coalesce(sum((prof ->> 'custo')::numeric) filter (where not f.sem_aviso), 0), 2) as valor,
            round(coalesce(sum((prof ->> 'custo')::numeric) filter (where f.sem_aviso), 0), 2)
              as valor_sem_aviso,
-           count(distinct f.fonte_id)::int as avisos,
+           round(coalesce(sum((prof ->> 'custo')::numeric) filter (where not f.sem_aviso and f.revisao), 0), 2)
+             as valor_revisao,
+           count(distinct f.fonte_id) filter (where not f.sem_aviso)::int as avisos,
            bool_or(f.sem_aviso) as sem_aviso,
            bool_or(f.aviso_mes is not null and f.aviso_mes <> p_month) as aviso_de_outro_mes
       from fontes as f
@@ -1542,6 +2050,7 @@ begin
       from public.student_payment_allocations as a
      where a.tenant_id = p_tenant
        and a.status = 'ACTIVE'
+       and private.prepayment_allocation_is_valid(a.id)
        and a.competencia = v_ini
      group by 1
   ),
@@ -1587,6 +2096,7 @@ begin
            coalesce(f.valor, 0) as valor_folha,
            coalesce(c.valor, 0) as valor_caixinha,
            coalesce(c.valor_sem_aviso, 0) as valor_sem_aviso,
+           coalesce(c.valor_revisao, 0) as valor_revisao,
            coalesce(c.avisos, 0) as avisos,
            coalesce(c.sem_aviso, false) as sem_aviso,
            coalesce(c.aviso_de_outro_mes, false) as aviso_de_outro_mes,
@@ -1608,6 +2118,8 @@ begin
            round(d.valor_folha - d.valor_caixinha, 2) as diferenca,
            case
              when d.student_id is null then 'AULA_SEM_ALUNO'
+             when d.valor_revisao > 0 then 'RESERVA_EM_REVISAO'
+             when d.sem_aviso and d.valor_caixinha = 0 and d.valor_sem_aviso > 0 then 'SEM_AVISO'
              -- Pagamento completo LEGADO já foi rateado no recebimento: não
              -- separou nada para este mês. A escola completa do próprio caixa.
              when d.legado and d.valor_caixinha = 0 and d.valor_folha > 0
@@ -1640,6 +2152,7 @@ begin
                'folha', cl.valor_folha,
                'caixinha', cl.valor_caixinha,
                'caixinha_sem_aviso', cl.valor_sem_aviso,
+               'caixinha_revisao', cl.valor_revisao,
                'diferenca', cl.diferenca,
                'avisos', cl.avisos,
                'sem_aviso', cl.sem_aviso,
@@ -1649,7 +2162,8 @@ begin
            ) filter (where cl.motivo <> 'OK') as itens,
            round(sum(cl.valor_folha), 2) as folha_aulas,
            round(sum(cl.valor_caixinha), 2) as caixinha,
-           round(sum(cl.valor_sem_aviso), 2) as caixinha_sem_aviso
+           round(sum(cl.valor_sem_aviso), 2) as caixinha_sem_aviso,
+           round(sum(cl.valor_revisao), 2) as caixinha_revisao
       from classificado as cl
       left join public.profiles as s on s.id = cl.student_id
      group by 1
@@ -1660,6 +2174,7 @@ begin
            'folha', round(coalesce(sum((linha ->> 'folha')::numeric), 0), 2),
            'caixinha', round(coalesce(sum((linha ->> 'caixinha')::numeric), 0), 2),
            'caixinha_sem_aviso', round(coalesce(sum((linha ->> 'caixinha_sem_aviso')::numeric), 0), 2),
+           'caixinha_revisao', round(coalesce(sum((linha ->> 'caixinha_revisao')::numeric), 0), 2),
            'diferenca', round(coalesce(sum((linha ->> 'diferenca')::numeric), 0), 2),
            'professores', count(*)::int,
            'pro_labore_fora', count(*) filter (where (linha ->> 'pro_labore')::boolean)::int
@@ -1678,6 +2193,8 @@ begin
                'caixinha', case when dn.teacher_id is null then coalesce(pp.caixinha, 0) end,
                'caixinha_sem_aviso', case when dn.teacher_id is null
                                           then coalesce(pp.caixinha_sem_aviso, 0) end,
+               'caixinha_revisao', case when dn.teacher_id is null
+                                        then coalesce(pp.caixinha_revisao, 0) end,
                'diferenca', case when dn.teacher_id is null then round(
                  coalesce(fc.total_amount, pp.folha_aulas, 0) - coalesce(pp.caixinha, 0), 2) end,
                'acao', case
@@ -1851,6 +2368,7 @@ begin
                'folha', round(coalesce(sum((l ->> 'folha')::numeric), 0), 2),
                'caixinha', round(coalesce(sum((l ->> 'caixinha')::numeric), 0), 2),
                'caixinha_sem_aviso', round(coalesce(sum((l ->> 'caixinha_sem_aviso')::numeric), 0), 2),
+               'caixinha_revisao', round(coalesce(sum((l ->> 'caixinha_revisao')::numeric), 0), 2),
                'diferenca', round(coalesce(sum((l ->> 'diferenca')::numeric), 0), 2),
                'completar', round(coalesce(sum((l ->> 'diferenca')::numeric)
                                    filter (where (l ->> 'diferenca')::numeric > 0), 0), 2),
@@ -2028,7 +2546,7 @@ begin
       on allocation.student_id = profile.id
      and allocation.tenant_id = normalized_tenant
      and allocation.competencia = v_period_start
-     and allocation.status = 'ACTIVE'
+     and allocation.status in ('ACTIVE', 'REVIEW')
    where profile.tenant_id = normalized_tenant
      and profile.role = 'STUDENT'
      and profile.status = 'Ativo'
@@ -2101,7 +2619,7 @@ begin
     left join public.student_payments as payment
       on payment.tenant_id = obligation.tenant_id
      and payment.student_id = obligation.student_id
-     and payment.payment_type = 'SUBSCRIPTION'
+     and private.payment_is_tuition(payment.payment_type, payment.description)
      and payment.due_date >= obligation.period_start
      and payment.due_date < (
        pg_catalog.date_trunc('month', obligation.period_start) + interval '1 month'
@@ -2112,7 +2630,7 @@ begin
        select 1
          from public.student_payment_allocations as allocation
         where allocation.payment_id = payment.id
-          and allocation.status = 'ACTIVE'
+          and allocation.status in ('ACTIVE', 'REVIEW')
      )
    where obligation.tenant_id = normalized_tenant
      and obligation.period_start = v_period_start
@@ -2122,7 +2640,9 @@ begin
   coverage as (
     select
       allocation.student_id,
-      round(sum(allocation.valor), 2) as amount,
+      round(coalesce(sum(allocation.valor) filter (
+        where private.prepayment_allocation_is_valid(allocation.id)), 0), 2) as amount,
+      bool_or(not private.prepayment_allocation_is_valid(allocation.id)) as needs_review,
       array_agg(allocation.id order by allocation.id) as allocation_ids,
       coalesce(
         array_agg(distinct allocation.payment_id)
@@ -2143,7 +2663,7 @@ begin
     from public.student_payment_allocations as allocation
    where allocation.tenant_id = normalized_tenant
      and allocation.competencia = v_period_start
-     and allocation.status = 'ACTIVE'
+     and allocation.status in ('ACTIVE', 'REVIEW')
    group by allocation.student_id
   )
   update public.monthly_payment_obligations as obligation
@@ -2172,6 +2692,7 @@ begin
              then 'EXCLUDED'
            -- cobertura: mês pago pelo pagamento completo está quitado. Se além
            -- dele existe cobrança viva no mês, é cobrança em dobro: revisar.
+           when cov.needs_review then 'REVIEW'
            when cov.student_id is not null and invoice.live_count = 0 then 'SETTLED'
            when cov.student_id is not null then 'REVIEW'
            when invoice.live_count = 0 then 'MISSING_BILL'
@@ -2194,7 +2715,8 @@ begin
            when cov.student_id is null then '{}'::jsonb
            else jsonb_build_object(
              'prepaid_coverage', jsonb_build_object(
-               'reason', case when invoice.live_count = 0
+               'reason', case when cov.needs_review then 'PREPAID_COVERAGE_REVIEW'
+                              when invoice.live_count = 0
                               then 'PREPAID_COVERAGE'
                               else 'PREPAID_COVERAGE_WITH_LIVE_INVOICE' end,
                'amount', cov.amount,
@@ -2877,7 +3399,7 @@ begin
     from public.student_payments as payment
    where payment.tenant_id = normalized_tenant
      and payment.status in ('OVERDUE', 'DUNNING_REQUESTED')
-     and not private.student_month_covered(payment.student_id, payment.due_date);
+     and not private.student_payment_is_covered(payment.id);
 
   select pg_catalog.round(coalesce(sum(payment.value), 0), 2)
     into receivables
@@ -2886,7 +3408,7 @@ begin
      and payment.status = 'PENDING'
      and payment.due_date >= month_start
      and payment.due_date < month_end
-     and not private.student_month_covered(payment.student_id, payment.due_date);
+     and not private.student_payment_is_covered(payment.id);
 
   with requested_periods(label, period_start) as (
     values
@@ -3007,7 +3529,9 @@ as $function$
             and ultimo.provider_due_date is distinct from payment.due_date
              then 'asaas_vencimento_mudou'
            -- cobertura: o mês desta cobrança já foi pago num pagamento completo.
-           when private.student_month_covered(payment.student_id, payment.due_date)
+           when private.student_payment_prepayment_state(payment.id) = 'REVIEW'
+             then 'pagamento_completo_em_revisao'
+           when private.student_payment_is_covered(payment.id)
              then 'mes_coberto_por_pagamento_completo'
          end
     from public.student_payments as payment
@@ -3148,7 +3672,7 @@ begin
         and sp.status in ('OVERDUE', 'DUNNING_REQUESTED')
         -- cobertura: cobrança de mês já pago num pagamento completo é
         -- cobrança em dobro a cancelar, não inadimplência.
-        and not private.student_month_covered(sp.student_id, sp.due_date)
+        and not private.student_payment_is_covered(sp.id)
     ),
     'a_receber', (
       select coalesce(sum(sp.value), 0)
@@ -3158,7 +3682,7 @@ begin
          and sp.due_date >= v_month_start
          and sp.due_date < v_month_end
          -- cobertura: mês coberto não é dinheiro a receber.
-         and not private.student_month_covered(sp.student_id, sp.due_date)
+         and not private.student_payment_is_covered(sp.id)
     ),
     'serie', (
       select jsonb_agg(
@@ -3208,10 +3732,10 @@ as $function$
     -- cobertura: boleto de mês já pago num pagamento completo não é "vencida".
     'overdue_count', (SELECT count(*) FROM student_payments sp
                        WHERE sp.tenant_id=t.id AND sp.status='OVERDUE'
-                         AND NOT private.student_month_covered(sp.student_id, sp.due_date)),
+                         AND NOT private.student_payment_is_covered(sp.id)),
     'overdue_amount', (SELECT COALESCE(sum(sp.value),0) FROM student_payments sp
                         WHERE sp.tenant_id=t.id AND sp.status='OVERDUE'
-                          AND NOT private.student_month_covered(sp.student_id, sp.due_date)),
+                          AND NOT private.student_payment_is_covered(sp.id)),
     'received_week', (SELECT COALESCE(sum(value),0) FROM student_payments WHERE tenant_id=t.id AND status IN ('RECEIVED','RECEIVED_IN_CASH') AND COALESCE(paid_at,payment_date,due_date) >= current_date-7)
   )), '[]'::jsonb)
   FROM tenants t WHERE t.id <> 'master';

@@ -1,5 +1,11 @@
 begin;
 
+-- Catálogo mínimo: o teste também roda sobre schema-only, sem dados da escola.
+insert into public.dre_accounts(code,label,kind,sort_order,ledger_allowed)
+values ('5.1.03','Material e outros custos diretos','CUSTO',330,true),
+       ('6.2.01','Ferramentas e software','DESPESA',510,true)
+on conflict (code) do nothing;
+
 create or replace function pg_temp.assert_true(value boolean, message text)
 returns void
 language plpgsql

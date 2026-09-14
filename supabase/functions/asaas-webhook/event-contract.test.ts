@@ -21,6 +21,42 @@ import {
   enrollmentPaymentObservationFailureDisposition,
 } from "../_shared/enrollment-progress.ts";
 
+Deno.test("authoritative GET watermark rejects stale positive events but does not hide reversals", () => {
+  const existing = {
+    last_provider_event_at: "2026-09-01T12:00:00Z",
+    last_provider_event_rank: 60,
+    last_authoritative_observed_at: "2026-09-02T15:00:00Z",
+  };
+  for (const rank of [10, 20, 40, 60, 80]) {
+    if (shouldApplyProviderEvent(existing, "2026-09-02T14:00:00Z", rank)) {
+      throw new Error("stale positive event overwrote a newer provider GET");
+    }
+  }
+  if (!shouldApplyProviderEvent(existing, "2026-09-02T16:00:00Z", 80)) {
+    throw new Error("genuinely newer provider event was blocked");
+  }
+  if (!shouldApplyProviderEvent(existing, "2026-09-02T14:00:00Z", 100)) {
+    throw new Error("GET observation hid a refund fact");
+  }
+  for (
+    const event of [
+      "PAYMENT_CHARGEBACK_DISPUTE",
+      "PAYMENT_AWAITING_CHARGEBACK_REVERSAL",
+      "PAYMENT_CHARGEBACK_REQUESTED",
+      "PAYMENT_REFUND_IN_PROGRESS",
+      "PAYMENT_DELETED",
+    ]
+  ) {
+    const rank = providerEventRank(event);
+    if (
+      rank < 90 ||
+      !shouldApplyProviderEvent(existing, "2026-09-02T14:00:00Z", rank)
+    ) {
+      throw new Error(`GET watermark hid financial review event ${event}`);
+    }
+  }
+});
+
 Deno.test(
   "enrollment observation failures suppress stale lifecycle effects and retry only transient errors",
   async () => {

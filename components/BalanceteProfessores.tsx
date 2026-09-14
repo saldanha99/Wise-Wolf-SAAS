@@ -81,6 +81,7 @@ type Balancete = {
   professores: Professor[];
   totais: Totais;
   receita_total: number;
+  recebimentos_a_classificar?: number;
   receita_sem_aluno: number;
   receita_aluno_sem_aula: number;
   alunos_multi_professor: number;
@@ -157,6 +158,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
         </div>
       ) : (
         <>
+          {Number(b.recebimentos_a_classificar) > 0 ? <p role="alert" className="rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm text-brand-text">Há {money(b.recebimentos_a_classificar)} recebidos e ainda sem classificação. Esses valores estão no caixa, mas não compõem a receita ou o lucro deste balancete e do DRE. Não foram presumidos como mensalidade nem aporte.</p> : null}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi label="Receita atribuída" value={money(t.receita_alocada)} hint={`de ${money(b.receita_total)} no mês`} />
             <Kpi label="Pago aos professores" value={money(t.custo_total)} hint={`${t.aulas} aulas`} />

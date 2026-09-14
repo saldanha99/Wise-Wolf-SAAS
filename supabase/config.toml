@@ -45,3 +45,13 @@ enabled = true
 # OAuth callback uses a single-use state and PKCE; POST authenticates in-function.
 verify_jwt = false
 entrypoint = "./functions/google-meet/index.ts"
+
+[functions.monthly-reserve-notify]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/monthly-reserve-notify/index.ts"
+
+[functions.cancel-prepaid-invoice]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/cancel-prepaid-invoice/index.ts"

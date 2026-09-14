@@ -19,6 +19,7 @@ export type ExistingPaymentEventState = {
   status?: string | null;
   last_provider_event_at?: string | null;
   last_provider_event_rank?: number | null;
+  last_authoritative_observed_at?: string | null;
 };
 
 const COMPLETED_REFUND_STATUSES = new Set(["DONE"]);
@@ -314,6 +315,10 @@ const TERMINAL_REVERSAL_EVENTS = new Set([
 
 export function providerEventRank(eventName: string): number {
   if (TERMINAL_REVERSAL_EVENTS.has(eventName)) return 100;
+  if (
+    eventName === "PAYMENT_CHARGEBACK_DISPUTE" ||
+    eventName === "PAYMENT_AWAITING_CHARGEBACK_REVERSAL"
+  ) return 95;
   if (eventName === "PAYMENT_REFUND_IN_PROGRESS") return 95;
   if (eventName === "PAYMENT_PARTIALLY_REFUNDED") return 90;
   if (eventName === "PAYMENT_RECEIVED_IN_CASH") return 80;
@@ -387,6 +392,14 @@ export function shouldApplyProviderEvent(
   incomingEventAt: string,
   incomingRank: number,
 ): boolean {
+  // A fresh GET has an observation timestamp, not a fabricated provider event.
+  // Old positive/open notifications cannot undo it; reversal ranks >=90 still
+  // reach their dedicated financial-review path.
+  if (
+    incomingRank <= 80 && existing?.last_authoritative_observed_at &&
+    Date.parse(incomingEventAt) <=
+      Date.parse(existing.last_authoritative_observed_at)
+  ) return false;
   if (!existing?.last_provider_event_at) return true;
   const currentTime = Date.parse(existing.last_provider_event_at);
   const incomingTime = Date.parse(incomingEventAt);

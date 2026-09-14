@@ -1,4 +1,8 @@
 import { verifiedLegacySubscriptionPayment } from "./legacy-subscription-origin.ts";
+import {
+  BoundPaymentObservationError,
+  observeBoundPayment,
+} from "./bound-payment-observation.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   createClient,
@@ -1886,6 +1890,7 @@ type ExistingStudentPayment = {
   provider_status: string | null;
   last_provider_event_at: string | null;
   last_provider_event_rank: number | null;
+  last_authoritative_observed_at: string | null;
   student_id: string | null;
   tenant_id: string | null;
   provider_customer_id: string | null;
@@ -1901,7 +1906,7 @@ async function loadExistingStudentPaymentByProviderId(
   providerPaymentId: string,
 ): Promise<ExistingStudentPayment | null> {
   const columns =
-    "id,status,provider_status,last_provider_event_at,last_provider_event_rank,student_id,tenant_id,provider_customer_id,value,refunded_amount,due_date,asaas_payment_id,asaas_id";
+    "id,status,provider_status,last_provider_event_at,last_provider_event_rank,last_authoritative_observed_at,student_id,tenant_id,provider_customer_id,value,refunded_amount,due_date,asaas_payment_id,asaas_id";
   const [canonicalResult, legacyResult] = await Promise.all([
     supabase.from("student_payments").select(columns)
       .eq("asaas_payment_id", providerPaymentId).limit(2),
@@ -2240,6 +2245,37 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     const paymentValue = Number(
       isHistoricalReversal ? existingPayment?.value : payment.value,
     );
+
+    // The exact invoice is already bound. Missing legacy subscription pointers
+    // must not send it through origin discovery again. This update-only path
+    // requires fresh tenant-scoped provider proof and never creates a payment,
+    // assigns a student, enrolls or recreates a subscription. CONFIRMED is not cash.
+    if (
+      !isHistoricalReversal && existingPayment?.student_id &&
+      existingPayment.tenant_id &&
+      !String(payment.externalReference || "").trim() &&
+      ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED", "PAYMENT_RECEIVED_IN_CASH"]
+        .includes(event)
+    ) {
+      try {
+        await observeBoundPayment(
+          supabase,
+          existingPayment.id,
+          existingPayment.tenant_id,
+          body as unknown as Record<string, unknown>,
+        );
+        return;
+      } catch (error) {
+        if (error instanceof BoundPaymentObservationError && !error.retryable) {
+          throw new AsaasTriageError(
+            error.code,
+            existingPayment.tenant_id,
+            existingPayment.id,
+          );
+        }
+        throw error;
+      }
+    }
 
     if (
       !isHistoricalReversal && isSettledPaymentEvent(event) && existingPayment
