@@ -85,6 +85,84 @@ Deno.test("aluno partido entre as duas réguas mostra os dois professores", () =
   assertStringIncludes(msg, "Professor Mateus");
 });
 
+// Pagamento completo (migration 20260914100000). Nomes fictícios.
+const PAGAMENTO_COMPLETO_MENSAL = {
+  student_name: "Aluno Ficticio", na_base: true,
+  month: "2026-09", competencia: "2026-09", vencimento: "2026-09-08",
+  paid_at: "2026-09-08T12:00:00+00:00", recebido_em: "2026-09-08",
+  valor: 216.67, parcela: 216.67, recebido_total: 1300.00, reservado: 1083.33,
+  meses: 6, sequencia: 1, modo: "MENSAL",
+  cobertura_inicio: "2026-09", cobertura_fim: "2027-02",
+  professores: [{ teacher_name: "Professor Ficticio", aulas: 4, custo: 32.00, descontado: true }],
+  liquido: 184.67, dizimo: 18.47, investimento: 129.27, pro_labore: 36.93, sobra: 0,
+  dizimo_pct: 10, investimento_pct: 70, regra: "professor", eh_matricula: false,
+};
+
+Deno.test("pagamento completo MENSAL: diz que recebeu tudo e rateia só a parcela", () => {
+  const msg = montarMensagem(PAGAMENTO_COMPLETO_MENSAL);
+  assertStringIncludes(msg, "Aluno Ficticio pagou R$ 1.300,00* — pagamento completo de 6 meses");
+  assertStringIncludes(msg, "recebido por completo em 08/09/2026");
+  assertStringIncludes(msg, "cobre setembro/2026 a fevereiro/2027");
+  assertStringIncludes(msg, "parcela 1/6 de *R$ 216,67*");
+  assertStringIncludes(msg, "Segue reservado para os próximos meses: *R$ 1.083,33*");
+  assertStringIncludes(msg, "Base do rateio: *R$ 184,67*");
+  assertEquals(msg.includes("pagou R$ 216,67"), false);
+  // Soma em centavos: 18,47 + 129,27 + 36,93 em ponto flutuante não dá 184,67 exato.
+  assertEquals(Math.round(somaDestinos(PAGAMENTO_COMPLETO_MENSAL) * 100), 18467);
+});
+
+Deno.test("parcela k de pagamento completo: rateio do mês com o dinheiro já recebido", () => {
+  const msg = montarMensagem({
+    ...PAGAMENTO_COMPLETO_MENSAL, month: "2026-10", competencia: "2026-10",
+    sequencia: 2, reservado: 866.66,
+  });
+  assertStringIncludes(msg, "Rateio de outubro: Aluno Ficticio* — parcela 2/6");
+  assertStringIncludes(msg, "pagamento completo de R$ 1.300,00 já recebido em 08/09/2026");
+  assertStringIncludes(msg, "Segue reservado para os próximos meses: *R$ 866,66*");
+  assertEquals(msg.includes(" pagou "), false);
+});
+
+Deno.test("pagamento completo LEGADO: valor cheio rateado, meses só cobertos", () => {
+  const msg = montarMensagem({
+    ...AULA_DE_PROFESSOR, student_name: "Aluno Ficticio", valor: 600.00,
+    recebido_total: 600.00, parcela: 600.00, reservado: 0, meses: 3, modo: "LEGADO",
+    cobertura_inicio: "2026-07", cobertura_fim: "2026-09", recebido_em: "2026-07-10",
+  });
+  assertStringIncludes(msg, "pagou R$ 600,00* — pagamento completo de 3 meses");
+  assertStringIncludes(msg, "cobre julho/2026 a setembro/2026");
+  assertStringIncludes(msg, "sem novo rateio");
+  assertEquals(msg.includes("reservado"), false);
+});
+
+Deno.test("taxa de matrícula não aparece como aluno sem agenda", () => {
+  const msg = montarMensagem({
+    ...AULA_DE_PROFESSOR, student_name: "Aluno Ficticio", valor: 59.90, professores: [],
+    eh_matricula: true, liquido: 59.90, dizimo: 5.99, investimento: 41.93, pro_labore: 11.98,
+  });
+  assertStringIncludes(msg, "Taxa de matrícula: não desconta salário de professor");
+  assertEquals(msg.includes("sem aulas na agenda"), false);
+});
+
+Deno.test("REGRESSÃO: fatura de agosto creditada em setembro diz de que mês é a fatura", () => {
+  // Cartão de vencimento 05/08 creditado em 08/09: a caixinha é a agenda de
+  // AGOSTO, e o aviso tem de dizer isso, senão parece erro de mês.
+  const msg = montarMensagem({
+    ...AULA_DE_PROFESSOR, student_name: "Aluno Ficticio", month: "2026-08",
+    competencia: "2026-08", vencimento: "2026-08-05",
+    paid_at: "2026-09-08T12:00:00+00:00", recebido_em: "2026-09-08", meses: 1,
+  });
+  assertStringIncludes(msg, "_fatura de agosto/2026 (vencimento 05/08/2026) confirmada em 08/09/2026_");
+  assertStringIncludes(msg, "agenda de agosto");
+});
+
+Deno.test("pagamento comum do mês continua com a linha de sempre", () => {
+  const msg = montarMensagem({
+    ...AULA_DE_PROFESSOR, competencia: "2026-08", recebido_em: "2026-08-13", meses: 1,
+  });
+  assertStringIncludes(msg, "pagou R$ 261,00*\n_fatura confirmada em 13/08/2026_");
+  assertEquals(msg.includes("pagamento completo"), false);
+});
+
 Deno.test("dinheiro é formatado em pt-BR sem depender de ICU", () => {
   assertEquals(money(1201.76), "R$ 1.201,76");
   assertEquals(money(0), "R$ 0,00");

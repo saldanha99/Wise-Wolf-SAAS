@@ -38,6 +38,31 @@ export function dataCurta(iso: unknown): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
 }
 
+/** "setembro/2026" a partir de "2026-09". */
+export function mesAno(month: unknown): string {
+  const s = String(month ?? "");
+  const m = s.match(/^(\d{4})-(\d{2})/);
+  return m ? `${nomeDoMes(s)}/${m[1]}` : s;
+}
+
+/**
+ * Linha de data da fatura. Quando a COMPETÊNCIA (mês do vencimento) é outra
+ * que o mês em que o dinheiro caiu — cartão creditado no mês seguinte,
+ * pagamento atrasado ou antecipado —, a mensagem diz de que mês é a fatura:
+ * é a agenda desse mês que define o salário separado.
+ */
+function linhaDaFatura(b: Record<string, unknown>): string {
+  const recebidoEm = b.recebido_em ?? b.paid_at;
+  const competencia = String(b.competencia ?? "");
+  const mesDoDinheiro = String(recebidoEm ?? "").slice(0, 7);
+  if (/^\d{4}-\d{2}$/.test(competencia) && /^\d{4}-\d{2}$/.test(mesDoDinheiro) &&
+      competencia !== mesDoDinheiro) {
+    const vencimento = b.vencimento ? ` (vencimento ${dataCurta(b.vencimento)})` : "";
+    return `_fatura de ${mesAno(competencia)}${vencimento} confirmada em ${dataCurta(recebidoEm)}_`;
+  }
+  return `_fatura confirmada em ${dataCurta(recebidoEm)}_`;
+}
+
 export interface Professor {
   teacher_name?: string;
   aulas?: number;
@@ -65,9 +90,46 @@ export function montarMensagem(b: Record<string, unknown>): string {
     ].join("\n");
   }
 
-  partes.push(`💰 *${String(b.student_name ?? "Aluno")} pagou ${money(b.valor)}*`);
-  partes.push(`_fatura confirmada em ${dataCurta(b.paid_at)}_`);
+  // PAGAMENTO COMPLETO (vários meses de uma vez), decisão da direção de
+  // 14/09/2026: o rateio sai mês a mês, 1/N do valor, mas o aviso tem de deixar
+  // claro que o dinheiro JÁ ENTROU por completo — total, data, meses cobertos,
+  // a parcela deste mês e quanto segue reservado. Anunciar "pagou R$ 216,67" de
+  // um pagamento de R$ 1.300 esconderia dinheiro que está no caixa.
+  const aluno = String(b.student_name ?? "Aluno");
+  const meses = Number(b.meses ?? 1);
+  const completo = Number.isFinite(meses) && meses > 1;
+  const mensal = completo && b.modo === "MENSAL";
+  const sequencia = Number(b.sequencia ?? 1);
+  const recebidoEm = b.recebido_em ?? b.paid_at;
+
+  if (mensal && sequencia > 1) {
+    // Parcela k: o dinheiro entrou meses atrás; o que sai agora é o rateio do mês.
+    partes.push(`🗓️ *Rateio de ${mes}: ${aluno}* — parcela ${sequencia}/${meses}`);
+    partes.push(
+      `_pagamento completo de ${money(b.recebido_total)} já recebido em ${dataCurta(recebidoEm)}_`,
+    );
+  } else if (completo) {
+    partes.push(
+      `💰 *${aluno} pagou ${money(b.recebido_total ?? b.valor)}* — pagamento completo de ${meses} meses`,
+    );
+    partes.push(
+      `_recebido por completo em ${dataCurta(recebidoEm)} · cobre ${mesAno(b.cobertura_inicio)} a ${mesAno(b.cobertura_fim)}_`,
+    );
+  } else {
+    partes.push(`💰 *${aluno} pagou ${money(b.valor)}*`);
+    partes.push(linhaDaFatura(b));
+  }
   partes.push("");
+
+  if (mensal) {
+    partes.push(`🗓️ Rateio de ${mes}: parcela ${sequencia}/${meses} de *${money(b.parcela)}*`);
+    partes.push(`🔒 Segue reservado para os próximos meses: *${money(b.reservado)}*`);
+    partes.push("");
+  } else if (completo) {
+    // LEGADO: o valor cheio é rateado neste aviso e os meses só ficam cobertos.
+    partes.push(`🗓️ Rateio do valor cheio neste aviso; os ${meses} meses ficam cobertos sem novo rateio.`);
+    partes.push("");
+  }
 
   if (professores.length > 0) {
     // Uma linha por professor com o NOME: é o que o diretor lê primeiro
@@ -85,6 +147,11 @@ export function montarMensagem(b: Record<string, unknown>): string {
         partes.push(`      ${p.aulas ?? 0} aulas previstas na agenda de ${mes}`);
       }
     }
+  } else if (b.eh_matricula === true) {
+    // Taxa de matrícula não separa salário: a aula do mês é paga pela
+    // mensalidade. Dizer "aluno sem aulas na agenda" mandaria o diretor
+    // corrigir uma agenda que está certa.
+    partes.push(`🎓 Taxa de matrícula: não desconta salário de professor — a aula do mês é paga pela mensalidade`);
   } else if (b.sem_aluno) {
     // Pagamento que chegou sem aluno vinculado: mostrar custo zero sem explicar
     // faria o líquido parecer lucro cheio de uma aula que ninguém deu.

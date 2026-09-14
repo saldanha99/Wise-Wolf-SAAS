@@ -74,6 +74,22 @@ const MOTIVOS: Record<string, { titulo: string; acao: string; cor: string }> = {
     acao: 'Experimental, treinamento ou lançamento avulso — não existe pagamento a que se vincular.',
     cor: 'text-slate-600 bg-slate-100 dark:bg-slate-800',
   },
+  // Motivos do fechamento por competência (migration 20260914100000).
+  AVISO_DE_OUTRO_MES: {
+    titulo: 'Aviso com a agenda de outro mês',
+    acao: 'A fatura é deste mês, mas o dinheiro caiu em outro (cartão creditado depois, atraso ou antecipação) e o aviso separou a agenda do mês em que o dinheiro caiu. Complete ou devolva a diferença — os avisos novos já usam o mês da fatura.',
+    cor: 'text-teal-600 bg-teal-50 dark:bg-teal-900/20',
+  },
+  PREPAGO_SEM_RESERVA: {
+    titulo: 'Pagamento completo antigo, sem reserva',
+    acao: 'O aluno pagou vários meses de uma vez e o valor cheio foi rateado no recebimento. Nada ficou reservado para este mês: complete a caixinha com o caixa da escola.',
+    cor: 'text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-900/20',
+  },
+  SEM_AVISO: {
+    titulo: 'Pagamento sem aviso no grupo',
+    acao: 'O dinheiro entrou, mas o aviso do rateio não saiu (suprimido, falhou ou é anterior ao envio automático). A caixinha foi calculada agora, pela agenda do mês da fatura — confira se esse valor foi mesmo separado.',
+    cor: 'text-slate-600 bg-slate-100 dark:bg-slate-800',
+  },
 };
 
 const money = (v: any) =>

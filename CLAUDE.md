@@ -1361,6 +1361,66 @@ era R$ 1.199,95, e 10% dela é exatamente R$ 120,00.
 
 ---
 
+## Competência e pagamento completo (vários meses) ✅
+
+> **Leia antes de mexer em `payment_split_breakdown`, na caixinha, em
+> `teacher_payroll_reconciliation` ou em qualquer coisa que diga "mês pendente".**
+> Migration `20260914100000_competencia_e_pagamento_completo`, teste
+> `supabase/tests/competencia_e_pagamento_completo.sql`.
+
+- **Competência = mês do VENCIMENTO** (`private.payment_competencia_of`). A caixinha
+  (`professores[].custo`) usa a agenda do mês da fatura; o caixa (`get_cashflow`,
+  DRE, "recebido" do relatório) continua pelo mês em que o dinheiro entrou.
+  Medido em 14/09/2026: fatura de vencimento 05/08 paga no cartão e creditada em
+  08/09 avisou a agenda de setembro (18 aulas, R$ 144); pela competência são 17
+  aulas, R$ 136 — exatamente a folha de agosto daquele aluno.
+- **Taxa de matrícula não gera caixinha** (`private.payment_is_enrollment_fee`:
+  `payment_type = 'ENROLLMENT'` ou descrição "(Taxa de) matrícula"). ⚠️ "Taxa de
+  cancelamento" existe na base e NÃO é matrícula.
+- **Pagamento completo** vive em `student_payment_allocations` (escrita só por RPC):
+  `register_prepayment(pagamento, 1º mês, N, 'MENSAL'|'LEGADO')`,
+  `register_external_prepayment` (recebido por fora: só parcelas, sem lançar caixa) e
+  `cancel_prepayment` (marca `CANCELLED`, nunca apaga; registrar de novo reaproveita
+  as linhas pelo unique `(payment_id, competencia)`).
+  - **MENSAL**: 1/N por mês com centavos exatos; o aviso do recebimento rateia só a
+    1ª parcela e diz `recebido_total`, `parcela` e `reservado`; a parcela k sai por
+    `payment_split_installment` e entra no `payment_split_report` do mês dela.
+  - ⚠️ **MENSAL é recusado depois que o aviso do valor cheio saiu** — ratear de novo
+    dobraria o dízimo. Aí o registro é **LEGADO** (só cobre os meses).
+  - Um mês não é coberto duas vezes: índice único parcial `(student_id, competencia)
+    where status = 'ACTIVE'`.
+- **Mês coberto não é pendência (D3)**: fechamento mensal (`SETTLED`; com boleto vivo
+  no mesmo mês vira `REVIEW` — é cobrança em dobro), régua de cobrança e suspensão
+  (`mes_coberto_por_pagamento_completo` em `student_payment_provider_block_reason`,
+  DEPOIS das regras do Asaas), `gestao_financial_context`, Fluxo de Caixa
+  (`get_cashflow_unchecked` — os dois se espelham de propósito), resumo semanal,
+  `alunos_sem_assinatura` e `financial_reconciliation`.
+- **Fechamento da caixinha (D2)**: `caixinha_fechamento(mes, tenant)` compara a
+  caixinha **AVISADA** (snapshot congelado em `management_payment_notification_outbox`)
+  com a folha, por professor contratado: completar/devolver e o motivo por aluno. O
+  painel Caixinha × Folha lê a MESMA conta — ele recalculava com a agenda de hoje.
+  Motivos novos: `SEM_AVISO` (sem snapshot; recalculado), `PREPAGO_SEM_RESERVA`
+  (LEGADO não separou nada no mês) e `AVISO_DE_OUTRO_MES` (aviso da regra antiga, que
+  usou a agenda do mês do caixa). Agosto/2026: folha R$ 2.732 × caixinha R$ 1.936
+  (R$ 1.600 sem aviso — os avisos de agosto são quase todos anteriores ao outbox).
+- ⚠️ **Teste SQL: um SELECT não enxerga o que as funções chamadas por ele gravaram.**
+  `cancel_prepayment(...)` e `select count(*)` na mesma asserção falham com a função
+  certa (o snapshot é o do início do statement). Grave num statement, confira no
+  seguinte.
+- ⚠️ `current_setting('request.jwt.claims', true)::json` quebra com claim vazia — `''`
+  fica na sessão depois de um `SET LOCAL`. Use `nullif(btrim(...), '')`.
+- ⚠️ A regra nova muda o `snapshot_hash` do fechamento mensal (custo por competência e
+  chaves novas no caixa). Em 14/09/2026 nenhum fechamento tinha sido enviado; se um
+  já tivesse saído, o próximo refresh marcaria `REVIEW`
+  (`source_changed_after_monthly_close`).
+- **Ainda não feito:** envio do fechamento da caixinha no grupo da Gestão no dia 1º
+  (edge + cron), aviso no grupo de cada parcela k, tela para registrar/cancelar
+  pagamento completo, cobertura em `list_students_overview`,
+  `recompute_student_financial_status…` e `generate_monthly_student_payments`, e
+  cancelar no Asaas a cobrança do mês coberto.
+
+---
+
 ## Conciliação do caixa Asaas — uma resposta só para "quanto entrou" ✅
 
 > **Leia antes de mexer em `ledger_on_payment_received`, `reconcile-ledger` ou em
