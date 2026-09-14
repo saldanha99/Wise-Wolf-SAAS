@@ -1439,6 +1439,12 @@ select pg_temp.assert_true(
   'rejected non-no-show resolution mutated the audit'
 );
 
+-- Fixture de aulas JÁ DADAS hoje (10:00–16:00). A trava de aula não terminada
+-- (trg_zy_require_finished_lesson_slot, 20260912203137) compara com now(): sem
+-- desligá-la aqui, este teste só passava depois das 16:30 e derrubava todo
+-- release feito de manhã (aconteceu em 14/09/2026). A trava tem teste próprio;
+-- aqui ela fica fora só durante a carga, e as outras triggers seguem ativas.
+alter table public.class_logs disable trigger trg_zy_require_finished_lesson_slot;
 insert into public.class_logs (
   id, tenant_id, teacher_id, student_id, booking_id,
   presence, date, class_date, start_time, created_at
@@ -1510,6 +1516,7 @@ values
     (now() at time zone 'America/Sao_Paulo')::date,
     '14:30', now()
   );
+alter table public.class_logs enable trigger trg_zy_require_finished_lesson_slot;
 
 -- Student-authenticated responses: light mismatches do not hold payment. ------
 set local role authenticated;
@@ -1840,6 +1847,7 @@ select public.resolve_attendance_conflict_v2(
 );
 reset role;
 
+alter table public.class_logs disable trigger trg_zy_require_finished_lesson_slot;
 insert into public.class_logs (
   id, tenant_id, teacher_id, student_id, booking_id,
   presence, date, class_date, start_time, created_at
@@ -1855,6 +1863,7 @@ values (
   (now() at time zone 'America/Sao_Paulo')::date,
   '16:00', now()
 );
+alter table public.class_logs enable trigger trg_zy_require_finished_lesson_slot;
 
 select pg_temp.assert_true(
   (select presence = 'TEACHER_ABSENCE'
