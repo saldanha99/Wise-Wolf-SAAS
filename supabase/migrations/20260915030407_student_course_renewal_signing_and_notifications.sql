@@ -166,14 +166,12 @@ declare v_id uuid; v_claim uuid;
 begin
   for v_id in select o.id from private.student_course_renewal_offers o where o.status='SIGNED' and o.billing_status='PENDING'
     order by o.signed_at,o.id for update skip locked limit greatest(1,least(coalesce(p_limit,10),25)) loop
-    -- `id` é também coluna de saída (RETURNS TABLE): sem alias, "column reference
-    -- id is ambiguous" derrubava o worker a cada minuto assim que um aluno assinava.
-    perform pg_advisory_xact_lock(hashtextextended('student-billing-lifecycle:'||(select so.tenant_id from private.student_course_renewal_offers so where so.id=v_id)||':'||(select so.student_id from private.student_course_renewal_offers so where so.id=v_id)::text,0));
+    perform pg_advisory_xact_lock(hashtextextended('student-billing-lifecycle:'||(select tenant_id from private.student_course_renewal_offers where id=v_id)||':'||(select student_id from private.student_course_renewal_offers where id=v_id)::text,0));
     v_claim:=gen_random_uuid();
     update private.student_course_renewal_offers set billing_status='PROCESSING',billing_claim_token=v_claim,
       billing_lease_expires_at=clock_timestamp()+interval '30 minutes',billing_error=null where private.student_course_renewal_offers.id=v_id;
     insert into private.student_course_renewal_events(tenant_id,offer_id,event_type,payload)
-      select so.tenant_id,so.id,'BILLING_CLAIMED',jsonb_build_object('strategy',so.billing_strategy) from private.student_course_renewal_offers so where so.id=v_id;
+      select tenant_id,id,'BILLING_CLAIMED',jsonb_build_object('strategy',billing_strategy) from private.student_course_renewal_offers where id=v_id;
     id:=v_id; claim_token:=v_claim; return next;
   end loop;
 end $fn$;
