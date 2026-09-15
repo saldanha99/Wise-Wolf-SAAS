@@ -1271,6 +1271,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915011556_student_course_renewal_proposals.sql"
   "supabase/migrations/20260915030407_student_course_renewal_signing_and_notifications.sql"
   "supabase/migrations/20260915042000_allow_suspended_course_renewal_recipients.sql"
+  "supabase/migrations/20260915043000_skip_elapsed_course_renewal_milestones.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

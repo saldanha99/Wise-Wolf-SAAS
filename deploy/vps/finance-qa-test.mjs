@@ -28,6 +28,7 @@ const migrations = [
   'supabase/migrations/20260915011556_student_course_renewal_proposals.sql',
   'supabase/migrations/20260915030407_student_course_renewal_signing_and_notifications.sql',
   'supabase/migrations/20260915042000_allow_suspended_course_renewal_recipients.sql',
+  'supabase/migrations/20260915043000_skip_elapsed_course_renewal_milestones.sql',
 ];
 const tests = process.argv.slice(2);
 if (!tests.length) throw new Error('Informe pelo menos um arquivo supabase/tests/*.sql.');

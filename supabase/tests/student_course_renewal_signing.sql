@@ -38,6 +38,11 @@ from public.student_course_renewal_notification_outbox;
 select pg_temp.assert_r((select public.student_course_renewal_notification_source(
  (j->>'id')::uuid,(j->>'claim_token')::uuid) is not null from notice_claim),
  'an explicitly issued renewal could not reach a suspended student');
+select private.materialize_student_course_renewal_reminders('2026-10-01 06:00 America/Sao_Paulo');
+select pg_temp.assert_r(not exists(select 1 from public.student_course_renewal_notification_outbox where milestone='D15'),
+ 'an elapsed D15 milestone was materialized as a late duplicate');
+select pg_temp.assert_r(exists(select 1 from public.student_course_renewal_notification_outbox where milestone='D0' and scheduled_at='2026-10-10 06:00 America/Sao_Paulo'),
+ 'the future D0 milestone was not materialized');
 select pg_temp.assert_r((select public.sign_student_course_renewal(j->>'token','Student Renewal Synthetic')->>'ok'='true' from issued),'valid signature rejected');
 select pg_temp.assert_r((select status='SIGNED' and billing_status='PENDING' and signed_at is not null from private.student_course_renewal_offers),'signature state incorrect');
 select pg_temp.assert_r((select status='SUPPRESSED' and submit_attempt_count=0 from public.student_course_renewal_notification_outbox),'future notice not suppressed');
