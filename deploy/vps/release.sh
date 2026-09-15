@@ -3445,14 +3445,15 @@ begin
         or ledger.amount is distinct from round(payment.value, 2)
         or ledger.amount_cents is distinct from
            round(payment.value * 100)::integer
-        or (
-          payment.status = 'NAO_RECEITA'
-          and ledger.category is distinct from 'aporte_ou_movimentacao'
-        )
-        or (
-          payment.status <> 'NAO_RECEITA'
-          and ledger.category is distinct from 'MENSALIDADE'
-        )
+        or ledger.category is distinct from case
+          when payment.payment_type = 'UNASSIGNED_RECEIPT'
+            and payment.student_id is null
+            and payment.raw_payload->>'source' = 'OPERATOR_ADJUDICATION'
+            then 'RECEBIMENTO_NAO_CLASSIFICADO'
+          when payment.status = 'NAO_RECEITA'
+            then 'aporte_ou_movimentacao'
+          else 'MENSALIDADE'
+        end
   ) then
     raise exception 'student_payment_ledger_value_or_category_invalid';
   end if;
@@ -3468,6 +3469,10 @@ begin
         or refund.provider_event_id is null
         or length(trim(refund.provider_event_id)) not between 1 and 240
         or refund.category is distinct from case
+          when payment.payment_type = 'UNASSIGNED_RECEIPT'
+            and payment.student_id is null
+            and payment.raw_payload->>'source' = 'OPERATOR_ADJUDICATION'
+            then 'ESTORNO_RECEBIMENTO_NAO_CLASSIFICADO'
           when payment.status = 'NAO_RECEITA'
             then 'estorno_aporte_ou_movimentacao'
           else 'ESTORNO_MENSALIDADE'
