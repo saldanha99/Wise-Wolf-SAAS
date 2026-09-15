@@ -13,6 +13,11 @@
 
 begin;
 
+-- No release todos os testes rodam numa transação só, e um teste anterior deixa
+-- `request.headers` vazio; `sign_student_course_renewal` faz `::json` dele. Em
+-- produção o PostgREST sempre preenche o cabeçalho.
+select set_config('request.headers', '{}', true);
+
 create or replace function pg_temp.assert_true(value boolean, message text)
 returns void language plpgsql as $$
 begin
