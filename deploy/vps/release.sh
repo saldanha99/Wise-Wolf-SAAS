@@ -1284,6 +1284,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915173000_professor_troca_horario_do_proprio_aluno.sql"
   "supabase/migrations/20260915174000_renovacao_com_novas_condicoes_e_horario.sql"
   "supabase/migrations/20260915175000_negociacao_de_renovacao.sql"
+  "supabase/migrations/20260915176000_mesmo_destinatario_com_e_sem_nono_digito.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1398,6 +1399,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/professor_troca_horario_do_proprio_aluno.sql"
   "supabase/tests/renovacao_com_novas_condicoes_e_horario.sql"
   "supabase/tests/negociacao_de_renovacao.sql"
+  "supabase/tests/mesmo_destinatario_nono_digito.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.
