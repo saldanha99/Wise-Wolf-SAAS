@@ -515,6 +515,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
+  supabase/functions/whatsapp-crm-lead-notif/first-touch.ts \
+  supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
+  supabase/functions/whatsapp-crm-lead-notif/index.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -715,6 +718,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
+  supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \

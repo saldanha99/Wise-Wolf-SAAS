@@ -64,10 +64,15 @@ const DAY_MAP: Record<number, string> = {
 };
 const dowOf = (dateStr: string): number =>
   new Date(`${dateStr}T12:00:00Z`).getUTCDay();
-// Anti-ban: primeiro contato frio é o maior risco de restrição do número. Volume baixo e
-// espaçado (o número já foi restringido uma vez). Lote pequeno por run + teto diário menor.
-const FIRST_TOUCH_BATCH = 2;
-const FIRST_TOUCH_DAILY_CAP = 12;
+// Anti-ban: primeiro contato frio é o maior risco de restrição do número (ele já foi
+// restringido uma vez). Uma mensagem por vez, com 20 min entre elas, e teto de 15 por
+// dia — o teto de todo contato de venda. Até 15/09/2026 eram 2 por rodada de 5 min, e
+// o teto do dia saía inteiro em meia hora, em rajada.
+// O teto e o espaçamento contam também o primeiro toque do formulário
+// (whatsapp-crm-lead-notif), que usa a mesma marca SDR_FIRST_TOUCH.
+const FIRST_TOUCH_BATCH = 1;
+const FIRST_TOUCH_DAILY_CAP = 15;
+const FIRST_TOUCH_MIN_GAP_MS = 20 * 60 * 1000;
 const INTERVIEW_INVITE_DAILY_CAP = 5;
 // Retorno ao lead cuja experimental não teve professor. Cabe mais volume que o
 // primeiro toque (é gente que JÁ conversou com a escola, não contato frio),
@@ -321,10 +326,16 @@ serve(async (req) => {
       const { count: sentToday } = await sb.from("automation_sent")
         .select("id", { count: "exact", head: true })
         .eq("kind", "SDR_FIRST_TOUCH").eq("ref_date", todayBRT());
-      const remainingToday = Math.max(
-        0,
-        FIRST_TOUCH_DAILY_CAP - (sentToday ?? 0),
-      );
+      const { data: lastTouch } = await sb.from("automation_sent")
+        .select("created_at").eq("kind", "SDR_FIRST_TOUCH")
+        .order("created_at", { ascending: false }).limit(1);
+      const lastTouchAt = lastTouch?.[0]?.created_at
+        ? new Date(lastTouch[0].created_at).getTime()
+        : 0;
+      const spaced = Date.now() - lastTouchAt >= FIRST_TOUCH_MIN_GAP_MS;
+      const remainingToday = spaced
+        ? Math.max(0, FIRST_TOUCH_DAILY_CAP - (sentToday ?? 0))
+        : 0;
 
       const { data: leads } = await sb.from("crm_leads")
         .select(
@@ -387,10 +398,10 @@ serve(async (req) => {
         const msg = isFresh
           ? `Oi${
             first ? ", " + first : ""
-          }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Vi seu interesse nas nossas aulas de inglês. Quer marcar uma aula experimental gratuita? Me conta rapidinho: o inglês é pra trabalho, viagem ou outro objetivo?`
+          }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Vi seu interesse nas nossas aulas de inglês. A primeira aula é experimental e gratuita: me conta quais dias e horários ficam bons pra você, que eu já vejo o professor livre. E o inglês é pra trabalho, viagem ou outro objetivo?`
           : `Oi${
             first ? ", " + first : ""
-          }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Você deixou seu contato interessado(a) nas nossas aulas de inglês e eu não queria te deixar sem retorno. Ainda faz sentido pra você? A primeira aula é experimental e gratuita — é só me responder por aqui!`;
+          }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Você deixou seu contato nas nossas aulas de inglês e eu não queria te deixar sem retorno. Ainda faz sentido pra você? A primeira aula é experimental e gratuita: me diz os dias e horários que ficam bons que eu já vejo o professor livre.`;
 
         if (await sendWhats(t.studentInstance, phone, msg)) {
           await sb.from("crm_leads").update({
