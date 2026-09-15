@@ -666,7 +666,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/send-class-notification/core.ts \
   supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/send-class-notification/index.ts
-npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
+npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
+  --allow-read=supabase/functions/student-renewal-notify/index.ts,supabase/functions/student-renewal-billing/index.ts --frozen \
   supabase/functions/_shared/student-billing-link.test.ts \
   supabase/functions/student-card-notify/core.test.ts \
   supabase/functions/student-card-notify/worker.test.ts \
