@@ -96,6 +96,7 @@ const GoogleMeetSettings = lazy(() => import('./components/GoogleMeetSettings'))
 const LessonSessionsPanel = lazy(() => import('./components/LessonSessionsPanel'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
+const CourseRenewalSign = lazy(() => import('./components/CourseRenewalSign'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
@@ -1004,6 +1005,12 @@ const App: React.FC = () => {
   if (path === '/mudar-plano' || path.startsWith('/mudar-plano')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
       <PlanChangeSign />
+    </Suspense>;
+  }
+
+  if (path === '/renovar-curso' || path.startsWith('/renovar-curso')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <CourseRenewalSign />
     </Suspense>;
   }
 

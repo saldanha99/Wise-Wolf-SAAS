@@ -444,6 +444,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/student-billing-link.ts \
   supabase/functions/_shared/student-billing-link.test.ts \
   supabase/functions/student-card-notify \
+  supabase/functions/student-renewal-notify \
+  supabase/functions/student-renewal-billing \
   scripts/asaas-adjudication/core.ts \
   scripts/asaas-adjudication/run.ts \
   scripts/asaas-adjudication/core.test.ts \
@@ -668,6 +670,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/_shared/student-billing-link.test.ts \
   supabase/functions/student-card-notify/core.test.ts \
   supabase/functions/student-card-notify/worker.test.ts \
+  supabase/functions/student-renewal-notify/source.test.ts \
+  supabase/functions/student-renewal-billing/source.test.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
@@ -794,6 +798,8 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno@2.9.5 check --frozen \
   supabase/functions/student-card-notify/index.ts \
+  supabase/functions/student-renewal-notify/index.ts \
+  supabase/functions/student-renewal-billing/index.ts \
   scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
@@ -1262,6 +1268,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260914235355_student_card_notification_outbox.sql"
   "supabase/migrations/20260914235645_guard_overdue_card_charge_obligations.sql"
   "supabase/migrations/20260915011556_student_course_renewal_proposals.sql"
+  "supabase/migrations/20260915030407_student_course_renewal_signing_and_notifications.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1474,6 +1481,8 @@ HARDENED_FUNCTIONS=(
   payment-split-notify
   monthly-reserve-notify
   student-card-notify
+  student-renewal-notify
+  student-renewal-billing
   cancel-prepaid-invoice
   sync-plan-change-billing
   search-slots
@@ -4202,6 +4211,8 @@ for protected_function in \
   cancel-prepaid-invoice \
   monthly-reserve-notify \
   student-card-notify \
+  student-renewal-notify \
+  student-renewal-billing \
   asaas-reconcile \
   broadcast-opportunity \
   coverage-admin \
