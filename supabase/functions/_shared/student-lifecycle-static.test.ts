@@ -11,6 +11,35 @@ async function source(relativePath: string): Promise<string> {
 }
 
 Deno.test({
+  name: "valida obrigações antes do PUT e nova trava financeira antes do POST",
+  permissions: { read: true },
+  async fn() {
+    const billing = await source("../update-student-billing-method/index.ts");
+    const validation = billing.indexOf(
+      "!await validateOverdueCardObligations(",
+    );
+    const cardPut = billing.indexOf("`/subscriptions/${encodedId}/creditCard`");
+    assertEquals(validation > 0 && validation < cardPut, true);
+    assertEquals(
+      billing.includes('"mark_student_overdue_card_charge_submitting_v2"'),
+      true,
+    );
+    assertEquals(
+      billing.includes('"mark_student_overdue_card_charge_submitting"'),
+      false,
+    );
+    const check = billing.indexOf(
+      "if (!overdueChargeFactsMatch(payment, finalGuard.entity))",
+    );
+    const mark = billing.indexOf("!await markChargeSubmitting(");
+    const post = billing.indexOf(
+      "`/payments/${encodedPaymentId}/payWithCreditCard`",
+    );
+    assertEquals(check > 0 && check < mark && mark < post, true);
+  },
+});
+
+Deno.test({
   name: "overdue card charge crosses a one-way submit fence",
   permissions: { read: true },
   async fn() {

@@ -364,34 +364,3 @@ Deno.test("guard de obrigação falha fechado e transmite somente snapshot finan
     true,
   );
 });
-
-Deno.test({
-  name: "valida obrigações antes do PUT e nova trava financeira antes do POST",
-  permissions: { read: true },
-  async fn() {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
-    const validation = source.indexOf(
-      "!await validateOverdueCardObligations(",
-    );
-    const cardPut = source.indexOf("`/subscriptions/${encodedId}/creditCard`");
-    assertEquals(validation > 0 && validation < cardPut, true);
-    assertEquals(
-      source.includes('"mark_student_overdue_card_charge_submitting_v2"'),
-      true,
-    );
-    assertEquals(
-      source.includes('"mark_student_overdue_card_charge_submitting"'),
-      false,
-    );
-    const check = source.indexOf(
-      "if (!overdueChargeFactsMatch(payment, finalGuard.entity))",
-    );
-    const mark = source.indexOf("!await markChargeSubmitting(");
-    const post = source.indexOf(
-      "`/payments/${encodedPaymentId}/payWithCreditCard`",
-    );
-    assertEquals(check > 0 && check < mark && mark < post, true);
-  },
-});
