@@ -1276,6 +1276,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915171000_lembrete_de_aula_volta_a_ler_a_agenda.sql"
   "supabase/migrations/20260915172000_renovacao_claim_sem_ambiguidade.sql"
   "supabase/migrations/20260915173000_professor_troca_horario_do_proprio_aluno.sql"
+  "supabase/migrations/20260915174000_renovacao_com_novas_condicoes_e_horario.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1388,6 +1389,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/lancamento_de_aula_sem_calcular_a_folha_inteira.sql"
   "supabase/tests/lembrete_de_aula_volta_a_ler_a_agenda.sql"
   "supabase/tests/professor_troca_horario_do_proprio_aluno.sql"
+  "supabase/tests/renovacao_com_novas_condicoes_e_horario.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.
