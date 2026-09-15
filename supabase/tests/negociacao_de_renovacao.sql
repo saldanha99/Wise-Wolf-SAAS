@@ -111,8 +111,15 @@ select pg_temp.assert_true((select public.approve_renewal_negotiation('renewal-n
   'segunda aprovação não foi idempotente');
 
 -- [6] Recusa do professor atual → pergunta à Teacher Livre (grade às 16:00, sem choque).
+-- Desde 20260915177000, com alternativa real o aluno é perguntado ANTES: aqui ele
+-- escolhe seguir com a atual, que então é consultada e recusa.
 insert into neg select 'open2', public.open_renewal_negotiation('renewal-negotiation-qa', '7e180000-0000-4000-8000-000000000035',
   3::smallint, '[{"day":"Segunda","time":"16:00"},{"day":"Quarta","time":"16:00"},{"day":"Sexta","time":"16:00"}]', 'Aluno pediu 16h');
+select pg_temp.assert_true((select v->>'action' = 'ask_student_teacher_choice' from neg where k = 'open2'),
+  'com professor livre nos horários, o aluno deveria ser perguntado antes');
+insert into neg select 'keep2', public.student_choose_renewal_teacher('renewal-negotiation-qa', '7e180000-0000-4000-8000-000000000035', true);
+select pg_temp.assert_true((select v->>'action' = 'ask_teacher' and v->>'teacher_id' = '7e180000-0000-4000-8000-000000000032'
+  from neg where k = 'keep2'), 'seguir com a atual deveria consultá-la');
 insert into neg select 'decline2', public.respond_renewal_teacher_request('renewal-negotiation-qa', '7e180000-0000-4000-8000-000000000032',
   null, 'DECLINE', null, 'Não consigo');
 select pg_temp.assert_true((select v->>'action' = 'ask_other_teacher' and v->>'teacher_id' = '7e180000-0000-4000-8000-000000000033'
