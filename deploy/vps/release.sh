@@ -1286,6 +1286,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915175000_negociacao_de_renovacao.sql"
   "supabase/migrations/20260915176000_mesmo_destinatario_com_e_sem_nono_digito.sql"
   "supabase/migrations/20260915177000_renovacao_escolha_de_professor_e_prazo.sql"
+  "supabase/migrations/20260915178000_renovacao_pagina_com_marca_da_escola.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
