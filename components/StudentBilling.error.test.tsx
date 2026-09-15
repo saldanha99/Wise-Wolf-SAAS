@@ -31,7 +31,7 @@ vi.mock('./contexts/StudentContext', () => ({
 }));
 
 vi.mock('./BillingMethodManager', () => ({
-    default: () => <div>Gestão da forma de pagamento</div>,
+    default: ({ studentId }: { studentId: string }) => <div data-testid="billing-method" data-student-id={studentId}>Gestão da forma de pagamento</div>,
 }));
 
 const failedPaymentQuery = () => {
@@ -67,9 +67,26 @@ beforeEach(() => {
     mocks.getSchoolInfo.mockResolvedValue({ name: 'Escola Teste' });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); window.history.replaceState(null, '', '/'); });
 
 describe('erro do financeiro do aluno', () => {
+    it('link financeiro mantém a conta autenticada e o bloco disponível na suspensão financeira', async () => {
+        window.history.replaceState(null, '', '/financeiro/forma-pagamento');
+        mocks.from.mockImplementation(() => successfulPaymentQuery([]));
+        render(<StudentBilling user={{ id: 'student-1', tenantId: 'tenant-1' }} />);
+        expect(await screen.findByText(/Abrir este link não altera o cartão nem cobra valores/i)).toBeInTheDocument();
+        expect(screen.getByTestId('billing-method')).toHaveAttribute('data-student-id', 'student-1');
+        await waitFor(() => expect(screen.getByRole('region', { name: 'Forma de pagamento da sua conta' })).toHaveFocus());
+    });
+
+    it('não usa user_id na URL para escolher o titular', async () => {
+        window.history.replaceState(null, '', '/financeiro/forma-pagamento?user_id=another-student');
+        mocks.from.mockImplementation(() => successfulPaymentQuery([]));
+        render(<StudentBilling user={{ id: 'student-1', tenantId: 'tenant-1' }} />);
+        expect(await screen.findByTestId('billing-method')).toHaveAttribute('data-student-id', 'student-1');
+        expect(screen.queryByText(/Abrir este link não altera/i)).not.toBeInTheDocument();
+    });
+
     it('não confunde falha de consulta com ausência de cobranças e permite tentar novamente', async () => {
         mocks.from.mockImplementation(() => failedPaymentQuery());
 

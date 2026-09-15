@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CreditCard,
   CheckCircle,
@@ -19,6 +19,7 @@ import { getSchoolInfo } from '../lib/schoolInfo';
 import { buildSchoolSupportContact, type SupportContact } from '../lib/supportContact';
 import BillingMethodManager from './BillingMethodManager';
 import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
+import { isStudentBillingMethodLink } from '../lib/studentBillingNavigation';
 
 interface StudentBillingProps {
   user: Pick<UserType, 'id' | 'tenantId'>;
@@ -45,6 +46,8 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [supportContact, setSupportContact] = useState<SupportContact | null>(null);
+  const billingMethodRef = useRef<HTMLElement>(null);
+  const billingLinkRequested = isStudentBillingMethodLink(window.location);
 
   // Derived from Context
   const billingInfo = studentContext?.profile; // Contains monthly_fee, due_day, status_financial
@@ -121,6 +124,15 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
       active = false;
     };
   }, [studentContext?.profile?.tenant_id, user.tenantId]);
+
+  useEffect(() => {
+    if (!billingLinkRequested || contextLoading || loadingHistory) return;
+    const frame = window.requestAnimationFrame(() => {
+      billingMethodRef.current?.scrollIntoView?.({ block: 'start' });
+      billingMethodRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [billingLinkRequested, contextLoading, loadingHistory, user.id]);
 
   if (contextLoading || loadingHistory) {
     return (
@@ -403,7 +415,14 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
       </div>
 
-      <BillingMethodManager studentId={user.id} selfService />
+      <section ref={billingMethodRef} id="forma-pagamento" tabIndex={-1} aria-label="Forma de pagamento da sua conta" className="scroll-mt-6 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tenant-primary">
+        {billingLinkRequested && (
+          <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+            Você está no financeiro {studentContext?.profile?.full_name ? <>de <b>{studentContext.profile.full_name}</b></> : 'da conta conectada'}. Confira se esta é a conta do aluno correto. Se não for, saia e entre na conta certa. Abrir este link não altera o cartão nem cobra valores; qualquer cobrança vencida será apresentada para sua confirmação.
+          </p>
+        )}
+        <BillingMethodManager studentId={user.id} selfService />
+      </section>
 
       {/* History Table */}
       <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">

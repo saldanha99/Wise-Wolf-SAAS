@@ -21,7 +21,22 @@ Deno.test({
     assertStringIncludes(billing, '"claim_student_overdue_card_charge"');
     assertStringIncludes(
       billing,
-      '"mark_student_overdue_card_charge_submitting"',
+      '"mark_student_overdue_card_charge_submitting_v2"',
+    );
+    const financialFence = await source(
+      "../../migrations/20260914235645_guard_overdue_card_charge_obligations.sql",
+    );
+    assertStringIncludes(
+      financialFence,
+      "private.validate_overdue_card_obligations",
+    );
+    assertStringIncludes(
+      financialFence,
+      "private.student_payment_provider_block_reason(v_payment.id)",
+    );
+    assertStringIncludes(
+      financialFence,
+      "revoke execute on function public.mark_student_overdue_card_charge_submitting(uuid,uuid)",
     );
     assertStringIncludes(billing, '"finish_student_overdue_card_charge"');
     assertStringIncludes(billing, "ambiguousProviderMutationStatus(");

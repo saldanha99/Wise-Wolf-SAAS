@@ -441,6 +441,9 @@ node --test scripts/generate-hub-static-html.test.mjs
 node --test scripts/operational-tracking-privacy.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
+  supabase/functions/_shared/student-billing-link.ts \
+  supabase/functions/_shared/student-billing-link.test.ts \
+  supabase/functions/student-card-notify \
   scripts/asaas-adjudication/core.ts \
   scripts/asaas-adjudication/run.ts \
   scripts/asaas-adjudication/core.test.ts \
@@ -662,6 +665,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/send-class-notification/index.ts
 npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
+  supabase/functions/_shared/student-billing-link.test.ts \
+  supabase/functions/student-card-notify/core.test.ts \
+  supabase/functions/student-card-notify/worker.test.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
@@ -787,6 +793,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/school-admin/offboarding-provider-proof.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno@2.9.5 check --frozen \
+  supabase/functions/student-card-notify/index.ts \
   scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
@@ -1252,6 +1259,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260914202244_corroborated_bound_payment_observation.sql"
   "supabase/migrations/20260914205041_private_asaas_payment_adjudication.sql"
   "supabase/migrations/20260914210351_unclassified_receipt_reporting.sql"
+  "supabase/migrations/20260914235355_student_card_notification_outbox.sql"
+  "supabase/migrations/20260914235645_guard_overdue_card_charge_obligations.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1364,6 +1373,8 @@ DATABASE_TEST_RELATIVES=(
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.
+  # student_card_notifications.sql also runs only in the network-less QA:
+  # its global materializer/clock cases must never inspect real recipients.
   "supabase/tests/prepayment_coverage_and_management.sql"
   "supabase/tests/cancel_prepaid_invoice_intents.sql"
 )
@@ -1386,6 +1397,7 @@ NGINX_CONFIG_RELATIVE="deploy/vps/proxy/nginx-spa.conf"
 # Por isso ele não integra o artefato, e os smokes 401 abaixo validam essa barreira.
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
 SHARED_AUTOMATION_AUTH_RELATIVE="supabase/functions/_shared/automation-auth.ts"
+SHARED_STUDENT_BILLING_LINK_RELATIVE="supabase/functions/_shared/student-billing-link.ts"
 SHARED_INVITE_REGISTRATION_RELATIVE="supabase/functions/_shared/invite-registration.ts"
 SHARED_OPPORTUNITY_DISPATCH_RELATIVE="supabase/functions/_shared/opportunity-dispatch.ts"
 SHARED_PAYMENT_AUTH_RELATIVE="supabase/functions/_shared/payment-auth.ts"
@@ -1460,6 +1472,7 @@ HARDENED_FUNCTIONS=(
   dre-report
   payment-split-notify
   monthly-reserve-notify
+  student-card-notify
   cancel-prepaid-invoice
   sync-plan-change-billing
   search-slots
@@ -1544,6 +1557,7 @@ done
   die "configuração Nginx auditada ausente"
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
 [[ -s "$SHARED_AUTOMATION_AUTH_RELATIVE" ]] || die "guard de automações ausente"
+[[ -s "$SHARED_STUDENT_BILLING_LINK_RELATIVE" ]] || die "link seguro de atualização de cartão ausente"
 [[ -s "$SHARED_INVITE_REGISTRATION_RELATIVE" ]] || die "guard de convites ausente"
 [[ -s "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" ]] || die "guard de disparo de oportunidades ausente"
 [[ -s "$SHARED_PAYMENT_AUTH_RELATIVE" ]] || die "guard de pagamentos ausente"
@@ -1665,6 +1679,7 @@ append_release_input_checksum() {
   for shared_relative in \
     "$SHARED_AUTH_RELATIVE" \
     "$SHARED_AUTOMATION_AUTH_RELATIVE" \
+    "$SHARED_STUDENT_BILLING_LINK_RELATIVE" \
     "$SHARED_INVITE_REGISTRATION_RELATIVE" \
     "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
     "$SHARED_PAYMENT_AUTH_RELATIVE" \
@@ -1818,6 +1833,8 @@ rsync -a -- "$SHARED_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/request-auth.ts"
 rsync -a -- "$SHARED_AUTOMATION_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/automation-auth.ts"
+rsync -a -- "$SHARED_STUDENT_BILLING_LINK_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/student-billing-link.ts"
 rsync -a -- "$SHARED_INVITE_REGISTRATION_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/invite-registration.ts"
 rsync -a -- "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
@@ -2242,6 +2259,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/trial-timeout.ts" ]]
 [[ -s "$release_dir/functions/_shared/sdr-scheduling.ts" && -s "$release_dir/functions/_shared/sdr-lifecycle.ts" && -s "$release_dir/functions/_shared/sdr-teacher-reminders.ts" ]]
 [[ -s "$release_dir/functions/_shared/interview-notifications.ts" ]]
+[[ -s "$release_dir/functions/_shared/student-billing-link.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -3797,7 +3815,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts lesson-quality-reply.ts authorized-resume-path.ts interview-notifications.ts trial-timeout.ts sdr-scheduling.ts sdr-lifecycle.ts sdr-teacher-reminders.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts student-billing-link.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts lesson-quality-reply.ts authorized-resume-path.ts interview-notifications.ts trial-timeout.ts sdr-scheduling.ts sdr-lifecycle.ts sdr-teacher-reminders.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
@@ -4177,6 +4195,7 @@ for protected_function in \
   accept-opportunity \
   cancel-prepaid-invoice \
   monthly-reserve-notify \
+  student-card-notify \
   asaas-reconcile \
   broadcast-opportunity \
   coverage-admin \
@@ -4314,6 +4333,10 @@ wait_for_service_http_status 403 "cancelamento de cobrança exige direção aute
   --data '{}'
 service_http_status_once 200 "fila de reserva em testMode sem consultas ou efeitos" \
   -X POST "$api_url/functions/v1/monthly-reserve-notify" \
+  -H 'Content-Type: application/json' \
+  --data '{"sweep":true,"testMode":true}'
+service_http_status_once 200 "aviso de cartão em testMode sem consultas ou efeitos" \
+  -X POST "$api_url/functions/v1/student-card-notify" \
   -H 'Content-Type: application/json' \
   --data '{"sweep":true,"testMode":true}'
 unset service_role_key

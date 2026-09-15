@@ -16,6 +16,7 @@ export type SubscriptionPayment = {
   status: string;
   dueDate: string;
   value: number;
+  billingType?: string | null;
 };
 
 export const text = (value: unknown): string =>
@@ -125,10 +126,32 @@ export function parseSubscriptionPayments(
       !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(amount) ||
       amount <= 0 || payment.deleted === true
     ) return [];
-    return [{ id, subscription, status, dueDate, value: amount }];
+    if (hasOverdueProviderReversal(payment)) {
+      throw new Error("overdue_provider_reversal_requires_review");
+    }
+    return [{
+      id,
+      subscription,
+      status,
+      dueDate,
+      value: amount,
+      billingType: text(payment.billingType).toUpperCase() || null,
+    }];
   }).sort((left, right) =>
     left.dueDate.localeCompare(right.dueDate) || left.id.localeCompare(right.id)
   );
+}
+
+function hasOverdueProviderReversal(payment: Record<string, unknown>): boolean {
+  if (Number(payment.refundedValue ?? 0) !== 0 || payment.chargeback != null) {
+    return true;
+  }
+  if (payment.refunds == null) return false;
+  return !Array.isArray(payment.refunds) ||
+    payment.refunds.some((refund) =>
+      !refund || typeof refund !== "object" ||
+      !["CANCELLED", "DENIED"].includes(text(refund.status).toUpperCase())
+    );
 }
 
 export function overdueSummary(payments: SubscriptionPayment[]) {
@@ -143,9 +166,84 @@ export function overdueSummary(payments: SubscriptionPayment[]) {
 }
 
 export function overdueConfirmationKey(payments: SubscriptionPayment[]) {
-  return payments.length === 0
-    ? "NO_OVERDUE_PAYMENTS"
-    : payments.map((payment) => payment.id).sort().join("|");
+  if (payments.length === 0) return "NO_OVERDUE_PAYMENTS";
+  // Versioned financial snapshot, not an authorization token. Only selected
+  // billing facts cross this boundary; never serialize the provider payload.
+  const snapshots = payments.map((payment) => {
+    const amountCents = Math.round(payment.value * 100);
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+      throw new Error("overdue_confirmation_amount_invalid");
+    }
+    return JSON.stringify([
+      payment.id,
+      amountCents,
+      payment.dueDate,
+      text(payment.billingType).toUpperCase() || null,
+      text(payment.status).toUpperCase(),
+      payment.subscription,
+    ]);
+  }).sort();
+  return `OVERDUE_V2:[${snapshots.join(",")}]`;
+}
+
+export function overduePaymentSnapshot(payment: SubscriptionPayment) {
+  return {
+    id: payment.id,
+    subscription: payment.subscription,
+    status: payment.status,
+    dueDate: payment.dueDate,
+    value_cents: Math.round(payment.value * 100),
+    billingType: text(payment.billingType).toUpperCase() || null,
+  };
+}
+
+/** Updating the subscription may legitimately convert PIX/BOLETO to card.
+ * It must never change the amount, due date or identity that the payer approved. */
+export function overdueChargeFactsMatch(
+  approved: SubscriptionPayment,
+  observed: Record<string, unknown>,
+): boolean {
+  if (hasOverdueProviderReversal(observed)) return false;
+  const parsed = parseSubscriptionPayments([observed], approved.subscription);
+  if (parsed.length !== 1) return false;
+  const current = parsed[0];
+  return current.id === approved.id && current.dueDate === approved.dueDate &&
+    Math.round(current.value * 100) === Math.round(approved.value * 100) &&
+    [text(approved.billingType).toUpperCase(), "CREDIT_CARD"].includes(
+      text(current.billingType).toUpperCase(),
+    );
+}
+
+export async function validateOverdueCardObligations(
+  client: {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: unknown }>;
+  },
+  input: {
+    tenantId: string;
+    studentId: string;
+    subscriptionId: string;
+    payments: SubscriptionPayment[];
+  },
+): Promise<boolean> {
+  try {
+    const result = await client.rpc(
+      "validate_student_overdue_card_obligations",
+      {
+        p_tenant_id: input.tenantId,
+        p_student_id: input.studentId,
+        p_subscription_id: input.subscriptionId,
+        p_payment_snapshots: input.payments.map(overduePaymentSnapshot),
+      },
+    );
+    return !result.error && !!result.data && typeof result.data === "object" &&
+      !Array.isArray(result.data) &&
+      (result.data as Record<string, unknown>).ok === true;
+  } catch {
+    return false;
+  }
 }
 
 const SETTLED_OR_PROCESSING_STATUSES = new Set([

@@ -78,5 +78,14 @@ Deno.test("gera resposta personalizada com links e orientações de segurança",
   assertStringIncludes(reply, "Cartão de crédito");
   assertStringIncludes(reply, "nunca envie o número, validade ou código");
   assertStringIncludes(reply, "próximas mensalidades");
-  assertStringIncludes(reply, "processada na hora");
+  assertStringIncludes(reply, "/financeiro/forma-pagamento");
+  assertStringIncludes(
+    reply,
+    "Abrir o link não altera o cartão nem cobra valores",
+  );
+  assertStringIncludes(reply, "faturas vencidas");
+  assertStringIncludes(reply, "pedirá sua confirmação");
+  assertStringIncludes(reply, "ao nosso servidor");
+  assertEquals(reply.includes("criptografia de ponta a ponta"), false);
+  assertEquals(reply.includes("processada na hora"), false);
 });

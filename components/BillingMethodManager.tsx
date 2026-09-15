@@ -178,7 +178,7 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
           <div className="flex items-start gap-2 text-xs font-medium text-blue-800 dark:text-blue-300">
             <ShieldCheck className="mt-0.5 shrink-0" size={16} />
             <p>
-              Os dados seguem direto para o Asaas e não ficam salvos no sistema.{' '}
+              Os dados são enviados por conexão segura ao nosso servidor, que os encaminha ao Asaas para processamento. Não envie dados do cartão pelo WhatsApp.{' '}
               {overdue.count > 0
                 ? <><b>{money(overdue.total)}</b> {overdue.count === 1 ? `da fatura vencida em ${date(overdue.oldestDueDate)}` : `de ${overdue.count} faturas vencidas`} será cobrado agora. As próximas mensalidades seguirão na recorrência.</>
                 : <>O aluno está em dia: nada será cobrado agora. O cartão será usado nas próximas mensalidades.</>}

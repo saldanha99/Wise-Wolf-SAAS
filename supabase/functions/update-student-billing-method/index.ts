@@ -23,7 +23,9 @@ import {
   type BillingType,
   clientIp,
   digits,
+  overdueChargeFactsMatch,
   overdueConfirmationKey,
+  overduePaymentSnapshot,
   overdueSummary,
   parseBillingType,
   parseCreditCard,
@@ -33,6 +35,7 @@ import {
   safeProviderMessage,
   type SubscriptionPayment,
   text,
+  validateOverdueCardObligations,
 } from "./core.ts";
 
 const corsHeaders = {
@@ -340,10 +343,15 @@ async function markChargeSubmitting(
     Awaited<ReturnType<typeof authorizePaymentTarget>>["authorization"]
   >,
   claim: ChargeClaim,
+  payment: SubscriptionPayment,
 ) {
   const { data, error } = await authorization.admin.rpc(
-    "mark_student_overdue_card_charge_submitting",
-    { p_claim_id: claim.id, p_claim_token: claim.claimToken },
+    "mark_student_overdue_card_charge_submitting_v2",
+    {
+      p_claim_id: claim.id,
+      p_claim_token: claim.claimToken,
+      p_payment_snapshot: overduePaymentSnapshot(payment),
+    },
   );
   return !error && data?.ok === true;
 }
@@ -459,9 +467,30 @@ async function chargeOverduePayment(
     };
   }
 
+  if (!overdueChargeFactsMatch(payment, finalGuard.entity)) {
+    await finishChargeClaim(
+      authorization,
+      acquisition.claim,
+      "BLOCKED",
+      finalStatus,
+      finalGuard.providerStatus,
+      "approved_obligation_changed",
+    );
+    return {
+      success: false,
+      error:
+        "O valor ou vencimento da fatura mudou. Confira novamente antes de cobrar.",
+    };
+  }
+
   // Crossing this fence is irreversible: SUBMITTING and UNKNOWN are never
   // reclaimed for another POST, even after a lease expires.
-  if (!await markChargeSubmitting(authorization, acquisition.claim)) {
+  if (
+    !await markChargeSubmitting(authorization, acquisition.claim, {
+      ...payment,
+      billingType: text(finalGuard.entity.billingType).toUpperCase(),
+    })
+  ) {
     return {
       success: false,
       error: "A tentativa perdeu a trava de seguranca antes da cobranca.",
@@ -836,6 +865,20 @@ serve(async (req) => {
           success: false,
           error:
             "A situacao das faturas mudou. Confira novamente antes de cadastrar o cartao.",
+        }, 409);
+      }
+      if (
+        !await validateOverdueCardObligations(authorization.admin, {
+          tenantId,
+          studentId: userId,
+          subscriptionId,
+          payments: overduePayments,
+        })
+      ) {
+        return json({
+          success: false,
+          error:
+            "As faturas precisam de revisão financeira: pode haver mês já coberto, pagamento em revisão ou cobrança sem vínculo confirmado. Nenhum cartão foi alterado e nenhuma cobrança foi enviada.",
         }, 409);
       }
       immediateChargePayload = {

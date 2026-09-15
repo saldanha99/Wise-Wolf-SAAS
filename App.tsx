@@ -25,6 +25,7 @@ import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from '.
 import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
+import { studentBillingDestination } from './lib/studentBillingNavigation';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -269,6 +270,12 @@ const App: React.FC = () => {
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
   const [tenantMemberships, setTenantMemberships] = useState<TenantMembershipOption[]>([]);
   const [activeTab, setActiveTab] = useState('dashboard');
+  // The URL is only a destination. The authenticated account determines the
+  // payer; no token, user ID, role or tenant can be supplied by this link.
+  useEffect(() => {
+    const destination = studentBillingDestination(window.location, user);
+    if (destination) setActiveTab(destination);
+  }, [user?.id, user?.role]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
   const [notifOpen, setNotifOpen] = useState(false); // Dropdown de notificações (pendências do diretor)

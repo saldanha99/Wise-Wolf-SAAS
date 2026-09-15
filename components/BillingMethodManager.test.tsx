@@ -14,6 +14,22 @@ const card = () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('<BillingMethodManager />', () => {
+  it('abrir o bloco ou desistir da confirmação nunca atualiza cartão nem cobra', async () => {
+    const load = vi.fn().mockResolvedValue({ success: true, billingType: 'CREDIT_CARD',
+      overdue: { count: 1, total: 229, oldestDueDate: '2026-08-10', confirmationKey: 'pay_august' } });
+    const update = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<BillingMethodManager studentId="student-self" selfService loadBillingMethod={load} updateBillingMethod={update} />);
+    await screen.findByText(/Atual no Asaas:/i);
+    expect(load).toHaveBeenCalledWith('student-self');
+    expect(update).not.toHaveBeenCalled();
+    expect(screen.getByText(/ao nosso servidor, que os encaminha ao Asaas/i)).toBeInTheDocument();
+    card();
+    fireEvent.click(screen.getByRole('button', { name: /trocar cartão/i }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('confirma e cobra a fatura vencida, preservando a recorrência', async () => {
     const load = vi.fn().mockResolvedValue({
       success: true,

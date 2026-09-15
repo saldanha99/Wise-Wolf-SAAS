@@ -1,5 +1,6 @@
 // Detecção de intenção de troca de forma de pagamento de alunos e geração de
 // resposta autônoma segura para o WhatsApp da escola.
+import { buildStudentBillingLink } from "../_shared/student-billing-link.ts";
 
 function normalizeText(raw: string): string {
   return (raw || "")
@@ -87,18 +88,17 @@ export function studentBillingMethodChangeReply(
     .split(/\s+/)[0]
     .replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, "");
   const greeting = rawFirst ? `Oi, ${rawFirst}!` : "Oi!";
-  const portal =
-    (options?.portalUrl || "https://system.wisewolflanguage.com.br").trim();
+  const portal = buildStudentBillingLink(options?.portalUrl);
 
   return `${greeting} Você pode alterar sua forma de pagamento com total segurança diretamente pelo seu Portal do Aluno:
 
 1️⃣ Acesse o portal: ${portal}
-2️⃣ Entre no menu *Financeiro* (ou *Mensalidades*)
+2️⃣ Faça login na conta do aluno. O link abre o *Financeiro*, no bloco *Forma de pagamento*.
 3️⃣ No bloco *Forma de pagamento*, selecione *Cartão de crédito* e cadastre o seu cartão.
 
-🔒 *Segurança:* Por proteção aos seus dados, nunca envie o número, validade ou código de segurança do seu cartão por mensagem aqui no WhatsApp. No portal, seus dados são transmitidos com criptografia de ponta a ponta direto para a operadora.
+🔒 *Segurança:* Por proteção aos seus dados, nunca envie o número, validade ou código de segurança do seu cartão por mensagem aqui no WhatsApp. No portal, os dados são enviados por conexão segura ao nosso servidor, que os encaminha ao Asaas para processamento.
 
-💳 O cartão fica salvo automaticamente para as próximas mensalidades e, se houver alguma mensalidade em aberto, ela já é processada na hora!
+💳 Abrir o link não altera o cartão nem cobra valores. Antes de confirmar a troca, confira a conta do aluno e as faturas vencidas: se houver, o portal mostrará o total e pedirá sua confirmação para cobrá-las agora. As próximas mensalidades continuam agendadas.
 
 Se precisar de qualquer ajuda, nossa equipe também já recebeu seu recado e está à disposição por aqui 😊`;
 }

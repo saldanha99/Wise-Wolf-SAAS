@@ -55,3 +55,8 @@ entrypoint = "./functions/monthly-reserve-notify/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/cancel-prepaid-invoice/index.ts"
+
+[functions.student-card-notify]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/student-card-notify/index.ts"
