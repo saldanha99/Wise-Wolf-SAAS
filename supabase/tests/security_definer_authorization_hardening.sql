@@ -321,6 +321,7 @@ select pg_temp.assert_true(
           -- Family quality routes use scoped, expiring bearer tokens, with
           -- contact revocation and replay checks covered by their SQL suites.
           'public.get_schedule_change_public(text)',
+          'public.get_student_course_renewal_public(text)',
           'public.respond_schedule_change_public(text,boolean)',
           'public.submit_lesson_quality_feedback(text,jsonb)',
           'public.get_plan_change_public(text)',
@@ -330,6 +331,7 @@ select pg_temp.assert_true(
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
+          'public.sign_student_course_renewal(text,text)',
           'public.sign_student_plan_change(text,text)'
         ]::text[]) as reviewed(signature)
         where to_regprocedure(reviewed.signature) = procedure.oid
@@ -350,6 +352,8 @@ begin
     'public.get_schedule_change_public(text)',
     'public.respond_schedule_change_public(text,boolean)',
     'public.submit_lesson_quality_feedback(text,jsonb)',
+    'public.get_student_course_renewal_public(text)',
+    'public.sign_student_course_renewal(text,text)',
     'public.resolve_public_tenant(text)',
     'public.hub_get_public_settings()'
   ]
