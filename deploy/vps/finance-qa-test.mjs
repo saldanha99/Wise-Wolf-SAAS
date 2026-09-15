@@ -25,6 +25,7 @@ const migrations = [
   'supabase/migrations/20260914210351_unclassified_receipt_reporting.sql',
   'supabase/migrations/20260914235355_student_card_notification_outbox.sql',
   'supabase/migrations/20260914235645_guard_overdue_card_charge_obligations.sql',
+  'supabase/migrations/20260915011556_student_course_renewal_proposals.sql',
 ];
 const tests = process.argv.slice(2);
 if (!tests.length) throw new Error('Informe pelo menos um arquivo supabase/tests/*.sql.');

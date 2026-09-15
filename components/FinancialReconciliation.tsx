@@ -5,6 +5,7 @@ import {
     FileWarning, Loader2, MessageSquare, RefreshCw, UserMinus, UserX, Wallet,
 } from 'lucide-react';
 import { User } from '../types';
+import CourseRenewalProposals from './CourseRenewalProposals';
 
 // Reconciliação financeira — estados que ninguém vigia.
 //
@@ -204,6 +205,8 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                     <RefreshCw size={13} /> Recalcular
                 </button>
             </header>
+
+            <CourseRenewalProposals tenantId={tenantId} />
 
             {asaasErro && (
                 <div role="alert" className="flex items-start gap-3 rounded-3xl border border-red-500/40 bg-red-500/5 p-5 text-sm font-bold text-brand-text">

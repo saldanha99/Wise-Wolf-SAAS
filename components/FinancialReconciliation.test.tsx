@@ -21,6 +21,9 @@ const emptyReconciliation = {
 beforeEach(() => {
   rpc.mockReset();
   rpc.mockImplementation((name: string) => {
+    if (name === 'list_student_course_renewal_proposals') {
+      return Promise.resolve({ data: { items: [] }, error: null });
+    }
     if (name === 'financial_reconciliation') {
       return Promise.resolve({ data: emptyReconciliation, error: null });
     }
