@@ -64,7 +64,10 @@ export function parseRenewalSlots(text: string): RenewalSlot[] {
     if (tokens.some((token) => token.time && token.index === match.index)) {
       continue;
     }
-    tokens.push({ index: match.index ?? 0, time: `${pad2(Number(match[1]))}:00` });
+    tokens.push({
+      index: match.index ?? 0,
+      time: `${pad2(Number(match[1]))}:00`,
+    });
   }
   tokens.sort((a, b) => a.index - b.index);
 
@@ -113,13 +116,17 @@ export function parseRenewalFrequency(text: string): number | null {
     cinco: 5,
     seis: 6,
   };
-  const word = source.match(/\b(uma|duas|tres|quatro|cinco|seis)\s+vez(?:es)?\b/);
+  const word = source.match(
+    /\b(uma|duas|tres|quatro|cinco|seis)\s+vez(?:es)?\b/,
+  );
   return word ? words[word[1]] : null;
 }
 
 /** Código curto da mensagem (#A1B2C3D4). */
 export function renewalReplyCode(text: string): string | null {
-  const match = String(text || "").toUpperCase().match(/(?:#|\b)([A-F0-9]{8})\b/);
+  const match = String(text || "").toUpperCase().match(
+    /(?:#|\b)([A-F0-9]{8})\b/,
+  );
   return match?.[1] || null;
 }
 
@@ -142,10 +149,16 @@ export function classifyRenewalTeacherReply(text: string): RenewalTeacherReply {
   if (/\b(talvez|acho que|nao sei|vou ver|confirmo depois)\b/.test(reply)) {
     return { decision: "UNKNOWN" };
   }
-  if (/^(nao|n)\b|\b(nao consigo|nao posso|sem horario|indisponivel|impossivel)\b/.test(reply)) {
+  if (
+    /^(nao|n)\b|\b(nao consigo|nao posso|sem horario|indisponivel|impossivel)\b/
+      .test(reply)
+  ) {
     return { decision: "DECLINE" };
   }
-  if (/^(sim|s|pode|posso|consigo|confirmo|aceito|fechado|ok|beleza|combinado)\b/.test(reply)) {
+  if (
+    /^(sim|s|pode|posso|consigo|confirmo|aceito|fechado|ok|beleza|combinado)\b/
+      .test(reply)
+  ) {
     return { decision: "ACCEPT" };
   }
   return { decision: "UNKNOWN" };
@@ -195,14 +208,22 @@ export function teacherRenewalRequestMessage(input: {
   currentTeacher: boolean;
 }): string {
   const intro = input.currentTeacher
-    ? `a renovação de *${input.studentName || "seu aluno"}* está em andamento e ele(a) pediu`
-    : `temos uma renovação de *${input.studentName || "aluno"}* procurando professor. O pedido é`;
+    ? `a renovação de *${
+      input.studentName || "seu aluno"
+    }* está em andamento e ele(a) pediu`
+    : `temos uma renovação de *${
+      input.studentName || "aluno"
+    }* procurando professor. O pedido é`;
   const busy = input.busySlots.length
-    ? `\n⚠️ Pela agenda você já tem aula em ${renewalSlotsText(input.busySlots)}.`
+    ? `\n⚠️ Pela agenda você já tem aula em ${
+      renewalSlotsText(input.busySlots)
+    }.`
     : "";
   return `Oi, ${firstName(input.teacherName, "teacher")}! ${
     intro.charAt(0).toUpperCase() + intro.slice(1)
-  } *${input.classesPerWeek}x por semana*: ${renewalSlotsText(input.slots)}.${busy}\n\nVocê consegue? Responda:\n• *SIM #${input.code}* — fechado\n• *NÃO #${input.code}* — não consigo\n• ou proponha outro horário, ex.: *#${input.code} seg 15h, qua 15h, sex 15h*`;
+  } *${input.classesPerWeek}x por semana*: ${
+    renewalSlotsText(input.slots)
+  }.${busy}\n\nVocê consegue? Responda:\n• *SIM #${input.code}* — fechado\n• *NÃO #${input.code}* — não consigo\n• ou proponha outro horário, ex.: *#${input.code} seg 15h, qua 15h, sex 15h*`;
 }
 
 export function managementRenewalApprovalMessage(input: {
@@ -221,7 +242,9 @@ export function managementRenewalApprovalMessage(input: {
     : `*aprovar #${input.code} <valor>* — ex.: *aprovar #${input.code} 261*`;
   return `🔁 *RENOVAÇÃO — APROVAR?*\n\n👤 Aluno(a): *${
     input.studentName || "Aluno"
-  }*\n👩‍🏫 ${input.teacherName || "Professor(a)"} confirmou\n🕑 ${input.classesPerWeek}x por semana: ${
+  }*\n👩‍🏫 ${
+    input.teacherName || "Professor(a)"
+  } confirmou\n🕑 ${input.classesPerWeek}x por semana: ${
     renewalSlotsText(input.slots)
   }\n${fee}\n\nPara aprovar: ${approve}\nPara recusar: *recusar #${input.code}*`;
 }
