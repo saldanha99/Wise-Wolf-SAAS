@@ -33,6 +33,13 @@ import {
   studentBillingMethodChangeReply,
 } from "./billing-method-intent.ts";
 import {
+  handleRenewalManagementCommand,
+  handleRenewalStudentMessage,
+  handleRenewalTeacherReply,
+  type RenewalBotDeps,
+  renewalStudentForPhone,
+} from "./renewal-bot.ts";
+import {
   type EvolutionSendResult,
   sendWhatsText,
   sendWhatsTextDetailed,
@@ -2094,6 +2101,37 @@ async function savePendingManagementAction(
   return { ok: true, actionId, code: shortManagementActionCode(actionId) };
 }
 
+/**
+ * Dependências do bot da renovação (`renewal-bot.ts`). O roteiro fica lá, testável
+ * sem rede; aqui só entregamos envio, registro, IA, banco e o grupo da Gestão.
+ */
+function renewalBotDeps(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  identity?: { name?: string; portalUrl?: string | null },
+): RenewalBotDeps {
+  return {
+    rpc: (fn, args) => sb.rpc(fn, args),
+    tenantId,
+    schoolName: identity?.name || "nossa escola",
+    portalUrl: identity?.portalUrl || "https://system.wisewolflanguage.com.br",
+    send: (to, text) => sendWhats(instance, to, text),
+    log: (phone, direction, text, meta) =>
+      logMsg(sb, tenantId, phone, "renewal", direction, text, meta),
+    ai: (system, userText) =>
+      callAI(system, [{ role: "user", content: userText }], undefined, {
+        temperature: 0.3,
+      }),
+    managementGroup: async () => {
+      const { data } = await sb.from("dre_report_settings")
+        .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
+      const destino = String(data?.destino || "").trim();
+      return data?.is_active && /@g\.us$/.test(destino) ? destino : null;
+    },
+  };
+}
+
 async function handleGestao(
   sb: any,
   instance: string,
@@ -2198,6 +2236,18 @@ async function handleGestao(
       hourAgo,
     );
   if ((count ?? 0) >= 20) return;
+
+  // ── Aprovação de renovação negociada pelo bot ("aprovar #código 261") ──
+  // Tem código próprio e pode esperar horas: não ocupa o único espaço de ação
+  // pendente do grupo. Quem pode aprovar o banco confere (diretor/coordenação).
+  if (
+    await handleRenewalManagementCommand(
+      renewalBotDeps(sb, instance, tenantId),
+      actor.userId || null,
+      groupJid,
+      pergunta,
+    )
+  ) return;
 
   // ── Confirmação de ação pendente ──
   // Vem ANTES da IA de propósito: "confirma" é barato de reconhecer e não deve
@@ -5701,6 +5751,54 @@ serve(async (req) => {
           });
         }
         continue;
+      }
+
+      // ── Renovação negociada pelo bot ──
+      // Vem antes do RH e do atendimento de aluno pelo mesmo motivo da
+      // remarcação abaixo: professor antigo também está em `job_applications`,
+      // e aluno SUSPENSO em renovação não passa no filtro de perfis ativos — cairia
+      // no funil de lead. Só entra quem tem pedido/renovação aberto; o resto segue.
+      if (!isMedia && !rateLimited) {
+        const renewalDeps = renewalBotDeps(
+          sb,
+          instance,
+          tenantId,
+          inboundTenant.identity,
+        );
+        const renewalTeacher =
+          (await activeMemberProfiles(sb, tenantId, ["TEACHER"])).find(
+            (profile: any) => phonesMatch(profile.phone, phone),
+          );
+        if (
+          renewalTeacher &&
+          await handleRenewalTeacherReply(
+            renewalDeps,
+            {
+              id: String(renewalTeacher.id),
+              name: String(renewalTeacher.full_name || ""),
+            },
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        const renewalStudent = renewalTeacher
+          ? null
+          : await renewalStudentForPhone(renewalDeps, phone);
+        if (
+          renewalStudent &&
+          await handleRenewalStudentMessage(
+            renewalDeps,
+            renewalStudent,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
       }
 
       // Confirmação de remarcação vem antes do RH. Professores antigos também

@@ -645,6 +645,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/renewal-negotiation.ts \
+  supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
+  supabase/functions/whatsapp-inbound/renewal-bot.ts \
+  supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
   supabase/functions/reconcile-whatsapp-webhooks/core.ts \
@@ -707,6 +711,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
+  supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
@@ -1277,6 +1283,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915172000_renovacao_claim_sem_ambiguidade.sql"
   "supabase/migrations/20260915173000_professor_troca_horario_do_proprio_aluno.sql"
   "supabase/migrations/20260915174000_renovacao_com_novas_condicoes_e_horario.sql"
+  "supabase/migrations/20260915175000_negociacao_de_renovacao.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1390,6 +1397,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/lembrete_de_aula_volta_a_ler_a_agenda.sql"
   "supabase/tests/professor_troca_horario_do_proprio_aluno.sql"
   "supabase/tests/renovacao_com_novas_condicoes_e_horario.sql"
+  "supabase/tests/negociacao_de_renovacao.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.
