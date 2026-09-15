@@ -50,4 +50,13 @@ describe('explicit lesson registration', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Registrar selecionadas (1)' }));
         expect(save.mock.calls[0][0].one).toMatchObject({ lateLoggingReason: 'Sem acesso à plataforma ontem', lastApplied: '' });
     });
+    it('offers the same submit at the end of the list', () => {
+        const save = vi.fn();
+        render(<ClassLogForm items={items} onSave={save} />);
+        const footer = screen.getByRole('button', { name: 'Enviar aulas selecionadas (0)' }) as HTMLButtonElement;
+        expect(footer.disabled).toBe(true);
+        fireEvent.change(screen.getByLabelText('Resultado da aula de Bia'), { target: { value: 'STUDENT_ABSENCE' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar aulas selecionadas (1)' }));
+        expect(Object.keys(save.mock.calls[0][0])).toEqual(['two']);
+    });
 });

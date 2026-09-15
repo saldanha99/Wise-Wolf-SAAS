@@ -110,6 +110,12 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                     </article>;
                 })}
             </div>
+            {/* Quem preenche desce a lista e procura o envio no fim — o botão do topo some de vista. */}
+            <footer className="flex justify-end border-t border-brand-border p-4">
+                <button type="button" onClick={save} disabled={loading || !selectedCount} className="flex items-center gap-2 rounded-xl bg-tenant-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                    {loading ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />} {loading ? 'Salvando...' : `Enviar aulas selecionadas (${selectedCount})`}
+                </button>
+            </footer>
         </section>
     );
 };
