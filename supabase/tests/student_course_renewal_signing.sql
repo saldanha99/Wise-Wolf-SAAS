@@ -49,6 +49,14 @@ select pg_temp.assert_r((select status='SUPPRESSED' and submit_attempt_count=0 f
 select pg_temp.assert_r((select public.sign_student_course_renewal(j->>'token','Student Renewal Synthetic')->>'already'='true' from issued),'signature replay not idempotent');
 select pg_temp.assert_r(not exists(select 1 from public.student_payments),'signature fabricated payment');
 select pg_temp.assert_r(not exists(select 1 from net.http_request_queue),'signature made provider request');
+-- The billing worker must claim the signed offer. An unqualified `id` inside
+-- the RETURNS TABLE(id, ...) function made this raise "ambiguous" on 15/09/2026.
+create temporary table billing_claim(id uuid, claim_token uuid);
+insert into billing_claim select * from public.claim_student_course_renewal_billing(10);
+select pg_temp.assert_r((select count(*)=1 from billing_claim),'signed renewal was not claimed for billing');
+select pg_temp.assert_r((select o.billing_status='PROCESSING' and o.billing_claim_token=c.claim_token
+ from private.student_course_renewal_offers o join billing_claim c on c.id=o.id),'billing claim state incorrect');
+select pg_temp.assert_r(exists(select 1 from private.student_course_renewal_events where event_type='BILLING_CLAIMED'),'billing claim event missing');
 select pg_temp.assert_r(not has_table_privilege('anon','private.student_course_renewal_offers','SELECT')
  and not has_table_privilege('service_role','private.student_course_renewal_offers','SELECT')
  and has_function_privilege('anon','public.get_student_course_renewal_public(text)','EXECUTE')
