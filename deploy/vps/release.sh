@@ -1270,6 +1270,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260914235645_guard_overdue_card_charge_obligations.sql"
   "supabase/migrations/20260915011556_student_course_renewal_proposals.sql"
   "supabase/migrations/20260915030407_student_course_renewal_signing_and_notifications.sql"
+  "supabase/migrations/20260915042000_allow_suspended_course_renewal_recipients.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

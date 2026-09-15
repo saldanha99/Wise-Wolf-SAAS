@@ -2,7 +2,7 @@ begin;
 do $$ begin if current_setting('cron.launch_active_jobs',true) is distinct from 'off' or exists(select 1 from public.profiles)
   or exists(select 1 from auth.users) or exists(select 1 from vault.secrets) then raise exception 'isolated_empty_finance_qa_required'; end if; end $$;
 create function pg_temp.assert_r(v boolean,m text) returns void language plpgsql as $$ begin if not coalesce(v,false) then raise exception 'renewal signing assertion: %',m; end if; end $$;
-insert into public.tenants(id,name,slug,saas_status,whatsapp_enabled) values('renewal-sign-qa','Renewal Sign QA','renewal-sign-qa','active',false);
+insert into public.tenants(id,name,slug,saas_status,whatsapp_enabled) values('renewal-sign-qa','Renewal Sign QA','renewal-sign-qa','active',true);
 insert into auth.users(id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
 values('7e180000-0000-4000-8000-000000000011','authenticated','authenticated','renewal-sign@example.invalid','{"provider":"email","providers":["email"]}','{"full_name":"Student Renewal Synthetic"}',now(),now());
 set local app.enrollment_claim='1';
@@ -25,6 +25,19 @@ select pg_temp.assert_r(public.get_student_course_renewal_public('bad')->>'ok'='
 select pg_temp.assert_r((select public.sign_student_course_renewal(j->>'token','Wrong Name')->>'ok'='false' from issued),'wrong signature accepted');
 insert into public.student_course_renewal_notification_outbox(offer_id,tenant_id,student_id,milestone,scheduled_at)
 select (j->>'id')::uuid,'renewal-sign-qa','7e180000-0000-4000-8000-000000000011','INITIAL',now() from issued;
+set local app.enrollment_claim='1';
+update public.profiles set status='Inativo',lifecycle_status='suspended',status_financial='SUSPENDED',
+ is_test_account=false,test_fixture_key=null,phone='11999999999'
+where id='7e180000-0000-4000-8000-000000000011';
+set local app.enrollment_claim='';
+select pg_temp.assert_r(not public.is_student_notifiable('7e180000-0000-4000-8000-000000000011'),
+ 'suspended fixture unexpectedly passed the general notification fence');
+create temporary table notice_claim(j jsonb);
+insert into notice_claim select public.claim_student_course_renewal_notification(id)
+from public.student_course_renewal_notification_outbox;
+select pg_temp.assert_r((select public.student_course_renewal_notification_source(
+ (j->>'id')::uuid,(j->>'claim_token')::uuid) is not null from notice_claim),
+ 'an explicitly issued renewal could not reach a suspended student');
 select pg_temp.assert_r((select public.sign_student_course_renewal(j->>'token','Student Renewal Synthetic')->>'ok'='true' from issued),'valid signature rejected');
 select pg_temp.assert_r((select status='SIGNED' and billing_status='PENDING' and signed_at is not null from private.student_course_renewal_offers),'signature state incorrect');
 select pg_temp.assert_r((select status='SUPPRESSED' and submit_attempt_count=0 from public.student_course_renewal_notification_outbox),'future notice not suppressed');
