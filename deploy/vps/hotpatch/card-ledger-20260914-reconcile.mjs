@@ -23,6 +23,9 @@ const manifest = JSON.parse(readFileSync(new URL('src/components/wolfie/visuals/
 const assetCount = manifest.scenes.length * 2 + manifest.characters.length + manifest.legacyAliases.length;
 const script = String.raw`set -Eeuo pipefail
 umask 077
+stage=state
+relative=none
+trap 'printf "Recovery blocked at line %s, stage %s, file %s\n" "$LINENO" "$stage" "$relative" >&2' ERR
 release_id=20260915T002102Z-eee35753080f
 release_dir=/opt/wisewolf/releases/$release_id
 original_backup=/opt/wisewolf/backups/release-$release_id
@@ -38,7 +41,9 @@ grep -Fxq "post_commit_failed:$release_id" "$original_backup/ACTIVATION_STATE"
 grep -Fxq "post_commit_validation_failed:$release_id" "$original_backup/POST_COMMIT_FAILURE"
 grep -Fxq "$release_id" /opt/wisewolf/releases/current
 grep -Fxq 'source_git_sha=01c982292ed81225c837367282e46d72e19b3d1e' "$release_dir/release-provenance.txt"
+stage=immutable-package
 (cd "$release_dir" && sha256sum --check --status release-inputs.sha256)
+stage=active-files-and-migration-markers
 verified=0
 while read -r expected relative; do
   target=
@@ -61,9 +66,11 @@ done < "$release_dir/release-inputs.sha256"
 [[ "$verified" -gt 100 ]]
 manifest_sha=$(sha256sum "$release_dir/release-inputs.sha256" | cut -d' ' -f1)
 [[ "$manifest_sha" =~ ^[a-f0-9]{64}$ ]]
+stage=database-journal
 db_status=$(docker exec supabase-db psql -X -U supabase_admin -d postgres -Atc "select release_state from private.release_commit_journal where release_id='$release_id' and release_manifest_checksum='$manifest_sha' and committed_at is not null")
 [[ "$db_status" = COMMITTED ]]
 backup_dir=$(mktemp -d "$original_backup/card-ledger-recovery.XXXXXX")
+stage=read-only-invariants
 printf '%s' '__SQL_B64__' | base64 -d > "$backup_dir/verification.sql"
 printf '%s' '__SMOKES_B64__' | base64 -d > "$backup_dir/smokes.sh"
 [[ "$(sha256sum "$backup_dir/verification.sql" | cut -d' ' -f1)" = __SQL_SHA__ ]]
@@ -81,7 +88,9 @@ while read -r expected relative; do
     esac
 done < "$release_dir/release-inputs.sha256" > "$backup_dir/asset-lock.tsv"
 wolfie_asset_lock_b64=$(base64 -w0 "$backup_dir/asset-lock.tsv")
+stage=publisher-smokes
 source "$backup_dir/smokes.sh"
+stage=completion
 [[ "$(docker inspect --format '{{.State.Running}}' frontend-frontend-1)" = true ]]
 [[ "$(docker inspect --format '{{.State.Health.Status}}' supabase-edge-functions)" = healthy ]]
 [[ ! -e "$original_backup/POST_COMMIT_FAILURE.resolved" ]]
