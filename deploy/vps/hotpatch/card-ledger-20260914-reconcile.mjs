@@ -55,7 +55,16 @@ while read -r expected relative; do
     migrations/*)
       migration_file=$(basename "$relative")
       version=$(echo "$migration_file" | cut -d_ -f1)
-      grep -Fxq "$expected" "/opt/wisewolf/releases/.migration-checksums/$version-$expected.sha256"
+      marker="/opt/wisewolf/releases/.migration-checksums/$version-$expected.sha256"
+      [[ -f "$marker" && ! -L "$marker" ]]
+      [[ "$(find /opt/wisewolf/releases/.migration-checksums -maxdepth 1 -type f -name "$version-*.sha256" | wc -l)" -eq 1 ]]
+      # Legacy markers encode the checksum only in their filename. Both new
+      # migrations must also retain the full checksum written by this release.
+      if [[ -s "$marker" ]]; then
+        grep -Fxq "$expected" "$marker"
+      else
+        [[ "$version" < 20260914235355 ]]
+      fi
       continue ;;
     *) continue ;;
   esac
