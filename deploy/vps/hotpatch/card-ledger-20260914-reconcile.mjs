@@ -21,6 +21,13 @@ if (!/^[a-f0-9]{40}$/.test(repairCommit)) throw new Error('Invalid commit');
 const sha = value => createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(readFileSync(new URL('src/components/wolfie/visuals/visualAssetManifest.json', root), 'utf8'));
 const assetCount = manifest.scenes.length * 2 + manifest.characters.length + manifest.legacyAliases.length;
+const primaryAssets = [...manifest.scenes.flatMap(scene => [scene.desktop, scene.mobile]), ...manifest.characters.map(character => character.asset)];
+const assetsByUrl = new Map(primaryAssets.map(asset => [asset.url, asset]));
+const assets = [...primaryAssets, ...manifest.legacyAliases.map(alias => ({ ...assetsByUrl.get(alias.targetUrl), url: alias.url }))];
+const assetLock = assets.map(asset => {
+  if (!/^\/assets\/wolfie\/[A-Za-z0-9._/-]+\.webp$/.test(asset.url) || asset.url.includes('..') || !Number.isSafeInteger(asset.bytes) || asset.bytes <= 0 || !/^[a-f0-9]{64}$/.test(asset.sha256)) throw new Error('Invalid asset manifest');
+  return `${asset.url}\t${asset.bytes}\t${asset.sha256}\n`;
+}).join('');
 const script = String.raw`set -Eeuo pipefail
 umask 077
 stage=state
@@ -88,15 +95,7 @@ bash -n "$backup_dir/smokes.sh"
 docker exec -i supabase-db psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q < "$backup_dir/verification.sql"
 echo 'PASS: immutable package, active code, migration markers, database journal and read-only invariants'
 wolfie_asset_count=__ASSET_COUNT__
-while read -r expected relative; do
-    case "$relative" in
-      frontend-dist/assets/wolfie/*.webp)
-        url=/$(echo "$relative" | cut -d/ -f2-)
-        bytes=$(stat -c '%s' "$release_dir/$relative")
-        printf '%s\t%s\t%s\n' "$url" "$bytes" "$expected" ;;
-    esac
-done < "$release_dir/release-inputs.sha256" > "$backup_dir/asset-lock.tsv"
-wolfie_asset_lock_b64=$(base64 -w0 "$backup_dir/asset-lock.tsv")
+wolfie_asset_lock_b64=__ASSET_LOCK_B64__
 stage=publisher-smokes
 source "$backup_dir/smokes.sh"
 stage=completion
@@ -114,6 +113,7 @@ printf 'Release reconciled and active: %s; evidence: %s\n' "$release_id" "$backu
   .replaceAll('__SMOKES_B64__', Buffer.from(smokes).toString('base64'))
   .replaceAll('__SMOKES_SHA__', sha(smokes))
   .replaceAll('__ASSET_COUNT__', String(assetCount))
+  .replaceAll('__ASSET_LOCK_B64__', Buffer.from(assetLock).toString('base64'))
   .replaceAll('__REPAIR_COMMIT__', repairCommit);
 execFileSync('bash', ['-n'], { input: script });
 if (process.argv[2] !== '--execute') {
