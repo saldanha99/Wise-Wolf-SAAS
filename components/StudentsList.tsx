@@ -1420,8 +1420,9 @@ ${parsed.details}` : ''));
         />
       )}
 
-      {/* O professor altera apenas bookings próprios; a função no banco valida
-          disponibilidade/conflitos, audita e enfileira o aviso ao grupo. */}
+      {/* O professor altera apenas bookings próprios; a função no banco barra
+          choque de agenda, preserva o horário antigo nas datas passadas, audita e
+          avisa o grupo da Gestão. */}
       {scheduleStudent && user?.role === UserRole.TEACHER && tenantId && (
         <TeacherStudentScheduleEditor
           studentId={scheduleStudent.id}
