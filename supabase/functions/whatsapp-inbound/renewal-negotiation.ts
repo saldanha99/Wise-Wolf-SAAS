@@ -249,6 +249,51 @@ export function managementRenewalApprovalMessage(input: {
   }\n${fee}\n\nPara aprovar: ${approve}\nPara recusar: *recusar #${input.code}*`;
 }
 
+export type TeacherChoice = "KEEP" | "OTHER" | "UNKNOWN";
+
+/**
+ * Resposta à pergunta "quer seguir com a teacher X?". Cuidado com a negação:
+ * "não quero trocar" é SEGUIR; "sim, mas prefiro outro" é OUTRO.
+ */
+export function classifyTeacherChoice(
+  text: string,
+  teacherName: string | null,
+): TeacherChoice {
+  const reply = foldText(text).replace(/\s+/g, " ").trim();
+  if (!reply) return "UNKNOWN";
+  if (
+    /\bnao (quero|precisa|vou|pretendo|preciso) (trocar|mudar|outr)/.test(reply)
+  ) return "KEEP";
+  if (
+    /\b(outr[oa]s?|trocar|troca|mudar|mudanca|diferente|nov[oa] (professor|professora|teacher))\b/
+      .test(reply)
+  ) return "OTHER";
+  const teacher = foldText(firstName(teacherName, ""));
+  if (
+    /^(sim|s|pode ser|pode|claro|com certeza|mesma|mesmo)\b/.test(reply) ||
+    /\b(seguir|sigo|continuar|continuo|fico|manter|mantenho|satisfeit[oa]|gosto|adoro|amo|feliz|otim[oa]|excelente|maravilhos[oa])\b/
+      .test(reply) ||
+    (teacher.length >= 3 && reply.includes(teacher))
+  ) return "KEEP";
+  if (/\b(nao sei|talvez|vou pensar|deixa eu pensar)\b/.test(reply)) {
+    return "UNKNOWN";
+  }
+  if (/^(nao|n)\b/.test(reply)) return "OTHER";
+  return "UNKNOWN";
+}
+
+/** A pergunta é positiva e não compara professores. Só é feita com alternativa real. */
+export function teacherChoiceQuestionMessage(input: {
+  teacherName: string | null;
+  scheduleChange: boolean;
+}): string {
+  const teacher = firstName(input.teacherName, "atual");
+  const intro = input.scheduleChange
+    ? "Antes de eu confirmar os horários"
+    : "Aproveitando a renovação";
+  return `${intro}: você está feliz com as aulas com a teacher ${teacher}? 😊 Se preferir conhecer outro professor, temos disponibilidade nos seus horários.\n\nResponda *sim* para seguir com a ${teacher} ou *outro professor* para eu ver essa possibilidade.`;
+}
+
 export function studentRenewalProposalMessage(input: {
   studentName: string | null;
   teacherName: string | null;

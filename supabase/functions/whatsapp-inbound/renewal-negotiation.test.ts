@@ -2,14 +2,50 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
   classifyRenewalTeacherReply,
+  classifyTeacherChoice,
   managementRenewalApprovalMessage,
   parseRenewalFrequency,
   parseRenewalManagementCommand,
   parseRenewalSlots,
   renewalReplyCode,
   renewalSlotsText,
+  teacherChoiceQuestionMessage,
   teacherRenewalRequestMessage,
 } from "./renewal-negotiation.ts";
+
+Deno.test("escolha da professora: sim segue, outro troca, negação de troca segue", () => {
+  const teacher = "Debora Sintética";
+  assertEquals(classifyTeacherChoice("sim", teacher), "KEEP");
+  assertEquals(
+    classifyTeacherChoice("quero continuar com ela", teacher),
+    "KEEP",
+  );
+  assertEquals(classifyTeacherChoice("Adoro a Débora!", teacher), "KEEP");
+  assertEquals(classifyTeacherChoice("não quero trocar", teacher), "KEEP");
+  assertEquals(classifyTeacherChoice("outro professor", teacher), "OTHER");
+  assertEquals(
+    classifyTeacherChoice("sim, mas prefiro outra", teacher),
+    "OTHER",
+  );
+  assertEquals(classifyTeacherChoice("não", teacher), "OTHER");
+  assertEquals(classifyTeacherChoice("não sei ainda", teacher), "UNKNOWN");
+  assertEquals(classifyTeacherChoice("", teacher), "UNKNOWN");
+});
+
+Deno.test("a pergunta sobre a professora é positiva e oferece as duas saídas", () => {
+  const message = teacherChoiceQuestionMessage({
+    teacherName: "Debora Sintética",
+    scheduleChange: false,
+  });
+  assertEquals(
+    message.includes("feliz com as aulas com a teacher Debora"),
+    true,
+  );
+  assertEquals(
+    message.includes("*sim*") && message.includes("*outro professor*"),
+    true,
+  );
+});
 
 Deno.test("lê o pedido real: segunda 14h, terça e sexta 14:30", () => {
   assertEquals(

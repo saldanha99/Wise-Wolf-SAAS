@@ -204,3 +204,144 @@ Deno.test("aprovação sem gestor identificado é recusada sem chamar o banco", 
   assertEquals(calls.length, 0);
   assertEquals(sent[0].text.includes("Só diretor ou coordenação"), true);
 });
+
+const requestedSlots = [
+  { day: "Segunda", time: "16:00" },
+  { day: "Quarta", time: "16:00" },
+  { day: "Sexta", time: "16:00" },
+];
+
+Deno.test("com professor livre nos horários pedidos, pergunta antes de consultar a atual", async () => {
+  const { deps, sent } = fakeDeps({
+    renewal_negotiation_context: activeContext,
+    open_renewal_negotiation: {
+      ok: true,
+      action: "ask_student_teacher_choice",
+      teacher_name: "Debora Sintética",
+      slots: requestedSlots,
+    },
+  });
+  await handleRenewalStudentMessage(
+    deps,
+    student,
+    "5511900000009",
+    "seg, qua e sex às 16h",
+    "msg-7",
+  );
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].to, "5511900000009");
+  assertEquals(
+    sent[0].text.includes("feliz com as aulas com a teacher Debora"),
+    true,
+  );
+});
+
+Deno.test("aluno prefere outro professor: consulta o livre e avisa a Gestão", async () => {
+  const { deps, calls, sent } = fakeDeps({
+    renewal_negotiation_context: {
+      ...activeContext,
+      negotiation: { status: "WAITING_STUDENT", teacher_choice_pending: true },
+      teacher: { id: "teacher-1", name: "Debora Sintética" },
+    },
+    student_choose_renewal_teacher: {
+      ok: true,
+      action: "ask_other_teacher",
+      teacher_name: "Teacher Livre",
+      teacher_phone: "5511900000002",
+      reply_code: "B2C3D4E5",
+      slots: requestedSlots,
+      busy_slots: [],
+    },
+  });
+  await handleRenewalStudentMessage(
+    deps,
+    student,
+    "5511900000009",
+    "outro professor",
+    "msg-8",
+  );
+  const choose = calls.find((call) =>
+    call.fn === "student_choose_renewal_teacher"
+  );
+  assertEquals(choose?.args.p_keep, false);
+  assertEquals(
+    sent.some((message) =>
+      message.to === "5511900000002" && message.text.includes("#B2C3D4E5")
+    ),
+    true,
+  );
+  assertEquals(
+    sent.some((message) =>
+      message.to === "120363400000000099@g.us" &&
+      message.text.includes("outro professor")
+    ),
+    true,
+  );
+});
+
+Deno.test("aluno segue com a professora: nada muda e ninguém é consultado", async () => {
+  const { deps, sent } = fakeDeps({
+    renewal_negotiation_context: {
+      ...activeContext,
+      negotiation: { status: "WAITING_STUDENT", teacher_choice_pending: true },
+      teacher: { id: "teacher-1", name: "Debora Sintética" },
+    },
+    student_choose_renewal_teacher: { ok: true, action: "kept" },
+  });
+  await handleRenewalStudentMessage(
+    deps,
+    student,
+    "5511900000009",
+    "sim, adoro ela",
+    "msg-9",
+  );
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].text.includes("Seguimos com a teacher Debora"), true);
+});
+
+Deno.test("renovação sem mudança com alternativa real: pergunta depois de responder", async () => {
+  const { deps, calls, sent } = fakeDeps({
+    renewal_negotiation_context: {
+      ...activeContext,
+      alternative_for_current: true,
+    },
+    offer_renewal_teacher_choice: {
+      ok: true,
+      action: "ask_student_teacher_choice",
+      teacher_name: "Debora Sintética",
+    },
+  }, { reply: "Sua renovação é de 6 meses.", handoff: false });
+  await handleRenewalStudentMessage(
+    deps,
+    student,
+    "5511900000009",
+    "como funciona a renovação?",
+    "msg-10",
+  );
+  assertEquals(
+    calls.some((call) => call.fn === "offer_renewal_teacher_choice"),
+    true,
+  );
+  assertEquals(sent[1].text.includes("feliz com as aulas"), true);
+});
+
+Deno.test("renovação sem alternativa real: nem toca no assunto", async () => {
+  const { deps, calls, sent } = fakeDeps({
+    renewal_negotiation_context: {
+      ...activeContext,
+      alternative_for_current: false,
+    },
+  }, { reply: "Sua renovação é de 6 meses.", handoff: false });
+  await handleRenewalStudentMessage(
+    deps,
+    student,
+    "5511900000009",
+    "como funciona a renovação?",
+    "msg-11",
+  );
+  assertEquals(
+    calls.some((call) => call.fn === "offer_renewal_teacher_choice"),
+    false,
+  );
+  assertEquals(sent.length, 1);
+});
