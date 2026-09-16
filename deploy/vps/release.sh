@@ -524,6 +524,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
+  supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -728,6 +729,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
+  supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -1307,6 +1309,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916130000_aluno_confirma_a_experimental.sql"
   "supabase/migrations/20260916140000_etiquetas_do_whatsapp_por_tipo_de_contato.sql"
   "supabase/migrations/20260916150000_etiqueta_do_whatsapp_nao_sai_por_este_provedor.sql"
+  "supabase/migrations/20260916160000_lembrete_sem_marcador_cru_e_sem_link.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

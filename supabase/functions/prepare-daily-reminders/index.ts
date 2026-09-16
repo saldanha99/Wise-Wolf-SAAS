@@ -14,10 +14,20 @@ Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
 Te espero! 🐺`;
 
 /**
- * Renderiza o template substituindo variáveis.
+ * Marcador cru NUNCA pode chegar ao aluno.
+ *
+ * Em 16/09/2026 saiu "Oi {student name}, ... às {class time}" para alunos de uma
+ * professora: o modelo dela tinha espaço no lugar do underline, e o regex antigo
+ * não substituía nem limpava. Agora o nome do marcador é normalizado e o que
+ * sobrar é apagado.
  */
 function renderTemplate(template: string, vars: Record<string, string>): string {
-    return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? '');
+    const chave = (bruto: string) => bruto.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return template
+        .replace(/\{([^{}]{1,60})\}/g, (_, bruto) => vars[chave(bruto)] ?? '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 /**
@@ -136,7 +146,10 @@ serve(async (req) => {
                     class_time: classTime,
                     teacher_name: teacher.full_name || '',
                     tenant_name: tenant?.name || '',
-                    class_link: classLink,
+                    // O link da sala saiu do lembrete (decisão da direção em
+                    // 16/09/2026): quem combina a sala é o professor. Modelo
+                    // antigo com {class_link} passa a render nada.
+                    class_link: '',
                 });
 
                 // 3. Enqueue (idempotente)

@@ -18,21 +18,26 @@ const base = {
   consultativeLead: {},
 };
 
-Deno.test("primeiro preço inicia descoberta, sem tabela nem agendamento", () => {
+// Regra trocada pela direção em 16/09/2026. Antes, a primeira pergunta de preço
+// virava descoberta ("qual é seu objetivo?") e o lead ficava sem valor nenhum —
+// aconteceu com um lead real, que perguntou o custo e ouviu "os valores variam".
+// Agora preço perguntado é preço respondido, a partir do mínimo, junto com o
+// porquê do método. A descoberta continua, mas depois da resposta.
+Deno.test("primeira pergunta de preço já recebe o valor mínimo", () => {
   const result = applyCommercialReplyPolicy(base);
-  assertEquals(result.policy, "understand_before_price");
-  assertStringIncludes(result.reply, "objetivo");
-  assertEquals(/R\$|agendar|experimental/.test(result.reply), false);
-  assertEquals(result.reply.split("?").length - 1, 1);
+  assertEquals(result.policy, "consultative_price_answer");
+  assertStringIncludes(result.reply, "R$ 169 por mês");
+  // O valor inventado pelo modelo (R$ 999) nunca passa.
+  assertEquals(result.reply.includes("999"), false);
 });
 
-Deno.test("não repete objetivo já conhecido", () => {
+Deno.test("o preço vem acompanhado do porquê do método", () => {
   const result = applyCommercialReplyPolicy({
     ...base,
     consultativeLead: { goal: "Reuniões globais" },
   });
-  assertStringIncludes(result.reply, "inglês hoje");
-  assertEquals(result.reply.includes("principal objetivo"), false);
+  assertStringIncludes(result.reply, "30 minutos, e isso é proposital");
+  assertStringIncludes(result.reply, "100% conversação");
 });
 
 Deno.test("insistência, pedido só de preço, qualificação e pós-aula recebem valor", () => {
@@ -46,8 +51,8 @@ Deno.test("insistência, pedido só de preço, qualificação e pós-aula recebe
   ) {
     const result = applyCommercialReplyPolicy({ ...base, ...options });
     assertEquals(result.policy, "consultative_price_answer");
-    assertStringIncludes(result.reply, "R$ 169/mês");
-    assertEquals(/999|experimental|\?/.test(result.reply), false);
+    assertStringIncludes(result.reply, "R$ 169 por mês");
+    assertEquals(result.reply.includes("999"), false);
   }
 });
 

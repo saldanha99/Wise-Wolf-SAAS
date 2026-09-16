@@ -38,11 +38,12 @@ export type ManualReminderWindow =
       | "manual_reminder_too_early";
   };
 
+// O link da sala saiu do lembrete em 16/09/2026, por decisão da direção: quem
+// combina a sala com o aluno é o professor. O marcador {class_link} continua
+// sendo aceito em modelo antigo — só que agora ele é substituído por nada.
 export const DEFAULT_CLASS_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
 
 Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
-
-{class_link}
 
 Te espero! 🐺`;
 
@@ -194,12 +195,30 @@ export function classReminderReceiptFromQueue(item: {
     : null;
 }
 
+/**
+ * Troca os marcadores do modelo do professor pelos valores reais.
+ *
+ * Em 16/09/2026 um aluno recebeu "Oi {student name}, ... às {class time}" cru:
+ * o modelo tinha sido escrito com ESPAÇO no lugar do underline, e o regex antigo
+ * (`\{(\w+)\}`) não casava com isso — não substituía E não limpava. Agora:
+ *   • o nome do marcador é normalizado (espaço, hífen e maiúscula valem igual);
+ *   • QUALQUER `{...}` que sobrar é apagado, porque marcador cru na mensagem do
+ *     aluno é pior do que a frase sem aquele pedaço;
+ *   • linha que ficou vazia não vira buraco no meio do texto.
+ */
 export function renderReminderTemplate(
   template: string,
   vars: Record<string, string>,
 ): string {
-  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? "")
-    .replace(/\u0000/g, "").trim().slice(0, 4096);
+  const chave = (bruto: string) =>
+    bruto.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return template
+    .replace(/\{([^{}]{1,60})\}/g, (_, bruto) => vars[chave(bruto)] ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 4096);
 }
 
 export function providerReceiptDecision(

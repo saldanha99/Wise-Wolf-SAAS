@@ -13,6 +13,7 @@ import {
   phonesBelongToSameRecipient,
   providerReceiptDecision,
   recurringBookingMatchesDate,
+  renderReminderTemplate,
   rescheduleNotificationReceipt,
   scheduleVersionHash,
   timeInSaoPaulo,
@@ -209,4 +210,28 @@ Deno.test("lembrete manual só é aceito entre 15 e 45 minutos antes", () => {
 Deno.test("appointment usa data e hora civis de São Paulo, não UTC", () => {
   assertEquals(dateInSaoPaulo("2026-08-29T01:00:00.000Z"), "2026-08-28");
   assertEquals(timeInSaoPaulo("2026-08-28T22:00:00.000Z"), "19:00");
+});
+
+Deno.test("marcador escrito com espaço ou maiúscula também é substituído", () => {
+  const mensagem = renderReminderTemplate(
+    "Oi {student name}, às *{Class-Time}*.\n\n{class link}\n\nTe espero!",
+    { student_name: "Ana", class_time: "19:00", class_link: "" },
+  );
+  assertEquals(mensagem, "Oi Ana, às *19:00*.\n\nTe espero!");
+});
+
+Deno.test("marcador desconhecido nunca chega ao aluno", () => {
+  const mensagem = renderReminderTemplate(
+    "Oi {aluno}, sua aula é às {class_time}. {assinatura}",
+    { student_name: "Ana", class_time: "19:00" },
+  );
+  assertEquals(mensagem, "Oi , sua aula é às 19:00.");
+});
+
+Deno.test("quebra de linha e negrito do professor são preservados", () => {
+  const mensagem = renderReminderTemplate(
+    "Oi {student_name}!\n\nAula às *{class_time}*.\n\nTe espero! 🐺",
+    { student_name: "Penha", class_time: "20:30" },
+  );
+  assertEquals(mensagem, "Oi Penha!\n\nAula às *20:30*.\n\nTe espero! 🐺");
 });

@@ -21,8 +21,11 @@ type AtendenteConfig = {
   };
 };
 
+// "custo" faltava aqui, e em 16/09/2026 um lead perguntou exatamente assim
+// ("gostaria de saber qual seria o custo") — a pergunta não foi reconhecida como
+// pergunta de preço e ele recebeu um "os valores variam" sem valor nenhum.
 const PRICE_REQUEST =
-  /\b(pre[cç]o|pre[cç]os|valor|valores|quanto\s+(?:custa|fica|é)|mensalidade|investimento|plano|planos)\b/i;
+  /\b(pre[cç]o|pre[cç]os|valor|valores|custo|custos|custa|quanto\s+(?:custa|fica|sai|é|seria)|mensalidade|mensalidades|investimento|or[cç]amento|plano|planos)\b/i;
 const DURATION_REQUEST =
   /\b(dura[cç][aã]o|quanto\s+tempo|tempo\s+de\s+aula|quantos?\s+minutos?|aulas?\s+de\s+quantos?\s+minutos?)\b/i;
 const PRICE_IN_REPLY =
@@ -80,6 +83,20 @@ export function resolveCommercialPolicy(
   };
 }
 
+/**
+ * O porquê dos 30 minutos, na palavra da direção (áudios de 15/09/2026).
+ *
+ * Não é aula curta por economia: passando de 30 minutos o cérebro satura e o
+ * aprendizado rende menos. E o formato é 100% conversação, montado na rotina e
+ * no contexto do aluno — é o que diferencia a escola do curso tradicional, e é
+ * isso que justifica o preço quando ele aparece na conversa.
+ */
+const METODO_30_MIN =
+  "As aulas são de 30 minutos, e isso é proposital: passando disso o cérebro " +
+  "satura e o aprendizado rende menos. São 100% conversação, montadas na rotina " +
+  "e no contexto do aluno — vale para adulto e para criança. A experimental é " +
+  "gratuita.";
+
 export function applyCommercialReplyPolicy(opts: {
   history: HistoryMessage[];
   currentMessage: string;
@@ -103,8 +120,12 @@ export function applyCommercialReplyPolicy(opts: {
         .test(
           opts.currentMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
         );
-    const mayQuote = asksPrice && (priceRequests >= 2 || onlyPrice ||
-      lead.afterTrial || Boolean(lead.goal?.trim() && lead.level?.trim()));
+    // Até 16/09/2026 o valor só saía na SEGUNDA pergunta, ou quando objetivo e
+    // nível já estavam preenchidos. Na prática o lead perguntava o preço e ouvia
+    // "os valores variam conforme a quantidade de aulas" — que não é resposta.
+    // Decisão da direção: preço perguntado é preço respondido, sempre a partir do
+    // mínimo, e junto vem o porquê do método (é o que a direção fala no áudio).
+    const mayQuote = asksPrice;
     const wrongDuration = opts.modelReply.split(/[.!?\n]/).some((sentence) =>
       /\b(?:aula|aulas|experimental)\b/i.test(sentence) &&
       hasWrongDuration(sentence, CLASS_DURATION_MINUTES)
@@ -113,12 +134,14 @@ export function applyCommercialReplyPolicy(opts: {
     const asksClassDuration = asksDuration &&
       /\b(?:aula|aulas|experimental)\b/i.test(opts.currentMessage);
     if (wrongDuration || asksClassDuration) {
-      facts.push("A aula experimental é gratuita e dura 30 minutos.");
+      facts.push(METODO_30_MIN);
     }
     if (mayQuote) {
+      // O método explica o preço: sem ele, R$ 169 é só um número solto.
+      if (!facts.includes(METODO_30_MIN)) facts.push(METODO_30_MIN);
       facts.push(
         opts.commercialPolicy
-          ? `Temos planos a partir de R$ ${opts.commercialPolicy.minimumPlanPriceBrl}/mês. O valor varia conforme a quantidade de aulas por semana.`
+          ? `Os planos começam em R$ ${opts.commercialPolicy.minimumPlanPriceBrl} por mês e variam conforme a quantidade de aulas por semana.`
           : "Não tenho um valor confirmado aqui. A coordenação pode te informar os planos e valores.",
       );
       return {
