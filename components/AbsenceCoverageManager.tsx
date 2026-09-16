@@ -89,13 +89,16 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
     const tenantId = await resolveTenantId();
     const { data: absence, error } = await supabase
       .from('teacher_absences')
+      // Mesma regra do coverage-admin: o banco só aceita reason do enum e
+      // status em maiúscula; o texto livre fica em `notes`.
       .insert({
         teacher_id: teacher.id,
         tenant_id: tenantId,
         starts_at: startsAt,
         ends_at: endsAt,
-        reason: reason || null,
-        status: 'active',
+        reason: /(doen|garganta|febre|gripe|sa[uú]de|m[eé]dic|hospital|enferm|covid|sick|dor )/i.test(reason) ? 'SICK' : 'OTHER',
+        notes: reason || null,
+        status: 'ACTIVE',
       })
       .select()
       .single();

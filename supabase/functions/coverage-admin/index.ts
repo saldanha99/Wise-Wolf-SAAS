@@ -9,6 +9,14 @@ import {
 import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import { loadTenantCentralWhatsAppInstance } from "../_shared/tenant-communication.ts";
 
+/** Motivo em texto livre → enum aceito por `teacher_absences.reason`. */
+export function absenceReasonEnum(reason: string | null | undefined): "SICK" | "OTHER" {
+  return /(doen|garganta|febre|gripe|sa[uú]de|m[eé]dic|hospital|enferm|covid|sick|dor )/i
+    .test(String(reason || ""))
+    ? "SICK"
+    : "OTHER";
+}
+
 // ============================================================================
 // coverage-admin — Substituição temporária de aula (Fase 2).
 //   createAbsence  : registra ausência do professor e lista as aulas afetadas
@@ -555,13 +563,19 @@ async function createAbsence(
   const { data: absence, error: absenceError } = await admin.from(
     "teacher_absences",
   )
+    // `teacher_absences` tem CHECK (criado direto no banco): reason IN (SICK,
+    // VACATION, PERSONAL, OTHER) e status em MAIÚSCULA. Este insert gravava
+    // texto livre + 'active' e morria na constraint — a tela de Coberturas
+    // nunca conseguiu registrar uma ausência (0 linhas na história). O texto
+    // livre vai para `notes`; o enum é derivado dele.
     .insert({
       teacher_id: teacherId,
       tenant_id: tenantId,
       starts_at: startsAt,
       ends_at: endsAt,
-      reason: reason || null,
-      status: "active",
+      reason: absenceReasonEnum(reason),
+      notes: reason || null,
+      status: "ACTIVE",
     })
     .select("id,teacher_id,tenant_id,starts_at,ends_at,reason,status")
     .single();

@@ -1234,6 +1234,10 @@ type CoveragePreview = {
   coverTeacherName?: string;
   classDate?: string;
   classTime?: string;
+  /** Aula já começou: a direção atesta, sem convite; o financeiro é aplicado na hora. */
+  retroactive?: boolean;
+  /** Horário informado quando difere do da agenda (a substituta deu a aula em outra hora). */
+  informedTime?: string;
 };
 
 function gestaoDayForDate(raw: string): {
@@ -1306,9 +1310,11 @@ async function previewCoverageAction(
   },
 ): Promise<CoveragePreview> {
   const dateInfo = gestaoDayForDate(input.classDate);
-  const classTime = normalizeGestaoTime(input.classTime);
+  let classTime = normalizeGestaoTime(input.classTime);
+  // 31 dias para trás: aula que JÁ aconteceu e foi coberta (a direção atesta,
+  // sem convite). 90 para a frente: convite ao substituto.
   if (
-    !dateInfo || input.classDate < todayBRT() ||
+    !dateInfo || input.classDate < addDaysToBrtDate(todayBRT(), -31) ||
     input.classDate > addDaysToBrtDate(todayBRT(), 90)
   ) {
     return { ok: false, error: "data_invalida" };
@@ -1316,12 +1322,14 @@ async function previewCoverageAction(
   if (!/^(0\d|1\d|2[0-3]):(00|30)$/.test(classTime)) {
     return { ok: false, error: "horario_invalido" };
   }
-  const classStart = Date.parse(
+  let classStart = Date.parse(
     `${input.classDate}T${classTime}:00-03:00`,
   );
-  if (!Number.isFinite(classStart) || classStart <= Date.now()) {
-    return { ok: false, error: "aula_no_passado" };
+  if (!Number.isFinite(classStart)) {
+    return { ok: false, error: "horario_invalido" };
   }
+  let retroactive = classStart <= Date.now();
+  let informedTime: string | undefined;
   if (
     !input.reason || input.reason.length < 3 || input.reason.length > 200
   ) {
@@ -1367,17 +1375,28 @@ async function previewCoverageAction(
   if (bookingsResponse.error) {
     return { ok: false, error: "falha_ao_buscar_aula" };
   }
-  const matchingBookings = (bookingsResponse.data || []).filter((row: any) => {
+  const bookingsOfDay = (bookingsResponse.data || []).filter((row: any) => {
     if (String(row.status || "").toUpperCase() !== "SCHEDULED") return false;
-    if (normalizeGestaoTime(String(row.time_slot || "")) !== classTime) {
-      return false;
-    }
     const fixedDate = String(row.date || "").slice(0, 10);
     if (fixedDate) return fixedDate === input.classDate;
     const startsOn = String(row.start_date || "").slice(0, 10);
     return (!startsOn || startsOn <= input.classDate) &&
       normalizeGestaoDay(String(row.day_of_week || "")) === dateInfo.dayName;
   });
+  let matchingBookings = bookingsOfDay.filter((row: any) =>
+    normalizeGestaoTime(String(row.time_slot || "")) === classTime
+  );
+  // Aula já dada: a substituta pode ter dado a aula em outra hora (a dela era
+  // no mesmo horário da agenda). Se o aluno só tem UMA aula com esse professor
+  // naquele dia, é ela — a cobertura fica amarrada ao booking (é o que
+  // identifica a aula para o pagamento) e a hora real vai no motivo.
+  if (!matchingBookings.length && retroactive && bookingsOfDay.length === 1) {
+    informedTime = classTime;
+    matchingBookings = bookingsOfDay;
+    classTime = normalizeGestaoTime(String(bookingsOfDay[0].time_slot || ""));
+    classStart = Date.parse(`${input.classDate}T${classTime}:00-03:00`);
+    retroactive = classStart <= Date.now();
+  }
   if (!matchingBookings.length) {
     return { ok: false, error: "aula_nao_encontrada" };
   }
@@ -1454,7 +1473,7 @@ async function previewCoverageAction(
       .select("id,starts_at,ends_at,status")
       .eq("tenant_id", tenantId)
       .eq("teacher_id", cover.id)
-      .eq("status", "active")
+      .in("status", ["ACTIVE", "active"])
       .lte("starts_at", input.classDate)
       .gte("ends_at", input.classDate),
   ]);
@@ -1481,7 +1500,7 @@ async function previewCoverageAction(
     return start === classTime ||
       Boolean(end && start <= classTime && classTime < end);
   });
-  if (!hasAvailability) {
+  if (!hasAvailability && !retroactive) {
     return { ok: false, error: "substituto_sem_disponibilidade" };
   }
 
@@ -1523,9 +1542,13 @@ async function previewCoverageAction(
     normalizeGestaoTime(String(row.class_time || "")) === classTime
   );
   const substituteIsAbsent = (substituteAbsences.data || []).length > 0;
+  // "Ocupado" protege o convite. Para aula já dada, quem atesta é a direção:
+  // a substituta pode ter dado a própria aula e a coberta em seguida.
   if (
-    booked || rescheduled || appointed || coveringAnotherClass ||
-    substituteIsAbsent
+    !retroactive && (
+      booked || rescheduled || appointed || coveringAnotherClass ||
+      substituteIsAbsent
+    )
   ) {
     return { ok: false, error: "substituto_ocupado" };
   }
@@ -1544,6 +1567,8 @@ async function previewCoverageAction(
     coverTeacherName: cover.name,
     classDate: input.classDate,
     classTime,
+    retroactive,
+    informedTime,
   };
 }
 
@@ -1573,6 +1598,49 @@ async function createCoverageInviteDirect(
     return { ok: false, error: String(result?.error || "cobertura_invalida") };
   }
   const status = String(result.status || "").toLowerCase();
+  if (result.retroactive === true && result.idempotent !== true) {
+    // Aula já dada: nasceu confirmada e o financeiro já foi aplicado. Não há
+    // convite — os dois professores recebem o AVISO do que mudou no pagamento
+    // deles. Falha no aviso não desfaz nada: o registro é o que vale.
+    const application = (result.application || {}) as Record<string, unknown>;
+    const classDate = String(result.class_date || action.class_date || "");
+    const [y, m, d] = classDate.split("-");
+    const dataFmt = d && m && y ? `${d}/${m}/${y}` : classDate;
+    const hora = String(result.class_time || action.class_time || "").slice(0, 5);
+    const aluno = String(result.student_name || "Aluno").trim().slice(0, 80);
+    const coverFirst = String(result.cover_teacher_name || "Professor").trim().split(/\s+/)[0];
+    const originalFirst = String(result.original_teacher_name || "Professor").trim().split(/\s+/)[0];
+    const coverPhone = normalizePhone(String(result.cover_teacher_phone || ""));
+    const originalPhone = normalizePhone(String(result.original_teacher_phone || ""));
+    const movida = String(application.modo || "") === "aula_movida";
+    const notifiedCover = coverPhone
+      ? await sendWhats(
+        instance,
+        coverPhone,
+        `Olá ${coverFirst}! 🐺\n\nA coordenação registrou que você cobriu a aula de *${aluno}* em ${dataFmt} às *${hora}*.\n\n` +
+          (movida
+            ? "O lançamento dessa aula já foi transferido para o seu nome e conta no seu pagamento."
+            : "Ela conta no seu pagamento: lance normalmente em *Lançar Aula* (a aula aparece na sua lista)."),
+      )
+      : false;
+    const notifiedOriginal = originalPhone
+      ? await sendWhats(
+        instance,
+        originalPhone,
+        `Olá ${originalFirst}! 🐺\n\nA coordenação registrou que a aula de *${aluno}* em ${dataFmt} às *${hora}* foi dada por ${coverFirst} (${String(action.motivo || "").slice(0, 120)}).\n\nEla não entra no seu pagamento deste mês. Melhoras! 💜`,
+      )
+      : false;
+    return {
+      ok: true,
+      coverage_id: result.coverage_id,
+      absence_id: result.absence_id,
+      status,
+      retroactive: true,
+      application,
+      notified: notifiedCover,
+      notified_original: notifiedOriginal,
+    };
+  }
   if (status !== "pending") {
     return {
       ok: true,
@@ -2675,14 +2743,25 @@ async function handleGestao(
             )
           }). Faça pela tela Repasse a Profs.`;
       } else if (tipo === "cobertura_aula") {
+        const app = (r?.application || {}) as Record<string, unknown>;
         txt = r?.ok
-          ? r.already_processed
+          ? r.retroactive
+            ? `✅ Cobertura registrada. ${
+              String(app.modo || "") === "aula_movida"
+                ? "A aula já estava lançada e o lançamento foi transferido para o substituto"
+                : "O substituto lança a aula normalmente em Lançar Aula"
+            } — ela sai do pagamento do professor ausente e entra no de quem deu a aula.${
+              r.notified ? "" : " ⚠️ O WhatsApp do substituto não recebeu o aviso."
+            }${r.notified_original ? "" : " ⚠️ O professor ausente não recebeu o aviso."}`
+            : r.already_processed
             ? "✅ Essa cobertura já havia sido respondida, cancelada ou processada. Nenhum convite foi duplicado."
             : r.notified
             ? "✅ Convite de cobertura enviado ao professor substituto. A aula e o repasse só passam para ele depois do aceite no link."
             : "⚠️ A cobertura ficou pendente, mas o WhatsApp do substituto não recebeu o convite. Abra Coberturas no painel para reenviar ou cancelar."
           : `Não consegui criar a cobertura pontual (${
-            erroExecucao || String(r?.error || "erro")
+            (erroExecucao || String(r?.error || "")) === "mes_fechado"
+              ? "o mês dessa aula já está fechado/pago — ajuste pelo fechamento"
+              : erroExecucao || String(r?.error || "erro")
           }). Nenhuma troca permanente foi feita.`;
       } else if (
         tipo === "transferencia_professor" || tipo === "repasse_aula"
@@ -2821,9 +2900,9 @@ LANÇAR CONTA A PAGAR: se pedirem para cadastrar/registrar/lançar uma despesa o
 - Não invente descrição, valor ou vencimento. Se faltar descrição/valor/conta, não devolva acao: pergunte o que falta. Em avulsa, vencimento pode ficar em branco e o fluxo segue com hoje como padrão.
 - Você NÃO lança direto: a mensagem seguinte da pessoa precisa confirmar com "sim".
 
-COBERTURA PONTUAL DE AULA: se o professor ficou doente, faltará ou alguém precisa assumir UMA ocorrência sem mudar a agenda fixa do aluno, devolva TAMBÉM o campo acao:
-{"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_aula", "aluno": "<nome do aluno>", "professor_ausente": "<nome>", "professor_substituto": "<nome de quem receberá o convite>", "data": "<AAAA-MM-DD>", "horario": "<HH:MM>", "motivo": "<motivo curto>"}}
-- A cobertura só vira definitiva quando o substituto aceitar o convite. A contabilização e o pagamento acompanham quem aceitou.
+COBERTURA PONTUAL DE AULA: se o professor ficou doente, faltará ou alguém precisa assumir UMA ocorrência sem mudar a agenda fixa do aluno — inclusive quando a aula JÁ ACONTECEU e outro professor a deu —, devolva TAMBÉM o campo acao:
+{"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_aula", "aluno": "<nome do aluno>", "professor_ausente": "<nome>", "professor_substituto": "<nome de quem deu ou dará a aula>", "data": "<AAAA-MM-DD>", "horario": "<HH:MM>", "motivo": "<motivo curto>"}}
+- Aula futura: a cobertura só vira definitiva quando o substituto aceitar o convite. Aula que já aconteceu (hoje mais cedo, ontem, até 31 dias atrás): a direção atesta e o registro é imediato, sem convite. Nos dois casos a contabilização e o pagamento acompanham quem deu a aula, não o professor ausente.
 - Se faltar aluno, professor ausente, substituto, data, horário ou motivo, não devolva acao — pergunte o que falta.
 
 TRANSFERÊNCIA RECORRENTE DE PROFESSOR: somente quando pedirem explicitamente para trocar de forma permanente/recorrente o professor do aluno a partir de uma data, devolva TAMBÉM o campo acao:
@@ -3161,12 +3240,10 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
           : "Encontrei mais de uma aula com esses dados. Informe aluno, data e horário exatos.";
       } else if (preview.error === "data_invalida") {
         msg =
-          "A data da cobertura deve ser válida, entre hoje e os próximos 90 dias.";
+          "A data da cobertura deve ser válida: até 31 dias para trás (aula já dada) ou até 90 dias para a frente.";
       } else if (preview.error === "horario_invalido") {
         msg =
           "O horário da cobertura precisa estar no formato HH:MM, em intervalos de 30 minutos.";
-      } else if (preview.error === "aula_no_passado") {
-        msg = "A cobertura precisa ser para uma aula que ainda não começou.";
       } else if (preview.error === "aula_nao_encontrada") {
         msg =
           "Não encontrei uma aula ativa desse aluno com o professor, a data e o horário informados. Confira os dados.";
@@ -3205,8 +3282,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const formattedDate = day && month && year
       ? `${day}/${month}/${year}`
       : preview.classDate;
+    // Hora informada diferente da agenda (aula já dada): fica no motivo, para
+    // o registro e os avisos dizerem a hora real sem soltar o booking.
+    const reasonFinal = preview.informedTime && preview.informedTime !== preview.classTime
+      ? `${reason} (aula dada às ${preview.informedTime})`.slice(0, 200)
+      : reason;
     const summary =
-      `cobertura pontual da aula de ${preview.studentName}, de ${preview.originalTeacherName} para ${preview.coverTeacherName}, em ${formattedDate} às ${preview.classTime} — ${reason}`;
+      `cobertura pontual da aula de ${preview.studentName}, de ${preview.originalTeacherName} para ${preview.coverTeacherName}, em ${formattedDate} às ${preview.classTime} — ${reasonFinal}`;
     const pending = await savePendingManagementAction(sb, {
       tenantId,
       groupJid,
@@ -3220,7 +3302,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         cover_teacher_id: preview.coverTeacherId,
         class_date: preview.classDate,
         class_time: preview.classTime,
-        motivo: reason,
+        motivo: reasonFinal,
       },
       summary,
     });
@@ -3235,8 +3317,9 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       return;
     }
 
-    const confirmation =
-      `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
+    const confirmation = preview.retroactive
+      ? `Entendi: *${summary}*. Essa aula já aconteceu, então não há convite: ao confirmar, a cobertura é registrada na hora — a aula sai do pagamento de ${preview.originalTeacherName} e entra no de ${preview.coverTeacherName} (se já estava lançada, o lançamento muda de nome). A agenda recorrente não muda.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`
+      : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
     return;

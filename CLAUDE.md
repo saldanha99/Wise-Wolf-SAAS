@@ -888,6 +888,57 @@ professores para Terça 15:30; o slot discreto devolve 3.
 
 ---
 
+## Cobertura de aula que JÁ aconteceu — a direção atesta ✅
+
+> **Leia antes de mexer em `gestao_create_coverage_invite`, `enforce_active_class_coverage_slot`
+> ou em qualquer escritor de `teacher_absences`.** Migration `20260916210000`.
+
+**O caso (16/09/2026):** o Flávio acordou doente, a Débora deu a aula do Theo (agenda
+09:30, dada às 10:00). À tarde, no grupo da Gestão, a direção pediu a cobertura e ouviu
+*"precisa ser para uma aula que ainda não começou"*. A aula ficou no financeiro de quem
+não a deu.
+
+**A regra:** aula **futura** segue pelo convite (o substituto aceita no link). Aula que
+**já começou** (até 31 dias atrás) nasce `confirmed` com `class_coverages.confirmed_by` =
+quem pediu, e `apply_coverage_acceptance` — **a mesma rotina do aceite** — move o
+lançamento já feito para o substituto (`aula_movida`) ou deixa o lançamento futuro com
+ele (`lancamento_redirecionado`), recalculando o fechamento dos dois. Medido em
+`ROLLBACK` com os dados reais: o log saiu do Flávio (R$ 10,50, faixa dele) e entrou na
+Débora (R$ 8,00, faixa dela) — **aula por aula, na tarifa de quem deu**.
+
+- ⚠️ **Para aula já dada NÃO valem** grade declarada nem "substituto ocupado": a Débora
+  tinha a própria aula às 09:30 e deu a do Theo às 10:00. Quem atesta é a direção; o
+  horário real vai no motivo, e a cobertura fica amarrada ao **booking** (é o que
+  identifica a aula para o pagamento). O assistente aceita hora diferente da agenda
+  quando o aluno tem UMA aula com aquele professor no dia.
+- ⚠️ **Mês fechado (`teacher_closings.status <> 'PENDENTE'`) recusa** com `mes_fechado`.
+  Mover aula num mês pago criaria diferença que relatório nenhum mostraria.
+- **O trigger reconhece a cobertura atestada por `confirmed_by`**: exige que a aula já
+  tenha começado (`retroactive_coverage_window`) e dispensa grade/conflito. Os marcadores
+  que `gestao_management_agent_hardening.sql` procura continuam lá.
+- Os dois professores recebem **aviso** (não convite): o substituto "conta no seu
+  pagamento" e o ausente "não entra no seu". Falha no aviso não desfaz o registro.
+
+### ⚠️ `teacher_absences` tem CHECKs criados FORA do repositório — e ninguém obedecia
+
+`reason IN ('SICK','VACATION','PERSONAL','OTHER')` e `status IN ('ACTIVE','RESOLVED',
+'CANCELLED')`, vivos só no banco (`supabase/schema/producao-*.sql`). A RPC do grupo e os
+dois escritores do painel (`coverage-admin`, `AbsenceCoverageManager`) gravavam texto
+livre + `'active'` → **todo pedido de cobertura da direção morria no insert da ausência**.
+Medido: 0 linhas em `teacher_absences`, 0 coberturas com `request_id` na história. Hoje:
+`reason` derivado do texto (`SICK`/`OTHER`), texto em `notes`, `status = 'ACTIVE'`. Leitores
+usam `lower(status)` ou `.in(['ACTIVE','active'])` — `.eq('status','active')` é código morto.
+
+**Ainda aberto (pedido da direção, 16/09/2026):** o grupo como *volante* — "Flávio não dá
+aula hoje" → disparar oportunidade de cobertura para todos os professores livres nos
+horários dos alunos dele, o primeiro que aceita leva; e o professor avisando a instância
+da escola dever virar isso sozinho. Hoje o modelo é **um convite para um professor**
+(`class_coverages` é única por booking+data com `pending` vivo) — "vários recebem, um
+leva" é outro objeto, como o leilão da experimental (`opportunities`). E o fechamento do
+mês no grupo da Gestão, por professor, com previsto × realizado e as coberturas.
+
+---
+
 ## A grade do Explorador de Agenda TEM SEMANA ✅
 
 > **Reposição e experimental são eventos de UM DIA. A grade é semanal.** Misturar os dois é
