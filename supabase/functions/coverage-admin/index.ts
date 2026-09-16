@@ -10,9 +10,11 @@ import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import { loadTenantCentralWhatsAppInstance } from "../_shared/tenant-communication.ts";
 
 /** Motivo em texto livre → enum aceito por `teacher_absences.reason`. */
-export function absenceReasonEnum(reason: string | null | undefined): "SICK" | "OTHER" {
+export function absenceReasonEnum(
+  reason: string | null | undefined,
+): "SICK" | "OTHER" {
   return /(doen|garganta|febre|gripe|sa[uú]de|m[eé]dic|hospital|enferm|covid|sick|dor )/i
-    .test(String(reason || ""))
+      .test(String(reason || ""))
     ? "SICK"
     : "OTHER";
 }

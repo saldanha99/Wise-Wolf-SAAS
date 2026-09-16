@@ -1606,12 +1606,21 @@ async function createCoverageInviteDirect(
     const classDate = String(result.class_date || action.class_date || "");
     const [y, m, d] = classDate.split("-");
     const dataFmt = d && m && y ? `${d}/${m}/${y}` : classDate;
-    const hora = String(result.class_time || action.class_time || "").slice(0, 5);
+    const hora = String(result.class_time || action.class_time || "").slice(
+      0,
+      5,
+    );
     const aluno = String(result.student_name || "Aluno").trim().slice(0, 80);
-    const coverFirst = String(result.cover_teacher_name || "Professor").trim().split(/\s+/)[0];
-    const originalFirst = String(result.original_teacher_name || "Professor").trim().split(/\s+/)[0];
+    const coverFirst =
+      String(result.cover_teacher_name || "Professor").trim().split(/\s+/)[0];
+    const originalFirst =
+      String(result.original_teacher_name || "Professor").trim().split(
+        /\s+/,
+      )[0];
     const coverPhone = normalizePhone(String(result.cover_teacher_phone || ""));
-    const originalPhone = normalizePhone(String(result.original_teacher_phone || ""));
+    const originalPhone = normalizePhone(
+      String(result.original_teacher_phone || ""),
+    );
     const movida = String(application.modo || "") === "aula_movida";
     const notifiedCover = coverPhone
       ? await sendWhats(
@@ -1627,7 +1636,9 @@ async function createCoverageInviteDirect(
       ? await sendWhats(
         instance,
         originalPhone,
-        `Olá ${originalFirst}! 🐺\n\nA coordenação registrou que a aula de *${aluno}* em ${dataFmt} às *${hora}* foi dada por ${coverFirst} (${String(action.motivo || "").slice(0, 120)}).\n\nEla não entra no seu pagamento deste mês. Melhoras! 💜`,
+        `Olá ${originalFirst}! 🐺\n\nA coordenação registrou que a aula de *${aluno}* em ${dataFmt} às *${hora}* foi dada por ${coverFirst} (${
+          String(action.motivo || "").slice(0, 120)
+        }).\n\nEla não entra no seu pagamento deste mês. Melhoras! 💜`,
       )
       : false;
     return {
@@ -2751,8 +2762,14 @@ async function handleGestao(
                 ? "A aula já estava lançada e o lançamento foi transferido para o substituto"
                 : "O substituto lança a aula normalmente em Lançar Aula"
             } — ela sai do pagamento do professor ausente e entra no de quem deu a aula.${
-              r.notified ? "" : " ⚠️ O WhatsApp do substituto não recebeu o aviso."
-            }${r.notified_original ? "" : " ⚠️ O professor ausente não recebeu o aviso."}`
+              r.notified
+                ? ""
+                : " ⚠️ O WhatsApp do substituto não recebeu o aviso."
+            }${
+              r.notified_original
+                ? ""
+                : " ⚠️ O professor ausente não recebeu o aviso."
+            }`
             : r.already_processed
             ? "✅ Essa cobertura já havia sido respondida, cancelada ou processada. Nenhum convite foi duplicado."
             : r.notified
@@ -3284,9 +3301,10 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : preview.classDate;
     // Hora informada diferente da agenda (aula já dada): fica no motivo, para
     // o registro e os avisos dizerem a hora real sem soltar o booking.
-    const reasonFinal = preview.informedTime && preview.informedTime !== preview.classTime
-      ? `${reason} (aula dada às ${preview.informedTime})`.slice(0, 200)
-      : reason;
+    const reasonFinal =
+      preview.informedTime && preview.informedTime !== preview.classTime
+        ? `${reason} (aula dada às ${preview.informedTime})`.slice(0, 200)
+        : reason;
     const summary =
       `cobertura pontual da aula de ${preview.studentName}, de ${preview.originalTeacherName} para ${preview.coverTeacherName}, em ${formattedDate} às ${preview.classTime} — ${reasonFinal}`;
     const pending = await savePendingManagementAction(sb, {
