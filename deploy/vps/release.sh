@@ -725,6 +725,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
+  supabase/functions/_shared/payroll-message.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-absence.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
@@ -948,6 +950,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/book-interview/index.ts \
   supabase/functions/accept-coverage/index.ts \
   supabase/functions/claim-coverage/index.ts \
+  supabase/functions/management-payroll-report/index.ts \
   supabase/functions/accept-opportunity/index.ts \
   supabase/functions/broadcast-opportunity/index.ts \
   supabase/functions/confirm-attendance/index.ts \
@@ -1315,6 +1318,9 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916210000_cobertura_de_aula_que_ja_aconteceu.sql"
   "supabase/migrations/20260916220000_troca_de_plano_pelo_grupo_da_gestao.sql"
   "supabase/migrations/20260916230000_cobertura_do_dia_oportunidade_para_varios.sql"
+  "supabase/migrations/20260916240000_professor_avisa_ausencia_pela_instancia.sql"
+  "supabase/migrations/20260916250000_folha_por_professor_no_grupo_da_gestao.sql"
+  "supabase/migrations/20260916260000_cron_da_folha_no_grupo_da_gestao.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1486,6 +1492,7 @@ SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safet
 SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider-operations.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
+SHARED_PAYROLL_MESSAGE_RELATIVE="supabase/functions/_shared/payroll-message.ts"
 SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
 SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/financial-report-message-fence.ts"
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
@@ -1546,6 +1553,7 @@ HARDENED_FUNCTIONS=(
   sync-payments
   accept-coverage
   claim-coverage
+  management-payroll-report
   accept-opportunity
   book-interview
   broadcast-opportunity
@@ -1648,6 +1656,7 @@ done
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
+[[ -s "$SHARED_PAYROLL_MESSAGE_RELATIVE" ]] || die "compositor da folha ausente"
 [[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
 [[ -s "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" ]] || die "fence de relatórios financeiros ausente"
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
@@ -1771,6 +1780,7 @@ append_release_input_checksum() {
     "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
+    "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
     "$SHARED_EVOLUTION_SEND_RELATIVE" \
     "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
@@ -1949,6 +1959,8 @@ rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
 rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
+rsync -a -- "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payroll-message.ts"
 rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
 rsync -a -- "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
@@ -2144,6 +2156,7 @@ global_meeting_policy_shared_swapped=0
 hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 lead_contact_shared_swapped=0
+payroll_message_shared_swapped=0
 evolution_send_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
@@ -2317,6 +2330,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/hub-provider-operations.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
+[[ -s "$release_dir/functions/_shared/payroll-message.ts" ]]
 [[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
 [[ -s "$release_dir/functions/_shared/financial-report-message-fence.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
@@ -2599,6 +2613,14 @@ restore_previous_release() {
         "$functions_dir/_shared/lead-contact.ts"
     else
       rm -f -- "$functions_dir/_shared/lead-contact.ts"
+    fi
+  fi
+  if [[ "$payroll_message_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/payroll-message.ts" ]]; then
+      cp -a -- "$backup_dir/payroll-message.ts" \
+        "$functions_dir/_shared/payroll-message.ts"
+    else
+      rm -f -- "$functions_dir/_shared/payroll-message.ts"
     fi
   fi
   if [[ "$evolution_send_shared_swapped" = "1" ]]; then
@@ -3953,6 +3975,14 @@ fi
 lead_contact_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/lead-contact.ts" \
   "$functions_dir/_shared/lead-contact.ts"
+
+if [[ -f "$functions_dir/_shared/payroll-message.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/payroll-message.ts" \
+    "$backup_dir/payroll-message.ts"
+fi
+payroll_message_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/payroll-message.ts" \
+  "$functions_dir/_shared/payroll-message.ts"
 
 if [[ -f "$functions_dir/_shared/evolution-send.ts" ]]; then
   cp -a -- "$functions_dir/_shared/evolution-send.ts" \

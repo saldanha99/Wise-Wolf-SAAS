@@ -960,9 +960,28 @@ quem pediu e o aluno recebe o link `/mudar-plano` no WhatsApp. A regra da tela n
 **a direção propõe, a assinatura do aluno aplica, a Asaas entra pela fila.** O `expected`
 do aval é montado na RPC (com `p_tipo`), nunca pelo chamador.
 
-**Ainda aberto:** professor avisando a instância da escola que não dá aula (rota própria
-no inbound — hoje cai na atendente comercial) e o fechamento do mês no grupo da Gestão,
-por professor, com previsto × realizado e as coberturas linha a linha.
+### Professor avisa a instância que não dá aula (migration `20260916240000`) ✅
+
+Professor conhecido escrevendo para o número da escola caía num `continue` **mudo** (não
+era a atendente — era ninguém). Hoje `teacher-absence.ts` (puro, testado) reconhece
+*"não vou conseguir dar aula hoje/amanhã/dia 18"*, o bot lista as aulas do dia e pergunta
+**"confirma?"** (`teacher_absence_prompts`, 2 h de validade, uma por professor). No SIM:
+`gestao_open_coverage_day` com `p_source='teacher'` (ele atesta a própria ausência), aviso
+no grupo da Gestão com o mesmo resumo do comando do grupo, links para os professores livres.
+Falso positivo custa uma pergunta; por isso a regex é generosa e a confirmação, obrigatória.
+
+### Folha do mês por professor no grupo (migrations `20260916250000`/`260000`) ✅
+
+`gestao_payroll_summary(tenant, mês)` lê `teacher_closings` (a folha oficial) e as
+coberturas confirmadas do mês (`class_log_id` → `rate_efetivo`); o compositor
+`_shared/payroll-message.ts` mostra, por professor, aulas · valor · status e as coberturas
+**linha a linha** ("↪ cobriu Theo de Flávio em 16/09: +R$ 8,00" / "↩ cedeu…"), com o
+*previsto pela agenda* = folha − recebidas + cedidas. Duas portas, um texto: o comando
+só-leitura `folha_professores` no grupo ("folha de agosto") e o cron
+`wisewolf-monthly-payroll-gestao` (dia 1º, 07:00 UTC, edge `management-payroll-report`,
+dedupe `automation_sent` kind `MONTHLY_PAYROLL`, marca antes do envio).
+⚠️ O valor "que o ausente teria recebido" é conta hipotética (depende da faixa dele) — a
+cedida mostra só a contagem, e o previsto usa a tarifa de quem cobriu.
 
 ---
 

@@ -56,6 +56,14 @@ import {
   studentBillingMethodChangeReply,
 } from "./billing-method-intent.ts";
 import {
+  absenceConfirmationAnswer,
+  detectTeacherAbsenceIntent,
+} from "./teacher-absence.ts";
+import {
+  montarMensagemFolha,
+  type PayrollSummary,
+} from "../_shared/payroll-message.ts";
+import {
   handleRenewalManagementCommand,
   handleRenewalStudentMessage,
   handleRenewalTeacherReply,
@@ -1432,6 +1440,195 @@ ${link}`,
     );
   }
   return { ok: true, teacher_name: result.teacher_name, lines };
+}
+
+/**
+ * Professor escrevendo para a instância da escola que não vai dar aula.
+ * Reconhece → lista as aulas do dia → pergunta "confirma?" → no SIM abre a
+ * cobertura do dia em nome dele (p_source='teacher'), avisa o grupo da Gestão
+ * e manda o link aos professores livres. Devolve true quando tratou a mensagem.
+ */
+async function handleTeacherAbsenceMessage(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  teacher: { id: string; full_name?: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const teacherId = String(teacher.id);
+  const first = String(teacher.full_name || "").trim().split(/\s+/)[0] ||
+    "professor";
+  const say = async (reply: string, meta: Record<string, unknown> = {}) => {
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "teacher", "out", reply, {
+      teacher_id: teacherId,
+      entregue,
+      ...meta,
+    });
+  };
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  const { data: pending } = await sb.from("teacher_absence_prompts")
+    .select("id,absence_date,reason,classes,request_id,expires_at")
+    .eq("tenant_id", tenantId).eq("teacher_id", teacherId).eq(
+      "status",
+      "PENDING",
+    )
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  const intent = detectTeacherAbsenceIntent(text, todayBRT());
+
+  if (pending && !intent.matched) {
+    const answer = absenceConfirmationAnswer(text);
+    await logMsg(sb, tenantId, phone, "teacher", "in", text, {
+      teacher_id: teacherId,
+      msg_id: msgId,
+      absence_prompt: pending.id,
+      answer,
+    });
+    if (answer === "no") {
+      await sb.from("teacher_absence_prompts").update({
+        status: "CANCELLED",
+        resolved_at: new Date().toISOString(),
+      }).eq("id", pending.id);
+      await say("Combinado, não registrei nada. Se mudar, é só me avisar. 🐺");
+      return true;
+    }
+    if (answer !== "yes") {
+      await say(
+        `Ainda tenho uma pergunta aberta: confirma que você *não dá aula em ${
+          fmt(String(pending.absence_date))
+        }*? Responda *SIM* ou *NÃO*.`,
+      );
+      return true;
+    }
+    await sb.from("teacher_absence_prompts").update({
+      status: "CONFIRMED",
+      resolved_at: new Date().toISOString(),
+    }).eq("id", pending.id);
+    const opened = await openCoverageDayDirect(
+      sb,
+      instance,
+      tenantId,
+      teacherId,
+      `teacher-absence:${String(pending.request_id)}`,
+      teacherId,
+      String(pending.absence_date),
+      String(pending.reason || "imprevisto"),
+      "teacher",
+    );
+    const lines = (opened.lines || []) as string[];
+    if (opened.ok !== true) {
+      await say(
+        "Registrei seu aviso e passei para a coordenação, mas não consegui abrir a cobertura automaticamente — a coordenação vai cuidar. Melhoras! 💜",
+      );
+    } else {
+      const avisados = lines.filter((l) => /avisad/.test(l)).length;
+      await say(
+        `Anotado, ${first}. Avisei a coordenação e ${
+          avisados
+            ? `já ofereci suas aulas de ${
+              fmt(String(pending.absence_date))
+            } aos professores livres`
+            : `a coordenação vai procurar cobertura para suas aulas de ${
+              fmt(String(pending.absence_date))
+            }`
+        }. Você não precisa fazer mais nada. Melhoras! 💜`,
+      );
+    }
+    // Grupo da Gestão fica sabendo na hora, com o mesmo resumo do comando do grupo.
+    const { data: conf } = await sb.from("dre_report_settings").select(
+      "destino,is_active",
+    ).eq("tenant_id", tenantId).maybeSingle();
+    const destino = String(conf?.destino || "").trim();
+    if (conf?.is_active && /@g\.us$/.test(destino)) {
+      const corpo = opened.ok === true
+        ? `Cobertura aberta:\n${lines.join("\n") || "• (sem aulas a cobrir)"}`
+        : `⚠️ Não consegui abrir a cobertura automaticamente (${
+          String(opened.error || "erro")
+        }). Abram pelo grupo: "cobertura do dia ${
+          fmt(String(pending.absence_date))
+        } de ${first}".`;
+      const aviso = `🤒 *Ausência avisada pelo professor:* ${
+        String(teacher.full_name || first)
+      } não dá aula em *${fmt(String(pending.absence_date))}* (${
+        String(pending.reason || "imprevisto")
+      }).\n\n${corpo}\n\nO primeiro professor que aceitar o link fica com cada aula — aviso aqui a cada aceite.`;
+      await sendWhats(instance, destino, aviso);
+      await logMsg(sb, tenantId, destino, "gestao", "out", aviso, {
+        teacher_id: teacherId,
+        absence_prompt: pending.id,
+      });
+    }
+    return true;
+  }
+
+  if (!intent.matched) return false;
+
+  await logMsg(sb, tenantId, phone, "teacher", "in", text, {
+    teacher_id: teacherId,
+    msg_id: msgId,
+    absence_intent: intent,
+  });
+  const date = intent.date ?? todayBRT();
+  if (date > addDaysToBrtDate(todayBRT(), 14)) {
+    await say(
+      "Entendi que você vai faltar, mas só consigo abrir cobertura para os próximos 14 dias. Fale com a coordenação para datas mais distantes.",
+    );
+    return true;
+  }
+  const aulas = await teacherClassesOnDate(sb, tenantId, teacherId, date);
+  const abertas = aulas.filter((a) => !a.started);
+  if (!abertas.length) {
+    await say(
+      aulas.length
+        ? `Vi suas aulas de ${
+          fmt(date)
+        }, mas todas já começaram ou passaram. Se outro professor deu alguma delas, a coordenação registra a cobertura pelo grupo. Melhoras! 💜`
+        : `Não encontrei aula sua na agenda em ${
+          fmt(date)
+        }. Se for outro dia, me diga a data (ex.: "dia 18").`,
+    );
+    return true;
+  }
+  await sb.from("teacher_absence_prompts").update({
+    status: "CANCELLED",
+    resolved_at: new Date().toISOString(),
+  })
+    .eq("tenant_id", tenantId).eq("teacher_id", teacherId).eq(
+      "status",
+      "PENDING",
+    );
+  const { error } = await sb.from("teacher_absence_prompts").insert({
+    tenant_id: tenantId,
+    teacher_id: teacherId,
+    phone,
+    absence_date: date,
+    reason: intent.reason,
+    classes: abertas.map((a) => ({
+      booking_id: a.bookingId,
+      time: a.time,
+      student: a.studentName,
+    })),
+  });
+  if (error) {
+    await say(
+      "Recebi seu aviso, mas não consegui registrar agora. Fale com a coordenação, por favor.",
+    );
+    return true;
+  }
+  const lista = abertas.map((a) => `• ${a.time} ${a.studentName}`).join("\n");
+  await say(
+    `Oi, ${first}! Entendi que você *não vai dar aula em ${
+      fmt(date)
+    }* (${intent.reason}). Suas aulas nesse dia:\n${lista}\n\n*Confirma?* Responda *SIM* para eu avisar a coordenação e já oferecer essas aulas aos professores livres, ou *NÃO* se não for isso.`,
+  );
+  return true;
 }
 
 function planChangeReplyText(r: Record<string, unknown>): string {
@@ -3292,6 +3489,10 @@ TRANSFERÊNCIA RECORRENTE DE PROFESSOR: somente quando pedirem explicitamente pa
 - Se junto com a transferência disserem que a frequência ou o valor do aluno mudam (ex.: "o Matheus só tem 3 horários, vai ficar 3x a R$ 219"), inclua TAMBÉM "nova_frequencia": "<Nx>" e "novo_valor": <número> dentro da mesma acao — o aluno recebe o link de assinatura do plano novo junto.
 - Se faltar qualquer um dos dados acima, não devolva acao — pergunte o que falta.
 
+FOLHA DO MÊS POR PROFESSOR: se perguntarem quanto cada professor ganhou/recebe, o fechamento por professor ou a folha de um mês, devolva TAMBÉM o campo acao (é só leitura, sem confirmação):
+{"responder": true, "resposta": "<uma frase curta>", "acao": {"tipo": "folha_professores", "mes": "<AAAA-MM>"}}
+- "agosto" vira o AAAA-MM daquele agosto; sem mês, use o mes_fechado dos dados.
+
 COBERTURA DO DIA (professor não vai dar NENHUMA aula num dia — doente, imprevisto): devolva TAMBÉM o campo acao:
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_dia", "professor": "<nome do professor ausente>", "data": "<AAAA-MM-DD>", "motivo": "<motivo curto>"}}
 - "hoje"/"amanhã" viram a data certa (HOJE está nos dados). Sem data, assuma hoje.
@@ -3715,6 +3916,29 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
+    return;
+  }
+
+  if (acao && acao.tipo === "folha_professores") {
+    // Só leitura: sem confirmação. É a mesma mensagem que o cron manda no dia 1º.
+    const mes = String(acao.mes || "").trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+      const msg = "De qual mês você quer a folha por professor? (ex.: agosto)";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const [{ data: folha, error: folhaError }, { data: tenantRow }] =
+      await Promise.all([
+        sb.rpc("gestao_payroll_summary", { p_tenant: tenantId, p_month: mes }),
+        sb.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+      ]);
+    const summary = folha as PayrollSummary | null;
+    const msg = folhaError || !summary?.ok
+      ? "Não consegui montar a folha desse mês agora. Tente de novo em instantes."
+      : montarMensagemFolha(String(tenantRow?.name || "Escola"), summary);
+    await sendWhats(instance, groupJid, msg);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
     return;
   }
 
@@ -7157,6 +7381,23 @@ serve(async (req) => {
         phonesMatch(profile.phone, phone)
       );
       if (knownProfile) {
+        // Professor avisando que não dá aula: rota própria (antes caía num
+        // `continue` mudo — ninguém respondia nem abria cobertura).
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && String(text || "").trim() &&
+          await handleTeacherAbsenceMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
         const isContractedStudent =
           String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
           knownProfile.contract_accepted === true;
