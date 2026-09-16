@@ -145,8 +145,15 @@ Deno.serve(async (req: Request) => {
   const servicePath = `/home/deno/functions/${service_name}`
   console.error(`serving the request with ${servicePath}`)
 
-  const memoryLimitMb = 150
-  const workerTimeoutMs = 1 * 60 * 1000
+  // Limites por worker (medido em 16/09/2026): com 150 MB e 60 s, e a política
+  // padrão `per_worker` (um isolate por function, reaproveitado até vencer o
+  // relógio), 9.270 dos 19.129 pedidos do dia caíram em "early termination" —
+  // qualquer webhook que chegasse nos últimos segundos de vida do worker morria
+  // no meio (o grupo da Gestão ficou sem resposta às 19:53 por isso). O
+  // docker-compose passa `--policy per_request`: cada pedido tem o próprio
+  // worker e o próprio relógio. Os 150 s cobrem modelo + transcrição + envio.
+  const memoryLimitMb = 512
+  const workerTimeoutMs = 150 * 1000
   const noModuleCache = false
   const importMapPath = null
   const envVarsObj = Deno.env.toObject()

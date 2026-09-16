@@ -1214,7 +1214,22 @@ nunca no Git nem no chat. Testes que precisam de chave (OpenAI etc.) devem rodar
 **dentro da VPS**, lendo do `.env`, para a chave não entrar no contexto.
 
 **Diagnóstico:** `ssh wisewolf-vps 'docker logs --timestamps
-supabase-edge-functions --since 30m'`. Banco: `docker exec supabase-db psql -U
+supabase-edge-functions --since 30m'`.
+
+### O edge-runtime matava metade dos pedidos (16/09/2026) ✅
+
+`supabase/functions/main/index.ts` criava workers com 150 MB / 60 s e a política padrão
+`per_worker` **reaproveita o isolate de cada function até o relógio de parede vencer** —
+o pedido que estivesse em voo naquele segundo morria com `early termination has been
+triggered`. Medido: **9.270 terminações em 19.129 pedidos/24 h**; o grupo da Gestão ficou
+sem resposta às 19:53 porque o worker do `whatsapp-inbound` venceu 7 s depois de a
+mensagem chegar. Hoje: `--policy per_request` no `docker-compose.yml` (um worker por
+pedido, relógio próprio), 512 MB e 150 s. Duas horas depois: 0 terminações; CPU do
+container caiu de 150% para <1% (era o custo de matar e recriar workers o dia inteiro).
+⚠️ **O `release.sh` NÃO publica `main/index.ts` nem o `docker-compose.yml`** — os dois
+foram copiados na mão (`scp` + `docker compose up -d functions`); backup em
+`/opt/wisewolf/backups/edge-runtime-20260916T231602Z`. Se mexer neles, repita o ritual.
+ Banco: `docker exec supabase-db psql -U
 postgres`. Compare o horário do erro com
 `docker inspect -f '{{.State.StartedAt}}' supabase-edge-functions` antes de
 concluir que um erro é posterior ao deploy.
