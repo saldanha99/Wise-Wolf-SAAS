@@ -8,8 +8,27 @@ import {
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   escapePostgresLikePattern,
+  loadTenantWhatsAppRoute,
   resolveTenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
+import {
+  parseEnrollmentDuration,
+  parseEnrollmentSlots,
+  parseTrialOutcomeReply,
+  studentNeedMessage,
+  studentNoShowMessage,
+  studentOfferMessage,
+  studentPlanQuestion,
+  studentSlotsUnavailableMessage,
+  studentWaitingFeedbackMessage,
+  teacherDoneConfirmation,
+  teacherFeedbackAsk,
+  teacherNoShowConfirmation,
+} from "./trial-closing.ts";
+import {
+  parseRenewalFrequency,
+  type RenewalSlot,
+} from "./renewal-negotiation.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -3899,6 +3918,247 @@ async function supersedeOpenTrials(
   return fechadas;
 }
 
+// A mensagem para o aluno sai sempre pela instância central de aluno, mesmo
+// quando o gatilho foi a resposta da professora, que chega na instância dela.
+async function trialClosingStudentInstance(
+  sb: any,
+  tenantId: string,
+  fallback: string,
+): Promise<string> {
+  try {
+    const route = await loadTenantWhatsAppRoute(sb, tenantId, "student");
+    return route?.instanceName || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * "A experimental aconteceu?" — a resposta da professora registra a aula (é o
+ * que PAGA a experimental dela), guarda o comentário e chama o aluno para a
+ * matrícula. Quem decide tudo isso é o banco; aqui só se lê e se escreve.
+ */
+async function handleTrialClosingTeacherReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const parsed = parseTrialOutcomeReply(text);
+  if (
+    !parsed.outcome && !parsed.level && parsed.interest === null && !parsed.plan
+  ) return false;
+
+  const teachers = await activeMemberProfiles(sb, tenantId, ["TEACHER"]);
+  const teacher = (teachers || []).find((profile: any) =>
+    phonesMatch(profile.phone, phone)
+  );
+  if (!teacher) return false;
+
+  const { data, error } = await sb.rpc("trial_closing_teacher_reply", {
+    p_tenant: tenantId,
+    p_teacher: teacher.id,
+    p_outcome: parsed.outcome,
+    p_level: parsed.level,
+    p_interest: parsed.interest,
+    p_plan: parsed.plan,
+  });
+  if (error) throw new Error("trial_closing_teacher_state_unavailable");
+  if (!data?.handled) return false;
+
+  await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+    msg_id: msgId,
+    flow_id: data.flow_id || null,
+    outcome: parsed.outcome,
+  });
+
+  const replyTeacher = async (
+    message: string,
+    meta: Record<string, unknown>,
+  ) => {
+    const delivered = await sendWhats(instance, phone, message);
+    await logMsg(sb, tenantId, phone, "trial_closing", "out", message, {
+      ...meta,
+      msg_id: msgId,
+      entregue: delivered,
+    });
+  };
+
+  if (data.error) {
+    console.error("[trial-closing] resposta da professora não registrada", {
+      error: String(data.error),
+    });
+    await replyTeacher(
+      "Não consegui registrar agora. Avisei a escola — se preferir, lance a aula em Experimentais/Treinos.",
+      { failure: String(data.error) },
+    );
+    return true;
+  }
+
+  if (Array.isArray(data.need_feedback) && data.need_feedback.length > 0) {
+    await replyTeacher(teacherFeedbackAsk(data.need_feedback as string[]), {
+      need_feedback: data.need_feedback,
+    });
+    return true;
+  }
+
+  const leadPhone = String(data.lead_phone || "");
+
+  if (data.stage === "NO_SHOW") {
+    await replyTeacher(teacherNoShowConfirmation(data.lead_name), {
+      stage: "NO_SHOW",
+    });
+    if (leadPhone) {
+      const studentInstance = await trialClosingStudentInstance(
+        sb,
+        tenantId,
+        instance,
+      );
+      const leadMessage = studentNoShowMessage({
+        leadName: data.lead_name,
+        teacherName: teacher.full_name,
+      });
+      const delivered = await sendWhats(
+        studentInstance,
+        leadPhone,
+        leadMessage,
+      );
+      await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
+        kind: "trial_closing_no_show",
+        flow_id: data.flow_id || null,
+        entregue: delivered,
+      });
+    }
+    return true;
+  }
+
+  await replyTeacher(teacherDoneConfirmation(data.lead_name), {
+    stage: "ASK_STUDENT",
+  });
+  if (data.stage === "ASK_STUDENT" && !data.already_asked && leadPhone) {
+    const studentInstance = await trialClosingStudentInstance(
+      sb,
+      tenantId,
+      instance,
+    );
+    const leadMessage = studentPlanQuestion({
+      leadName: data.lead_name,
+      teacherName: data.teacher_name,
+      prices: (data.prices || []) as Array<
+        { frequency: number; duration: number; value: number }
+      >,
+    });
+    const delivered = await sendWhats(studentInstance, leadPhone, leadMessage);
+    await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
+      kind: "trial_closing_plan_question",
+      flow_id: data.flow_id || null,
+      entregue: delivered,
+    });
+    if (delivered) {
+      await sb.rpc("trial_closing_mark_asked", {
+        p_flow: data.flow_id,
+        p_side: "student",
+      });
+    }
+  }
+  return true;
+}
+
+/**
+ * A escolha do aluno depois da experimental: frequência, dias e horários e o
+ * plano. Com tudo respondido, o banco gera a oferta com o preço da tabela e o
+ * link sai aqui. Texto que não traz nenhuma dessas coisas segue para a
+ * atendente — este caminho não sequestra a conversa.
+ */
+async function handleTrialClosingStudent(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  phone: string,
+  text: string,
+  isMedia: boolean,
+  msgId: string,
+): Promise<boolean> {
+  if (isMedia) return false;
+  const slots = parseEnrollmentSlots(text);
+  const duration = parseEnrollmentDuration(text);
+  const frequency = parseRenewalFrequency(text);
+  if (slots.length === 0 && duration === null && frequency === null) {
+    return false;
+  }
+
+  const { data, error } = await sb.rpc("trial_closing_student_plan", {
+    p_tenant: tenantId,
+    p_phone: phone,
+    p_frequency: frequency,
+    p_duration: duration,
+    p_slots: slots.length > 0 ? slots : null,
+    p_origin: null,
+  });
+  if (error) throw new Error("trial_closing_student_state_unavailable");
+  if (!data?.handled) return false;
+
+  await logMsg(sb, tenantId, phone, "sdr", "in", text, {
+    msg_id: msgId,
+    kind: "trial_closing",
+    flow_id: data.flow_id || null,
+  });
+
+  let reply = "";
+  if (Array.isArray(data.need) && data.need.length > 0) {
+    reply = studentNeedMessage({
+      need: data.need as string[],
+      frequency: data.frequency ?? null,
+      prices: (data.prices || []) as Array<
+        { frequency: number; duration: number; value: number }
+      >,
+    });
+  } else if (data.waiting === "feedback") {
+    reply = studentWaitingFeedbackMessage();
+  } else if (data.offer?.ok) {
+    reply = studentOfferMessage({
+      leadName: data.lead_name,
+      teacherName: null,
+      url: String(data.offer.url),
+      value: Number(data.offer.value),
+      frequency: Number(data.offer.frequency),
+      duration: Number(data.offer.duration),
+      slots: (data.offer.slots || []) as RenewalSlot[],
+      startDate: String(data.offer.start_date || ""),
+    });
+  } else if (data.offer?.error) {
+    const slotProblem = [
+      "teacher_slot_unavailable",
+      "teacher_slot_occupied",
+      "enrollment_schedule_reserved",
+    ].includes(String(data.offer.error));
+    if (slotProblem) {
+      reply = studentSlotsUnavailableMessage(
+        (data.offer.free_slots || []) as RenewalSlot[],
+      );
+    } else {
+      console.error("[trial-closing] link de matrícula não gerado", {
+        error: String(data.offer.error),
+      });
+      reply =
+        "Anotei sua escolha! Vou confirmar uma coisa com a escola e já te mando o link da matrícula.";
+    }
+  } else {
+    return false;
+  }
+
+  const delivered = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+    kind: "trial_closing",
+    flow_id: data.flow_id || null,
+    msg_id: msgId,
+    entregue: delivered,
+  });
+  return true;
+}
+
 async function handleTrialRescheduleTeacherReply(
   sb: any,
   instance: string,
@@ -5360,6 +5620,20 @@ async function drainSdrConversation(
             `${phone}@s.whatsapp.net`,
           )
         ) return;
+        // Aluno que acabou de fazer a experimental e está escolhendo plano e
+        // horário: resposta determinística, com o preço da tabela. Quem não
+        // está nesse ponto passa direto para a atendente.
+        if (
+          await handleTrialClosingStudent(
+            sb,
+            input.instance,
+            tenantId,
+            phone,
+            input.text,
+            input.isMedia,
+            input.msgId,
+          )
+        ) return;
         await handleSDR(
           sb,
           input.instance,
@@ -5806,6 +6080,22 @@ serve(async (req) => {
       // do teacher vira mensagem de candidato em handoff e a agenda nunca sabe.
       if (
         await handleTrialRescheduleTeacherReply(
+          sb,
+          instance,
+          tenantId,
+          phone,
+          text,
+          msgId,
+        )
+      ) {
+        continue;
+      }
+
+      // Fechamento da experimental: vem depois da remarcação (que tem código e
+      // prazo) e só entra quando existe pergunta aberta para esta professora.
+      if (
+        !isMedia && !rateLimited &&
+        await handleTrialClosingTeacherReply(
           sb,
           instance,
           tenantId,

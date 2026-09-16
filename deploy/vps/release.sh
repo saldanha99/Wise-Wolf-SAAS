@@ -518,6 +518,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/index.ts \
+  supabase/functions/whatsapp-inbound/trial-closing.ts \
+  supabase/functions/whatsapp-inbound/trial-closing.test.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -719,6 +721,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
+  supabase/functions/whatsapp-inbound/trial-closing.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -1291,6 +1294,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915176000_mesmo_destinatario_com_e_sem_nono_digito.sql"
   "supabase/migrations/20260915177000_renovacao_escolha_de_professor_e_prazo.sql"
   "supabase/migrations/20260915178000_renovacao_pagina_com_marca_da_escola.sql"
+  "supabase/migrations/20260915179000_fechamento_automatico_da_experimental.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1407,6 +1411,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/negociacao_de_renovacao.sql"
   "supabase/tests/mesmo_destinatario_nono_digito.sql"
   "supabase/tests/renovacao_escolha_de_professor.sql"
+  "supabase/tests/fechamento_automatico_da_experimental.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.

@@ -19,6 +19,16 @@ import {
   type TenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
+// As mensagens do fechamento vivem junto do bot que lê as respostas
+// (`whatsapp-inbound`): texto de pergunta e texto de resposta precisam mudar
+// juntos. As duas funções são publicadas no mesmo pacote.
+import {
+  type CatalogPrice,
+  studentOfferMessage,
+  studentPlanQuestion,
+  teacherOutcomeQuestion,
+} from "../whatsapp-inbound/trial-closing.ts";
+import type { RenewalSlot as Slot } from "../whatsapp-inbound/renewal-negotiation.ts";
 import {
   claimSdrNotice,
   claimTrialTimeoutNotice,
@@ -256,6 +266,10 @@ serve(async (req) => {
       reschedule_timeouts: 0,
       teacher_reminders: 0,
       orphan_skipped: 0,
+      closing_teacher_asks: 0,
+      closing_student_asks: 0,
+      closing_offers: 0,
+      closing_overdue: 0,
       failures: [] as string[],
     };
 
@@ -1062,6 +1076,134 @@ serve(async (req) => {
           `reschedule_timeout ${request.id}: ${(error as Error).message}`,
         );
       }
+    }
+
+    // ============ F) FECHAMENTO DA EXPERIMENTAL ============
+    // De 01 a 15/09 nenhuma das 9 experimentais realizadas virou link de
+    // matrícula: o resultado da aula e a proposta dependiam de alguém da escola
+    // lembrar. Aqui o bot pergunta à professora, chama o aluno para escolher
+    // plano e horário, e cobra quem não respondeu. O banco é quem registra a
+    // aula (migration 20260915179000) — daqui só saem mensagens.
+    try {
+      if (businessHours) {
+        const { data: teacherAsks, error: teacherAskError } = await sb.rpc(
+          "trial_closing_teacher_asks",
+          { p_limit: 10 },
+        );
+        if (teacherAskError) throw new Error(teacherAskError.message);
+        for (const ask of (teacherAsks || [])) {
+          const t = byTenant[ask.tenant_id];
+          if (
+            !t?.teacherInstance || cfgOf(ask.tenant_id)?.sdr?.enabled === false
+          ) continue;
+          const phone = cleanPhone(ask.teacher_phone || "");
+          if (phone.length < 12) continue;
+          const msg = teacherOutcomeQuestion({
+            teacherName: ask.teacher_name,
+            leadName: ask.lead_name,
+            whenText: ask.when_text,
+          });
+          if (await sendWhats(t.teacherInstance, phone, msg)) {
+            await sb.rpc("trial_closing_mark_asked", {
+              p_flow: ask.flow_id,
+              p_side: "teacher",
+            });
+            result.closing_teacher_asks++;
+          } else {
+            result.failures.push(`closing_teacher_ask ${ask.flow_id}`);
+          }
+        }
+
+        const { data: studentAsks, error: studentAskError } = await sb.rpc(
+          "trial_closing_student_asks",
+          { p_limit: 10 },
+        );
+        if (studentAskError) throw new Error(studentAskError.message);
+        for (const ask of (studentAsks || [])) {
+          const t = byTenant[ask.tenant_id];
+          if (
+            !t?.studentInstance || cfgOf(ask.tenant_id)?.sdr?.enabled === false
+          ) continue;
+          const phone = cleanPhone(ask.lead_phone || "");
+          if (phone.length < 12) continue;
+          const msg = studentPlanQuestion({
+            leadName: ask.lead_name,
+            teacherName: ask.teacher_name,
+            prices: (ask.prices || []) as CatalogPrice[],
+          });
+          const delivered = await sendWhats(t.studentInstance, phone, msg);
+          // O registro não depende do envio: é o histórico que a atendente lê.
+          await sb.from("ai_wa_messages").insert({
+            tenant_id: ask.tenant_id,
+            phone,
+            agent: "sdr",
+            direction: "out",
+            content: msg,
+            meta: {
+              kind: "trial_closing_plan_question",
+              flow_id: ask.flow_id,
+              entregue: delivered,
+            },
+          });
+          if (delivered) {
+            await sb.rpc("trial_closing_mark_asked", {
+              p_flow: ask.flow_id,
+              p_side: "student",
+            });
+            result.closing_student_asks++;
+          } else {
+            result.failures.push(`closing_student_ask ${ask.flow_id}`);
+          }
+        }
+      }
+
+      // O link que ficou esperando o comentário da professora sai a qualquer
+      // hora: é resposta a um aluno que já pediu, não abordagem.
+      const { data: pendingOffers, error: pendingError } = await sb.rpc(
+        "trial_closing_pending_offers",
+        { p_origin: null },
+      );
+      if (pendingError) throw new Error(pendingError.message);
+      for (const row of (pendingOffers || [])) {
+        const t = byTenant[row.tenant_id];
+        const offer = row.offer || {};
+        if (!t?.studentInstance || !offer.url) continue;
+        const phone = cleanPhone(row.lead_phone || "");
+        if (phone.length < 12) continue;
+        const msg = studentOfferMessage({
+          leadName: row.lead_name,
+          teacherName: null,
+          url: String(offer.url),
+          value: Number(offer.value),
+          frequency: Number(offer.frequency),
+          duration: Number(offer.duration),
+          slots: (offer.slots || []) as Slot[],
+          startDate: String(offer.start_date || ""),
+        });
+        const delivered = await sendWhats(t.studentInstance, phone, msg);
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_closing_offer",
+            offer_id: offer.offer_id || null,
+            entregue: delivered,
+          },
+        });
+        if (delivered) result.closing_offers++;
+        else result.failures.push(`closing_offer ${offer.offer_id || "?"}`);
+      }
+
+      const { data: overdue, error: overdueError } = await sb.rpc(
+        "trial_closing_overdue",
+      );
+      if (overdueError) throw new Error(overdueError.message);
+      result.closing_overdue = Number(overdue || 0);
+    } catch (error) {
+      result.failures.push(`trial_closing: ${(error as Error).message}`);
     }
 
     return new Response(
