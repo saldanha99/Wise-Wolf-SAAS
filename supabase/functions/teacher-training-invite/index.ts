@@ -14,11 +14,13 @@ Deno.serve(async (req: Request) => {
     return new Response("Método não permitido.", { status: 405, headers });
   }
   const url = new URL(req.url);
-  if (
-    req.method === "POST" && req.headers.get("origin") &&
-    req.headers.get("origin") !== url.origin &&
-    req.headers.get("origin") !== Deno.env.get("SUPABASE_PUBLIC_URL")
-  ) return new Response("Origem inválida.", { status: 403, headers });
+  // Sem checagem de Origin de propósito (removida em 16/09/2026). Com
+  // `Referrer-Policy: no-referrer` o navegador manda `Origin: null` no POST do
+  // formulário (medido no Chromium), e a checagem antiga devolvia 403 "Origem
+  // inválida" para TODO aceite — nenhum convite de treinamento jamais foi aceito
+  // por esta página. O que protege o aceite é o token de 64 hex no corpo, que só
+  // quem recebeu o convite tem — o mesmo desenho da `accept-coverage`, que funciona.
+  // `form-action 'self'` no CSP já impede o formulário de postar para fora.
   if (Number(req.headers.get("content-length") || 0) > 2048) {
     return new Response("Pedido inválido.", { status: 413, headers });
   }

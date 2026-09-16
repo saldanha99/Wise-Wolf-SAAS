@@ -885,6 +885,12 @@ professores para Terça 15:30; o slot discreto devolve 3.
 - ⚠️ **`accept-coverage` devolve HTML e funciona** — testado, o gateway entrega
   `text/html`. É exceção à regra "edge function não renderiza HTML" (que vale para o que o
   Kong serve nas rotas do SPA). Não "conserte" movendo para o SPA sem medir.
+- ⚠️ **Página HTML com `Referrer-Policy: no-referrer` NÃO pode checar `Origin` no POST.**
+  Com essa política o navegador manda `Origin: null` no envio do formulário (medido no
+  Chromium em 16/09/2026). A `teacher-training-invite` fazia a checagem e devolvia 403
+  "Origem inválida" para **todo** aceite — nenhum convite de treinamento foi aceito entre
+  09/09 e 16/09 (a Bruna foi a primeira a reclamar). Quem protege o aceite é o token de 64
+  hex no corpo, como na `accept-coverage`/`claim-coverage`, que nunca checaram origem.
 
 ---
 
