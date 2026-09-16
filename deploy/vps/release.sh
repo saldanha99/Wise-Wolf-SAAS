@@ -1300,6 +1300,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915179000_fechamento_automatico_da_experimental.sql"
   "supabase/migrations/20260916100000_bot_espera_o_lead_terminar_de_escrever.sql"
   "supabase/migrations/20260916110000_o_bot_aprende_o_jeito_da_direcao.sql"
+  "supabase/migrations/20260916120000_captura_de_estilo_roda_por_cron.sql"
+  "supabase/migrations/20260916130000_aluno_confirma_a_experimental.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

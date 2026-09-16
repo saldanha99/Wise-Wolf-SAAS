@@ -46,7 +46,13 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     // folha como AULA EXPERIMENTAL a R$ 8,00 em vez de R$ 16,00 de treinador —
     // foi o que aconteceu com o treinamento da Teacher Lais em julho/2026.
     const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
-    const effectiveDispatchMode = kind === 'TRIAL' ? 'individual' : dispatchMode;
+    // A experimental voltou a poder ir ao grupo (16/09/2026, pedido da direção:
+    // é de lá que ela copia o link para mandar a um professor específico). Quem
+    // protege o dado do aluno agora é a MENSAGEM: o grupo recebe data, hora e
+    // link, sem nome nem objetivo — isso aparece na página de aceite.
+    const effectiveDispatchMode = dispatchMode;
+    const [lastClaimLink, setLastClaimLink] = useState('');
+    const [linkCopied, setLinkCopied] = useState(false);
 
     const [loading, setLoading] = useState(false);
 
@@ -136,6 +142,10 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                     ? 'Grupo institucional configurado'
                     : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
                 alert(`🚀 Oportunidade enviada!\n${detail}.\nID: ${data.id}`);
+            }
+            if (data?.claim_link) {
+                setLastClaimLink(String(data.claim_link));
+                setLinkCopied(false);
             }
 
             // Clear fields (preserve date/time for convenience?)
@@ -333,7 +343,6 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={() => setDispatchMode('group')}
-                                        disabled={kind === 'TRIAL'}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'group'
                                             ? 'bg-orange-500 text-white shadow'
                                             : 'text-brand-muted hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-40'
@@ -344,14 +353,36 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 </div>
                                 <p className="text-[10px] text-brand-muted font-medium px-1">
                                     {effectiveDispatchMode === 'individual'
-                                        ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem).'
+                                        ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem), com nome e objetivo do aluno.'
                                         : kind === 'TRIAL'
-                                        ? 'Experimentais com dados de aluno são sempre enviadas individualmente aos professores ativos.'
+                                        ? 'Publica no grupo só data, horário e o link de aceite — nome e objetivo do aluno aparecem na página, para quem clicar.'
                                         : 'Treinamentos podem ser publicados no grupo institucional configurado.'}
                                 </p>
                             </div>
 
                         </div>
+
+                        {lastClaimLink && (
+                            <div className="mt-6 p-4 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Link desta vaga</p>
+                                <p className="text-[11px] text-brand-muted mt-1 break-all">{lastClaimLink}</p>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        try {
+                                            await navigator.clipboard.writeText(lastClaimLink);
+                                            setLinkCopied(true);
+                                            setTimeout(() => setLinkCopied(false), 2500);
+                                        } catch {
+                                            setLinkCopied(false);
+                                        }
+                                    }}
+                                    className="mt-3 w-full py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+                                >
+                                    {linkCopied ? 'Link copiado!' : 'Copiar link para mandar a um professor'}
+                                </button>
+                            </div>
+                        )}
 
                         {/* Action Button */}
                         <div className="mt-8 pt-6 border-t border-brand-border">

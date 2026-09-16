@@ -198,7 +198,8 @@ export function studentPlanQuestion(input: {
     `1️⃣ quantas aulas por semana e em quais dias e horários (ex.: segunda e quarta às 19h)\n` +
     `2️⃣ o plano: mensal, 6 meses ou 12 meses\n\n` +
     `Valores por mês:\n${priceTableText(input.prices)}\n\n` +
-    `Com a sua resposta eu já te mando o link da matrícula.`;
+    `Com a sua resposta eu já te mando o link da matrícula.\n\n` +
+    `Se por acaso a aula não tiver acontecido, me avisa por aqui — eu corrijo na hora.`;
 }
 
 export function studentNeedMessage(input: {
@@ -273,4 +274,42 @@ export function studentNoShowMessage(input: {
     teacher ? "A teacher " + teacher + " me avisou" : "Fiquei sabendo"
   } que você não conseguiu participar da aula experimental. Acontece! 😊\n\n` +
     `Quer que eu remarque? Me diz um dia e um horário que fiquem bons para você.`;
+}
+
+/**
+ * O aluno dizendo que a aula NÃO aconteceu.
+ *
+ * É a segunda fonte do antifraude da experimental: quem diz que deu a aula é
+ * quem recebe por ela, então o aluno precisa poder desmentir. Só pega negativa
+ * SOBRE A AULA — "não quero 12 meses" e "não sei ainda" seguem para o fluxo
+ * normal de escolha de plano.
+ */
+export function parseTrialDenial(text: string): boolean {
+  const source = foldText(text);
+  // "não aconteceu" e "não rolou" já falam por si.
+  if (/\b(nao|n)\s+(aconteceu|houve|rolou|ocorreu)\b/.test(source)) return true;
+  // O resto só vale quando a frase é SOBRE a aula: sem isso, "não tive tempo"
+  // e "não sei ainda" virariam contestação e travariam o pagamento à toa.
+  const falaDaAula = /\b(aula|experimental|teacher|professora|professor)\b/
+    .test(
+      source,
+    );
+  if (!falaDaAula) return false;
+  if (
+    /\b(nao|n)\s+(teve|tive|fiz|houve|participei|assisti|entrei|consegui)\b/
+      .test(source)
+  ) return true;
+  if (
+    /\b(professora?|teacher)\s+(nao|n)\s+(apareceu|veio|entrou|chegou|conectou|deu)\b/
+      .test(source)
+  ) return true;
+  if (/\b(faltei|perdi a aula|nao consegui entrar|nao entrei)\b/.test(source)) {
+    return true;
+  }
+  return false;
+}
+
+/** Resposta ao aluno que desmentiu a aula: nada de cobrança nem de venda. */
+export function studentDenialAck(): string {
+  return `Obrigado por avisar! Registrei aqui que a aula não aconteceu e já passei para a coordenação — essa aula não vai ser contada. Quer que eu remarque sua experimental? Me diz um dia e um horário que fiquem bons para você. 😊`;
 }

@@ -7,6 +7,7 @@ import {
   type CatalogPrice,
   parseEnrollmentDuration,
   parseEnrollmentSlots,
+  parseTrialDenial,
   parseTrialOutcomeReply,
   priceTableText,
   studentNeedMessage,
@@ -179,4 +180,34 @@ Deno.test("horário ocupado oferece os livres, e sem livres pede outros", () => 
   ]);
   assert(comLivres.includes("• Terça às 18:00"));
   assert(studentSlotsUnavailableMessage([]).includes("Me manda outras opções"));
+});
+
+Deno.test("aluno desmentindo a aula é lido como contestação", () => {
+  for (
+    const texto of [
+      "a aula não aconteceu",
+      "não tive aula hoje",
+      "a teacher não apareceu",
+      "não consegui entrar na aula",
+      "não fiz a aula experimental",
+      "faltei, perdi a aula",
+    ]
+  ) {
+    assertEquals(parseTrialDenial(texto), true, texto);
+  }
+});
+
+Deno.test("resposta normal sobre plano não trava pagamento de ninguém", () => {
+  for (
+    const texto of [
+      "não quero 12 meses",
+      "não sei ainda",
+      "não tive tempo de responder antes",
+      "quero 2x por semana",
+      "não pode ser terça, só quinta",
+      "segunda e quarta às 19h",
+    ]
+  ) {
+    assertEquals(parseTrialDenial(texto), false, texto);
+  }
 });

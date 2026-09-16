@@ -492,12 +492,6 @@ serve(async (req) => {
     ) {
       return json({ error: "Only school managers can reopen a trial" }, 403);
     }
-    if (oppKind === "TRIAL" && mode === "group") {
-      return json(
-        { error: "Trial opportunities must use active teacher recipients" },
-        400,
-      );
-    }
     const requestedStart = new Date(`${date}T${time}:00-03:00`);
     if (!Number.isFinite(requestedStart.getTime())) {
       return json({ error: "Opportunity time must be valid" }, 400);
@@ -798,6 +792,14 @@ serve(async (req) => {
         interests || "Não informado"
       }${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
 
+    // No grupo estão todos os professores, inclusive quem não vai pegar a aula.
+    // Nome e objetivo do aluno ali dentro é dado pessoal exposto a quem não
+    // precisa dele — então o grupo recebe data, hora e link, e quem clicar vê o
+    // resto na página de aceite. A DM individual continua com os dados.
+    const groupMessage = oppKind === "TRAINING"
+      ? textMessage
+      : `⚡ *EXPERIMENTAL — ${route.identity.brandName} — ${formattedDate} (${dayString}) às ${time}*\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar garante a aula experimental — os dados do aluno aparecem na página de aceite.\n\n👇 *Aceitar agora:*\n${claimLink}`;
+
     const endpoint = `${API_URL}/message/sendText/${
       encodeURIComponent(
         INSTANCE,
@@ -817,7 +819,7 @@ serve(async (req) => {
             endpoint,
             key,
             destinationGroup,
-            textMessage,
+            groupMessage,
           );
           if (result.providerStatus === 401) continue;
           failureReason = result.providerFailure;
@@ -862,6 +864,7 @@ serve(async (req) => {
           success: true,
           id: oppData.id,
           mode: "group",
+          claim_link: claimLink,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -987,6 +990,7 @@ serve(async (req) => {
         success: true,
         id: oppData.id,
         mode: "individual",
+        claim_link: claimLink,
         recipients: sent,
         total_active_teachers: recipients.length,
         failed: failed.length,

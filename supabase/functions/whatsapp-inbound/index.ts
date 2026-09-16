@@ -14,7 +14,9 @@ import {
 import {
   parseEnrollmentDuration,
   parseEnrollmentSlots,
+  parseTrialDenial,
   parseTrialOutcomeReply,
+  studentDenialAck,
   studentNeedMessage,
   studentNoShowMessage,
   studentOfferMessage,
@@ -4115,6 +4117,36 @@ async function handleTrialClosingStudent(
   msgId: string,
 ): Promise<boolean> {
   if (isMedia) return false;
+
+  // Antifraude da experimental: quem diz que deu a aula é quem recebe por ela.
+  // Se o aluno desmentir, o dinheiro para e a venda para junto — vender
+  // matrícula para quem não teve aula é o pior dos dois erros.
+  if (parseTrialDenial(text)) {
+    const { data: denial, error: denialError } = await sb.rpc(
+      "trial_closing_student_denies",
+      { p_tenant: tenantId, p_phone: phone },
+    );
+    if (denialError) throw new Error("trial_closing_denial_unavailable");
+    if (denial?.handled) {
+      await logMsg(sb, tenantId, phone, "sdr", "in", text, {
+        msg_id: msgId,
+        kind: "trial_closing_denied",
+        flow_id: denial.flow_id || null,
+      });
+      const aviso = studentDenialAck();
+      const entregue = await sendWhats(instance, phone, aviso, {
+        simulateTyping: true,
+      });
+      await logMsg(sb, tenantId, phone, "sdr", "out", aviso, {
+        kind: "trial_closing_denied",
+        flow_id: denial.flow_id || null,
+        payment_held: denial.payment_held === true,
+        entregue,
+      });
+      return true;
+    }
+  }
+
   const slots = parseEnrollmentSlots(text);
   const duration = parseEnrollmentDuration(text);
   const frequency = parseRenewalFrequency(text);
@@ -5767,6 +5799,19 @@ serve(async (req) => {
   }
   try {
     const reqUrl = new URL(req.url);
+    // Aprender o jeito da direção não depende de ter lead escrevendo agora:
+    // cron própria a cada 5 min (migration 20260916120000).
+    if (reqUrl.searchParams.get("worker") === "style") {
+      const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      if (!key || req.headers.get("authorization") !== `Bearer ${key}`) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const learned = await captureDirectorStyle(getInboundServiceClient());
+      return new Response(
+        JSON.stringify({ ok: true, style_learned: learned }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
     if (reqUrl.searchParams.get("worker") === "sdr") {
       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
       if (!key || req.headers.get("authorization") !== `Bearer ${key}`) {
@@ -5780,13 +5825,10 @@ serve(async (req) => {
           drainSdrConversation(sb, work.tenant_id, work.phone)
         ),
       );
-      // Depois de responder é a hora barata de aprender: a fila já esvaziou.
-      const learned = await captureDirectorStyle(sb);
       return new Response(
         JSON.stringify({
           ok: outcomes.every((r) => r.status === "fulfilled"),
           processed: outcomes.length,
-          style_learned: learned,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
