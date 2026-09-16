@@ -133,6 +133,9 @@ import ModernSidebar from './components/ModernSidebar';
 import { TopNav } from './components/shell/TopNav';
 import { ShortcutRail } from './components/shell/ShortcutRail';
 import { useNavLayout } from './components/shell/useNavLayout';
+import { UserMenu } from './components/shell/UserMenu';
+import { flattenTour } from './lib/tours';
+import { flattenFeatureTour, latestFeatureTourFor, pendingFeatureTours, type FeatureTour } from './lib/featureTours';
 import { activeMenuIdFor, buildMenuItems } from './lib/navModel';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -312,6 +315,10 @@ const App: React.FC = () => {
   const [pendingLessonsCount, setPendingLessonsCount] = useState(0);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({}); // pendências do diretor (badges)
   const [tourOpen, setTourOpen] = useState(false);
+  // Tour de novidade aberto (catálogo em lib/featureTours.ts). Nunca junto com
+  // o de boas-vindas: quem está no primeiro acesso vê o produto inteiro como
+  // novo, e dois balões ao mesmo tempo é o oposto de "levar pela mão".
+  const [featureTour, setFeatureTour] = useState<FeatureTour | null>(null);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -325,16 +332,35 @@ const App: React.FC = () => {
   // recebe uma vez; concluir OU pular marca true e não volta sozinho — o botão
   // no rodapé do menu traz de volta quando a pessoa quiser.
   // Comparação estrita de propósito: `null` (perfil antigo, migrado) não dispara.
+  //
+  // Quem já passou pelo primeiro acesso recebe, em vez disso, o tour da
+  // funcionalidade nova que ainda não viu (`feature_tour_views`). Erro na
+  // leitura NÃO abre tour nenhum: incomodar por engano é pior do que deixar a
+  // novidade para "Novidades" no menu do avatar.
   useEffect(() => {
     const uid = user?.id;
-    if (!uid || !TOUR_ROLES.includes(String(user?.role))) return;
+    const role = String(user?.role);
+    if (!uid || !TOUR_ROLES.includes(role)) return;
     let vivo = true;
     void (async () => {
       const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
-      if (vivo && data?.onboarded === false) setTourOpen(true);
+      if (!vivo) return;
+      if (data?.onboarded === false) { setTourOpen(true); return; }
+      const { data: seen, error } = await supabase.from('feature_tour_views').select('tour_id').eq('user_id', uid);
+      if (!vivo || error) { if (error) console.warn('[tour] novidades indisponíveis', error.message); return; }
+      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id))[0];
+      if (next) setFeatureTour(next);
     })();
     return () => { vivo = false; };
   }, [user?.id, user?.role]);
+
+  /** Grava "já vi" de um ou mais tours de novidade — chave (usuário, tour). */
+  const markFeatureToursSeen = React.useCallback(async (tours: FeatureTour[]) => {
+    if (!user?.id || tours.length === 0) return;
+    const rows = tours.map(t => ({ user_id: user.id, tour_id: t.id }));
+    const { error } = await supabase.from('feature_tour_views').upsert(rows, { onConflict: 'user_id,tour_id', ignoreDuplicates: true });
+    if (error) console.warn('[tour] não foi possível registrar novidade vista', error.message);
+  }, [user?.id]);
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
@@ -1739,6 +1765,7 @@ const App: React.FC = () => {
                     aria-label={isTopNav ? 'Menu na lateral' : 'Menu no topo com atalhos'}
                     title={isTopNav ? 'Menu na lateral' : 'Menu no topo com atalhos'}
                     aria-pressed={isTopNav}
+                    data-tour="nav-layout-toggle"
                   >
                     {isTopNav
                       ? <PanelLeft className="w-5 h-5" aria-hidden="true" />
@@ -1760,25 +1787,15 @@ const App: React.FC = () => {
 
                 <div className="hidden sm:block h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
 
-                <div className="flex items-center gap-3">
-                  <div className="text-right hidden md:block">
-                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-none">{user.name}</p>
-                    <p className="text-left text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-1">
-                      {(() => {
-                        const roles: Record<string, string> = {
-                          'SUPER_ADMIN': 'Super Admin',
-                          'SCHOOL_ADMIN': 'Diretor',
-                          'TEACHER': 'Professor',
-                          'STUDENT': 'Aluno'
-                        };
-                        return roles[user.role] || user.role;
-                      })()}
-                    </p>
-                  </div>
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-[2px]">
-                    <img src={user.avatar} className="w-full h-full rounded-full object-cover border-2 border-white dark:border-slate-900" alt="Avatar" />
-                  </div>
-                </div>
+                <UserMenu
+                  name={user.name}
+                  roleLabel={({ SUPER_ADMIN: 'Super Admin', SCHOOL_ADMIN: 'Diretor', TEACHER: 'Professor', STUDENT: 'Aluno' } as Record<string, string>)[user.role] || user.role}
+                  avatarUrl={user.avatar}
+                  onProfile={() => setActiveTab('profile')}
+                  onLogout={handleLogout}
+                  onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
+                  onOpenNews={latestFeatureTourFor(user.role) ? () => { const t = latestFeatureTourFor(user.role); if (t) setFeatureTour(t); } : undefined}
+                />
               </div>
             </div>
           </header>
@@ -1806,11 +1823,28 @@ const App: React.FC = () => {
       {tourOpen && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
-            role={user.role as TourRole}
-            userId={user.id}
+            steps={flattenTour(user.role as TourRole)}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
+            onFinish={async () => {
+              // Quem acabou de conhecer o produto viu tudo como novo: as
+              // novidades já lançadas não voltam como tour separado.
+              await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
+              await markFeatureToursSeen(pendingFeatureTours(user.role, []));
+            }}
             onClose={() => setTourOpen(false)}
+          />
+        </Suspense>
+      )}
+      {featureTour && !tourOpen && (
+        <Suspense fallback={null}>
+          <GuidedTour
+            key={featureTour.id}
+            steps={flattenFeatureTour(featureTour)}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onFinish={() => markFeatureToursSeen([featureTour])}
+            onClose={() => setFeatureTour(null)}
           />
         </Suspense>
       )}

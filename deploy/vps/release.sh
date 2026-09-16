@@ -1310,6 +1310,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916140000_etiquetas_do_whatsapp_por_tipo_de_contato.sql"
   "supabase/migrations/20260916150000_etiqueta_do_whatsapp_nao_sai_por_este_provedor.sql"
   "supabase/migrations/20260916160000_lembrete_sem_marcador_cru_e_sem_link.sql"
+  "supabase/migrations/20260916200000_tour_de_novidades_por_usuario.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1434,6 +1435,7 @@ DATABASE_TEST_RELATIVES=(
   # its global materializer/clock cases must never inspect real recipients.
   "supabase/tests/prepayment_coverage_and_management.sql"
   "supabase/tests/cancel_prepaid_invoice_intents.sql"
+  "supabase/tests/tour_de_novidades_por_usuario.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

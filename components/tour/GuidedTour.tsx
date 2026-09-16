@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '../../lib/supabase';
-import { flattenTour, FlatStep, TourRole } from '../../lib/tours';
+import { FlatStep } from '../../lib/tours';
 import TourOverlay, { SpotRect } from './TourOverlay';
 
 /**
@@ -10,10 +9,15 @@ import TourOverlay, { SpotRect } from './TourOverlay';
  *   1. Trocar de aba quando o passo mora em outra tela.
  *   2. Achar o elemento `[data-tour="..."]` — com espera, porque a tela pode
  *      estar carregando (as telas são lazy) e o alvo ainda não existir.
- *   3. PULAR o passo cujo alvo não apareceu. A tela varia com papel, plano e
+ *   3. PULAR o passo cujo alvo não apareceu — ou está no DOM mas invisível
+ *      (`hidden lg:flex` no celular). A tela varia com papel, plano, layout e
  *      dados cadastrados; travar o tour porque um card não existe é pior do que
  *      seguir sem ele.
- *   4. Marcar `profiles.onboarded` ao concluir, para não repetir a cada login.
+ *   4. Avisar quem chamou ao terminar (`onFinish`), que decide o que gravar:
+ *      `profiles.onboarded` no tour de boas-vindas, `feature_tour_views` no
+ *      tour de novidade. O motor não sabe de qual tour se trata — é o mesmo
+ *      para os dois, e é isso que faz "toda release sobe com tour" custar só
+ *      uma entrada em `lib/featureTours.ts`.
  *
  * Só o passo com `target` precisa de elemento; passo centralizado (target null)
  * sempre aparece.
@@ -23,16 +27,21 @@ const TENTATIVAS = 12;      // ~1,2s procurando o alvo antes de desistir
 const INTERVALO_MS = 100;
 
 interface Props {
-  role: TourRole;
-  userId: string;
+  steps: FlatStep[];
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  /**
+   * Chamado ao concluir OU pular — nos dois casos a pessoa já viu e não deve
+   * receber de novo. Falha aqui não pode travar a UI (é aguardada, mas o
+   * `onClose` vem sempre).
+   */
+  onFinish: () => Promise<void> | void;
   /** Fecha o tour (concluído ou pulado). */
   onClose: () => void;
 }
 
-const GuidedTour: React.FC<Props> = ({ role, userId, activeTab, setActiveTab, onClose }) => {
-  const steps = useRef<FlatStep[]>(flattenTour(role)).current;
+const GuidedTour: React.FC<Props> = ({ steps: stepsProp, activeTab, setActiveTab, onFinish, onClose }) => {
+  const steps = useRef<FlatStep[]>(stepsProp).current;
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<SpotRect | null>(null);
   const cancelado = useRef(false);
@@ -40,13 +49,13 @@ const GuidedTour: React.FC<Props> = ({ role, userId, activeTab, setActiveTab, on
   useEffect(() => () => { cancelado.current = true; }, []);
 
   const encerrar = useCallback(async (concluiu: boolean) => {
-    if (concluiu && userId) {
+    if (concluiu) {
       // Falha aqui não pode travar a UI: no pior caso o tour reaparece no
       // próximo login, o que é bem menos grave do que a tela ficar presa.
-      await supabase.from('profiles').update({ onboarded: true }).eq('id', userId);
+      try { await onFinish(); } catch (e) { console.warn('[tour] não foi possível registrar a conclusão', e); }
     }
     onClose();
-  }, [onClose, userId]);
+  }, [onClose, onFinish]);
 
   // Posiciona o holofote no passo atual, navegando de aba se preciso.
   useEffect(() => {
@@ -64,7 +73,10 @@ const GuidedTour: React.FC<Props> = ({ role, userId, activeTab, setActiveTab, on
     let tentativa = 0;
     const procurar = () => {
       if (!vivo || cancelado.current) return;
-      const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+      // Vários elementos podem levar o mesmo alvo (menu lateral e barra do topo
+      // são ambos `sidebar-nav`); vale o primeiro que está de fato visível.
+      const el = Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${step.target}"]`))
+        .find(candidate => candidate.getClientRects().length > 0);
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         // Espera o scroll assentar antes de medir, senão o holofote fica torto.

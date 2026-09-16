@@ -4,8 +4,9 @@ import { NAV_LAYOUT_ROLES } from '../../lib/navModel';
 export type NavLayout = 'top' | 'side';
 
 const PREFIX = 'wisewolf.navLayout.';
-/** Quem nunca escolheu fica na lateral: é o que a equipe conhece hoje. */
-const DEFAULT_LAYOUT: NavLayout = 'side';
+/** Padrão de todos (decisão da direção em 16/09/2026): menu no topo + trilho.
+ *  Quem preferir a lateral clica no botão do header e a escolha fica salva. */
+const DEFAULT_LAYOUT: NavLayout = 'top';
 
 function readPreferred(userId: string): NavLayout {
   try {

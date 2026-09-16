@@ -30,6 +30,59 @@ passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
 
 ---
 
+## 🧭 Toda funcionalidade nova sobe com TOUR DE NOVIDADE ✅
+
+> **Regra da direção (16/09/2026): release que muda o que o usuário vê leva junto um
+> tutorial guiado.** Quem abre a plataforma depois da atualização é levado pela mão
+> até a novidade, uma vez, e pode rever em **Novidades** no menu do avatar.
+
+**Como funciona (motor único, `components/tour/GuidedTour.tsx`):**
+- **Catálogo:** `lib/featureTours.ts` — lista `FEATURE_TOURS`, uma entrada por release,
+  id `AAAA-MM-DD-slug`, papéis que recebem, passos apontando para `data-tour="..."`.
+- **"Já vi":** tabela `feature_tour_views (user_id, tour_id)` — por usuário, vale em
+  qualquer aparelho (migration `20260916200000`). RLS: cada um grava só o seu.
+- **Quando abre:** `App.tsx`, no mesmo efeito do tour de boas-vindas. Primeiro acesso
+  (`profiles.onboarded = false`) → boas-vindas, e ao concluir **marca todas as
+  novidades como vistas** (quem acabou de conhecer o produto viu tudo como novo).
+  Senão → primeira novidade do papel ainda não vista. **Erro na leitura não abre
+  tour nenhum** — incomodar por engano é pior do que deixar para "Novidades".
+- **Alvo invisível é pulado** (celular com `hidden lg:flex`, papel sem o recurso).
+  O motor escolhe o primeiro `[data-tour]` **visível** — menu lateral e barra do topo
+  levam ambos `sidebar-nav`, e só um está na tela.
+
+**Checklist ao entregar funcionalidade visível:**
+1. `data-tour="<alvo>"` no elemento que o passo aponta.
+2. Entrada nova **ao fim** de `FEATURE_TOURS` (data da release no id).
+3. `lib/featureTours.test.ts` varre `components/` e `App.tsx`: **alvo que não existe
+   no código reprova o teste** — o tour nasce amarrado à tela. Também recusa id
+   repetido, fora de ordem, passo sem `view`.
+4. Texto de cada passo se sustenta sozinho (o anterior pode ter sido pulado).
+
+⚠️ Não use `profiles.onboarded` para novidade: é booleano do primeiro acesso, não uma
+lista que cresce a cada release. E não guarde "já vi" só no localStorage — reapareceria
+no celular, no notebook e depois de limpar cache.
+
+---
+
+## Navegação: menu no topo + trilho de atalhos é o padrão ✅
+
+Copiado do `components/shell/` do MotoFix em 16/09/2026. Diretor e professor abrem
+com **categorias no header + trilho de 64px à esquerda** (arrastar do dropdown,
+reordenar, "×", "+", teto 10); o botão ⇄ no header volta para a lateral clássica, e a
+escolha fica no localStorage por usuário (`wisewolf.navLayout.<uid>`,
+`wisewolf.shortcuts.<uid>`). Aluno, vendedor e coordenador ficam na lateral (menu
+curto, sem seções). Celular não muda: gaveta + barra inferior.
+
+- **Fonte única dos menus por papel: `lib/navModel.ts`** (`buildMenuItems`). O
+  `ModernSidebar`, o `TopNav` e o `ShortcutRail` leem a mesma lista — item novo do
+  diretor continua entrando por `lib/adminNav.ts` + `allowedAdminTabs`.
+- **Perfil · Tour guiado · Novidades · Sair moram no menu do avatar** (`UserMenu`),
+  porque no layout de topo a sidebar (e o rodapé dela) some no desktop.
+- ⚠️ Preferência de layout **não é dado de negócio** — não vai para `profiles` (coluna
+  nova ali exige `profileColumns.ts` + auditoria).
+
+---
+
 ## Wolfie: gratuito x premium — a VOZ é a fronteira ✅
 
 > **A separação não é de tela, é de servidor.** Antes existiam dois blocos na
