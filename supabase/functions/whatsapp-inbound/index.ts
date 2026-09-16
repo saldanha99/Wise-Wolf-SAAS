@@ -29,6 +29,7 @@ import {
   parseRenewalFrequency,
   type RenewalSlot,
 } from "./renewal-negotiation.ts";
+import { typingDelayMs } from "./typing-delay.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -492,6 +493,7 @@ async function sendWhats(
   instance: string,
   number: string,
   text: string,
+  opts?: { simulateTyping?: boolean },
 ): Promise<boolean> {
   const transport = await resolveInboundEvolutionTransport(instance);
   if (!transport) return false;
@@ -504,6 +506,7 @@ async function sendWhats(
     instance: transport.instanceName,
     to: number,
     text,
+    delayMs: opts?.simulateTyping ? typingDelayMs(text) : undefined,
   });
 }
 
@@ -511,6 +514,7 @@ async function sendWhatsDetailed(
   instance: string,
   number: string,
   text: string,
+  opts?: { simulateTyping?: boolean },
 ): Promise<EvolutionSendResult> {
   const transport = await resolveInboundEvolutionTransport(instance);
   if (!transport) {
@@ -522,6 +526,7 @@ async function sendWhatsDetailed(
     instance: transport.instanceName,
     to: number,
     text,
+    delayMs: opts?.simulateTyping ? typingDelayMs(text) : undefined,
   });
 }
 
@@ -545,13 +550,15 @@ const GEMINI_MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-flash-latest",
 ];
+// Medido na VPS em 15/09/2026: os modelos `:free` desta lista responderam 404
+// (foram descontinuados ou viraram pagos) e o nemotron devolveu texto fora de
+// JSON. Os dois primeiros responderam 200 com a chave da escola. Lista curta de
+// modelos que EXISTEM vale mais que lista longa de nomes mortos: cada nome
+// morto custa uma ida e volta enquanto o lead espera resposta.
 const OR_MODELS = [
   "google/gemini-2.5-flash-lite",
   "openai/gpt-4o-mini",
-  "qwen/qwen3-next-80b-a3b-instruct:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-  "openai/gpt-oss-120b:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct",
 ];
 
 function parseJson(raw: string): any | null {
@@ -609,6 +616,11 @@ async function callAI(
               t.replace(/\s+/g, " ").slice(0, 120)
             }`,
           );
+          // A cota gratuita do Gemini é da CHAVE, não do modelo: se um deu 429,
+          // os outros dão também. Insistir só gasta 25s por modelo enquanto o
+          // lead espera — e foi assim que duas conversas quentes de 15/09/2026
+          // acabaram em "já já alguém te responde".
+          if (resp.status === 429) break;
           continue;
         }
         const d = await resp.json();
@@ -644,6 +656,9 @@ async function callAI(
             messages: [{ role: "system", content: system }, ...messages],
             max_tokens: 700,
             temperature,
+            // O prompt pede JSON; sem isto o modelo às vezes responde em texto
+            // corrido e a resposta inteira era descartada.
+            response_format: { type: "json_object" },
           }),
           signal: AbortSignal.timeout(25000),
         },
@@ -662,6 +677,24 @@ async function callAI(
       }
       const parsed = parseJson(raw);
       if (parsed) return parsed;
+      // O modelo respondeu em texto comum. Aproveitar a frase é melhor do que
+      // abandonar o lead: descartar isso é o que fez o bot largar duas
+      // conversas quentes no meio, em 15/09/2026. Só texto curto, sem cara de
+      // JSON quebrado, vira resposta — e sem nenhuma ação (agendamento,
+      // handoff, updates), que continua exigindo JSON válido.
+      const textoPuro = String(raw).replace(/```/g, "").trim();
+      if (
+        textoPuro.length >= 8 && textoPuro.length <= 1200 &&
+        !textoPuro.includes("{") && !textoPuro.includes("}")
+      ) {
+        diag?.push(`${model}: texto puro aproveitado`);
+        return {
+          reply: textoPuro,
+          updates: {},
+          schedule_trial: null,
+          handoff: false,
+        };
+      }
       diag?.push(`${model}: sem JSON`);
     } catch (e) {
       diag?.push(`${model}: ${(e as Error).message.slice(0, 90)}`);
@@ -4149,7 +4182,9 @@ async function handleTrialClosingStudent(
     return false;
   }
 
-  const delivered = await sendWhats(instance, phone, reply);
+  const delivered = await sendWhats(instance, phone, reply, {
+    simulateTyping: true,
+  });
   await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
     kind: "trial_closing",
     flow_id: data.flow_id || null,
@@ -4627,7 +4662,10 @@ async function handleSDR(
     if (error) throw new Error("enrollment_support_handoff_failed");
     const reply =
       "Sua matrícula está em andamento. Vou chamar a equipe para ajudar com sua dúvida por aqui.";
-    const delivery = await sendWhatsDetailed(instance, phone, reply);
+    // "digitando…" antes de enviar: resposta instantânea entrega que é robô.
+    const delivery = await sendWhatsDetailed(instance, phone, reply, {
+      simulateTyping: true,
+    });
     await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
       lead_id: lead.id,
       kind: "enrollment_support",
@@ -4856,6 +4894,25 @@ async function handleSDR(
     ? "ETAPA ATUAL: experimental já realizada e registrada. Pergunte como foi, responda dúvidas com as regras comerciais da escola e ofereça ajuda para continuar a matrícula. Não venda outra experimental e mantenha schedule_trial=null. Se o aluno quiser matrícula, encaminhe à coordenação, sem inventar oferta, desconto ou link."
     : "ETAPA ATUAL: qualificação ou agendamento. Respeite qualquer experimental já confirmada e pedidos pendentes.";
   const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
+
+  // Como a direção conversa com um lead deste mesmo objetivo. São falas reais
+  // (inclusive áudios transcritos), escolhidas pelo banco: mesmo objetivo
+  // primeiro, depois as conversas que viraram aluno.
+  const { data: styleRows } = await sb.rpc("sdr_style_examples_for", {
+    p_tenant: tenantId,
+    p_goal: lead.goal || "",
+    p_limit: 4,
+  });
+  const styleExamples = Array.isArray(styleRows) ? styleRows : [];
+  const styleBlock = styleExamples.length > 0
+    ? `\nCOMO A DIREÇÃO DESTA ESCOLA CONVERSA (falas reais com leads do mesmo tipo). Siga o TOM e os ARGUMENTOS — o porquê do método, da aula individual e da duração —, adaptando ao que este lead disse. NUNCA copie frase por frase, não invente preço ou promessa que não esteja nas REGRAS DURAS, e mantenha a resposta curta:\n${
+      styleExamples.map((example: any, index: number) =>
+        `${index + 1}. [${example.goal}] ${
+          String(example.content).slice(0, 700)
+        }`
+      ).join("\n")
+    }`
+    : "";
   const trialContext = activeTrial && trialSlot
     ? `\nEXPERIMENTAL COM PROFESSOR: o horário registrado é com a Teacher ${activeTrial.teacherName} em ${
       formatSlot(trialSlot)
@@ -4867,7 +4924,7 @@ async function handleSDR(
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
-    }\n${leadTraining}${trialContext}${
+    }\n${leadTraining}${styleBlock}${trialContext}${
       waiting
         ? `\nPEDIDO DE REMARCAÇÃO EXISTENTE: ${waiting.requested_start_time}; estado=${waiting.status}; limite de espera de 60 minutos desde ${waiting.created_at}. Não abra novamente o mesmo pedido ao receber agradecimento ou cobrança de retorno. Se o prazo passou, negocie outro horário, sem repetir promessas passadas.`
         : ""
@@ -5652,6 +5709,51 @@ async function drainSdrConversation(
   }
 }
 
+/**
+ * Guarda o jeito da direção conversar com lead, para a atendente aprender.
+ *
+ * O material é o que já existe: mensagem e áudio que uma PESSOA mandou para uma
+ * conversa de lead. O áudio é transcrito aqui porque é onde o argumento aparece
+ * inteiro — em 15/09/2026 foi num áudio que a direção explicou por que a aula é
+ * individual e por que são 30 minutos, coisas que o bot não sabia dizer.
+ * O banco decide o que é material legítimo (`sdr_style_pending`).
+ */
+async function captureDirectorStyle(sb: any): Promise<number> {
+  try {
+    const { data, error } = await sb.rpc("sdr_style_pending", { p_limit: 5 });
+    if (error || !data?.length) return 0;
+    let saved = 0;
+    for (const row of data) {
+      let content = String(row.body || "").trim();
+      if (row.kind === "audio") {
+        content = String(
+          await transcreverAudio(row.instance_name, row.provider_message_id) ||
+            "",
+        ).trim();
+      }
+      // Áudio que não transcreveu fica pendente e entra na próxima rodada.
+      if (content.length < 40) continue;
+      const { error: saveError } = await sb.rpc("sdr_style_capture", {
+        p_tenant: row.tenant_id,
+        p_provider_message_id: row.provider_message_id,
+        p_kind: row.kind,
+        p_content: content,
+        p_phone_tail: row.phone_tail,
+        p_goal_tag: row.goal_tag,
+        p_lead_status: row.lead_status,
+        p_occurred_at: row.occurred_at,
+      });
+      if (!saveError) saved++;
+    }
+    return saved;
+  } catch (e) {
+    console.warn("[estilo] captura falhou", {
+      erro: (e as Error).message.slice(0, 90),
+    });
+    return 0;
+  }
+}
+
 // ---------------- HTTP ----------------
 serve(async (req) => {
   let webhookLedgerId = "";
@@ -5678,10 +5780,13 @@ serve(async (req) => {
           drainSdrConversation(sb, work.tenant_id, work.phone)
         ),
       );
+      // Depois de responder é a hora barata de aprender: a fila já esvaziou.
+      const learned = await captureDirectorStyle(sb);
       return new Response(
         JSON.stringify({
           ok: outcomes.every((r) => r.status === "fulfilled"),
           processed: outcomes.length,
+          style_learned: learned,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );

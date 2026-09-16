@@ -520,6 +520,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-crm-lead-notif/index.ts \
   supabase/functions/whatsapp-inbound/trial-closing.ts \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
+  supabase/functions/whatsapp-inbound/typing-delay.ts \
+  supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -722,6 +724,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
+  supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -1295,6 +1298,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260915177000_renovacao_escolha_de_professor_e_prazo.sql"
   "supabase/migrations/20260915178000_renovacao_pagina_com_marca_da_escola.sql"
   "supabase/migrations/20260915179000_fechamento_automatico_da_experimental.sql"
+  "supabase/migrations/20260916100000_bot_espera_o_lead_terminar_de_escrever.sql"
+  "supabase/migrations/20260916110000_o_bot_aprende_o_jeito_da_direcao.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
