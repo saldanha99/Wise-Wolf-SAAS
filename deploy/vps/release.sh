@@ -1306,6 +1306,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916120000_captura_de_estilo_roda_por_cron.sql"
   "supabase/migrations/20260916130000_aluno_confirma_a_experimental.sql"
   "supabase/migrations/20260916140000_etiquetas_do_whatsapp_por_tipo_de_contato.sql"
+  "supabase/migrations/20260916150000_etiqueta_do_whatsapp_nao_sai_por_este_provedor.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

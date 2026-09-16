@@ -203,6 +203,28 @@ describe('<WhatsappInbox />', () => {
         expect(await screen.findByLabelText('Entrega não confirmada')).toBeInTheDocument();
     });
 
+    it('separa por tipo de contato — é o que a etiqueta do WhatsApp faria', async () => {
+        const service = serviceHarness({ enabled: true, withConversations: true });
+
+        render(<WhatsappInbox user={user} tenantId="tenant-1" service={service} />);
+
+        expect(await screen.findByText('Ana Aluna')).toBeInTheDocument();
+        expect(screen.getByText('João Lead')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Leads' }));
+        expect(screen.getByText('João Lead')).toBeInTheDocument();
+        expect(screen.queryByText('Ana Aluna')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Alunos' }));
+        expect(screen.getByText('Ana Aluna')).toBeInTheDocument();
+        expect(screen.queryByText('João Lead')).not.toBeInTheDocument();
+
+        // Clicar de novo no mesmo filtro volta para todas — sem botão extra.
+        fireEvent.click(screen.getByRole('button', { name: 'Alunos' }));
+        expect(screen.getByText('Ana Aluna')).toBeInTheDocument();
+        expect(screen.getByText('João Lead')).toBeInTheDocument();
+    });
+
     it('sincroniza o histórico uma vez ao selecionar e faz sincronização global mais a conversa no botão', async () => {
         const service = serviceHarness({ enabled: true, withConversations: true });
 

@@ -43,7 +43,24 @@ interface WhatsappInboxProps {
     service?: WhatsappInboxService;
 }
 
-type ConversationFilter = 'all' | 'unread';
+// Os filtros por tipo fazem aqui o que as etiquetas do WhatsApp fariam lá: a
+// separação entre aluno, lead, professor e candidato já existe em
+// `whatsapp_conversations.contact_kind`. Medido em 16/09/2026: o provedor de
+// WhatsApp responde 200 e NÃO aplica etiqueta nenhuma (migration 20260916150000).
+type ConversationFilter =
+    | 'all'
+    | 'unread'
+    | 'student'
+    | 'lead'
+    | 'teacher'
+    | 'candidate';
+
+const KIND_FILTERS: { value: ConversationFilter; label: string }[] = [
+    { value: 'student', label: 'Alunos' },
+    { value: 'lead', label: 'Leads' },
+    { value: 'teacher', label: 'Professores' },
+    { value: 'candidate', label: 'Candidatos' },
+];
 
 const HANDOFF_DURATION_MS = 72 * 60 * 60 * 1000;
 
@@ -493,6 +510,10 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
         const query = normalizeSearch(deferredSearch.trim());
         return conversations.filter((conversation) => {
             if (filter === 'unread' && conversation.unread_count <= 0) return false;
+            if (
+                filter !== 'all' && filter !== 'unread'
+                && String(conversation.contact_kind || '').toLowerCase() !== filter
+            ) return false;
             if (!query) return true;
             return normalizeSearch([
                 conversation.display_name,
@@ -856,6 +877,19 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                 >
                                     Não lidas
                                 </button>
+                            </div>
+                            <div className="grid grid-cols-4 gap-1 rounded-xl bg-brand-surface-2 p-1" role="group" aria-label="Filtrar por tipo de contato">
+                                {KIND_FILTERS.map((item) => (
+                                    <button
+                                        key={item.value}
+                                        type="button"
+                                        onClick={() => setFilter(filter === item.value ? 'all' : item.value)}
+                                        aria-pressed={filter === item.value}
+                                        className={`rounded-lg px-2 py-2 text-[11px] font-black ${filter === item.value ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-muted'}`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
