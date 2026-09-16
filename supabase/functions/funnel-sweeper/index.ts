@@ -83,6 +83,14 @@ const dowOf = (dateStr: string): number =>
 const FIRST_TOUCH_BATCH = 1;
 const FIRST_TOUCH_DAILY_CAP = 15;
 const FIRST_TOUCH_MIN_GAP_MS = 20 * 60 * 1000;
+// Lead parado há meses é contato frio de novo — mas é contato que a escola já
+// pagou para conseguir, e ele fica no fim de uma fila ordenada do mais novo
+// para o mais velho. A direção pediu em 16/09/2026 para reaquecer os antigos em
+// vez de deixá-los esperando dias: eles ganham vez reservada dentro do mesmo
+// teto diário (o teto é anti-bloqueio e não muda), com mensagem própria, que
+// reconhece o tempo passado e vai direto ao ponto: marcar a experimental.
+const REHEAT_MIN_AGE_DAYS = 90;
+const REHEAT_DAILY_CAP = 6;
 const INTERVIEW_INVITE_DAILY_CAP = 5;
 // Retorno ao lead cuja experimental não teve professor. Cabe mais volume que o
 // primeiro toque (é gente que JÁ conversou com a escola, não contato frio),
@@ -257,6 +265,7 @@ serve(async (req) => {
       first_touch: 0,
       first_touch_skipped: 0,
       first_touch_suppressed: 0,
+      reheat: 0,
       rebroadcasts: 0,
       director_alerts: 0,
       interview_invites: 0,
@@ -351,16 +360,47 @@ serve(async (req) => {
         ? Math.max(0, FIRST_TOUCH_DAILY_CAP - (sentToday ?? 0))
         : 0;
 
+      const { count: reheatToday } = await sb.from("automation_sent")
+        .select("id", { count: "exact", head: true })
+        .eq("kind", "SDR_REHEAT").eq("ref_date", todayBRT());
+      const reheatSlots = Math.max(0, REHEAT_DAILY_CAP - (reheatToday ?? 0));
+      const reheatCutoff = new Date(
+        Date.now() - REHEAT_MIN_AGE_DAYS * 24 * 3600 * 1000,
+      ).toISOString();
+      // Comparar data como NÚMERO: o Postgres devolve "+00:00" e o JS gera "Z",
+      // e comparar as duas strings funciona por sorte, não por regra.
+      const reheatCutoffMs = Date.parse(reheatCutoff);
+      const isReheatLead = (lead: any) =>
+        Date.parse(lead.created_at) < reheatCutoffMs;
+
+      const colunas =
+        "id, tenant_id, name, phone, status, source, created_at, ai_handled, ai_handoff, last_outbound_at";
       const { data: leads } = await sb.from("crm_leads")
-        .select(
-          "id, tenant_id, name, phone, status, source, created_at, ai_handled, ai_handoff, last_outbound_at",
-        )
+        .select(colunas)
         .eq("status", "NEW").eq("ai_handoff", false)
         .or("ai_handled.is.null,ai_handled.eq.false,last_outbound_at.is.null")
         .order("created_at", { ascending: false })
         .limit(80);
+      // Consulta própria: com a fila ordenada do mais novo para o mais velho, o
+      // lead de março pode nem aparecer nas 80 primeiras linhas.
+      const { data: reheatLeads } = reheatSlots > 0
+        ? await sb.from("crm_leads")
+          .select(colunas)
+          .eq("status", "NEW").eq("ai_handoff", false)
+          .or("ai_handled.is.null,ai_handled.eq.false,last_outbound_at.is.null")
+          .lt("created_at", reheatCutoff)
+          .order("created_at", { ascending: false })
+          .limit(20)
+        : { data: [] as any[] };
 
-      for (const lead of (leads || [])) {
+      const vistos = new Set<string>();
+      const fila = [...(reheatLeads || []), ...(leads || [])].filter((lead) => {
+        if (vistos.has(lead.id)) return false;
+        vistos.add(lead.id);
+        return true;
+      });
+
+      for (const lead of fila) {
         if (result.first_touch >= Math.min(FIRST_TOUCH_BATCH, remainingToday)) {
           break;
         }
@@ -407,9 +447,15 @@ serve(async (req) => {
         );
         const sdrName = configuredSdrName || "a equipe de atendimento";
         const first = greetName(lead.name);
+        const reheat = isReheatLead(lead);
+        if (reheat && reheatSlots <= result.reheat) continue;
         const isFresh =
           new Date(lead.created_at).getTime() > Date.now() - 72 * 3600 * 1000;
-        const msg = isFresh
+        const msg = reheat
+          ? `Oi${
+            first ? ", " + first : ""
+          }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Você chegou até a gente há um tempo procurando inglês e acabou não dando sequência — acontece! Se ainda fizer sentido, a primeira aula é experimental e gratuita: 30 minutos, com o plano montado na sua rotina. Quer que eu veja um horário essa semana? Me diz os dias e horários que ficam bons pra você.`
+          : isFresh
           ? `Oi${
             first ? ", " + first : ""
           }! Aqui é ${sdrName}, da ${t.identity.brandName} 😊 Vi seu interesse nas nossas aulas de inglês. A primeira aula é experimental e gratuita: me conta quais dias e horários ficam bons pra você, que eu já vejo o professor livre. E o inglês é pra trabalho, viagem ou outro objetivo?`
@@ -430,10 +476,19 @@ serve(async (req) => {
             content: msg,
             meta: {
               lead_id: lead.id,
-              kind: "first_touch",
+              kind: reheat ? "reheat" : "first_touch",
               source: lead.source || null,
             },
           });
+          if (reheat) {
+            // Marca do DIA: é o que reserva a vez dos antigos sem mexer no teto.
+            await sb.from("automation_sent").insert({
+              kind: "SDR_REHEAT",
+              subject_id: phone,
+              ref_date: todayBRT(),
+            });
+            result.reheat++;
+          }
           result.first_touch++;
         } else {
           await c.undo();
