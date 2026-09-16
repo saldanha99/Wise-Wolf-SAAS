@@ -9,7 +9,8 @@ export type ManagementActionType =
   | "cobertura_aula"
   | "transferencia_professor"
   | "repasse_aula"
-  | "alterar_horario_aluno";
+  | "alterar_horario_aluno"
+  | "mudanca_plano";
 
 export type ManagementToolName =
   | "academics.schedule_teacher_training"
@@ -17,7 +18,8 @@ export type ManagementToolName =
   | "finance.adjust_teacher_payout"
   | "academics.request_lesson_coverage"
   | "academics.transfer_student_teacher"
-  | "academics.change_student_schedule";
+  | "academics.change_student_schedule"
+  | "finance.change_student_plan";
 
 export interface ManagementToolPolicy {
   actionType: ManagementActionType;
@@ -97,6 +99,15 @@ export const MANAGEMENT_TOOL_POLICIES: Record<
     allowedMembershipRoles: ACADEMIC_MANAGERS,
     confirmation: "same_actor",
     description: "Alterar o dia e o horario de uma aula recorrente do aluno.",
+  },
+  mudanca_plano: {
+    actionType: "mudanca_plano",
+    toolName: "finance.change_student_plan",
+    risk: "critical",
+    allowedMembershipRoles: SCHOOL_ADMIN_ONLY,
+    confirmation: "same_actor",
+    description:
+      "Propor nova frequencia e mensalidade ao aluno; vale quando ele assina o link, e a Asaas e atualizada pela fila.",
   },
 };
 

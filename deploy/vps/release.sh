@@ -1312,6 +1312,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916160000_lembrete_sem_marcador_cru_e_sem_link.sql"
   "supabase/migrations/20260916200000_tour_de_novidades_por_usuario.sql"
   "supabase/migrations/20260916210000_cobertura_de_aula_que_ja_aconteceu.sql"
+  "supabase/migrations/20260916220000_troca_de_plano_pelo_grupo_da_gestao.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

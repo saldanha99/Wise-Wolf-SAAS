@@ -1183,6 +1183,133 @@ function parseRepasseSlots(
   return p ? [p] : [];
 }
 
+/** "3x", "3", "três vezes" → "3x". Vazio quando não dá para entender. */
+function parsePlanFrequency(raw: unknown): string {
+  const text = String(raw ?? "").trim().toLowerCase();
+  if (!text) return "";
+  const words: Record<string, string> = {
+    uma: "1",
+    um: "1",
+    duas: "2",
+    dois: "2",
+    tres: "3",
+    "três": "3",
+    quatro: "4",
+    cinco: "5",
+    seis: "6",
+  };
+  const m = text.match(/^(\d{1,2})\s*(x|vezes)?/) ||
+    text.match(/^([a-zç]+)\s*(x|vezes)?/);
+  if (!m) return "";
+  const n = /^\d/.test(m[1]) ? m[1] : words[m[1]];
+  return n && Number(n) >= 1 && Number(n) <= 14 ? `${Number(n)}x` : "";
+}
+
+/** "R$ 229", "229,00", 229 → 229. NaN quando não é valor. */
+function parsePlanFee(raw: unknown): number {
+  if (typeof raw === "number") return raw;
+  const text = String(raw ?? "").replace(/[^\d,.-]/g, "").replace(
+    /\.(?=\d{3}(\D|$))/g,
+    "",
+  ).replace(",", ".");
+  const n = Number(text);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+
+/**
+ * Troca de plano pedida no grupo: a RPC cria a proposta em nome de quem
+ * pediu e o LINK DE ASSINATURA vai para o WhatsApp do aluno. O valor só muda
+ * quando ele assina; a Asaas entra pela fila (sync-plan-change-billing).
+ */
+async function createPlanChangeDirect(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  actor: ManagementActor,
+  requestId: string,
+  tipo: "mudanca_plano" | "transferencia_professor",
+  studentId: string,
+  novaFrequencia: string,
+  novoValor: number,
+  atualizarFaturas: boolean,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.rpc("gestao_create_plan_change", {
+    p_tenant: tenantId,
+    p_actor_id: actor.userId,
+    p_request_id: requestId,
+    p_tipo: tipo,
+    p_student_id: studentId,
+    p_to_frequency: novaFrequencia,
+    p_to_fee: novoValor,
+    p_update_pending_payments: atualizarFaturas,
+  });
+  if (error) return { ok: false, error: "falha_ao_criar_proposta" };
+  const result = data as Record<string, unknown> | null;
+  if (!result?.ok) {
+    return { ok: false, error: String(result?.error || "proposta_invalida") };
+  }
+  const token = String(result.token || "");
+  const phone = normalizePhone(String(result.student_phone || ""));
+  const link = `${APP_BASE_URL}/mudar-plano?token=${encodeURIComponent(token)}`;
+  const firstName =
+    String(result.student_name || "Aluno").trim().split(/\s+/)[0];
+  const fee = (v: unknown) =>
+    `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
+  const notified = token && phone && result.idempotent !== true
+    ? await sendWhats(
+      instance,
+      phone,
+      `Olá ${firstName}! 🐺\n\nA escola preparou uma mudança no seu plano, como combinado:\n\n📚 Frequência: *${
+        String(result.to_frequency)
+      }* por semana (antes ${
+        String(result.from_frequency || "—")
+      })\n💰 Mensalidade: *${fee(result.to_fee)}* (antes ${
+        fee(result.from_fee)
+      })\n\nConfira e assine aqui para valer:\n${link}\n\nO link vale por 14 dias. Qualquer dúvida, é só responder. 💜`,
+    )
+    : false;
+  return {
+    ok: true,
+    idempotent: result.idempotent === true,
+    notified,
+    link,
+    student_name: result.student_name,
+    from_frequency: result.from_frequency,
+    to_frequency: result.to_frequency,
+    from_fee: result.from_fee,
+    to_fee: result.to_fee,
+  };
+}
+
+function planChangeReplyText(r: Record<string, unknown>): string {
+  const fee = (v: unknown) =>
+    `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
+  const nome = String(r.student_name || "o aluno").trim().split(/\s+/)[0];
+  if (r.idempotent) {
+    return `✅ A proposta de plano de ${nome} já existia; nada foi duplicado.`;
+  }
+  return (r.notified
+    ? `✅ Proposta de plano enviada a ${nome} no WhatsApp: ${
+      String(r.to_frequency)
+    }/semana a ${fee(r.to_fee)} (antes ${String(r.from_frequency || "—")} a ${
+      fee(r.from_fee)
+    }).`
+    : `⚠️ Proposta de plano criada, mas o WhatsApp de ${nome} não recebeu o link. Copie e mande: ${
+      String(r.link || "")
+    }`) +
+    " O valor só muda quando ele assinar; depois a Asaas é atualizada sozinha.";
+}
+
+function planChangeErrorText(code: string): string {
+  const map: Record<string, string> = {
+    plano_igual_ao_atual: "o plano proposto é igual ao atual",
+    aluno_invalido: "não encontrei esse aluno ativo na escola",
+    frequencia_invalida: "frequência inválida — use algo como 3x",
+    valor_invalido: "valor inválido",
+  };
+  return map[code] || code;
+}
+
 async function resolveGestaoStudent(
   sb: any,
   tenantId: string,
@@ -2678,6 +2805,45 @@ async function handleGestao(
           erroExecucao = `Falha no repasse: ${resp.error}`;
         } else {
           res = resp;
+          // Carona: "transfere para o Matheus, 3x, R$ 219". A proposta de plano
+          // nasce junto e o aluno recebe o link de assinatura.
+          const freq = parsePlanFrequency(a.nova_frequencia);
+          const valor = parsePlanFee(a.novo_valor);
+          if (freq && Number.isFinite(valor) && valor > 0) {
+            (res as Record<string, unknown>).plano =
+              await createPlanChangeDirect(
+                sb,
+                instance,
+                tenantId,
+                actor,
+                String(requestId || crypto.randomUUID()),
+                "transferencia_professor",
+                String(a.student_id || ""),
+                freq,
+                valor,
+                a.atualizar_faturas !== false,
+              );
+          }
+        }
+      } else if (tipo === "mudanca_plano") {
+        const resp = await createPlanChangeDirect(
+          sb,
+          instance,
+          tenantId,
+          actor,
+          String(requestId || crypto.randomUUID()),
+          "mudanca_plano",
+          String(a.student_id || ""),
+          parsePlanFrequency(a.nova_frequencia),
+          parsePlanFee(a.novo_valor),
+          a.atualizar_faturas !== false,
+        );
+        if (resp.ok !== true) {
+          erroExecucao = `Falha na troca de plano: ${
+            String(resp.error || "falha")
+          }`;
+        } else {
+          res = resp;
         }
       } else if (tipo === "alterar_horario_aluno") {
         const resp = await changeBookingScheduleDirect(
@@ -2794,6 +2960,17 @@ async function handleGestao(
               r?.error || "erro",
             )
           }).`;
+        if (r?.plano) {
+          txt += `\n\n${
+            planChangeReplyText(r.plano as Record<string, unknown>)
+          }`;
+        }
+      } else if (tipo === "mudanca_plano") {
+        txt = r?.ok
+          ? planChangeReplyText(r as Record<string, unknown>)
+          : `Não consegui criar a proposta de plano (${
+            planChangeErrorText(erroExecucao || String(r?.error || "erro"))
+          }). O plano atual continua valendo.`;
       } else if (tipo === "alterar_horario_aluno") {
         const changed = (r as Record<string, unknown> | null)?.changed;
         txt = r?.ok
@@ -2926,7 +3103,13 @@ TRANSFERÊNCIA RECORRENTE DE PROFESSOR: somente quando pedirem explicitamente pa
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "transferencia_professor", "aluno": "<nome do aluno>", "professor_destino": "<nome do professor que vai receber>", "slots": [{"dia":"<Segunda>","horario":"<HH:MM>"}], "data_inicio": "<AAAA-MM-DD>", "motivo": "<motivo curto>"}}
 - "slots" pode incluir 1 ou mais dias/horários.
 - "data_inicio" não pode ser no passado.
+- Se junto com a transferência disserem que a frequência ou o valor do aluno mudam (ex.: "o Matheus só tem 3 horários, vai ficar 3x a R$ 219"), inclua TAMBÉM "nova_frequencia": "<Nx>" e "novo_valor": <número> dentro da mesma acao — o aluno recebe o link de assinatura do plano novo junto.
 - Se faltar qualquer um dos dados acima, não devolva acao — pergunte o que falta.
+
+MUDANÇA DE PLANO DO ALUNO (frequência e/ou valor, sem trocar de professor): devolva TAMBÉM o campo acao:
+{"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "mudanca_plano", "aluno": "<nome do aluno>", "nova_frequencia": "<Nx, ex.: 3x>", "novo_valor": <número em reais>, "atualizar_faturas": <true por padrão; false só se disserem para não mexer na fatura já gerada>}}
+- Precisa de frequência E valor. Se disserem só um, pergunte o outro.
+- Você NÃO altera nada: o aluno assina pelo link e só então o valor muda.
 
 ALTERAR HORÁRIO DE ALUNO: se pedirem para mudar horário de aula já agendada de um aluno, devolva TAMBÉM o campo acao:
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "alterar_horario_aluno", "aluno": "<nome do aluno>", "booking_id": "<uuid opcional>", "novo_dia": "<Segunda>", "novo_horario": "<HH:MM>", "dia_atual": "<Segunda opcional>", "horario_atual": "<HH:MM opcional>"}}
@@ -3343,6 +3526,71 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     return;
   }
 
+  if (acao && acao.tipo === "mudanca_plano") {
+    const alunoNome = String(acao.aluno || "").trim();
+    const freq = parsePlanFrequency(acao.nova_frequencia);
+    const valor = parsePlanFee(acao.novo_valor);
+    if (!alunoNome) {
+      const msg = "Para mudar o plano, preciso do nome completo do aluno.";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    if (!freq || !Number.isFinite(valor) || valor <= 0) {
+      const msg =
+        "Para mudar o plano, preciso da nova frequência (ex.: 3x por semana) e do novo valor da mensalidade (ex.: R$ 219).";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
+    if (!aluno.ok) {
+      const msg = aluno.error === "aluno_ambiguo"
+        ? `Encontrei mais de um aluno com esse nome (${
+          (aluno.candidatos || []).join(", ")
+        }). Qual deles?`
+        : "Não encontrei esse aluno. Pode repetir o nome completo?";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const atualizarFaturas = acao.atualizar_faturas !== false;
+    const resumo = `troca de plano de ${aluno.nome}: ${freq} por semana, R$ ${
+      valor.toFixed(2).replace(".", ",")
+    }/mês${
+      atualizarFaturas ? "" : " (sem mexer na fatura já gerada deste mês)"
+    }`;
+    const pending = await savePendingManagementAction(sb, {
+      tenantId,
+      groupJid,
+      messageId: msgId,
+      actor,
+      action: {
+        tipo: "mudanca_plano",
+        student_id: aluno.id,
+        nova_frequencia: freq,
+        novo_valor: valor,
+        atualizar_faturas: atualizarFaturas,
+      },
+      summary: resumo,
+    });
+    if (pending.ok === false) {
+      const msg = pending.error === "forbidden"
+        ? "Seu papel não permite mudar o plano de um aluno pelo grupo."
+        : pending.error === "busy"
+        ? "Já existe uma ação confirmada sendo processada neste grupo. Aguarde a conclusão antes de pedir outra."
+        : "Não consegui preparar a troca de plano com segurança agora.";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const perguntaConf =
+      `Entendi: *${resumo}*. Ao confirmar, o aluno recebe no WhatsApp o link para assinar a mudança — o valor só muda quando ele assinar, e a cobrança na Asaas é atualizada em seguida, sozinha.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
+    await sendWhats(instance, groupJid, perguntaConf);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
+    return;
+  }
+
   if (
     acao &&
     (acao.tipo === "transferencia_professor" || acao.tipo === "repasse_aula")
@@ -3426,8 +3674,26 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const slotsTexto = slots.map((s) => `${s.day_of_week} ${s.time_slot}`).join(
       ", ",
     );
+    // Carona opcional: a transferência pode vir com plano novo (frequência e
+    // valor) quando o professor de destino não tem todos os horários.
+    const planoFreq = parsePlanFrequency(acao.nova_frequencia);
+    const planoValor = parsePlanFee(acao.novo_valor);
+    const temPlano = Boolean(planoFreq) && Number.isFinite(planoValor) &&
+      planoValor > 0;
+    if ((acao.nova_frequencia || acao.novo_valor) && !temPlano) {
+      const msg =
+        "Entendi que o plano também muda. Preciso da nova frequência (ex.: 3x) E do novo valor da mensalidade (ex.: R$ 219) para preparar a assinatura do aluno.";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const planoTexto = temPlano
+      ? ` + plano novo ${planoFreq}/semana a R$ ${
+        planoValor.toFixed(2).replace(".", ",")
+      }`
+      : "";
     const resumo =
-      `transferência recorrente de ${aluno.nome} para ${p.nome} em ${slotsTexto} a partir de ${dataInicio} — ${motivo}`;
+      `transferência recorrente de ${aluno.nome} para ${p.nome} em ${slotsTexto} a partir de ${dataInicio}${planoTexto} — ${motivo}`;
     const pending = await savePendingManagementAction(sb, {
       tenantId,
       groupJid,
@@ -3440,6 +3706,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         slots,
         data_inicio: dataInicio,
         motivo,
+        ...(temPlano
+          ? {
+            nova_frequencia: planoFreq,
+            novo_valor: planoValor,
+            atualizar_faturas: acao.atualizar_faturas !== false,
+          }
+          : {}),
       },
       summary: resumo,
     });
@@ -3455,7 +3728,11 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     }
 
     const perguntaConf =
-      `Entendi: *${resumo}*. Esta é uma mudança *recorrente*, não uma cobertura pontual.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
+      `Entendi: *${resumo}*. Esta é uma mudança *recorrente*, não uma cobertura pontual.${
+        temPlano
+          ? ` O professor recebe o link para aceitar a agenda, e o aluno recebe o link para assinar o plano novo — o valor só muda quando ele assinar.`
+          : ""
+      }\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
     return;
