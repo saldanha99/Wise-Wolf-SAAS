@@ -1281,6 +1281,159 @@ async function createPlanChangeDirect(
   };
 }
 
+/** Aulas de um professor num dia (agenda fixa + avulsa), ainda por começar. */
+async function teacherClassesOnDate(
+  sb: any,
+  tenantId: string,
+  teacherId: string,
+  classDate: string,
+): Promise<
+  Array<
+    { bookingId: string; time: string; studentName: string; started: boolean }
+  >
+> {
+  const dateInfo = gestaoDayForDate(classDate);
+  if (!dateInfo) return [];
+  const { data } = await sb.from("bookings")
+    .select("id,student_id,day_of_week,time_slot,date,start_date,status")
+    .eq("tenant_id", tenantId).eq("teacher_id", teacherId).eq(
+      "status",
+      "SCHEDULED",
+    );
+  const rows = ((data || []) as Array<Record<string, unknown>>).filter(
+    (row) => {
+      if (!row.student_id) return false;
+      const fixedDate = String(row.date || "").slice(0, 10);
+      if (fixedDate) return fixedDate === classDate;
+      const startsOn = String(row.start_date || "").slice(0, 10);
+      return (!startsOn || startsOn <= classDate) &&
+        normalizeGestaoDay(String(row.day_of_week || "")) === dateInfo.dayName;
+    },
+  );
+  const studentIds = Array.from(new Set(rows.map((r) => String(r.student_id))));
+  const names = new Map<string, string>();
+  if (studentIds.length) {
+    const { data: students } = await sb.from("profiles").select("id,full_name")
+      .in("id", studentIds);
+    for (const st of (students || []) as Array<Record<string, unknown>>) {
+      names.set(String(st.id), String(st.full_name || "Aluno").trim());
+    }
+  }
+  return rows
+    .map((row) => {
+      const time = normalizeGestaoTime(String(row.time_slot || ""));
+      const start = Date.parse(`${classDate}T${time}:00-03:00`);
+      return {
+        bookingId: String(row.id),
+        time,
+        studentName: names.get(String(row.student_id)) || "Aluno",
+        started: !Number.isFinite(start) || start <= Date.now() + 5 * 60_000,
+      };
+    })
+    .sort((a, b) => a.time.localeCompare(b.time));
+}
+
+/**
+ * Abre as oportunidades do dia (RPC) e manda o link a cada professor livre.
+ * O primeiro que aceita leva; o aceite passa pelo trigger de integridade.
+ */
+async function openCoverageDayDirect(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  actorUserId: string,
+  requestId: string,
+  teacherId: string,
+  classDate: string,
+  reason: string,
+  source: "group" | "teacher",
+): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.rpc("gestao_open_coverage_day", {
+    p_tenant: tenantId,
+    p_actor_id: actorUserId,
+    p_request_id: requestId,
+    p_teacher_id: teacherId,
+    p_date: classDate,
+    p_reason: reason,
+    p_source: source,
+  });
+  if (error) return { ok: false, error: "falha_ao_abrir_cobertura" };
+  const result = data as Record<string, unknown> | null;
+  if (!result?.ok) {
+    return { ok: false, error: String(result?.error || "cobertura_invalida") };
+  }
+  if (result.idempotent === true) {
+    return {
+      ok: true,
+      idempotent: true,
+      teacher_name: result.teacher_name,
+      lines: [] as string[],
+    };
+  }
+
+  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const teacherFirst =
+    String(result.teacher_name || "o professor").trim().split(/\s+/)[0];
+  const [y, m, d] = classDate.split("-");
+  const dataFmt = `${d}/${m}/${y}`;
+  const lines: string[] = [];
+  for (
+    const opp of (result.opportunities || []) as Array<Record<string, unknown>>
+  ) {
+    const invites = (opp.invites || []) as Array<Record<string, unknown>>;
+    const aluno = String(opp.student_name || "Aluno").trim();
+    const hora = String(opp.class_time || "");
+    if (!invites.length) {
+      lines.push(`• ${hora} ${aluno} — ⚠️ ninguém livre nesse horário`);
+      continue;
+    }
+    let sent = 0;
+    for (const inv of invites) {
+      const phone = normalizePhone(String(inv.phone || ""));
+      const token = String(inv.token || "");
+      if (!phone || !token || !supabaseUrl) continue;
+      const first =
+        String(inv.teacher_name || "Professor").trim().split(/\s+/)[0];
+      const link = `${supabaseUrl}/functions/v1/claim-coverage?token=${
+        encodeURIComponent(token)
+      }`;
+      const ok = await sendWhats(
+        instance,
+        phone,
+        `Olá ${first}! 🐺
+
+*Cobertura disponível:* ${teacherFirst} não poderá dar a aula de *${aluno}* em ${dataFmt} às *${hora}*.
+
+Quem aceitar primeiro fica com a aula — e ela conta no seu pagamento. Abra para responder:
+${link}`,
+      );
+      await sb.from("coverage_opportunity_invites")
+        .update(
+          ok
+            ? { sent_at: new Date().toISOString() }
+            : { status: "FAILED", responded_at: new Date().toISOString() },
+        )
+        .eq("id", String(inv.invite_id));
+      if (ok) sent++;
+    }
+    lines.push(
+      `• ${hora} ${aluno} — ${sent} professor${sent === 1 ? "" : "es"} avisado${
+        sent === 1 ? "" : "s"
+      }${
+        sent < invites.length ? ` (${invites.length - sent} sem WhatsApp)` : ""
+      }`,
+    );
+  }
+  for (const sk of (result.skipped || []) as Array<Record<string, unknown>>) {
+    lines.push(
+      `• ${String(sk.class_time || "")} ${String(sk.student_name || "")} — ${
+        sk.motivo === "ja_comecou" ? "já começou/passou" : "já tinha cobertura"
+      }`,
+    );
+  }
+  return { ok: true, teacher_name: result.teacher_name, lines };
+}
+
 function planChangeReplyText(r: Record<string, unknown>): string {
   const fee = (v: unknown) =>
     `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
@@ -2825,6 +2978,25 @@ async function handleGestao(
               );
           }
         }
+      } else if (tipo === "cobertura_dia") {
+        const resp = await openCoverageDayDirect(
+          sb,
+          instance,
+          tenantId,
+          String(actor.userId || ""),
+          String(requestId || crypto.randomUUID()),
+          String(a.teacher_id || ""),
+          String(a.data || ""),
+          String(a.motivo || ""),
+          "group",
+        );
+        if (resp.ok !== true) {
+          erroExecucao = `Falha na cobertura do dia: ${
+            String(resp.error || "falha")
+          }`;
+        } else {
+          res = resp;
+        }
       } else if (tipo === "mudanca_plano") {
         const resp = await createPlanChangeDirect(
           sb,
@@ -2965,6 +3137,20 @@ async function handleGestao(
             planChangeReplyText(r.plano as Record<string, unknown>)
           }`;
         }
+      } else if (tipo === "cobertura_dia") {
+        const lines =
+          ((r as Record<string, unknown> | null)?.lines || []) as string[];
+        txt = r?.ok
+          ? r.idempotent
+            ? "✅ Essa cobertura do dia já tinha sido aberta; nenhum convite foi duplicado."
+            : `✅ Cobertura do dia aberta para ${
+              String(r.teacher_name || "o professor").trim().split(/\s+/)[0]
+            }:\n${
+              lines.join("\n")
+            }\n\nO primeiro professor que aceitar o link fica com cada aula — eu aviso aqui a cada aceite. A aula sai do pagamento do ausente e entra no de quem cobrir.`
+          : `Não consegui abrir a cobertura do dia (${
+            erroExecucao || String(r?.error || "erro")
+          }).`;
       } else if (tipo === "mudanca_plano") {
         txt = r?.ok
           ? planChangeReplyText(r as Record<string, unknown>)
@@ -3105,6 +3291,12 @@ TRANSFERÊNCIA RECORRENTE DE PROFESSOR: somente quando pedirem explicitamente pa
 - "data_inicio" não pode ser no passado.
 - Se junto com a transferência disserem que a frequência ou o valor do aluno mudam (ex.: "o Matheus só tem 3 horários, vai ficar 3x a R$ 219"), inclua TAMBÉM "nova_frequencia": "<Nx>" e "novo_valor": <número> dentro da mesma acao — o aluno recebe o link de assinatura do plano novo junto.
 - Se faltar qualquer um dos dados acima, não devolva acao — pergunte o que falta.
+
+COBERTURA DO DIA (professor não vai dar NENHUMA aula num dia — doente, imprevisto): devolva TAMBÉM o campo acao:
+{"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_dia", "professor": "<nome do professor ausente>", "data": "<AAAA-MM-DD>", "motivo": "<motivo curto>"}}
+- "hoje"/"amanhã" viram a data certa (HOJE está nos dados). Sem data, assuma hoje.
+- Cada aula do dia vira uma oportunidade enviada a TODOS os professores livres naquele horário; o primeiro que aceita fica com a aula, que passa a contar para ele. Não é preciso dizer quem cobre.
+- Se disserem quem deu/dará UMA aula específica, é cobertura pontual (acima), não cobertura do dia.
 
 MUDANÇA DE PLANO DO ALUNO (frequência e/ou valor, sem trocar de professor): devolva TAMBÉM o campo acao:
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "mudanca_plano", "aluno": "<nome do aluno>", "nova_frequencia": "<Nx, ex.: 3x>", "novo_valor": <número em reais>, "atualizar_faturas": <true por padrão; false só se disserem para não mexer na fatura já gerada>}}
@@ -3523,6 +3715,104 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
+    return;
+  }
+
+  if (acao && acao.tipo === "cobertura_dia") {
+    const profNome = String(acao.professor || "").trim();
+    const data = String(acao.data || "").trim();
+    const motivo = String(acao.motivo || "").trim();
+    if (!profNome) {
+      const msg =
+        "Para abrir a cobertura do dia, preciso do nome do professor que não vai dar aula.";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(data) || data < todayBRT() ||
+      data > addDaysToBrtDate(todayBRT(), 14)
+    ) {
+      const msg =
+        "Para abrir a cobertura do dia, preciso da data (hoje, amanhã ou até 14 dias à frente).";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    if (!motivo || motivo.length < 3 || motivo.length > 200) {
+      const msg =
+        "Qual é o motivo curto da ausência? (ex.: doente, compromisso pessoal)";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const { data: prof } = await sb.rpc("gestao_resolve_professor", {
+      p_tenant: tenantId,
+      p_nome: profNome,
+    });
+    const p = prof as Record<string, unknown> | null;
+    if (!p?.ok) {
+      const msg = p?.error === "nome_ambiguo"
+        ? `Tem mais de um professor com esse nome: ${
+          (p.candidatos as string[] ?? []).join(", ")
+        }. Qual deles?`
+        : "Não encontrei esse professor. Pode repetir o nome completo?";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const aulas = await teacherClassesOnDate(
+      sb,
+      tenantId,
+      String(p.id || ""),
+      data,
+    );
+    const abertas = aulas.filter((a) => !a.started);
+    const [y, m, d] = data.split("-");
+    const dataFmt = `${d}/${m}/${y}`;
+    if (!abertas.length) {
+      const msg = aulas.length
+        ? `${
+          String(p.nome)
+        } tem ${aulas.length} aula(s) em ${dataFmt}, mas todas já começaram ou passaram. Para aula já dada por outro professor, peça a cobertura pontual informando quem deu.`
+        : `${
+          String(p.nome)
+        } não tem aula na agenda em ${dataFmt}. Nada a cobrir.`;
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const lista = abertas.map((a) => `${a.time} ${a.studentName}`).join(", ");
+    const resumo = `cobertura do dia ${dataFmt} de ${
+      String(p.nome)
+    } (${motivo}): ${abertas.length} aula(s) — ${lista}`;
+    const pending = await savePendingManagementAction(sb, {
+      tenantId,
+      groupJid,
+      messageId: msgId,
+      actor,
+      action: {
+        tipo: "cobertura_dia",
+        teacher_id: String(p.id || ""),
+        data,
+        motivo,
+      },
+      summary: resumo,
+    });
+    if (pending.ok === false) {
+      const msg = pending.error === "forbidden"
+        ? "Seu papel não permite abrir cobertura de aulas pelo grupo."
+        : pending.error === "busy"
+        ? "Já existe uma ação confirmada sendo processada neste grupo. Aguarde a conclusão antes de pedir outra."
+        : "Não consegui preparar a cobertura do dia com segurança agora.";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+    const perguntaConf =
+      `Entendi: *${resumo}*. Ao confirmar, cada aula vira uma oportunidade enviada a todos os professores livres naquele horário — o primeiro que aceitar fica com ela, e a aula passa a contar para quem cobrir. A agenda fixa não muda.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
+    await sendWhats(instance, groupJid, perguntaConf);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
     return;
   }
 

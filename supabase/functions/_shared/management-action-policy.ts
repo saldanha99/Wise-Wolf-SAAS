@@ -10,7 +10,8 @@ export type ManagementActionType =
   | "transferencia_professor"
   | "repasse_aula"
   | "alterar_horario_aluno"
-  | "mudanca_plano";
+  | "mudanca_plano"
+  | "cobertura_dia";
 
 export type ManagementToolName =
   | "academics.schedule_teacher_training"
@@ -19,7 +20,8 @@ export type ManagementToolName =
   | "academics.request_lesson_coverage"
   | "academics.transfer_student_teacher"
   | "academics.change_student_schedule"
-  | "finance.change_student_plan";
+  | "finance.change_student_plan"
+  | "academics.open_coverage_day";
 
 export interface ManagementToolPolicy {
   actionType: ManagementActionType;
@@ -99,6 +101,15 @@ export const MANAGEMENT_TOOL_POLICIES: Record<
     allowedMembershipRoles: ACADEMIC_MANAGERS,
     confirmation: "same_actor",
     description: "Alterar o dia e o horario de uma aula recorrente do aluno.",
+  },
+  cobertura_dia: {
+    actionType: "cobertura_dia",
+    toolName: "academics.open_coverage_day",
+    risk: "high",
+    allowedMembershipRoles: ACADEMIC_MANAGERS,
+    confirmation: "same_actor",
+    description:
+      "Abrir cobertura de todas as aulas de um professor ausente num dia; cada aula vai a todos os professores livres e o primeiro aceite leva.",
   },
   mudanca_plano: {
     actionType: "mudanca_plano",

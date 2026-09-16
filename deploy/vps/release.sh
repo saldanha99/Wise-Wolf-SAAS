@@ -947,6 +947,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/reconcile-whatsapp-webhooks/index.ts \
   supabase/functions/book-interview/index.ts \
   supabase/functions/accept-coverage/index.ts \
+  supabase/functions/claim-coverage/index.ts \
   supabase/functions/accept-opportunity/index.ts \
   supabase/functions/broadcast-opportunity/index.ts \
   supabase/functions/confirm-attendance/index.ts \
@@ -1313,6 +1314,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916200000_tour_de_novidades_por_usuario.sql"
   "supabase/migrations/20260916210000_cobertura_de_aula_que_ja_aconteceu.sql"
   "supabase/migrations/20260916220000_troca_de_plano_pelo_grupo_da_gestao.sql"
+  "supabase/migrations/20260916230000_cobertura_do_dia_oportunidade_para_varios.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1439,6 +1441,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cancel_prepaid_invoice_intents.sql"
   "supabase/tests/tour_de_novidades_por_usuario.sql"
   "supabase/tests/cobertura_de_aula_que_ja_aconteceu.sql"
+  "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1542,6 +1545,7 @@ HARDENED_FUNCTIONS=(
   search-slots
   sync-payments
   accept-coverage
+  claim-coverage
   accept-opportunity
   book-interview
   broadcast-opportunity

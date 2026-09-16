@@ -929,13 +929,40 @@ Medido: 0 linhas em `teacher_absences`, 0 coberturas com `request_id` na histór
 `reason` derivado do texto (`SICK`/`OTHER`), texto em `notes`, `status = 'ACTIVE'`. Leitores
 usam `lower(status)` ou `.in(['ACTIVE','active'])` — `.eq('status','active')` é código morto.
 
-**Ainda aberto (pedido da direção, 16/09/2026):** o grupo como *volante* — "Flávio não dá
-aula hoje" → disparar oportunidade de cobertura para todos os professores livres nos
-horários dos alunos dele, o primeiro que aceita leva; e o professor avisando a instância
-da escola dever virar isso sozinho. Hoje o modelo é **um convite para um professor**
-(`class_coverages` é única por booking+data com `pending` vivo) — "vários recebem, um
-leva" é outro objeto, como o leilão da experimental (`opportunities`). E o fechamento do
-mês no grupo da Gestão, por professor, com previsto × realizado e as coberturas.
+### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
+
+O modelo `class_coverages` é **um convite para um professor** e o trigger proíbe dois
+convites vivos para a mesma aula. "Vários recebem, o primeiro leva" é outro objeto, como o
+leilão da experimental: **`coverage_opportunities`** (uma por aula do dia) +
+**`coverage_opportunity_invites`** (um link por professor candidato — é o que identifica
+quem clicou). No aceite (`claim_coverage_opportunity`, edge `claim-coverage`, HTML como a
+`accept-coverage`) nasce a `class_coverages` pending→confirmed **pelo mesmo trigger**, que
+garante um vencedor só; `apply_coverage_acceptance` faz o financeiro; os outros convites
+viram `LOST`. `confirmed_by` fica NULL de propósito (quem aceitou foi o substituto).
+
+- **Candidatos** (`private.coverage_candidates`): grade declarada no horário, sem aula/
+  reposição/experimental/ausência/cobertura no slot, com WhatsApp, mesma escola, e
+  `can_access_teacher_projection`. Mesmas barreiras do convite individual.
+- **Grupo:** ação `cobertura_dia` (professor, data, motivo) → lista as aulas do dia que
+  ainda não começaram → `sim #código` → `gestao_open_coverage_day` → DM com link para cada
+  candidato → resumo no grupo ("09:30 Theo — 3 professores avisados"). Aula sem candidato
+  aparece como ⚠️ para a direção resolver na mão. Ao aceitar, a página avisa o grupo e o
+  professor ausente.
+- `p_source='teacher'`: o próprio professor pode abrir a própria ausência (porta da
+  instância da escola — **ainda não ligada** no roteamento do inbound).
+- Teste sintético: `supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql`.
+
+### Troca de plano pelo grupo (migration `20260916220000`) ✅
+
+`mudanca_plano` (aluno, frequência, valor) ou de carona em `transferencia_professor`
+(`nova_frequencia`/`novo_valor`): `gestao_create_plan_change` cria a proposta em nome de
+quem pediu e o aluno recebe o link `/mudar-plano` no WhatsApp. A regra da tela não muda —
+**a direção propõe, a assinatura do aluno aplica, a Asaas entra pela fila.** O `expected`
+do aval é montado na RPC (com `p_tipo`), nunca pelo chamador.
+
+**Ainda aberto:** professor avisando a instância da escola que não dá aula (rota própria
+no inbound — hoje cai na atendente comercial) e o fechamento do mês no grupo da Gestão,
+por professor, com previsto × realizado e as coberturas linha a linha.
 
 ---
 
