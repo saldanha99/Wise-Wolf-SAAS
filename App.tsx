@@ -20,7 +20,7 @@ import {
   Teacher,
   Reschedule,
 } from './types';
-import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
+import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2, PanelLeft, PanelTop } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
@@ -130,6 +130,10 @@ const VendedorLanding = lazy(() => import('./components/VendedorLanding'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
+import { TopNav } from './components/shell/TopNav';
+import { ShortcutRail } from './components/shell/ShortcutRail';
+import { useNavLayout } from './components/shell/useNavLayout';
+import { activeMenuIdFor, buildMenuItems } from './lib/navModel';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { StudentProvider } from './components/contexts/StudentContext';
@@ -279,6 +283,8 @@ const App: React.FC = () => {
   }, [user?.id, user?.role]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
+  // Menu lateral clássico x barra no topo + trilho de atalhos (preferência por usuário).
+  const { navLayout, setNavLayout, canToggle: canToggleNavLayout } = useNavLayout(user);
   const [notifOpen, setNotifOpen] = useState(false); // Dropdown de notificações (pendências do diretor)
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1399,13 +1405,23 @@ const App: React.FC = () => {
     return <SuperAdminDashboard onLogout={handleLogout} />;
   }
 
+  // Layout de topo (copiado do MotoFix): categorias no header + trilho de atalhos
+  // à esquerda. Só no desktop — no celular a gaveta e a barra inferior continuam.
+  const isTopNav = navLayout === 'top';
+  const menuItemsOverride = user.role === UserRole.COORDINATOR
+    ? ROLE_NAVIGATION_ITEMS[UserRole.COORDINATOR].filter(item => item.tab !== 'profile').map(item => ({ id: item.tab, label: item.label, icon: Shield, section: 'Qualidade' }))
+    : undefined;
+  const navItems = menuItemsOverride ?? buildMenuItems(user.role, { pendingLessonsCount });
+  const navActiveId = activeMenuIdFor(user.role, activeTab, !!menuItemsOverride);
+
   const appLayout = (
     <div className={`app-shell flex h-dvh max-h-dvh w-full overflow-hidden ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="flex h-full min-h-0 w-full overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
         <ModernSidebar
           tenant={{ ...currentTenant, branding: currentBranding } as any}
           user={user}
-          menuItemsOverride={user.role === UserRole.COORDINATOR ? ROLE_NAVIGATION_ITEMS[UserRole.COORDINATOR].filter(item => item.tab !== 'profile').map(item => ({ id: item.tab, label: item.label, icon: Shield, section: 'Qualidade' })) : undefined}
+          menuItemsOverride={menuItemsOverride}
+          desktop={!isTopNav}
           activeTab={activeTab}
           setActiveTab={(tab) => {
             setActiveTab(tab);
@@ -1423,6 +1439,16 @@ const App: React.FC = () => {
           tenantMemberships={tenantMemberships}
           onTenantSwitch={handleTenantSwitch}
         />
+        {isTopNav && (
+          <ShortcutRail
+            userId={user.id}
+            role={user.role}
+            items={navItems}
+            currentView={navActiveId}
+            onChangeView={setActiveTab}
+            pendingCounts={pendingCounts}
+          />
+        )}
 
         <main
           ref={mainScrollRef}
@@ -1453,8 +1479,17 @@ const App: React.FC = () => {
                 </span>
               </div>
 
-              {/* Left side (Breadcrumbs or Page Title) */}
-              <div className="hidden lg:block">
+              {/* Left side: categorias do menu (layout de topo) ou título da página */}
+              {isTopNav && (
+                <TopNav
+                  items={navItems}
+                  currentView={navActiveId}
+                  onChangeView={setActiveTab}
+                  pendingCounts={pendingCounts}
+                  className="hidden lg:flex"
+                />
+              )}
+              <div className={isTopNav ? 'hidden' : 'hidden lg:block'}>
                 <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 capitalize">
                   {(() => {
                     const titles: Record<string, string> = {
@@ -1695,6 +1730,21 @@ const App: React.FC = () => {
                   document.body
                 )}
                 </>)}
+
+                {canToggleNavLayout && (
+                  <button
+                    type="button"
+                    onClick={() => setNavLayout(isTopNav ? 'side' : 'top')}
+                    className="hidden lg:inline-flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
+                    aria-label={isTopNav ? 'Menu na lateral' : 'Menu no topo com atalhos'}
+                    title={isTopNav ? 'Menu na lateral' : 'Menu no topo com atalhos'}
+                    aria-pressed={isTopNav}
+                  >
+                    {isTopNav
+                      ? <PanelLeft className="w-5 h-5" aria-hidden="true" />
+                      : <PanelTop className="w-5 h-5" aria-hidden="true" />}
+                  </button>
+                )}
 
                 <button
                   type="button"

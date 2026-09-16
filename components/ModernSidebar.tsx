@@ -1,48 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Bot,
-    Mic,
     Menu,
     Compass,
-    FileBarChart,
-    Scale,
-    LayoutDashboard,
-    BookOpen,
-    Target,
-    Repeat,
-    AlertCircle,
-    Users,
-    Calendar,
-    FileText,
-    DollarSign,
-    Shield,
-    Globe,
-    Settings,
     LogOut,
     ChevronDown,
     ChevronsRight,
-    CreditCard,
-    Sparkles,
-    Book,
-    Activity,
-    Video,
-    GraduationCap,
-    Zap,
-    CalendarClock,
-    Wallet,
+    Settings,
+    Shield,
     CheckCircle,
-    Palette,
-    Bell,
-    HelpCircle,
-    Search,
     School,
-    Brain, // Added
-    Briefcase,
-    Gift,
-    UserPlus,
-    TrendingUp,
-    CalendarOff,
-    ShieldAlert,
     X
 } from 'lucide-react';
 import {
@@ -51,7 +17,7 @@ import {
     User as UserType,
     UserRole,
 } from '../types';
-import { ADMIN_NAV, groupForTab } from '../lib/adminNav';
+import { activeMenuIdFor, buildMenuItems, type NavItem } from '../lib/navModel';
 
 export interface ModernSidebarProps {
     tenant: Tenant;
@@ -74,17 +40,15 @@ export interface ModernSidebarProps {
     menuItemsOverride?: SidebarMenuItem[];
     contextLabel?: string;
     mobilePrimaryNavigation?: boolean;
+    /**
+     * false = só a gaveta/barra inferior do celular; no desktop o layout de
+     * topo (TopNav + ShortcutRail) assume a navegação.
+     */
+    desktop?: boolean;
 }
 
-export interface SidebarMenuItem {
-    id: string;
-    label: string;
-    icon: React.ElementType;
-    badge?: number | string;
-    section?: string;        // grupo do menu (ex: "Pessoas", "Financeiro")
-    badgeKey?: string;       // chave em pendingCounts que vira badge (ex: "acolhimento")
-    primary?: boolean;       // uso diário — ganha lugar na barra inferior do celular
-}
+/** Item de menu — o modelo vive em lib/navModel.ts (fonte única das três superfícies). */
+export type SidebarMenuItem = NavItem;
 
 const ModernSidebar: React.FC<ModernSidebarProps> = ({
     tenant,
@@ -106,6 +70,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     menuItemsOverride,
     contextLabel,
     mobilePrimaryNavigation = false,
+    desktop = true,
 }) => {
     const [isMobile, setIsMobile] = useState(() =>
         typeof window !== 'undefined'
@@ -224,89 +189,12 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         return () => document.removeEventListener('mousedown', closeOnOutsideClick);
     }, [tenantMenuOpen]);
 
-    const teacherMenu: SidebarMenuItem[] = [
-        { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Dia a dia', primary: true },
-        { id: 'schedule', label: 'Agenda', icon: Calendar, section: 'Dia a dia', primary: true },
-        { id: 'lessons', label: 'Lançar Aula', icon: BookOpen, section: 'Dia a dia', primary: true },
-        { id: 'lesson-sessions', label: 'Salas e continuidade', icon: Video, section: 'Dia a dia' },
-        { id: 'pending', label: 'Pendentes', icon: AlertCircle, section: 'Dia a dia', badge: pendingLessonsCount, primary: true },
-        { id: 'reschedules', label: 'Reposições', icon: Repeat, section: 'Dia a dia' },
-        { id: 'students', label: 'Alunos', icon: Users, section: 'Dia a dia' },
-        { id: 'meeting_links', label: 'Links de Aula', icon: Video, section: 'Dia a dia' },
-        { id: 'teacher_workflows', label: 'Saída / Ausência', icon: AlertCircle, section: 'Dia a dia' },
+    // Menus por papel vivem em lib/navModel.ts — a barra do topo e o trilho de
+    // atalhos leem a mesma lista; uma cópia aqui divergiria no primeiro item novo.
+    const menuItems = menuItemsOverride ?? buildMenuItems(user.role, { pendingLessonsCount });
 
-        { id: 'pedagogical', label: 'Materiais', icon: Book, section: 'Pedagógico' },
-        { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles, section: 'Pedagógico' },
-        { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico' },
-        { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Pedagógico' },
-        { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico' },
-        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Pedagógico' },
-
-        { id: 'msg_settings', label: 'Mensagens', icon: Bell, section: 'Comunicação' },
-        { id: 'automation', label: 'Smart', icon: Zap, section: 'Comunicação' },
-
-        { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign, section: 'Financeiro' },
-        { id: 'invoices', label: 'Enviar NFS-e', icon: FileText, section: 'Financeiro' },
-
-        { id: 'referral', label: 'Indicações', icon: Gift, section: 'Conta e carreira' },
-        { id: 'contract_teacher', label: 'Meu Contrato', icon: FileText, section: 'Conta e carreira' },
-    ];
-
-    const studentMenu: SidebarMenuItem[] = [
-        { id: 'dashboard', label: 'Meu Portal', icon: LayoutDashboard },
-        // Nomes explícitos: "Wolfie Tutor" x "Praticar" não diziam ao aluno qual
-        // era a prática livre e qual era a trilha do professor.
-        { id: 'ai-tutor', label: 'Praticar com o Wolfie', icon: Sparkles, badge: 'NOVO' as any },
-        { id: 'practice', label: 'Minhas Trilhas', icon: Target },
-        { id: 'schedule', label: 'Aulas', icon: Calendar },
-        { id: 'meeting_links', label: 'Links', icon: Video },
-        { id: 'materials', label: 'Materiais', icon: Book },
-        { id: 'financial', label: 'Financeiro', icon: CreditCard },
-        { id: 'evolution', label: 'Evolução', icon: Sparkles },
-        { id: 'training', label: 'Treinamentos', icon: GraduationCap },
-        { id: 'referral', label: 'Indicações', icon: Gift },
-    ];
-
-    // Deriva de ADMIN_NAV (lib/adminNav.ts), fonte única do menu e das abas.
-    // A lista à mão que vivia aqui tinha 37 itens, uma entrada sem seção e duas
-    // fora de ordem — o que fazia "Financeiro" aparecer duas vezes na tela.
-    const schoolAdminMenu: SidebarMenuItem[] = ADMIN_NAV.map(g => ({
-        id: g.id, label: g.label, icon: g.icon, section: g.section,
-        badgeKey: g.badgeKey, primary: g.primary,
-    }));
-
-    const superAdminMenu: SidebarMenuItem[] = [
-        { id: 'dashboard', label: 'Visão Global', icon: Shield },
-        { id: 'tenants', label: 'Tenants', icon: Globe },
-        { id: 'billing', label: 'Faturamento', icon: DollarSign },
-        { id: 'settings', label: 'Infra', icon: Settings },
-        { id: 'automation', label: 'Smart', icon: Zap },
-    ];
-
-    const salespersonMenu: SidebarMenuItem[] = [
-        { id: 'vendor_dashboard', label: 'Dashboard', icon: TrendingUp },
-        { id: 'vendor_schedule', label: 'Agenda Professores', icon: CalendarClock },
-        { id: 'vendor_trial', label: 'Link Experimental', icon: Zap },
-        { id: 'vendor_enrollment', label: 'Gerar Matrícula', icon: UserPlus },
-        { id: 'vendor_commissions', label: 'Minhas Comissões', icon: DollarSign },
-    ];
-
-    const getMenuItems = () => {
-        if (user.role === UserRole.SUPER_ADMIN) return superAdminMenu;
-        if (user.role === UserRole.SCHOOL_ADMIN) return schoolAdminMenu;
-        if (user.role === UserRole.STUDENT) return studentMenu;
-        if (user.role === UserRole.SALESPERSON) return salespersonMenu;
-        return teacherMenu;
-    };
-
-    const menuItems = menuItemsOverride ?? getMenuItems();
-
-    // A aba ativa pode ser uma SUB-ABA (ex.: 'balancete' dentro de Relatórios).
-    // Sem isto o menu não destacaria nada e o diretor ficaria sem saber onde
-    // está — que é metade da queixa de "menu confuso".
-    const activeMenuId = (!menuItemsOverride && user.role === UserRole.SCHOOL_ADMIN
-        ? groupForTab(activeTab)?.id
-        : undefined) ?? activeTab;
+    // Sub-aba do diretor acende o GRUPO dela (regra em activeMenuIdFor).
+    const activeMenuId = activeMenuIdFor(user.role, activeTab, !!menuItemsOverride);
     const expanded = isMobile || !isCollapsed;
     const drawerHidden = isMobile && !isOpen;
 
@@ -365,6 +253,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 inert={drawerHidden || undefined}
                 className={`
           fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:left-auto z-[100] h-dvh min-h-0 shrink-0
+          ${desktop ? '' : 'lg:hidden'}
           transition-all duration-300 ease-in-out bg-brand-surface border-r border-brand-border
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${expanded ? 'w-64' : 'w-20'}
