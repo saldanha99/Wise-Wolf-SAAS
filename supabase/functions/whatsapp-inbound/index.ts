@@ -32,6 +32,7 @@ import {
   type RenewalSlot,
 } from "./renewal-negotiation.ts";
 import { typingDelayMs } from "./typing-delay.ts";
+import { mapLabelsByKind, type WhatsAppLabel } from "./whatsapp-labels.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -5786,6 +5787,124 @@ async function captureDirectorStyle(sb: any): Promise<number> {
   }
 }
 
+/** Etiquetas que existem na conta de WhatsApp desta instância. */
+async function evolutionLabels(transport: any): Promise<WhatsAppLabel[]> {
+  try {
+    const resp = await fetch(
+      `${transport.integration.baseUrl}/label/findLabels/${
+        encodeURIComponent(transport.instanceName)
+      }`,
+      {
+        headers: { apikey: transport.integration.apiKey },
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!resp.ok) return [];
+    const data = await resp.json().catch(() => null);
+    const rows = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.labels)
+      ? data.labels
+      : [];
+    return rows.map((row: any) => ({
+      id: String(row?.id ?? row?.labelId ?? ""),
+      name: String(row?.name ?? ""),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function evolutionApplyLabel(
+  transport: any,
+  number: string,
+  labelId: string,
+  action: "add" | "remove",
+): Promise<boolean> {
+  try {
+    const resp = await fetch(
+      `${transport.integration.baseUrl}/label/handleLabel/${
+        encodeURIComponent(transport.instanceName)
+      }`,
+      {
+        method: "POST",
+        headers: {
+          apikey: transport.integration.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ number, labelId, action }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Etiqueta cada conversa pelo que ela é: aluno, lead, professor ou candidato.
+ *
+ * A etiqueta em si é criada por gente, no WhatsApp Business — aqui só se aplica
+ * a que já existe, casando pelo nome. Conta sem etiqueta nenhuma não é erro:
+ * fica dormente e volta a tentar na próxima rodada. Quem mudou de categoria
+ * perde a etiqueta antiga antes de ganhar a nova (lead que virou aluno).
+ */
+async function syncWhatsAppLabels(sb: any): Promise<Record<string, unknown>> {
+  const resumo = {
+    aplicadas: 0,
+    instancias: 0,
+    sem_etiquetas: [] as string[],
+  };
+  const { data: instancias } = await sb.from("whatsapp_instances")
+    .select("tenant_id, instance_name").not("instance_name", "is", null);
+  for (const inst of (instancias || [])) {
+    const transport = await resolveInboundEvolutionTransport(
+      inst.instance_name,
+    );
+    if (!transport) continue;
+    resumo.instancias++;
+    const porTipo = mapLabelsByKind(await evolutionLabels(transport));
+    if (Object.keys(porTipo).length === 0) {
+      resumo.sem_etiquetas.push(String(inst.instance_name));
+      continue;
+    }
+    const { data: alvos } = await sb.rpc("whatsapp_label_targets", {
+      p_tenant: inst.tenant_id,
+      p_instance: inst.instance_name,
+      p_limit: 20,
+    });
+    for (const alvo of (alvos || [])) {
+      const etiqueta = porTipo[alvo.contact_kind as keyof typeof porTipo];
+      if (!etiqueta || !alvo.phone) continue;
+      if (alvo.label_id_atual && alvo.label_id_atual !== etiqueta.id) {
+        await evolutionApplyLabel(
+          transport,
+          alvo.phone,
+          alvo.label_id_atual,
+          "remove",
+        );
+      }
+      const aplicou = await evolutionApplyLabel(
+        transport,
+        alvo.phone,
+        etiqueta.id,
+        "add",
+      );
+      if (!aplicou) continue;
+      await sb.rpc("whatsapp_label_marked", {
+        p_tenant: inst.tenant_id,
+        p_remote_jid: alvo.remote_jid,
+        p_phone: alvo.phone,
+        p_label_id: etiqueta.id,
+        p_label_kind: alvo.contact_kind,
+      });
+      resumo.aplicadas++;
+    }
+  }
+  return resumo;
+}
+
 // ---------------- HTTP ----------------
 serve(async (req) => {
   let webhookLedgerId = "";
@@ -5799,6 +5918,17 @@ serve(async (req) => {
   }
   try {
     const reqUrl = new URL(req.url);
+    if (reqUrl.searchParams.get("worker") === "labels") {
+      const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      if (!key || req.headers.get("authorization") !== `Bearer ${key}`) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const resumo = await syncWhatsAppLabels(getInboundServiceClient());
+      return new Response(
+        JSON.stringify({ ok: true, ...resumo }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
     // Aprender o jeito da direção não depende de ter lead escrevendo agora:
     // cron própria a cada 5 min (migration 20260916120000).
     if (reqUrl.searchParams.get("worker") === "style") {
