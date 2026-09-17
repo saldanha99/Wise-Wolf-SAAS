@@ -105,6 +105,7 @@ const TeacherWorkflows = lazy(() => import('./components/TeacherWorkflows'));
 const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
+const TeacherSupportCenter = lazy(() => import('./components/TeacherSupportCenter'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
 const PublicTrialConfirmation = lazy(() => import('./components/PublicTrialConfirmation'));
@@ -1820,6 +1821,12 @@ const App: React.FC = () => {
         </main>
       </div>
       {(user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) && <SmartFinder user={user} />}
+      {/* Central de Ajuda do professor: sempre à mão, em qualquer tela. */}
+      {user.role === UserRole.TEACHER && (
+        <Suspense fallback={null}>
+          <TeacherSupportCenter onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
+        </Suspense>
+      )}
       {tourOpen && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour

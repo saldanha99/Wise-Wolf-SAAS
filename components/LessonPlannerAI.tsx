@@ -15,6 +15,7 @@ import {
     Zap,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { takePlannerIntent } from '../lib/plannerIntent';
 import { User as UserType, UserRole } from '../types';
 
 export interface LessonPlannerAIProps {
@@ -368,7 +369,16 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                         .sort((left, right) => (left.full_name || '').localeCompare(right.full_name || '', 'pt-BR'));
                 }
 
-                if (active) setStudents(nextStudents);
+                if (active) {
+                    setStudents(nextStudents);
+                    // Veio do botão "Planejar" em Aulas de Hoje: aluno e objetivo
+                    // já escolhidos — o professor só revisa e gera.
+                    const intent = takePlannerIntent();
+                    if (intent && nextStudents.some((student) => student.id === intent.studentId)) {
+                        setSelectedStudent(intent.studentId);
+                        if (intent.request) setCustomPrompt((current) => current || intent.request || '');
+                    }
+                }
             } catch (queryError: unknown) {
                 if (active) {
                     setStudents([]);

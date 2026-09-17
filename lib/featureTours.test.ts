@@ -71,7 +71,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-16-menu-no-topo');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-17-ajuda-e-planner');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-16-menu-no-topo');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });
 

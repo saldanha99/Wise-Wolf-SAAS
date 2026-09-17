@@ -1,12 +1,13 @@
 
 import React, { useEffect, useState } from 'react';
-import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw } from 'lucide-react';
+import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw, Sparkles } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { localMonth, localYMD } from '../lib/dateUtils';
 import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
+import { setPlannerIntent } from '../lib/plannerIntent';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
@@ -732,6 +733,24 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         studentName={aula.name}
                         compact
                       />
+                    )}
+                    {aula.studentId && aula.type !== 'TRIAL' && (
+                      <button
+                        type="button"
+                        data-tour="lesson-plan-ai"
+                        onClick={() => {
+                          setPlannerIntent({
+                            studentId: aula.studentId as string,
+                            studentName: aula.name,
+                            request: `Aula de hoje às ${aula.time} com ${aula.name}.`,
+                          });
+                          onNavigate?.('lesson-planner-ai');
+                        }}
+                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-sm border border-brand-border"
+                        title="Planejar esta aula com a IA"
+                      >
+                        <Sparkles size={18} />
+                      </button>
                     )}
                     {aula.meet && (
                       <a

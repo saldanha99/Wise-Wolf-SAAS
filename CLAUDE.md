@@ -1942,6 +1942,31 @@ numa frase humana que reage ao que a pessoa acabou de dizer.
   editar `ETAPAS`.
 - Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
 
+### Central de Ajuda do professor + Planner IA vivo de novo ✅
+
+- **Central de Ajuda** (`components/TeacherSupportCenter.tsx`, botão flutuante "Ajuda" em toda
+  tela do professor): guias em `lib/teacherSupportGuides.ts` — o que fazer em cada situação,
+  com a mensagem exata para o WhatsApp da escola ("Não vou conseguir dar aula hoje" → o bot
+  de ausência) e botões que agem (wa.me com texto pronto; navegar para a tela). Contatos vêm
+  de `teacher_support_contacts()` (migration `20260917140000`): o WhatsApp da escola é o
+  telefone do perfil SCHOOL_ADMIN dono da instância central (conferido contra o `sender` dos
+  webhooks), a coordenação vem de `tenants.school_info`. ⚠️ Os números dos guias (5
+  reposições/mês, R$ 16 do treinamento, 40 min da confirmação) são regra do produto — mudou
+  no banco, mude no guia. Teste garante que toda ação de navegação existe no menu do professor.
+- **Planner IA estava morto no ar**: 25 s de timeout por chamada para um JSON estrito de até
+  7.000 tokens — 504 em toda geração; **zero planos salvos na história** (medido em
+  17/09/2026 como o Flávio, dentro da VPS). Agora orçamento único de 135 s por geração
+  (`PLANNER_TOTAL_BUDGET_MS`; worker e Kong dão 150 s), primeira tentativa até 100 s, retry
+  com o que sobrar. Medido depois: 20 s, plano completo.
+- **"Planejar" em Aulas de Hoje** (`data-tour="lesson-plan-ai"`): manda o professor ao Planner
+  já com o aluno e o objetivo (`lib/plannerIntent.ts`, sessionStorage consumido uma vez).
+- ⚠️ **`tenants.domain` não é o portal.** A tela de configuração grava
+  `<slug>.wisewolflanguage.com.br` (`update_tenant_settings`), e "wisewolf.wisewolflanguage.
+  com.br" não existe no DNS — em 17/09 o link de renovação da Bianca saiu nesse host e ela
+  respondeu "esse link não funciona". `resolveTenantCommunicationIdentity` agora só deixa
+  domínio próprio VERIFICADO passar na frente de `system.wisewolflanguage.com.br` para a Wise
+  Wolf; o dado foi corrigido na mão (`domain = system…`) e o link reenviado.
+
 ### Pós-experimental é conversa, 10 minutos depois da aula — e o professor recebe briefing ✅
 
 > Migration `20260917120000`. **Leia antes de mexer em `trial_closing_*`, no

@@ -67,6 +67,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-17-ajuda-e-planner',
+    title: 'Central de Ajuda e Planner IA',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'teacher-support',
+        view: 'dashboard',
+        title: 'Novidade: Ajuda sempre à mão 🛟',
+        text: 'Este botão abre a Central de Ajuda: o que fazer em cada situação — avisar que não vai dar aula (o bot da escola cuida da cobertura), aceitar experimental, lançar aula, Smart, pagamento. Os botões de WhatsApp já abrem a conversa com a mensagem pronta.',
+      },
+      {
+        target: 'lesson-plan-ai',
+        view: 'dashboard',
+        title: 'Planejar a aula com a IA ✨',
+        text: 'Em cada aula de hoje há um botão de planejamento: ele abre o Planner IA já com o aluno escolhido. Diga o objetivo em uma frase e receba o plano de 30 minutos em blocos, com exemplos, vocabulário e perguntas. Salvar alimenta a memória do aluno para a próxima aula.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

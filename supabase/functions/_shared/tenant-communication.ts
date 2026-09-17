@@ -198,6 +198,16 @@ export function resolveTenantCommunicationIdentity(
   const fallbackPortal = tenantId === "school-wise-wolf"
     ? "https://system.wisewolflanguage.com.br"
     : null;
+  // A Wise Wolf mora em system.wisewolflanguage.com.br. `tenants.domain` é
+  // derivado do slug pela tela de configuração da escola
+  // (`<slug>.wisewolflanguage.com.br`) e "wisewolf.wisewolflanguage.com.br" não
+  // existe no DNS: em 17/09/2026 o link de renovação da Bianca saiu nesse host
+  // depois de alguém salvar as configurações, e ela respondeu "esse link não
+  // funciona". Para o tenant canônico, só um domínio próprio VERIFICADO passa
+  // na frente do portal oficial.
+  const canonicalWiseWolf = slug === "https://system.wisewolflanguage.com.br"
+    ? slug
+    : fallbackPortal;
 
   return {
     tenantId,
@@ -210,7 +220,8 @@ export function resolveTenantCommunicationIdentity(
     secondaryColor: safeColor(branding.secondaryColor, "#0F766E"),
     supportEmail: safeEmail(schoolInfo.email),
     supportPhone: safePhone(schoolInfo.phone),
-    portalUrl: customDomain || tenantDomain || slug || fallbackPortal,
+    portalUrl: customDomain ||
+      (canonicalWiseWolf ? canonicalWiseWolf : (tenantDomain || slug)),
     talentGroupUrl: safeHttpsUrl(tenant.talent_group_link),
   };
 }

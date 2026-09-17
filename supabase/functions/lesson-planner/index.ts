@@ -24,6 +24,7 @@ import {
   normalizeKnowledgeMatches,
   normalizePlannerResult,
   parsePlannerRequest,
+  PLANNER_TOTAL_BUDGET_MS,
   plannerModelProfile,
   type PlannerRequest,
   type PlannerResult,
@@ -845,6 +846,7 @@ async function callOpenRouter(
   requestId: string,
   modelOverride: string,
   qualityGaps: string[] = [],
+  deadlineAt: number = performance.now() + PLANNER_TOTAL_BUDGET_MS,
 ): Promise<OpenRouterCallResult> {
   const apiKey = Deno.env.get("OPENROUTER_API_KEY")?.trim() ?? "";
   if (!apiKey) {
@@ -859,7 +861,11 @@ async function callOpenRouter(
   }
 
   const model = boundedText(modelOverride, 200) || "openai/gpt-4o-mini";
-  const modelProfile = plannerModelProfile(model, qualityGaps.length > 0);
+  const modelProfile = plannerModelProfile(
+    model,
+    qualityGaps.length > 0,
+    deadlineAt - performance.now(),
+  );
   const requestedEffort =
     Deno.env.get("OPENROUTER_PLANNER_REASONING")?.trim().toLowerCase() || "low";
   const reasoningEffort = ["none", "minimal", "low", "medium", "high", "xhigh"]
@@ -1064,6 +1070,9 @@ async function generatePlan(
     highAccuracyModel,
     studentLevel,
   );
+  // Orçamento único para a geração inteira: o retry de qualidade só ganha o
+  // que sobrar, para a resposta sair antes de o worker (150 s) morrer.
+  const deadlineAt = performance.now() + PLANNER_TOTAL_BUDGET_MS;
   let openRouter = await callOpenRouter(
     access.tenantId,
     context.userId,
@@ -1071,6 +1080,8 @@ async function generatePlan(
     retrievedKnowledge.length > 0,
     requestId,
     initialModel,
+    [],
+    deadlineAt,
   );
   if (openRouter.ok === false) return openRouter.response;
 
@@ -1104,6 +1115,7 @@ async function generatePlan(
       requestId,
       highAccuracyModel,
       qualityGaps,
+      deadlineAt,
     );
     if (retry.ok === false) return retry.response;
     generationAttempts.push(retry);
