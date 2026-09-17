@@ -86,6 +86,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-17-faltas-e-reposicoes',
+    title: 'Faltas e reposições',
+    roles: ['STUDENT'],
+    steps: [
+      {
+        target: 'student-reposicoes',
+        view: 'schedule',
+        title: 'Faltou? Você tem direito a repor 🐺',
+        text: 'São 4 reposições por mês por direito. Quando você falta, a escola te chama no WhatsApp no dia seguinte com horários livres do seu professor — é só escolher. Reposição sem data não acontece, então marque logo. Se o professor precisar remarcar, não conta como falta sua.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

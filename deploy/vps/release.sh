@@ -512,6 +512,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/confirm-vendor-trial/core.test.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/care-sweeper/index.ts \
+  supabase/functions/whatsapp-inbound/care-messages.ts \
+  supabase/functions/whatsapp-inbound/care-messages.test.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.test.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -736,6 +741,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
   supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
   supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
+  supabase/functions/whatsapp-inbound/care-messages.test.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -908,6 +915,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/referral-welcome/index.ts \
   supabase/functions/sdr-followups/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/care-sweeper/index.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -1334,6 +1342,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917150000_prova_da_assinatura_de_renovacao_no_guard_da_asaas.sql"
   "supabase/migrations/20260917160000_cobranca_da_renovacao_e_referencia_canonica.sql"
   "supabase/migrations/20260917170000_reativacao_pelo_painel_com_renovacao_sincronizada.sql"
+  "supabase/migrations/20260917180000_acompanhamento_de_aluno_e_professor.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1545,6 +1554,7 @@ HARDENED_FUNCTIONS=(
   referral-welcome
   sdr-followups
   funnel-sweeper
+  care-sweeper
   post-trial-pipeline
   whatsapp-inbound
   whatsapp-crm-lead-notif
@@ -4462,7 +4472,7 @@ wait_for_http_status 400 "validação pública de indicação" \
   -X POST "$api_url/functions/v1/referral-welcome" \
   -H 'Content-Type: application/json' \
   --data '{}'
-for service_cron in sdr-followups funnel-sweeper post-trial-pipeline; do
+for service_cron in sdr-followups funnel-sweeper care-sweeper post-trial-pipeline; do
   wait_for_http_status 403 "service role de $service_cron" \
     -X POST "$api_url/functions/v1/$service_cron" \
     -H 'Content-Type: application/json' \

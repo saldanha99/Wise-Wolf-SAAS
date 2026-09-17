@@ -1972,6 +1972,36 @@ renovação com mudança de plano:
 - `SUBSCRIPTION_CREATED` da renovação fica em TRIAGE (`student_subscription_operation_
   unresolved`): o vínculo já foi gravado pelo `finish … SYNCED`; é ruído, não perda.
 
+### Acompanhamento de aluno e professor — a manutenção de conversa ✅
+
+> Migration `20260917180000`, edge `care-sweeper` (cron `wisewolf-care-sweeper`, 15 min),
+> agente `care` no `whatsapp-inbound`. Decisão da direção em 17/09/2026.
+
+**Medido antes:** 82 faltas de aluno em 30 dias (18%), 15 alunos com 2+ faltas, **55
+reposições abertas, todas sem data**; a confirmação de presença tinha 796 aulas sem
+resposta. O aluno faltava, ganhava o direito, e ninguém corria atrás.
+
+- **Sinais, não calendário.** `care_due_absence_followups` (faltou ontem → "sentimos sua
+  falta" + direito + horários livres do professor), `care_due_weekly_checkins` (sexta
+  15–19h, só quem teve aula), `care_due_monthly_checkins` (a cada 30 dias, 2 por rodada
+  para não sair em rajada), `care_due_teacher_touchpoints` (aluno que não respondeu →
+  professor cobra comparecimento com texto pronto; 2+ faltas SEM cobertura → política de
+  remarcação; check-in mensal). Cada toque é uma linha em `care_touchpoints`
+  (idempotente por assunto+tipo+referência; marca antes do envio, apaga se falhar).
+- **Aluno matriculado fala com a IA SÓ aqui** (`handleCareStudent`), e a IA **nunca** fala
+  de cobrança/contrato/valor — `isMoneyOrContractTopic` manda para gente antes da IA.
+  Sentimento negativo ou pedido que só a coordenação decide → `HANDOFF` + aviso ao
+  diretor. Horário escolhido da lista (ou "quinta às 19h") marca a reposição na hora
+  (`care_set_reschedule_slot`, só na grade livre do professor) e avisa a professora.
+- **4 reposições por direito no mês** (era 5): patch por âncora no
+  `private.log_teacher_classes_engine`; da 5ª em diante não nasce reposição automática —
+  é combinação, sem obrigação. A regra está na tela do aluno (`StudentSchedule`, tour
+  `2026-09-17-faltas-e-reposicoes`) e nos guias do professor.
+- ⚠️ Falta do professor COM cobertura confirmada não conta para a política — quem avisou e
+  teve a aula coberta fez o certo.
+- Professor respondendo a um toque: sem IA — registra no toque e encaminha à coordenação.
+- Desligar por escola: `tenants.ai_team_config.care = false` (ou `.care.enabled = false`).
+
 ### Central de Ajuda do professor + Planner IA vivo de novo ✅
 
 - **Central de Ajuda** (`components/TeacherSupportCenter.tsx`, botão flutuante "Ajuda" em toda

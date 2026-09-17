@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, Clock, MapPin, User, Video, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Video, RefreshCw, LifeBuoy } from 'lucide-react';
 import { User as UserType } from '../types';
 import { localYMD } from '../lib/dateUtils';
 import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
@@ -225,6 +225,25 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                     </div>
                 </section>
             )}
+
+            {/* Política de faltas e reposições — a regra da casa, sempre visível.
+                Direção (17/09/2026): 4 reposições por direito no mês; da 5ª em
+                diante é combinação com o professor, sem obrigação. */}
+            <section data-tour="student-reposicoes" className="bg-brand-surface p-6 md:p-8 rounded-[2rem] border border-brand-border">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-brand-accent/10 text-brand-accent rounded-lg border border-brand-accent/20">
+                        <LifeBuoy size={20} />
+                    </div>
+                    <h3 className="text-lg font-[family-name:var(--font-display)] font-extrabold text-brand-text">Faltas e reposições: como funciona</h3>
+                </div>
+                <ul className="space-y-2 text-sm text-brand-text">
+                    <li className="flex gap-2"><span className="text-brand-accent font-black">4</span><span><strong>Você tem direito a 4 reposições por mês</strong> quando a falta é sua. A partir da 5ª, a reposição é combinada com o professor — sem obrigação, mas vale pedir.</span></li>
+                    <li className="flex gap-2"><span className="text-brand-accent font-black">•</span><span><strong>Faltou?</strong> No dia seguinte a escola te chama no WhatsApp com horários livres do seu professor — é só escolher. Se ele não tiver horário, dá para repor com outro professor: peça à coordenação.</span></li>
+                    <li className="flex gap-2"><span className="text-brand-accent font-black">•</span><span><strong>Reposição sem data não acontece.</strong> Marque logo — sua rotina é corrida, e o horário livre do professor também é.</span></li>
+                    <li className="flex gap-2"><span className="text-brand-accent font-black">•</span><span><strong>Se o professor precisar remarcar,</strong> a aula não conta como falta sua e a escola cuida da reposição (ou de outro professor cobrir no seu horário).</span></li>
+                    <li className="flex gap-2"><span className="text-brand-accent font-black">•</span><span>Não vai conseguir vir? <strong>Avise com antecedência</strong> pelo WhatsApp da escola — aviso cedo vira reposição fácil.</span></li>
+                </ul>
+            </section>
         </div>
     );
 };

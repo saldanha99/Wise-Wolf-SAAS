@@ -54,6 +54,16 @@ import {
 import { wiseWolfLeadTraining } from "./wise-wolf-lead-training.ts";
 import { catalogFactsForPrompt, mentionsSchedule } from "./lead-pricing.ts";
 import {
+  buildCareSystemPrompt,
+  type CareContext,
+  isMoneyOrContractTopic,
+  moneyHandoffReply,
+  parseCareModelReply,
+  parseRequestedSlot,
+  pickOfferedSlot,
+} from "./care-conversation.ts";
+import type { CareSlot } from "./care-messages.ts";
+import {
   isStudentBillingMethodChangeIntent,
   studentBillingMethodChangeReply,
 } from "./billing-method-intent.ts";
@@ -5780,6 +5790,294 @@ function trialClosingStageInstructions(
 }
 
 /**
+ * ACOMPANHAMENTO DO ALUNO — a resposta ao toque do `care-sweeper`.
+ *
+ * É a única conversa em que aluno matriculado fala com IA (decisão da direção,
+ * 17/09/2026). Ordem: dinheiro/contrato → gente, sem IA; horário escolhido da
+ * lista → marca a reposição na hora; depois a IA conduz (curto, uma pergunta),
+ * e o que ela devolve — sentimento, resumo, pedido de horário, handoff — vai
+ * para o toque e, quando negativo, para a direção.
+ * Devolve true quando a mensagem foi tratada aqui.
+ */
+async function handleCareStudent(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  cfg: any,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  isMedia: boolean,
+  msgId: string,
+): Promise<boolean> {
+  const { data: raw, error } = await sb.rpc("care_open_conversation", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error || !raw || typeof raw !== "object") return false;
+  const ctx = raw as CareContext;
+  if (ctx.subject_role !== "STUDENT" || ctx.subject_id !== profile.id) {
+    return false;
+  }
+  // Conversa já entregue a gente: o recado padrão + aviso continuam.
+  if (ctx.status === "HANDOFF") return false;
+  if (isMedia) return false;
+
+  await logMsg(sb, tenantId, phone, "care", "in", text, {
+    student_id: profile.id,
+    touchpoint_id: ctx.id,
+    msg_id: msgId,
+  });
+  const adm = await adminProfile(sb, tenantId);
+  const studentName = String(profile.full_name || ctx.subject_name || "");
+  const notifyDirector = async (headline: string, body: string) => {
+    if (!adm.ownerPhone) return;
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `${headline}\n\n👤 *${
+        studentName || phone
+      }*\n${body}\n\nWhatsApp: ${phone}`,
+    );
+  };
+
+  // 1) Dinheiro e contrato: nunca pela IA.
+  if (isMoneyOrContractTopic(text)) {
+    const reply = moneyHandoffReply(studentName);
+    const entregue = await sendWhats(instance, phone, reply, {
+      simulateTyping: true,
+    });
+    await logMsg(sb, tenantId, phone, "care", "out", reply, {
+      touchpoint_id: ctx.id,
+      kind: "money_handoff",
+      entregue,
+    });
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: "HANDOFF",
+      p_sentiment: null,
+      p_summary: `Trouxe assunto financeiro/contrato: "${text.slice(0, 160)}"`,
+    });
+    await notifyDirector(
+      "💬 *Acompanhamento:* aluno trouxe assunto financeiro/contrato",
+      `“${
+        text.slice(0, 300)
+      }”\n_(A IA não respondeu o mérito; só avisou que a coordenação retorna.)_`,
+    );
+    return true;
+  }
+
+  const offered = Array.isArray(ctx.context?.free_slots)
+    ? (ctx.context!.free_slots as CareSlot[])
+    : [];
+  const teacherId = ctx.teacher_id ? String(ctx.teacher_id) : null;
+  const quotaRemaining = ctx.quota
+    ? Number(ctx.quota.limit) - Number(ctx.quota.used || 0)
+    : 0;
+
+  // Marca a reposição e avisa a professora; devolve o texto para o aluno.
+  const bookSlot = async (
+    slot: { date: string; time: string; day?: string },
+  ): Promise<string | null> => {
+    if (!ctx.reschedule_id || quotaRemaining <= 0) return null;
+    const { data, error: bookError } = await sb.rpc(
+      "care_set_reschedule_slot",
+      {
+        p_tenant: tenantId,
+        p_student: profile.id,
+        p_reschedule: ctx.reschedule_id,
+        p_date: slot.date,
+        p_time: slot.time,
+      },
+    );
+    if (bookError || !data || data.ok !== true) {
+      if (data?.error === "professor_ocupado") {
+        const free = Array.isArray(data.free_slots)
+          ? (data.free_slots as CareSlot[]).slice(0, 3)
+          : [];
+        return free.length
+          ? `Nesse horário a teacher já tem aula. Ela tem livre:\n${
+            free.map((f) => `• ${f.day} ${f.label}`).join("\n")
+          }\n\nAlgum desses serve?`
+          : "Nesse horário a teacher já tem aula. Me diz outra opção que eu confiro na hora 😊";
+      }
+      return null;
+    }
+    const [y, m, d] = String(data.date).split("-");
+    const teacherFirst = String(data.teacher_name || "").split(/\s+/)[0];
+    if (data.teacher_phone) {
+      await sendWhats(
+        instance,
+        String(data.teacher_phone),
+        `🗓️ Reposição marcada pelo aluno: *${
+          studentName || "aluno"
+        }* em ${data.day} ${d}/${m} às ${data.time}. Ela já aparece em Lançar Aula no dia.`,
+      );
+    }
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: "CLOSED",
+      p_sentiment: "POSITIVE",
+      p_summary: `Reposição marcada: ${data.day} ${d}/${m} às ${data.time}`,
+    });
+    return `Fechado: ${data.day} ${d}/${m} às ${data.time}${
+      teacherFirst ? ` com a Teacher ${teacherFirst}` : ""
+    } — ela já ficou sabendo 😊 Até lá!`;
+  };
+
+  // 2) Escolheu um horário da lista, ou pediu um específico: marca sem IA.
+  const chosen = pickOfferedSlot(text, offered) ||
+    parseRequestedSlot(text, todayBRT());
+  if (chosen && ctx.reschedule_id && quotaRemaining > 0) {
+    const reply = await bookSlot(chosen);
+    if (reply) {
+      const entregue = await sendWhats(instance, phone, reply, {
+        simulateTyping: true,
+      });
+      await logMsg(sb, tenantId, phone, "care", "out", reply, {
+        touchpoint_id: ctx.id,
+        kind: "reschedule_slot",
+        entregue,
+      });
+      return true;
+    }
+  }
+
+  // 3) A IA conduz.
+  const hist = await history(sb, tenantId, phone, "care", 16, msgId);
+  const system = buildCareSystemPrompt({
+    agentName: cfg?.agents?.atendente?.name || "Bia",
+    schoolName: safeIdentityPart(cfg?.tenantIdentity?.name, "escola"),
+    ctx,
+    offeredSlots: quotaRemaining > 0 ? offered : [],
+    todayIso: todayBRT(),
+  });
+  const diag: string[] = [];
+  const ai = parseCareModelReply(
+    await callAI(system, [...hist, { role: "user", content: text }], diag, {
+      temperature: 0.4,
+    }),
+  );
+  if (!ai) {
+    console.error("[care] IA indisponível", JSON.stringify(diag).slice(0, 300));
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: "HANDOFF",
+      p_sentiment: null,
+      p_summary: `IA indisponível; resposta do aluno: "${text.slice(0, 160)}"`,
+    });
+    await notifyDirector(
+      "💬 *Acompanhamento:* resposta do aluno sem IA disponível",
+      `“${text.slice(0, 300)}”`,
+    );
+    return true;
+  }
+
+  let reply = ai.reply;
+  let status: "REPLIED" | "HANDOFF" | "CLOSED" = ai.handoff
+    ? "HANDOFF"
+    : ai.close
+    ? "CLOSED"
+    : "REPLIED";
+  if (ai.wants_slot && ctx.reschedule_id && quotaRemaining > 0) {
+    const booked = await bookSlot(ai.wants_slot);
+    if (booked) {
+      reply = booked;
+      status = "CLOSED";
+    }
+  }
+  if (ai.sentiment === "NEGATIVE" && status !== "HANDOFF") status = "HANDOFF";
+
+  const entregue = await sendWhats(instance, phone, reply, {
+    simulateTyping: true,
+  });
+  await logMsg(sb, tenantId, phone, "care", "out", reply, {
+    touchpoint_id: ctx.id,
+    sentiment: ai.sentiment,
+    handoff: status === "HANDOFF",
+    entregue,
+  });
+  if (status !== "CLOSED" || !reply.startsWith("Fechado:")) {
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: status,
+      p_sentiment: ai.sentiment,
+      p_summary: ai.summary || text.slice(0, 200),
+    });
+  }
+  if (status === "HANDOFF") {
+    await notifyDirector(
+      ai.sentiment === "NEGATIVE"
+        ? "🔴 *Acompanhamento:* aluno insatisfeito — precisa de você"
+        : "💬 *Acompanhamento:* aluno pediu algo que só a coordenação decide",
+      `Resumo: ${ai.summary || text.slice(0, 200)}\n\nÚltima mensagem: “${
+        text.slice(0, 300)
+      }”\n_(A IA já disse que a coordenação retorna.)_`,
+    );
+  }
+  return true;
+}
+
+/**
+ * Professor respondendo a um toque (check-in do mês, política de remarcação,
+ * cobrança de comparecimento): sem IA — registra e encaminha à coordenação.
+ */
+async function handleCareTeacherReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: raw, error } = await sb.rpc("care_open_conversation", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error || !raw || typeof raw !== "object") return false;
+  const ctx = raw as CareContext;
+  if (ctx.subject_role !== "TEACHER" || ctx.subject_id !== profile.id) {
+    return false;
+  }
+  if (ctx.status !== "SENT") return false;
+  await logMsg(sb, tenantId, phone, "care", "in", text, {
+    teacher_id: profile.id,
+    touchpoint_id: ctx.id,
+    msg_id: msgId,
+  });
+  await sb.rpc("care_touchpoint_reply", {
+    p_id: ctx.id,
+    p_status: "REPLIED",
+    p_sentiment: null,
+    p_summary: text.slice(0, 400),
+  });
+  const first = greetName(profile.full_name);
+  const ack = `Obrigada${
+    first ? ", " + first : ""
+  }! Anotei e passei para a coordenação 🐺`;
+  const entregue = await sendWhats(instance, phone, ack);
+  await logMsg(sb, tenantId, phone, "care", "out", ack, {
+    touchpoint_id: ctx.id,
+    kind: "teacher_ack",
+    entregue,
+  });
+  const adm = await adminProfile(sb, tenantId);
+  if (adm.ownerPhone) {
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `🧑‍🏫 *Acompanhamento de professor* (${
+        String(ctx.kind).toLowerCase().replace(/_/g, " ")
+      })\n\n*${profile.full_name || phone}* respondeu:\n“${
+        text.slice(0, 500)
+      }”`,
+    );
+  }
+  return true;
+}
+
+/**
  * `student_pricing_plans` da escola no formato que `trial-closing.ts` já usa.
  * Mesmo recorte de `private.trial_closing_prices`: ativo, 1–6 aulas/semana,
  * fidelidade 1/6/12, valor > 0. Falha de leitura vira catálogo vazio — a
@@ -7705,10 +8003,43 @@ serve(async (req) => {
         ) {
           continue;
         }
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleCareTeacherReply(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
         const isContractedStudent =
           String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
           knownProfile.contract_accepted === true;
         if (isContractedStudent) {
+          // Acompanhamento aberto (faltou ontem / semana / mês): a única
+          // conversa em que aluno matriculado fala com a IA.
+          if (
+            !rateLimited && !isMedia && String(text || "").trim() &&
+            await handleCareStudent(
+              sb,
+              instance,
+              tenantId,
+              cfg,
+              knownProfile,
+              phone,
+              text,
+              isMedia,
+              msgId,
+            )
+          ) {
+            continue;
+          }
           await logMsg(
             sb,
             tenantId,

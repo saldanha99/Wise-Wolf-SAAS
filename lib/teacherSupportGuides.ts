@@ -66,7 +66,7 @@ export const TEACHER_SUPPORT_GUIDES: TeacherSupportGuide[] = [
     summary: 'Aula por aula, no dia ou nos dias seguintes. Aula não lançada não é paga.',
     steps: [
       'Em Lançar Aula, cada aula do dia aparece com o aluno e o horário. Marque o que aconteceu e o conteúdo.',
-      'Aula dada: paga. Falta do aluno: paga e gera uma reposição para ele (até 5 por mês). Falta sua: não paga, e a reposição paga quando você a der.',
+      'Aula dada: paga. Falta do aluno: paga e gera uma reposição para ele (4 por mês por direito; da 5ª em diante é combinação, sem obrigação). Falta sua: não paga, e a reposição paga quando você a der.',
       'A janela para lançar é curta (os últimos dias). Aula esquecida vira pendência em Pendentes — resolva na semana.',
       'Cerca de 40 min depois da aula o aluno recebe uma confirmação de presença. Se ele disser que não teve aula, o pagamento dela fica em espera até a coordenação resolver.',
     ],
@@ -137,7 +137,7 @@ export const TEACHER_SUPPORT_GUIDES: TeacherSupportGuide[] = [
     title: 'Reposições',
     summary: 'Falta gera reposição; agende data e hora para ela aparecer em Lançar Aula.',
     steps: [
-      'Falta do aluno gera reposição para ele (até 5 por mês); falta sua gera reposição que paga quando você a der.',
+      'Falta do aluno gera reposição para ele (4 por mês por direito; da 5ª em diante depende de combinar com você, sem obrigação); falta sua gera reposição que paga quando você a der.',
       'Em Reposições, marque a data e a hora combinadas. Sem data ela não aparece para lançar — e é uma aula devida ao aluno.',
       'No dia, a reposição aparece em Lançar Aula como REPOSIÇÃO.',
     ],
@@ -177,6 +177,22 @@ export const TEACHER_SUPPORT_GUIDES: TeacherSupportGuide[] = [
     ],
     keywords: ['treinamento', 'treino', 'onboarding', 'ministrar'],
     actions: [{ kind: 'navigate', tab: 'training', label: 'Abrir Treinamentos' }],
+  },
+  {
+    id: 'politica-remarcacao',
+    title: 'Política de remarcação e conduta com o aluno',
+    summary: 'Cobertura primeiro, aviso cedo; remarcar só se o aluno topar; o aluno não está fazendo favor.',
+    steps: [
+      'Não vai conseguir dar a aula? A PRIMEIRA opção é a cobertura, não a remarcação: avise a escola cedo ("Não vou conseguir dar aula dia X") e outro professor dá a aula no horário do aluno.',
+      'Remarcar com o aluno só se ELE topar — o horário é contratado e muita gente tem rotina que não flexibiliza. Aula remarcada por você não conta como falta do aluno.',
+      'Emergência acontece (saúde, família, trânsito) e a escola dá todo o suporte. O que se pede é responsabilidade: aviso o mais cedo possível, e sair para a aula contando com imprevisto.',
+      'Cobre o comparecimento do seu aluno: faltou, mande mensagem puxando a reposição (ele tem 4 por mês por direito). Quem cobra reposição fideliza; reposição sem data não acontece.',
+      'Conduta: o aluno está ali pelo aprendizado, não fazendo favor. Não descarregue problema pessoal no aluno nem peça compreensão para faltar — a relação é profissional e é uma troca.',
+    ],
+    keywords: ['remarcar', 'remarcação', 'política', 'conduta', 'profissional', 'emergência', 'responsabilidade', 'comparecimento', 'cobrar'],
+    actions: [
+      { kind: 'whatsapp-school', text: 'Não vou conseguir dar aula hoje', label: 'Avisar a escola agora' },
+    ],
   },
   {
     id: 'coordenacao',
