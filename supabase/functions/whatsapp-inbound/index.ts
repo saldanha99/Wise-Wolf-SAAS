@@ -2822,8 +2822,10 @@ async function handleGestao(
   // "sim" tem 3 letras e cairia no filtro de curto — mas confirmação É curta por
   // natureza. Ela passa aqui e é resolvida logo abaixo, contra a ação pendente;
   // se não houver ação pendente, aí sim vira ruído e para.
+  // "#A3B1A427" sozinho também é confirmação: em 16/09/2026 a direção respondeu
+  // só com o código, a mensagem caiu no modelo e a ação expirou sem resposta.
   const CONFIRMACAO =
-    /^\s*(sim|s|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato|n[ãa]o|nao|cancela|deixa|esquece|errado)\b(?:\s+#?[a-f0-9]{8})?[\s!.,]*$/i;
+    /^\s*(sim|s|confirm[ao](do|r)?|aprov(o|ar|ado)|isso|pode|pode ser|ok|manda|fecha|correto|exato|bora|n[ãa]o|nao|cancela|deixa|esquece|errado)\b(?:\s+#?[a-f0-9]{8})?[\s!.,]*$|^\s*#?[a-f0-9]{8}[\s!.,]*$/i;
   const ehConfirmacao = CONFIRMACAO.test(pergunta);
   if (!ehConfirmacao && (pergunta.length < 6 || RUIDO.test(pergunta))) return;
 
@@ -2865,7 +2867,7 @@ async function handleGestao(
   // custar uma chamada de modelo, nem correr o risco de o modelo reinterpretar
   // a intenção que já foi lida em voz alta e aprovada.
   const SIM =
-    /^\s*(sim|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato)\b/i;
+    /^\s*(sim|confirm[ao](do|r)?|aprov(o|ar|ado)|isso|pode|pode ser|ok|manda|fecha|correto|exato|bora)\b/i;
   const NAO = /^\s*(n[ãa]o|cancela|deixa|esquece|errado)\b/i;
   const { data: pend } = await sb.from("gestao_acao_pendente")
     .select(
@@ -2993,10 +2995,16 @@ async function handleGestao(
       await sendWhats(instance, groupJid, "Ok, cancelado. Nada foi lançado.");
       return;
     }
-    if (SIM.test(pergunta)) {
-      const expectedCode = shortManagementActionCode(actionId);
-      const suppliedCode = pergunta.match(/#?([a-f0-9]{8})\b/i)?.[1]
-        ?.toUpperCase() || "";
+    const expectedCode = shortManagementActionCode(actionId);
+    // Só o código vale como "sim": quem responde "#A3B1A427" leu o resumo e
+    // copiou o código — exigir a palavra na frente é atrito sem segurança extra.
+    const soCodigo = new RegExp(`^\\s*#?${expectedCode}[\\s!.,]*$`, "i").test(
+      pergunta,
+    );
+    if (SIM.test(pergunta) || soCodigo) {
+      const suppliedCode = soCodigo ? expectedCode : (pergunta.match(
+        /#?([a-f0-9]{8})\b/i,
+      )?.[1]?.toUpperCase() || "");
       if (!suppliedCode || suppliedCode !== expectedCode) {
         await sendWhats(
           instance,
