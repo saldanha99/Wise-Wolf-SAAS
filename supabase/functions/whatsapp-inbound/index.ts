@@ -2068,6 +2068,13 @@ async function createCoverageInviteDirect(
     p_request_id: requestId,
   });
   if (error) {
+    // O motivo real fica no log: em 16/09/2026 o grupo só viu
+    // "falha_ao_criar_cobertura" e a causa (trigger recusando confirmed_by
+    // nulo) levou uma reprodução no banco para aparecer.
+    console.error("[gestao] gestao_create_coverage_invite falhou", {
+      message: String(error.message || error),
+      requestId,
+    });
     return { ok: false, error: "falha_ao_criar_cobertura" };
   }
   const result = data as Record<string, unknown> | null;

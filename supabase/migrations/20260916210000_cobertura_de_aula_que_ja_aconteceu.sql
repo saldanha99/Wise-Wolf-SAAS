@@ -30,6 +30,37 @@ alter table public.class_coverages
 comment on column public.class_coverages.confirmed_by is
   'Quem atestou a cobertura sem convite (direção, aula já dada). NULL = o substituto aceitou pelo link.';
 
+-- ---------------------------------------------------------------------------
+-- Quem "assina" uma ação pedida por participante do grupo que o servidor não
+-- identifica. A Evolution entrega os participantes como `@lid`, então
+-- `p_actor_id` chega NULL — a autorização vem da ação pendente confirmada
+-- (`private.management_group_execution_authorized`), não da identidade.
+-- Medido em 16/09/2026: a cobertura do Theo passou pela autorização e morreu no
+-- INSERT, porque `confirmed_by` (o marcador de "aula já dada, atestada pela
+-- direção") ficou NULL e o trigger a tratou como cobertura futura
+-- (`active_coverage_already_started`). Nessas ações a atribuição vai para a
+-- conta do diretor da escola; a auditoria (`gestao_action_audit`) guarda o jid
+-- real de quem pediu.
+-- ---------------------------------------------------------------------------
+create or replace function private.management_group_default_actor(p_tenant text)
+returns uuid
+language sql
+stable
+security definer
+set search_path to ''
+as $$
+  select m.user_id
+    from public.tenant_memberships m
+    join public.profiles p on p.id = m.user_id
+   where m.tenant_id = p_tenant
+     and m.status = 'ACTIVE'
+     and m.role in ('SCHOOL_ADMIN', 'COORDINATOR')
+     and lower(coalesce(p.lifecycle_status, 'active')) not in ('suspended', 'offboarded')
+   order by case m.role when 'SCHOOL_ADMIN' then 0 else 1 end, m.created_at
+   limit 1
+$$;
+revoke all on function private.management_group_default_actor(text) from public, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.gestao_create_coverage_invite(p_tenant text, p_actor_id uuid, p_booking_id uuid, p_cover_teacher_id uuid, p_class_date date, p_class_time text, p_reason text, p_request_id text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -53,6 +84,7 @@ DECLARE
   v_retroactive boolean := false;
   v_apply jsonb;
   v_original_phone text;
+  v_attester uuid;
 BEGIN
   IF coalesce(auth.role(), '') <> 'service_role' THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'service_role_required';
@@ -208,6 +240,8 @@ BEGIN
   -- na hora (lançamento existente muda de professor; futuro lançamento é do
   -- substituto). O aviso aos dois professores fica com quem chamou.
   v_retroactive := v_class_start <= now();
+  -- Participante do grupo sem identidade (@lid): a direção assina.
+  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
   IF v_retroactive AND EXISTS (
     SELECT 1
       FROM public.teacher_closings AS closing
@@ -517,7 +551,7 @@ BEGIN
     CASE WHEN v_retroactive THEN NULL
          ELSE least(v_class_start, now() + interval '48 hours') END,
     CASE WHEN v_retroactive THEN now() END,
-    CASE WHEN v_retroactive THEN p_actor_id END
+    CASE WHEN v_retroactive THEN v_attester END
   )
   RETURNING * INTO v_coverage;
 
@@ -551,6 +585,8 @@ BEGIN
     'class_coverage',
     v_coverage.id::text,
     jsonb_build_object(
+      'attested_by', v_attester,
+      'requested_by_group_member', p_actor_id IS NULL,
       'booking_id', p_booking_id,
       'student_id', v_booking.student_id,
       'original_teacher_id', v_booking.teacher_id,

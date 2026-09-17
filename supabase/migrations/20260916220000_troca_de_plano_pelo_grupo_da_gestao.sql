@@ -42,11 +42,14 @@ declare
   v_existing public.student_plan_changes%rowtype;
   v_row public.student_plan_changes%rowtype;
   v_phone text;
+  v_attester uuid;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
-  if p_tenant is null or p_actor_id is null or p_student_id is null then
+  -- p_actor_id pode ser NULL (participante @lid do grupo): a autorização vem
+  -- da ação pendente confirmada, e a proposta fica em nome da direção.
+  if p_tenant is null or p_student_id is null then
     return jsonb_build_object('ok', false, 'error', 'parametros_invalidos');
   end if;
   if coalesce(length(btrim(p_request_id)), 0) not between 8 and 200 then
@@ -125,12 +128,14 @@ begin
      set status = 'CANCELLED', cancelled_at = now()
    where student_id = p_student_id and status = 'PENDING';
 
+  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
+
   insert into public.student_plan_changes (
     tenant_id, student_id, created_by,
     from_frequency, to_frequency, from_monthly_fee, to_monthly_fee, fidelity_plan,
     update_pending_payments, request_id
   ) values (
-    p_tenant, p_student_id, p_actor_id,
+    p_tenant, p_student_id, v_attester,
     v_student.class_frequency, v_freq, v_student.monthly_fee, p_to_fee, v_student.fidelity_plan,
     coalesce(p_update_pending_payments, true), left(btrim(p_request_id), 200)
   )
@@ -143,6 +148,7 @@ begin
     jsonb_build_object(
       'student_id', p_student_id, 'from_frequency', v_student.class_frequency, 'to_frequency', v_freq,
       'from_fee', v_student.monthly_fee, 'to_fee', p_to_fee, 'via', p_tipo,
+      'attested_by', v_attester, 'requested_by_group_member', p_actor_id is null,
       'request_id', left(btrim(p_request_id), 200)
     )
   );

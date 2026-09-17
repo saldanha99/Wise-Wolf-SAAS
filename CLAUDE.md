@@ -935,6 +935,22 @@ Medido: 0 linhas em `teacher_absences`, 0 coberturas com `request_id` na histór
 `reason` derivado do texto (`SICK`/`OTHER`), texto em `notes`, `status = 'ACTIVE'`. Leitores
 usam `lower(status)` ou `.in(['ACTIVE','active'])` — `.eq('status','active')` é código morto.
 
+### ⚠️ Participante do grupo chega como `@lid` — `p_actor_id` é NULL nas ações
+
+A Evolution entrega quem escreve no grupo como `99201044238394@lid`, sem telefone, então
+`resolveManagementActor` não acha o perfil e a ação segue como `MANAGEMENT_GROUP_MEMBER`
+com `userId = null`. A **autorização** vem da ação pendente confirmada
+(`private.management_group_execution_authorized`, por `request_id`), não da identidade —
+mas qualquer RPC que **exija** o uuid (`if p_actor_id is null`, ou que grave `confirmed_by`
+/`created_by` com ele) quebra só para quem escreve pelo grupo. Foi assim que a cobertura do
+Theo passou pela autorização e morreu no INSERT (`active_coverage_already_started`, porque
+`confirmed_by` nulo é "cobertura futura" para o trigger), em 16/09/2026 à noite.
+Regra: `v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant))`
+(o diretor ativo da escola) para atribuição; a auditoria (`gestao_action_audit`) guarda o
+jid real. ⚠️ Testar RPC de grupo **com `p_actor_id := null`** e uma linha `executing` em
+`gestao_acao_pendente` — testar só com o uuid do diretor, como fiz na véspera, passa e
+não prova nada.
+
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 
 O modelo `class_coverages` é **um convite para um professor** e o trigger proíbe dois
