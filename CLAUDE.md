@@ -994,6 +994,32 @@ era a atendente — era ninguém). Hoje `teacher-absence.ts` (puro, testado) rec
 no grupo da Gestão com o mesmo resumo do comando do grupo, links para os professores livres.
 Falso positivo custa uma pergunta; por isso a regex é generosa e a confirmação, obrigatória.
 
+### Professor troca horário do aluno pelo WhatsApp da escola (migration `20260917190000`) ✅
+
+"O aluno Felipe trocou pra 14:30 e a Isabella para as 14" (Teacher Mateus, 17/09/2026) —
+a coordenação fazia na mão. Hoje `teacher-schedule-change.ts` (puro, testado) lê o pedido
+(nome, horário novo; dia/horário de origem opcionais), `teacher_schedule_change_candidates`
+resolve o nome na agenda fixa do professor (prefixo de qualquer nome, sem acento; dois
+"Felipe" → pergunta qual), `proposeChanges` monta aula a aula o que muda (sem dia = todas
+as aulas que ainda não estão no horário), e o bot mostra "Quinta 14:00 → 14:30 … Vale a
+partir de amanhã. Confirma?" (`teacher_schedule_change_prompts`, 2 h, uma por professor).
+No SIM, `teacher_schedule_change_prompt_apply` (só service_role) age como o professor
+(`trial_closing_act_as`) e chama a **mesma RPC da tela** (`teacher_apply_student_schedule_change`:
+vigência amanhã, choque checado, Gestão avisada) — o bot não inventou regra de agenda nova.
+
+- ⚠️ **Uma aula por chamada, em duas rodadas.** A RPC da tela recusa o lote inteiro se UMA
+  aula choca (Felipe: quarta 14:30 é da Ana Clara; quinta e sexta estavam livres). E um
+  choque pode ser com aula que a PRÓPRIA proposta tira do lugar (Isabella vai para quinta
+  14:00, de onde o Felipe sai para 14:30): a segunda rodada retenta o que chocou depois
+  que o resto mudou. Medido em `ROLLBACK` com a proposta real: 3 aplicadas, 1 choque.
+- **O choque é dito ANTES do "confirma?"** (`teacher_schedule_change_busy` +
+  `annotateConflicts`: "⚠️ Quarta 14:30 já é de Ana — essa fica como está") e fica fora
+  da proposta; o SIM aplica só o que pode mudar. O resultado repete aula a aula, com quem
+  ocupa o horário quando ainda assim choca.
+- Roteamento no inbound: professor → ausência → **troca de horário** → resposta de
+  acompanhamento. `fold_accents` já existia no banco (usada pela RPC da tela) — não crie
+  outra função de tirar acento.
+
 ### Folha do mês por professor no grupo (migrations `20260916250000`/`260000`) ✅
 
 `gestao_payroll_summary(tenant, mês)` lê `teacher_closings` (a folha oficial) e as

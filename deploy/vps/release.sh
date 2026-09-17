@@ -517,6 +517,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/care-messages.test.ts \
   supabase/functions/whatsapp-inbound/care-conversation.ts \
   supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -743,6 +745,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
   supabase/functions/whatsapp-inbound/care-messages.test.ts \
   supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -1343,6 +1346,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917160000_cobranca_da_renovacao_e_referencia_canonica.sql"
   "supabase/migrations/20260917170000_reativacao_pelo_painel_com_renovacao_sincronizada.sql"
   "supabase/migrations/20260917180000_acompanhamento_de_aluno_e_professor.sql"
+  "supabase/migrations/20260917190000_professor_troca_horario_pelo_whatsapp.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

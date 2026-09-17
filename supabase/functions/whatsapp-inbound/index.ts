@@ -64,6 +64,16 @@ import {
 } from "./care-conversation.ts";
 import type { CareSlot } from "./care-messages.ts";
 import {
+  annotateConflicts,
+  type BusySlot,
+  type CandidateStudent,
+  parseTeacherScheduleChange,
+  proposeChanges,
+  type ProposedStudent,
+  scheduleChangeAppliedMessage,
+  scheduleChangeConfirmationMessage,
+} from "./teacher-schedule-change.ts";
+import {
   isStudentBillingMethodChangeIntent,
   studentBillingMethodChangeReply,
 } from "./billing-method-intent.ts";
@@ -1452,6 +1462,158 @@ ${link}`,
     );
   }
   return { ok: true, teacher_name: result.teacher_name, lines };
+}
+
+/**
+ * PROFESSOR TROCA HORÁRIO DO ALUNO PELO WHATSAPP DA ESCOLA (17/09/2026).
+ *
+ * "O aluno Felipe trocou pra 14:30 e a Isabella para as 14" → o bot resolve os
+ * alunos na agenda do professor, mostra dia a dia o que muda, pergunta
+ * "confirma?" e, no SIM, aplica pela mesma RPC da tela (vigência amanhã,
+ * choque checado, Gestão avisada) agindo como o professor. Devolve true quando
+ * a mensagem foi tratada aqui (proposta, confirmação ou cancelamento).
+ */
+async function handleTeacherScheduleChangeMessage(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: pending } = await sb.rpc(
+    "teacher_schedule_change_prompt_pending",
+    { p_tenant: tenantId, p_teacher: profile.id },
+  );
+  const answer = absenceConfirmationAnswer(text);
+  if (pending && typeof pending === "object" && answer) {
+    await logMsg(sb, tenantId, phone, "schedule_change", "in", text, {
+      teacher_id: profile.id,
+      prompt_id: pending.id,
+      msg_id: msgId,
+    });
+    let reply: string;
+    if (answer === "no") {
+      await sb.rpc("teacher_schedule_change_prompt_cancel", {
+        p_id: pending.id,
+      });
+      reply = "Ok, não mexi em nada. Se quiser, me manda de novo como ficou.";
+    } else {
+      const { data: applied, error } = await sb.rpc(
+        "teacher_schedule_change_prompt_apply",
+        { p_id: pending.id },
+      );
+      if (error || !applied || typeof applied !== "object") {
+        console.error("[schedule-change] apply falhou", {
+          promptId: pending.id,
+          code: error?.code,
+        });
+        reply =
+          "Não consegui aplicar a troca agora. A coordenação vai fazer por aqui e te aviso.";
+      } else if (applied.error === "proposta_expirada") {
+        reply =
+          "Essa proposta venceu (passaram 2 horas). Me manda de novo como ficou que eu refaço.";
+      } else {
+        reply = scheduleChangeAppliedMessage({
+          applied: Array.isArray(applied.applied) ? applied.applied : [],
+          errors: Array.isArray(applied.errors) ? applied.errors : [],
+          effectiveFrom: String(applied.effective_from || ""),
+        });
+      }
+    }
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "schedule_change", "out", reply, {
+      prompt_id: pending.id,
+      entregue,
+    });
+    return true;
+  }
+
+  const entries = parseTeacherScheduleChange(text);
+  if (!entries) return false;
+  const { data: candidates, error: candError } = await sb.rpc(
+    "teacher_schedule_change_candidates",
+    {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_names: entries.map((e) => e.name),
+    },
+  );
+  if (candError || !Array.isArray(candidates)) {
+    console.error("[schedule-change] candidatos indisponíveis", {
+      code: candError?.code,
+    });
+    return false;
+  }
+  const proposed: ProposedStudent[] = [];
+  const unknownNames: string[] = [];
+  const ambiguous: Array<{ name: string; options: string[] }> = [];
+  entries.forEach((entry, index) => {
+    const row = (candidates as Array<Record<string, unknown>>).find((c) =>
+      Number(c.idx) === index + 1
+    );
+    const matches = Array.isArray(row?.matches)
+      ? row!.matches as CandidateStudent[]
+      : [];
+    if (!matches.length) {
+      unknownNames.push(entry.name);
+      return;
+    }
+    if (matches.length > 1) {
+      ambiguous.push({
+        name: entry.name,
+        options: matches.map((m) => m.student_name),
+      });
+      return;
+    }
+    proposed.push(proposeChanges(entry, matches[0]));
+  });
+  if (!proposed.length && !unknownNames.length && !ambiguous.length) {
+    return false;
+  }
+  // Choque com outra aula fixa é dito antes do "confirma?", e fica fora da
+  // proposta — o SIM só aplica o que pode mudar.
+  const { data: busyRaw } = await sb.rpc("teacher_schedule_change_busy", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const students = annotateConflicts(
+    proposed,
+    Array.isArray(busyRaw) ? busyRaw as BusySlot[] : [],
+  );
+  await logMsg(sb, tenantId, phone, "schedule_change", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    entries,
+  });
+  const tomorrow = new Date(nowBRT().getTime() + 86400000).toISOString().slice(
+    0,
+    10,
+  );
+  const changeable = students.filter((st) => st.changes.length > 0);
+  let promptId: string | null = null;
+  if (changeable.length) {
+    const { data } = await sb.rpc("teacher_schedule_change_prompt_open", {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_phone: phone,
+      p_proposal: { students: changeable, source_text: text.slice(0, 500) },
+    });
+    promptId = data ? String(data) : null;
+  }
+  const reply = scheduleChangeConfirmationMessage({
+    students,
+    unknownNames,
+    ambiguous,
+    effectiveFrom: tomorrow,
+  });
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "schedule_change", "out", reply, {
+    prompt_id: promptId,
+    entregue,
+  });
+  return true;
 }
 
 /**
@@ -7992,6 +8154,24 @@ serve(async (req) => {
           String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
           !rateLimited && String(text || "").trim() &&
           await handleTeacherAbsenceMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        // Troca de horário de aluno dita pelo professor: proposta + "confirma?"
+        // + aplicação. Vem ANTES do acompanhamento, senão a resposta ao
+        // check-in do mês engoliria o pedido (foi o que aconteceu com o Mateus).
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherScheduleChangeMessage(
             sb,
             instance,
             tenantId,
