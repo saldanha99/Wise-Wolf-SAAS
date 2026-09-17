@@ -1333,6 +1333,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917140000_contatos_de_suporte_do_professor.sql"
   "supabase/migrations/20260917150000_prova_da_assinatura_de_renovacao_no_guard_da_asaas.sql"
   "supabase/migrations/20260917160000_cobranca_da_renovacao_e_referencia_canonica.sql"
+  "supabase/migrations/20260917170000_reativacao_pelo_painel_com_renovacao_sincronizada.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

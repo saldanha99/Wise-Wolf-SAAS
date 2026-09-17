@@ -1963,9 +1963,12 @@ renovação com mudança de plano:
    (`student_lifecycle_or_binding_changed`). Resolvido na mão: `profiles` → ativo (sem
    operação em voo, o guard deixa), o trigger `apply_pending_renewal_schedule_on_reactivation`
    criou a agenda, e os 4 eventos da inbox foram reenfileirados (`status='RETRY'`).
-   ⚠️ **Estrutural, ainda aberto**: a reativação via `school-admin` precisa aceitar aluno
-   com renovação SYNCED sem exigir a cobrança no ledger (ou importá-la). Até lá, renovação
-   de suspenso termina com este ritual.
+   ✅ **Fechado no mesmo dia** (migration `20260917170000`): na reativação pelo painel, se a
+   assinatura do perfil foi criada por renovação SIGNED+SYNCED
+   (`student_course_renewal_binding_for_subscription`), a conferência do ledger TOLERA a
+   cobrança que só existe no provedor; depois do `finalize`, os eventos em TRIAGE daquela
+   assinatura voltam para o worker (`requeue_asaas_inbox_events_for_renewal_subscription`) e
+   entram pelo caminho normal. Nada é inserido na mão em `student_payments`.
 - `SUBSCRIPTION_CREATED` da renovação fica em TRIAGE (`student_subscription_operation_
   unresolved`): o vínculo já foi gravado pelo `finish … SYNCED`; é ruído, não perda.
 

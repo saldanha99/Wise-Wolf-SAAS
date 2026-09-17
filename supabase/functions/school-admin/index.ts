@@ -1169,7 +1169,17 @@ async function requireSynchronizedLiveSubscriptionPayments(
     string,
     ProvenDeletedOpenPaymentState
   > = new Map<string, ProvenDeletedOpenPaymentState>(),
-): Promise<void> {
+  options: {
+    /**
+     * Assinatura criada por RENOVAÇÃO assinada de aluno suspenso: a cobrança
+     * ainda não pôde entrar no ledger (ele recusa aluno inativo). Tolerar aqui
+     * e importar depois da ativação, pelo worker — ver
+     * `requeue_asaas_inbox_events_for_renewal_subscription`.
+     */
+    tolerateProviderOnly?: boolean;
+  } = {},
+): Promise<{ providerOnlyIds: string[] }> {
+  const providerOnlyIds: string[] = [];
   const { data, error } = await admin.from("student_payments")
     .select(
       "id,asaas_payment_id,asaas_id,value,due_date,status,provider_status",
@@ -1229,6 +1239,10 @@ async function requireSynchronizedLiveSubscriptionPayments(
     ) continue;
     liveProviderIds.add(provider.id);
     const matches = localByProvider.get(provider.id) || [];
+    if (matches.length === 0 && options.tolerateProviderOnly) {
+      providerOnlyIds.push(provider.id);
+      continue;
+    }
     if (matches.length !== 1) {
       throw new ApiError(
         409,
@@ -1298,6 +1312,7 @@ async function requireSynchronizedLiveSubscriptionPayments(
       "Provider deletion evidence no longer matches the local cancellation snapshot",
     );
   }
+  return { providerOnlyIds };
 }
 
 type OffboardingCustomerInventory = {
@@ -3290,6 +3305,7 @@ export async function handleRequest(req: Request): Promise<Response> {
             "A definitively offboarded student needs a new enrollment",
           );
         }
+        let reactivationRenewalSubscription = false;
         const begun = await beginStudentReactivation(admin, {
           tenantId,
           studentId: target.id,
@@ -3404,11 +3420,29 @@ export async function handleRequest(req: Request): Promise<Response> {
                 claim.customerId,
               );
             requireUniqueLiveProviderCompetences(existingProviderPayments);
+            // Assinatura criada por renovação assinada (aluno suspenso que
+            // renovou): a cobrança dela ainda não está no ledger — o ledger
+            // recusa aluno inativo. Tolerar e importar depois da ativação.
+            const renewalBinding = await admin.rpc(
+              "student_course_renewal_binding_for_subscription",
+              {
+                p_tenant: tenantId,
+                p_student: target.id,
+                p_subscription: claim.subscriptionId,
+              },
+            );
+            const renewalSubscription = Boolean(
+              !renewalBinding.error && renewalBinding.data &&
+                typeof renewalBinding.data === "object",
+            );
+            reactivationRenewalSubscription = renewalSubscription;
             await requireSynchronizedLiveSubscriptionPayments(
               admin,
               tenantId,
               target.id,
               existingProviderPayments,
+              undefined,
+              { tolerateProviderOnly: renewalSubscription },
             );
             const safeNextDueDate = nextStudentDueDate(
               claim.dueDay,
@@ -3500,6 +3534,8 @@ export async function handleRequest(req: Request): Promise<Response> {
                 tenantId,
                 target.id,
                 verifiedPayments,
+                undefined,
+                { tolerateProviderOnly: renewalSubscription },
               );
               requireUniqueLiveProviderCompetences(verifiedPayments);
             } catch (providerError) {
@@ -3545,7 +3581,33 @@ export async function handleRequest(req: Request): Promise<Response> {
             "The subscription was reactivated, but the local snapshot changed",
           );
         }
-        const billing = { subscriptionReactivated: true };
+        // Cadastro ativo: agora o ledger aceita as cobranças da assinatura
+        // da renovação. Os eventos que caíram em TRIAGE voltam para o worker
+        // (caminho normal e guardado); nada é inserido na mão.
+        let renewalChargesRequeued = 0;
+        if (reactivationRenewalSubscription) {
+          const requeued = await admin.rpc(
+            "requeue_asaas_inbox_events_for_renewal_subscription",
+            {
+              p_tenant: tenantId,
+              p_student: target.id,
+              p_subscription: claim.subscriptionId,
+            },
+          );
+          if (requeued.error) {
+            console.error("[school-admin] requeue da renovação falhou", {
+              studentId: target.id,
+              code: requeued.error.code,
+            });
+          } else {
+            renewalChargesRequeued = Number(requeued.data || 0);
+          }
+        }
+        const billing = {
+          subscriptionReactivated: true,
+          renewalSubscription: reactivationRenewalSubscription,
+          renewalChargesRequeued,
+        };
         await writeAudit(admin, auth.context, tenantId, req, {
           action: "setStudentLifecycle",
           resourceType: "student",
