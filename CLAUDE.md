@@ -1942,6 +1942,47 @@ numa frase humana que reage ao que a pessoa acabou de dizer.
   editar `ETAPAS`.
 - Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
 
+### Pós-experimental é conversa, 10 minutos depois da aula — e o professor recebe briefing ✅
+
+> Migration `20260917120000`. **Leia antes de mexer em `trial_closing_*`, no
+> `funnel-sweeper` (bloco F/G) ou na etapa de fechamento da atendente.**
+
+- **Antes** o aluno só era chamado depois de a professora responder "sim" ao bot
+  (etapa `ASK_STUDENT`) — e recebia de cara "me diz frequência e plano + tabela".
+  Professora que demorava travava tudo (16/09: três experimentais "sem resposta").
+- **Agora** (`trial_closing_student_openers`): 40 min depois do início (30 de aula + 10)
+  **ou assim que a aula é lançada** como dada, o bot abre a conversa — *"Como foi a
+  aula com a teacher X? Me conta o que achou"* — entre 8h e 22h, sem esperar a
+  professora. Daí em diante quem conduz é a **atendente**, com a etapa
+  `PÓS-EXPERIMENTAL — FECHAMENTO` (`trial_closing_student_context`): reage, pergunta a
+  frequência, dá os valores da tabela, oferece os horários livres da professora.
+  Frequência/plano/horários ditos pelo aluno continuam sendo lidos pelo caminho
+  determinístico (`handleTrialClosingStudent` → `trial_closing_student_plan`, que agora
+  aceita a etapa `ASK_TEACHER`).
+- ⚠️ **O LINK continua exigindo o "sim" da professora** (antifraude: quem diz que deu
+  a aula é quem recebe por ela). Escolha feita antes fica guardada (`waiting: feedback`)
+  e `trial_closing_pending_offers` solta o link quando ela responde.
+- ⚠️ `trial_closing_student_asks` ficou intacta de propósito: a migration antiga a
+  recria a cada release com o retorno antigo, e mudar o retorno quebraria aquele
+  `create or replace`. Função nova para retorno novo.
+- **Briefing do professor** (`trial_teacher_briefings`, `TRIAL_TEACHER_BRIEFING` em
+  `automation_sent`): até 2h30 antes da experimental (ou na primeira varredura depois
+  de um aceite em cima da hora) o professor recebe aluno, telefone, objetivo, nível,
+  contexto do CRM (sem carimbos `[IA …]` nem UTMs) e o que fazer antes. A Bruna tinha
+  recebido "não esqueça da experimental de hoje" — mandado na mão, sem nome nem
+  horário (17/09).
+
+### Várias ações na mesma mensagem do grupo — fila dentro da ação pendente ✅
+
+A direção manda "a Bruna cobriu três aulas do Flávio: …" numa mensagem só, e o modelo
+de pendência é **um por grupo** (PK `group_jid`). Até 17/09 só a primeira era proposta;
+as outras duas morriam em silêncio (foi assim com Victor Hugo 17:00 e Vinícius 17:30).
+Hoje o modelo devolve `acoes: [...]`, a primeira vira a pendente e as demais viajam em
+`acao.fila`; ao terminar (ou cancelar) uma, `proposeNextQueuedManagementAction` propõe
+a próxima com código novo (`request_id` = mensagem original + `:qN`). A autorização
+compara por contenção (`acao @> expected`), então a chave extra não invalida nada.
+⚠️ Cancelar uma **não** cancela a lista — a próxima ainda é proposta.
+
 ### Preço para o lead: a IA propõe a frase, o código veta o número ✅
 
 > **Leia antes de mexer em `commercial-response-policy.ts`, `lead-pricing.ts` ou no

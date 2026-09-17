@@ -313,3 +313,107 @@ export function parseTrialDenial(text: string): boolean {
 export function studentDenialAck(): string {
   return `Obrigado por avisar! Registrei aqui que a aula não aconteceu e já passei para a coordenação — essa aula não vai ser contada. Quer que eu remarque sua experimental? Me diz um dia e um horário que fiquem bons para você. 😊`;
 }
+
+/**
+ * A abertura da conversa 10 minutos depois da experimental (17/09/2026).
+ * Antes o aluno recebia de cara "me diz frequência e plano + tabela"; a direção
+ * quer gente conversando: primeiro como foi, o que achou da professora — o
+ * resto (frequência, valores, horários) vem na conversa, pela atendente.
+ */
+export function studentPostTrialOpener(input: {
+  leadName: string | null;
+  teacherName: string | null;
+}): string {
+  const lead = firstName(input.leadName);
+  const teacher = firstName(input.teacherName);
+  return `Oi${lead ? ", " + lead : ""}! Como foi a aula experimental${
+    teacher ? " com a teacher " + teacher : ""
+  }? 😊\n\nMe conta o que você achou — da aula e da professora.`;
+}
+
+/**
+ * Briefing da experimental para o professor, antes da aula. A Bruna recebeu
+ * "não esqueça da experimental de hoje" sem nome, horário ou telefone
+ * (17/09/2026); o professor precisa dos dados para se apresentar ao aluno
+ * antes e preparar a aula.
+ */
+export function teacherTrialBriefing(input: {
+  teacherName: string | null;
+  whenText: string;
+  leadName: string | null;
+  leadPhone: string | null;
+  goal?: string | null;
+  level?: string | null;
+  notes?: string | null;
+  weeklyAvailability?: string | null;
+  interests?: string | null;
+  meetingLink?: string | null;
+}): string {
+  const teacher = firstName(input.teacherName);
+  const lead = String(input.leadName || "").trim() ||
+    "aluno sem nome no cadastro";
+  const phone = formatPhoneBr(input.leadPhone);
+  const lines: string[] = [];
+  lines.push(
+    `🎯 *Experimental ${input.whenText}* — ${lead}${
+      teacher ? `\nTeacher ${teacher}, essa aula é sua.` : ""
+    }`,
+  );
+  if (phone) lines.push(`📱 WhatsApp do aluno: ${phone}`);
+  const facts: string[] = [];
+  // "LP Oportunidade - Oferta 4x/semana" é a origem do formulário, não o
+  // objetivo da pessoa; nesse caso o objetivo dito na conversa (interests) vale.
+  const goalRaw = String(input.goal || "").trim();
+  const goal = /^lp\b/i.test(goalRaw)
+    ? String(input.interests || "").trim()
+    : goalRaw || String(input.interests || "").trim();
+  if (goal) facts.push(`Objetivo: ${goal}`);
+  const level = String(input.level || "").trim();
+  if (level) facts.push(`Nível: ${level}`);
+  if (facts.length) lines.push(`🧭 ${facts.join(" · ")}`);
+  const notes = cleanLeadNotes(input.notes);
+  if (notes) lines.push(`📝 Contexto: ${notes}`);
+  const availability = String(input.weeklyAvailability || "").trim();
+  if (availability) {
+    lines.push(`🗓️ Disponibilidade dita pelo aluno: ${availability}`);
+  }
+  const link = String(input.meetingLink || "").trim();
+  lines.push(
+    link
+      ? `🔗 Link da aula: ${link}`
+      : `🔗 O link da aula está na plataforma, em *Aulas de Hoje*.`,
+  );
+  lines.push(
+    `Antes da aula: mande uma mensagem para o aluno se apresentando e confirmando horário e link. ` +
+      `Use o material *Trial Class* da plataforma e o fundo oficial da escola.\n` +
+      `Depois da aula eu te pergunto por aqui se ela aconteceu — é isso que lança a aula e libera a matrícula.`,
+  );
+  return lines.join("\n\n");
+}
+
+/** "5571987168313" → "(71) 98716-8313"; número fora do padrão sai como veio. */
+export function formatPhoneBr(raw: string | null | undefined): string {
+  const digits = String(raw || "").replace(/\D/g, "").replace(/^55/, "");
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return String(raw || "").trim();
+}
+
+/**
+ * As notas do CRM acumulam carimbos da IA ("[IA 2026-09-16] …") e UTMs; o
+ * professor quer só o que fala do aluno. Ficam as últimas anotações, sem
+ * carimbo, num limite que cabe numa bolha.
+ */
+export function cleanLeadNotes(raw: string | null | undefined): string {
+  const parts = String(raw || "").split(/\n+/)
+    .map((line) =>
+      line.replace(/^\[IA [^\]]*\]\s*/i, "").replace(/^UTMs?:.*$/i, "").trim()
+    )
+    .filter((line) => line && !/^aguardando aceite/i.test(line));
+  if (!parts.length) return "";
+  return parts.slice(-3).join(" · ").slice(0, 320);
+}

@@ -23,10 +23,10 @@ import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts
 // (`whatsapp-inbound`): texto de pergunta e texto de resposta precisam mudar
 // juntos. As duas funções são publicadas no mesmo pacote.
 import {
-  type CatalogPrice,
   studentOfferMessage,
-  studentPlanQuestion,
+  studentPostTrialOpener,
   teacherOutcomeQuestion,
+  teacherTrialBriefing,
 } from "../whatsapp-inbound/trial-closing.ts";
 import type { RenewalSlot as Slot } from "../whatsapp-inbound/renewal-negotiation.ts";
 import {
@@ -260,6 +260,10 @@ serve(async (req) => {
 
     const hourBRT = nowBRT().getUTCHours();
     const businessHours = hourBRT >= 9 && hourBRT < 20;
+    // Quem acabou de sair da experimental das 20:00 espera o "como foi?" às
+    // 20:40, não às 9h do dia seguinte. A abertura do pós-aula respeita só o
+    // sono: nada entre 22h e 8h.
+    const postTrialHours = hourBRT >= 8 && hourBRT < 22;
 
     const result = {
       first_touch: 0,
@@ -278,6 +282,7 @@ serve(async (req) => {
       closing_teacher_asks: 0,
       closing_student_asks: 0,
       closing_offers: 0,
+      teacher_briefings: 0,
       closing_overdue: 0,
       failures: [] as string[],
     };
@@ -1168,9 +1173,15 @@ serve(async (req) => {
             result.failures.push(`closing_teacher_ask ${ask.flow_id}`);
           }
         }
+      }
 
+      if (postTrialHours) {
+        // 10 minutos depois da aula (ou assim que ela é lançada), SEM esperar
+        // a professora: "como foi?" — o resto da negociação é conversa da
+        // atendente (`trial_closing_student_context` no `whatsapp-inbound`),
+        // e o link só sai com o "sim" da professora.
         const { data: studentAsks, error: studentAskError } = await sb.rpc(
-          "trial_closing_student_asks",
+          "trial_closing_student_openers",
           { p_limit: 10 },
         );
         if (studentAskError) throw new Error(studentAskError.message);
@@ -1181,10 +1192,9 @@ serve(async (req) => {
           ) continue;
           const phone = cleanPhone(ask.lead_phone || "");
           if (phone.length < 12) continue;
-          const msg = studentPlanQuestion({
+          const msg = studentPostTrialOpener({
             leadName: ask.lead_name,
             teacherName: ask.teacher_name,
-            prices: (ask.prices || []) as CatalogPrice[],
           });
           const delivered = await sendWhats(t.studentInstance, phone, msg);
           // O registro não depende do envio: é o histórico que a atendente lê.
@@ -1195,8 +1205,9 @@ serve(async (req) => {
             direction: "out",
             content: msg,
             meta: {
-              kind: "trial_closing_plan_question",
+              kind: "trial_closing_opener",
               flow_id: ask.flow_id,
+              class_logged: ask.class_logged === true,
               entregue: delivered,
             },
           });
@@ -1209,6 +1220,59 @@ serve(async (req) => {
           } else {
             result.failures.push(`closing_student_ask ${ask.flow_id}`);
           }
+        }
+      }
+
+      // ── G) BRIEFING DA EXPERIMENTAL PARA O PROFESSOR ──
+      // Até 2h30 antes da aula (ou na primeira varredura depois de um aceite
+      // em cima da hora): quem é o aluno, telefone, objetivo, nível, contexto.
+      // Sai a qualquer hora — a aula tem horário, o aviso tem de chegar antes.
+      const { data: briefings, error: briefingError } = await sb.rpc(
+        "trial_teacher_briefings",
+        { p_limit: 20 },
+      );
+      if (briefingError) throw new Error(briefingError.message);
+      for (const row of (briefings || [])) {
+        const t = byTenant[row.tenant_id];
+        if (!t?.teacherInstance) continue;
+        const phone = cleanPhone(row.teacher_phone || "");
+        if (phone.length < 12) continue;
+        const marca = await claim(
+          sb,
+          "TRIAL_TEACHER_BRIEFING",
+          String(row.appointment_id),
+          String(row.class_date || todayBRT()),
+        );
+        if (!marca.ok) continue;
+        const msg = teacherTrialBriefing({
+          teacherName: row.teacher_name,
+          whenText: String(row.when_text || ""),
+          leadName: row.lead_name,
+          leadPhone: row.lead_phone,
+          goal: row.goal,
+          level: row.level,
+          notes: row.notes,
+          weeklyAvailability: row.weekly_availability,
+          interests: row.interests,
+          meetingLink: row.teacher_meeting_link,
+        });
+        const delivered = await sendWhats(t.teacherInstance, phone, msg);
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "trial_closing",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_teacher_briefing",
+            appointment_id: row.appointment_id,
+            entregue: delivered,
+          },
+        });
+        if (delivered) result.teacher_briefings++;
+        else {
+          await marca.undo();
+          result.failures.push(`teacher_briefing ${row.appointment_id}`);
         }
       }
 

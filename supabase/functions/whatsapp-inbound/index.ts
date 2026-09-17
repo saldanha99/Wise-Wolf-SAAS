@@ -2632,6 +2632,8 @@ async function savePendingManagementAction(
     actor: ManagementActor;
     action: Record<string, unknown>;
     summary: string;
+    /** Ações seguintes da mesma mensagem — propostas uma a uma depois desta. */
+    queue?: Record<string, unknown>[];
   },
 ): Promise<
   | { ok: true; actionId: string; code: string }
@@ -2679,7 +2681,11 @@ async function savePendingManagementAction(
     risk_level: policy.risk,
     schema_version: MANAGEMENT_ACTION_SCHEMA_VERSION,
     status: "pending",
-    acao: values.action,
+    // `fila` vai dentro da ação: a autorização compara por contenção
+    // (`acao @> expected`), então a chave extra não invalida nada.
+    acao: values.queue?.length
+      ? { ...values.action, fila: values.queue }
+      : values.action,
     resumo: values.summary,
     pedido_por: values.actor.displayName,
     requested_by_jid: values.actor.jid,
@@ -3002,6 +3008,17 @@ async function handleGestao(
         .eq("tenant_id", tenantId).eq("action_id", actionId)
         .eq("status", "cancelled");
       await sendWhats(instance, groupJid, "Ok, cancelado. Nada foi lançado.");
+      // Cancelar uma não cancela a lista: a próxima ainda é proposta, e quem
+      // não quiser nenhuma responde "não" de novo.
+      await proposeNextQueuedManagementAction(
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        actor,
+        pendingAction,
+        requestId,
+      );
       return;
     }
     const expectedCode = shortManagementActionCode(actionId);
@@ -3387,6 +3404,15 @@ async function handleGestao(
       }
       await sendWhats(instance, groupJid, txt);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", txt);
+      await proposeNextQueuedManagementAction(
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        actor,
+        pendingAction,
+        requestId,
+      );
       return;
     }
   }
@@ -3471,6 +3497,8 @@ REGRAS ABSOLUTAS:
 - Não paga contas, não envia dinheiro e não executa ações fora da escola.
 
 QUANDO NÃO RESPONDER: você está num grupo onde pessoas também conversam entre si. Se a mensagem claramente não é dirigida a você nem pede informação da escola (combinar horário entre eles, comentário solto, recado pessoal), devolva {"responder": false} e nada mais. Na dúvida, responda — pergunta sobre a escola é sempre para você, mesmo sem citar seu nome.
+
+VÁRIAS AÇÕES NA MESMA MENSAGEM: se a pessoa pedir mais de uma ação de uma vez (ex.: "a Bruna cobriu três aulas do Flávio: Victor Hugo 16:30, Victor Hugo 17:00 e Vinícius 17:30"; duas contas; dois ajustes), devolva "acoes": [ {...}, {...} ] — um item por ação, cada um no formato da ação correspondente — em vez de "acao". NUNCA junte duas aulas ou dois lançamentos numa ação só, e NUNCA descarte as demais: o sistema propõe uma por vez e pede confirmação de cada uma. Na "resposta", diga quantas entendeu.
 
 AGENDAR TREINAMENTO: se pedirem treinamento entre professores (ex.: "Matheus vai treinar a teacher Maria amanhã às 16h30"), use a ação própria de agendamento, nunca um ajuste avulso de repasse:
 {"responder":true,"resposta":"<resumo>","acao":{"tipo":"agendar_treinamento","treinador":"<nome de quem ministra>","teacher":"<nome de quem recebe o treinamento>","data":"<AAAA-MM-DD>","horario":"<HH:MM>"}}
@@ -3583,7 +3611,63 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
   // entendeu e espera confirmação. Transcrição de áudio erra ordem de grandeza
   // ("trinta" x "trezentos"), e ler o valor de volta mata o erro antes de virar
   // pagamento.
-  const acao = (out?.acao ?? null) as Record<string, unknown> | null;
+  // Uma ação por vez, mas nenhuma perdida: se a mensagem trouxe várias
+  // (`acoes`), a primeira é proposta agora e as outras seguem na fila.
+  const acoesLidas = Array.isArray(out?.acoes)
+    ? (out.acoes as unknown[]).filter((a) => a && typeof a === "object")
+    : [];
+  const acao = (acoesLidas[0] ?? out?.acao ?? null) as
+    | Record<string, unknown>
+    | null;
+  const fila = acoesLidas.slice(1) as Record<string, unknown>[];
+  if (
+    await proposeManagementAction(
+      {
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        msgId,
+        actor,
+        contasLancaveis: contasLancaveis || [],
+      },
+      acao,
+      fila,
+    )
+  ) return;
+
+  // Log sempre, entrega como campo — mesma regra do caminho da atendente.
+  const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, {
+    entregue: ok,
+  });
+}
+
+/**
+ * Propõe UMA ação do grupo (repete em texto o que entendeu e guarda como
+ * pendente até o "sim"). Devolve true quando a mensagem foi tratada aqui.
+ *
+ * `fila` são as ações seguintes da MESMA mensagem: a direção costuma mandar
+ * "três coberturas" de uma vez (17/09/2026: só a primeira foi registrada e as
+ * outras duas morreram em silêncio). O modelo de pendência é um por grupo, então
+ * a fila viaja dentro da ação pendente (`acao.fila`) e, ao terminar uma, a
+ * próxima é proposta com código novo — ver `proposeNextQueuedManagementAction`.
+ */
+async function proposeManagementAction(
+  ctx: {
+    sb: any;
+    instance: string;
+    tenantId: string;
+    groupJid: string;
+    msgId: string;
+    actor: ManagementActor;
+    contasLancaveis: Array<{ code: string; label: string; kind: string }>;
+  },
+  acao: Record<string, unknown> | null,
+  fila: Record<string, unknown>[],
+): Promise<boolean> {
+  const { sb, instance, tenantId, groupJid, msgId, actor, contasLancaveis } =
+    ctx;
   if (acao && acao.tipo === "agendar_treinamento") {
     const trainerName = String(acao.treinador || "").trim();
     const traineeName = String(acao.teacher || "").trim();
@@ -3602,7 +3686,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Para agendar, preciso de quem ministra, do nome do teacher cadastrado, da data e de um horário futuro (ex.: amanhã às 16h30). O treinamento dura 30 minutos.",
       );
-      return;
+      return true;
     }
     const resolve = async (name: string) => {
       let result = await sb.rpc("gestao_resolve_professor", {
@@ -3633,7 +3717,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Não consegui identificar dois teachers diferentes com esses nomes. Informe os nomes completos como estão cadastrados na plataforma.",
       );
-      return;
+      return true;
     }
     const { data: trainerProfile } = await sb.from("profiles").select(
       "is_trainer",
@@ -3644,13 +3728,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Esse professor ainda não está habilitado como treinador. Habilite-o no cadastro antes de agendar.",
       );
-      return;
+      return true;
     }
     const summary =
       `treinamento de ${trainee.data.nome} com ${trainer.data.nome} em ${
         date.split("-").reverse().join("/")
       } às ${time} (Brasília), 30 minutos, R$ 16 ao treinador após realização`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3670,7 +3755,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         ? `Entendi: *${summary}*.\nPara agendar e enviar o convite, responda *sim #${pending.code}*. Para cancelar, responda *não*.`
         : "Não consegui preparar o treinamento. Confira se já existe outra ação em andamento e tente novamente.",
     );
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "conta_pagar") {
@@ -3701,7 +3786,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Para lançar, preciso da descrição, valor e tipo da conta. Pode completar? Se quiser, eu deixo o vencimento para hoje.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
@@ -3715,6 +3800,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }, vencimento ${diaTexto}/${mes}/${ano} — ${descricao} (${conta.label})`;
 
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3738,7 +3824,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a conta com segurança agora. Tente novamente em alguns minutos.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const vencimentoInfo = devidoDefaultHoje
@@ -3750,7 +3836,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       `Entendi: *${resumo}*.${vencimentoInfo}\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "ajuste_repasse") {
@@ -3767,7 +3853,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const valor = Number(acao.valor || 0);
@@ -3781,7 +3867,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para ajustar o repasse, preciso de valor (até R$ 500), mês e motivo válidos.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const money = (v: number) =>
       `R$ ${Math.abs(v).toFixed(2).replace(".", ",")}`;
@@ -3790,6 +3876,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     } para ${p.nome} em ${mes} — ${motivo}`;
 
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3805,14 +3892,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar o ajuste com segurança agora. Tente novamente.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const pergunta_conf =
       `Entendi: *${resumo}*.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, pergunta_conf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", pergunta_conf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "cobertura_aula") {
@@ -3830,7 +3917,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para preparar a cobertura pontual, preciso de aluno, professor ausente, substituto, data, horário e motivo.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const preview = await previewCoverageAction(sb, tenantId, {
@@ -3885,7 +3972,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const [year, month, day] = String(preview.classDate || "").split("-");
@@ -3901,6 +3988,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const summary =
       `cobertura pontual da aula de ${preview.studentName}, de ${preview.originalTeacherName} para ${preview.coverTeacherName}, em ${formattedDate} às ${preview.classTime} — ${reasonFinal}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3925,7 +4013,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a cobertura com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const confirmation = preview.retroactive
@@ -3933,7 +4021,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "folha_professores") {
@@ -3943,7 +4031,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "De qual mês você quer a folha por professor? (ex.: agosto)";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const [{ data: folha, error: folhaError }, { data: tenantRow }] =
       await Promise.all([
@@ -3956,7 +4044,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : montarMensagemFolha(String(tenantRow?.name || "Escola"), summary);
     await sendWhats(instance, groupJid, msg);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "cobertura_dia") {
@@ -3968,7 +4056,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para abrir a cobertura do dia, preciso do nome do professor que não vai dar aula.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(data) || data < todayBRT() ||
@@ -3978,14 +4066,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para abrir a cobertura do dia, preciso da data (hoje, amanhã ou até 14 dias à frente).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!motivo || motivo.length < 3 || motivo.length > 200) {
       const msg =
         "Qual é o motivo curto da ausência? (ex.: doente, compromisso pessoal)";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const { data: prof } = await sb.rpc("gestao_resolve_professor", {
       p_tenant: tenantId,
@@ -4000,7 +4088,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const aulas = await teacherClassesOnDate(
       sb,
@@ -4021,13 +4109,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         } não tem aula na agenda em ${dataFmt}. Nada a cobrir.`;
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const lista = abertas.map((a) => `${a.time} ${a.studentName}`).join(", ");
     const resumo = `cobertura do dia ${dataFmt} de ${
       String(p.nome)
     } (${motivo}): ${abertas.length} aula(s) — ${lista}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4048,13 +4137,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a cobertura do dia com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const perguntaConf =
       `Entendi: *${resumo}*. Ao confirmar, cada aula vira uma oportunidade enviada a todos os professores livres naquele horário — o primeiro que aceitar fica com ela, e a aula passa a contar para quem cobrir. A agenda fixa não muda.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "mudanca_plano") {
@@ -4065,14 +4154,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "Para mudar o plano, preciso do nome completo do aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!freq || !Number.isFinite(valor) || valor <= 0) {
       const msg =
         "Para mudar o plano, preciso da nova frequência (ex.: 3x por semana) e do novo valor da mensalidade (ex.: R$ 219).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
     if (!aluno.ok) {
@@ -4083,7 +4172,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const atualizarFaturas = acao.atualizar_faturas !== false;
     const resumo = `troca de plano de ${aluno.nome}: ${freq} por semana, R$ ${
@@ -4092,6 +4181,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       atualizarFaturas ? "" : " (sem mexer na fatura já gerada deste mês)"
     }`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4113,13 +4203,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a troca de plano com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const perguntaConf =
       `Entendi: *${resumo}*. Ao confirmar, o aluno recebe no WhatsApp o link para assinar a mudança — o valor só muda quando ele assinar, e a cobrança na Asaas é atualizada em seguida, sozinha.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (
@@ -4137,21 +4227,21 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para transferir o aluno, preciso do nome completo dele. Pode completar?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!profNome) {
       const msg =
         "Para a transferência recorrente, preciso do professor que vai receber o aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!slots.length) {
       const msg =
         "Para a transferência recorrente, preciso de pelo menos um dia e horário (ex.: Segunda 18:00).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const cutoverMs = Date.parse(`${dataInicio}T12:00:00Z`);
     const maxCutoverMs = Date.now() + 366 * 24 * 60 * 60 * 1000;
@@ -4164,7 +4254,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para transferir, preciso de uma data de início válida, entre hoje e os próximos 12 meses.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
@@ -4176,7 +4266,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const { data: prof } = await sb.rpc("gestao_resolve_professor", {
@@ -4192,7 +4282,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor destino. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const motivo = String(acao.motivo || "").trim();
@@ -4200,7 +4290,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "Qual é o motivo curto da transferência recorrente?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const slotsTexto = slots.map((s) => `${s.day_of_week} ${s.time_slot}`).join(
       ", ",
@@ -4216,7 +4306,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Entendi que o plano também muda. Preciso da nova frequência (ex.: 3x) E do novo valor da mensalidade (ex.: R$ 219) para preparar a assinatura do aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const planoTexto = temPlano
       ? ` + plano novo ${planoFreq}/semana a R$ ${
@@ -4226,6 +4316,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const resumo =
       `transferência recorrente de ${aluno.nome} para ${p.nome} em ${slotsTexto} a partir de ${dataInicio}${planoTexto} — ${motivo}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4255,7 +4346,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a transferência com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const perguntaConf =
@@ -4266,7 +4357,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "alterar_horario_aluno") {
@@ -4279,7 +4370,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para alterar horário, preciso do nome do aluno. Pode completar?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (
       !normalizeGestaoTime(novoHorario) ||
@@ -4289,13 +4380,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para alterar horário, preciso do novo horário no formato HH:MM.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!normalizeGestaoDay(novoDia)) {
       const msg = "Para alterar horário, preciso do novo dia da semana.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
@@ -4307,7 +4398,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     let finalBookingId = bookingId;
@@ -4324,7 +4415,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
           "Esse agendamento não pertence ao aluno informado ou não está ativo. Confira o aluno e o horário atual.";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
     } else {
       const atualDia = String(acao.dia_atual || "").trim();
@@ -4348,14 +4439,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
           "Não encontrei aula ativa desse aluno com os horários informados. Pode mandar o `booking_id` ou o horário atual da aula?";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
       if (list.length > 1) {
         const msg =
           "Encontrei mais de uma aula ativa para esse aluno com esses dados. Me diga o `booking_id` ou confirme dia e horário atual exato para identificar uma única aula.";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
       finalBookingId = String((list[0] as Record<string, unknown>).id || "");
     }
@@ -4364,6 +4455,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       normalizeGestaoDay(novoDia)
     } às ${normalizeGestaoTime(novoHorario)}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4385,21 +4477,72 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a alteração com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const perguntaConf =
       `Entendi: *${resumo}*.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
-  // Log sempre, entrega como campo — mesma regra do caminho da atendente.
-  const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
-  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, {
-    entregue: ok,
-  });
+  return false;
+}
+
+/**
+ * Terminou (ou cancelou) uma ação que veio com fila: propõe a próxima no mesmo
+ * grupo, com código novo. O `request_id` deriva do id da mensagem original
+ * mais a posição na fila — continua idempotente e rastreável.
+ */
+async function proposeNextQueuedManagementAction(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  groupJid: string,
+  actor: ManagementActor,
+  pendingAction: Record<string, unknown> | null,
+  requestId: string | null,
+): Promise<void> {
+  const fila = Array.isArray(pendingAction?.fila)
+    ? (pendingAction!.fila as Record<string, unknown>[]).filter((a) =>
+      a && typeof a === "object"
+    )
+    : [];
+  if (!fila.length) return;
+  const [proxima, ...restante] = fila;
+  const { data: contasLancaveis } = await sb.from("dre_accounts")
+    .select("code, label, kind")
+    .eq("is_active", true)
+    .eq("ledger_allowed", true)
+    .in("kind", ["CUSTO", "DESPESA", "DEDUCAO"])
+    .order("sort_order");
+  const base = String(requestId || crypto.randomUUID()).replace(/:q\d+$/, "");
+  const posicao = Number(pendingAction?.fila_posicao || 0) + 1;
+  const aviso = `Próxima da lista (${posicao + 1}/${
+    posicao + 1 + restante.length
+  }):`;
+  await sendWhats(instance, groupJid, aviso);
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", aviso);
+  const handled = await proposeManagementAction(
+    {
+      sb,
+      instance,
+      tenantId,
+      groupJid,
+      msgId: `${base}:q${posicao}`,
+      actor,
+      contasLancaveis: contasLancaveis || [],
+    },
+    { ...proxima, fila_posicao: posicao },
+    restante,
+  );
+  if (!handled) {
+    const msg =
+      "Não consegui preparar a próxima ação da lista. Mande-a de novo, numa mensagem só dela.";
+    await sendWhats(instance, groupJid, msg);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+  }
 }
 
 function phonesMatch(a: string, b: string): boolean {
@@ -5548,6 +5691,94 @@ async function dispatchTrial(
   return { dispatched, teachers: names, superseded };
 }
 
+type TrialClosingContext = {
+  flow_id: string;
+  stage: string;
+  outcome: string | null;
+  teacher_name: string | null;
+  when_text: string;
+  class_logged: boolean;
+  student_asked_at: string | null;
+  teacher_answered_at: string | null;
+  offer_sent: boolean;
+  plan: { frequency?: number; duration?: number; slots?: RenewalSlot[] };
+  free_slots: RenewalSlot[];
+};
+
+/**
+ * O pós-experimental deste telefone (`trial_closing_student_context`), ou null
+ * quando não há aula recente, quando a professora marcou falta ou quando a
+ * conversa ainda não começou (o bot ainda não perguntou "como foi?" e a aula
+ * não foi lançada). Falha de leitura vira null: a atendente segue no fluxo
+ * normal em vez de derrubar a conversa.
+ */
+async function loadTrialClosingContext(
+  sb: any,
+  tenantId: string,
+  phone: string,
+): Promise<TrialClosingContext | null> {
+  const { data, error } = await sb.rpc("trial_closing_student_context", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error) {
+    console.warn("[sdr] pós-experimental indisponível", error.message);
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const ctx = data as TrialClosingContext;
+  if (ctx.outcome === "NO_SHOW" || ctx.stage === "NO_SHOW") return null;
+  if (!ctx.student_asked_at && !ctx.class_logged) return null;
+  return {
+    ...ctx,
+    plan: ctx.plan && typeof ctx.plan === "object" ? ctx.plan : {},
+    free_slots: Array.isArray(ctx.free_slots) ? ctx.free_slots : [],
+  };
+}
+
+/**
+ * O que a atendente precisa para fechar como gente, uma coisa por vez. O
+ * sistema é quem gera o link (`handleTrialClosingStudent` lê frequência, plano
+ * e horários da resposta do aluno) — daqui ela só conduz e nunca inventa.
+ */
+function trialClosingStageInstructions(
+  closing: TrialClosingContext,
+  catalogFacts: string,
+): string {
+  const teacher = closing.teacher_name
+    ? `Teacher ${closing.teacher_name.split(/\s+/)[0]}`
+    : "a professora";
+  const plan = closing.plan || {};
+  const slots = Array.isArray(plan.slots) && plan.slots.length
+    ? plan.slots.map((slot) => `${slot.day} ${slot.time}`).join(", ")
+    : "?";
+  const free = closing.free_slots.slice(0, 14)
+    .map((slot) => `${slot.day} ${slot.time}`).join(", ");
+  return [
+    `ETAPA ATUAL: PÓS-EXPERIMENTAL — FECHAMENTO. A aula experimental com ${teacher} foi ${closing.when_text}.`,
+    closing.class_logged
+      ? `A professora já confirmou que a aula aconteceu.`
+      : `A professora ainda não confirmou a aula; o link de matrícula só sai depois disso (o sistema cuida — não prometa link imediato).`,
+    closing.student_asked_at
+      ? `Você já perguntou como foi a aula — não repita a pergunta; reaja ao que ele disser.`
+      : `Comece perguntando como foi a aula e o que ele achou da professora.`,
+    closing.offer_sent
+      ? `O link de matrícula JÁ foi enviado: ajude com dúvidas e não gere outro.`
+      : "",
+    `Já definido pelo aluno: frequência=${plan.frequency || "?"}, plano=${
+      plan.duration ? plan.duration + " meses" : "?"
+    }, horários=${slots}.`,
+    `Horários livres de ${teacher}: ${
+      free || "nenhum livre agora — diga que a coordenação encaixa"
+    }.`,
+    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte quantas vezes por semana quer fazer (2 a 6) e, quando ele disser, dê os valores DAQUELA frequência nos planos de 6 e 12 meses da TABELA DE PLANOS; (3) pergunte os dias e horários, oferecendo no máximo dois dos livres por vez; (4) com frequência, plano e horários definidos, diga que vai gerar o link — o sistema gera e envia. Nunca invente valor, desconto ou link.`,
+    `Não ofereça outra experimental; schedule_trial=null sempre. Se ele disser que a aula não aconteceu, o sistema registra — só acolha. Se quiser pensar, combine quando você pode retornar e não insista.`,
+    catalogFacts
+      ? `TABELA DE PLANOS (mensalidade; aulas de 30 minutos):\n${catalogFacts}`
+      : "",
+  ].filter(Boolean).join("\n");
+}
+
 /**
  * `student_pricing_plans` da escola no formato que `trial-closing.ts` já usa.
  * Mesmo recorte de `private.trial_closing_prices`: ativo, 1–6 aulas/semana,
@@ -5829,7 +6060,13 @@ async function handleSDR(
   // O cardápio real da escola (`student_pricing_plans`). O modelo escreve a
   // frase; a política (`commercial-response-policy.ts`) veta número que não
   // esteja aqui. Sem catálogo, vale só o mínimo configurado.
-  const catalog = leadTraining ? await loadLeadPriceCatalog(sb, tenantId) : [];
+  // Pós-experimental: o bot já perguntou "como foi?" (ou a aula foi lançada).
+  // A conversa vira fechamento — frequência, valores, horários — e não pode
+  // voltar a vender experimental.
+  const closing = await loadTrialClosingContext(sb, tenantId, phone);
+  const catalog = leadTraining || closing
+    ? await loadLeadPriceCatalog(sb, tenantId)
+    : [];
   const catalogFacts = catalogFactsForPrompt(catalog);
   const commercialRules = leadTraining
     ? `- A experimental Wise Wolf é gratuita e dura 30 minutos.
@@ -5858,10 +6095,10 @@ async function handleSDR(
       .eq("tenant_id", tenantId).eq("id", lead.opportunity_id).maybeSingle()
     : { data: null, error: null };
   if (stageResult.error) throw new Error("sdr_stage_unavailable");
-  const afterTrial = lead.status === "TRIAL_DONE" &&
+  const afterTrial = (lead.status === "TRIAL_DONE" &&
     ["DONE", "COMPLETED"].includes(
       String(stageResult.data?.trial_status).toUpperCase(),
-    );
+    )) || closing !== null;
   const availableSlots = afterTrial ? [] : await loadAvailableTrialSlots(
     sb,
     tenantId,
@@ -5869,7 +6106,9 @@ async function handleSDR(
     activeTrial?.teacherId || null,
   );
   const menu = availableMenu(availableSlots);
-  const stageInstructions = afterTrial
+  const stageInstructions = closing
+    ? trialClosingStageInstructions(closing, leadTraining ? "" : catalogFacts)
+    : afterTrial
     ? "ETAPA ATUAL: experimental já realizada e registrada. Pergunte como foi, responda dúvidas com as regras comerciais da escola e ofereça ajuda para continuar a matrícula. Não venda outra experimental e mantenha schedule_trial=null. Se o aluno quiser matrícula, encaminhe à coordenação, sem inventar oferta, desconto ou link."
     : "ETAPA ATUAL: qualificação ou agendamento. Respeite qualquer experimental já confirmada e pedidos pendentes.";
   const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
@@ -5892,7 +6131,9 @@ async function handleSDR(
       ).join("\n")
     }`
     : "";
-  const trialContext = activeTrial && trialSlot
+  // No fechamento a aula já passou: falar em remarcação aqui reabriria a
+  // experimental que o aluno acabou de fazer.
+  const trialContext = !closing && activeTrial && trialSlot
     ? `\nEXPERIMENTAL COM PROFESSOR: o horário registrado é com a Teacher ${activeTrial.teacherName} em ${
       formatSlot(trialSlot)
     }. Se esse horário já passou, não fale dele como compromisso futuro nem confirme que a aula aconteceu.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`

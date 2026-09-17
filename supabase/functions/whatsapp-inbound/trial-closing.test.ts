@@ -211,3 +211,78 @@ Deno.test("resposta normal sobre plano não trava pagamento de ninguém", () => 
     assertEquals(parseTrialDenial(texto), false, texto);
   }
 });
+
+// ── Pós-experimental como conversa + briefing do professor (17/09/2026) ──────
+import {
+  cleanLeadNotes,
+  formatPhoneBr,
+  studentPostTrialOpener,
+  teacherTrialBriefing,
+} from "./trial-closing.ts";
+
+Deno.test("a abertura do pós-aula pergunta como foi, sem tabela nem formulário", () => {
+  const msg = studentPostTrialOpener({
+    leadName: "Janaina Dias",
+    teacherName: "Bruna Barros Feitosa",
+  });
+  assertEquals(
+    msg,
+    "Oi, Janaina! Como foi a aula experimental com a teacher Bruna? 😊\n\nMe conta o que você achou — da aula e da professora.",
+  );
+  assert(!msg.includes("R$"));
+});
+
+Deno.test("briefing do professor traz aluno, telefone, horário, objetivo e o que fazer antes", () => {
+  const msg = teacherTrialBriefing({
+    teacherName: "Bruna Barros Feitosa",
+    whenText: "18/09 às 10:00",
+    leadName: "Janaina",
+    leadPhone: "5511996007505",
+    goal: "Inglês para trabalho",
+    level: "intermediário (B1)",
+    notes:
+      '[IA 2026-09-16] voltou de intercâmbio na Irlanda; quer falar em reuniões\nUTMs: {"utm_source":"google"}',
+    weeklyAvailability: "sábado de manhã",
+    interests: null,
+    meetingLink: null,
+  });
+  assert(msg.startsWith("🎯 *Experimental 18/09 às 10:00* — Janaina"), msg);
+  assert(msg.includes("(11) 99600-7505"), msg);
+  assert(
+    msg.includes("Objetivo: Inglês para trabalho · Nível: intermediário (B1)"),
+    msg,
+  );
+  assert(
+    msg.includes(
+      "Contexto: voltou de intercâmbio na Irlanda; quer falar em reuniões",
+    ),
+    msg,
+  );
+  assert(!msg.includes("UTMs"), "UTM não é assunto do professor");
+  assert(!msg.includes("[IA"), "carimbo da IA não vai para o professor");
+  assert(msg.includes("Aulas de Hoje"), "sem link fixo, aponta a plataforma");
+  assert(msg.includes("Trial Class"), msg);
+});
+
+Deno.test("briefing usa o link fixo do professor quando existe; telefone estranho sai como veio", () => {
+  const msg = teacherTrialBriefing({
+    teacherName: null,
+    whenText: "17/09 às 18:30",
+    leadName: null,
+    leadPhone: "12345",
+    meetingLink: "https://meet.google.com/abc-defg-hij",
+  });
+  assert(
+    msg.includes("Link da aula: https://meet.google.com/abc-defg-hij"),
+    msg,
+  );
+  assert(msg.includes("aluno sem nome no cadastro"), msg);
+  assert(msg.includes("WhatsApp do aluno: 12345"), msg);
+  assertEquals(formatPhoneBr("557187168313"), "(71) 8716-8313");
+  assertEquals(
+    cleanLeadNotes(
+      "[IA 2026-09-14] aguardando aceite de professor p/ experimental 2026-09-16 10:00",
+    ),
+    "",
+  );
+});
