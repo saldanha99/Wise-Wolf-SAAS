@@ -1331,6 +1331,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917120000_pos_experimental_conversa_e_briefing_do_professor.sql"
   "supabase/migrations/20260917130000_pos_experimental_uma_abertura_por_telefone.sql"
   "supabase/migrations/20260917140000_contatos_de_suporte_do_professor.sql"
+  "supabase/migrations/20260917150000_prova_da_assinatura_de_renovacao_no_guard_da_asaas.sql"
+  "supabase/migrations/20260917160000_cobranca_da_renovacao_e_referencia_canonica.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

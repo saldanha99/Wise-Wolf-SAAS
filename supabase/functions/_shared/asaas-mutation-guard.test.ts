@@ -282,3 +282,32 @@ Deno.test("enrollment reference must resolve to the same student and tenant", as
   });
   assert(result.ok);
 });
+
+// Assinatura criada pela renovação assinada (17/09/2026): o guard precisa
+// reconhecê-la, senão a reativação do aluno renovado morre em identidade.
+Deno.test("renewal subscription reference is canonical only for subscriptions", () => {
+  assertEquals(
+    parseCanonicalAsaasReference(
+      `renewal:${offerId}:subscription`,
+      studentId,
+      "subscription",
+    ),
+    { kind: "RENEWAL", offerId },
+  );
+  assertEquals(
+    parseCanonicalAsaasReference(
+      `renewal:${offerId}:subscription`,
+      studentId,
+      "payment",
+    ),
+    null,
+  );
+  assertEquals(
+    parseCanonicalAsaasReference(
+      `renewal:${offerId}:fee`,
+      studentId,
+      "subscription",
+    ),
+    null,
+  );
+});

@@ -41,6 +41,12 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ENROLLMENT_REFERENCE_PATTERN =
   /^enrollment:([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):(subscription|one-time|pro-rata|fee)$/i;
+// Assinatura criada pela RENOVAÇÃO assinada (`student-renewal-billing`,
+// `renewal:<oferta>:subscription`). Até 17/09/2026 o guard não a conhecia: a
+// reativação da Bianca, com a assinatura nova já no ar, morria em
+// ASAAS_IDENTITY_MISMATCH — e qualquer mutação futura nessa assinatura também.
+const RENEWAL_REFERENCE_PATTERN =
+  /^renewal:([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):subscription$/i;
 
 const text = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -56,7 +62,8 @@ export type CanonicalAsaasReference =
     kind: "ENROLLMENT";
     offerId: string;
     purpose: "subscription" | "one-time" | "pro-rata" | "fee";
-  };
+  }
+  | { kind: "RENEWAL"; offerId: string };
 
 export function parseCanonicalAsaasReference(
   reference: unknown,
@@ -65,6 +72,14 @@ export function parseCanonicalAsaasReference(
 ): CanonicalAsaasReference | null {
   const normalizedReference = text(reference);
   if (normalizedReference === studentId) return { kind: "STUDENT" };
+
+  const renewal = normalizedReference.match(RENEWAL_REFERENCE_PATTERN);
+  if (renewal) {
+    // A renovação só cria assinatura; a cobrança gerada por ela vem sem
+    // externalReference e é provada pelo campo `subscription` (abaixo).
+    if (resource !== "subscription") return null;
+    return { kind: "RENEWAL", offerId: renewal[1].toLowerCase() };
+  }
 
   const match = normalizedReference.match(ENROLLMENT_REFERENCE_PATTERN);
   if (!match) return null;
@@ -163,6 +178,39 @@ async function enrollmentReferenceBelongsToStudent(
           data?.tenant_id === target.tenantId &&
           (data?.processing_by === target.studentId ||
             data?.consumed_by === target.studentId),
+      ),
+      unavailable: false,
+    };
+  } catch {
+    return { ok: false, unavailable: true };
+  }
+}
+
+/**
+ * A oferta de renovação mora em `private.*`: a prova vem por RPC
+ * (`student_course_renewal_binding`, migration 20260917150000), que devolve
+ * aluno, escola e a assinatura que a renovação criou.
+ */
+async function renewalReferenceBelongsToStudent(
+  admin: AsaasMutationAdminClient,
+  target: CanonicalAsaasMutationTarget,
+  reference: Extract<CanonicalAsaasReference, { kind: "RENEWAL" }>,
+): Promise<{ ok: boolean; unavailable: boolean }> {
+  try {
+    const { data, error } = await admin.rpc(
+      "student_course_renewal_binding",
+      { p_offer: reference.offerId },
+    );
+    if (error) return { ok: false, unavailable: true };
+    const row = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : null;
+    return {
+      ok: Boolean(
+        row &&
+          text(row.tenant_id) === target.tenantId &&
+          text(row.student_id) === target.studentId &&
+          text(row.provider_created_subscription_id) === target.entityId,
       ),
       unavailable: false,
     };
@@ -369,6 +417,29 @@ export async function guardAsaasMutationTarget(input: {
   let canonicalReference = reference?.kind === "STUDENT";
   if (reference?.kind === "ENROLLMENT") {
     const verification = await enrollmentReferenceBelongsToStudent(
+      input.admin,
+      input.target,
+      reference,
+    );
+    if (verification.unavailable) {
+      await recordCriticalIdentityIssue(input.admin, {
+        operation: input.operation,
+        target: input.target,
+        kind: "ASAAS_REFERENCE_VERIFICATION_UNAVAILABLE",
+        mismatchFields: ["externalReference"],
+        observedEntity: providerEntity,
+        providerStatus: response.status,
+      });
+      return {
+        ok: false,
+        code: "REFERENCE_UNAVAILABLE",
+        providerStatus: response.status,
+      };
+    }
+    canonicalReference = verification.ok;
+  }
+  if (reference?.kind === "RENEWAL") {
+    const verification = await renewalReferenceBelongsToStudent(
       input.admin,
       input.target,
       reference,

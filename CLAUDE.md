@@ -1942,6 +1942,33 @@ numa frase humana que reage ao que a pessoa acabou de dizer.
   editar `ETAPAS`.
 - Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
 
+### Renovação assinada por aluno SUSPENSO — o caso da Bianca (17/09/2026) ✅
+
+Ela assinou a renovação (5x R$ 377 → 3x R$ 261) estando suspensa, com a assinatura antiga
+já apagada na Asaas. Quatro travas em cadeia, todas "fail-closed" e nenhuma pensada para
+renovação com mudança de plano:
+
+1. **`student-renewal-billing` (CREATE_NEW)** exigia a assinatura antiga viva, com o MESMO
+   valor: 404/valor diferente → `REVIEW source_subscription_changed`. Hoje: antiga ausente
+   (404) ou encerrada (EXPIRED/INACTIVE/deleted) libera; só antiga ATIVA barra
+   (`source_subscription_still_active`). Valor e forma de pagamento vêm da oferta.
+2. **`asaas-mutation-guard`** só conhecia `<studentId>` e `enrollment:<oferta>:<fim>`; a
+   renovação cria `renewal:<oferta>:subscription` → `ASAAS_IDENTITY_MISMATCH` na reativação
+   e em qualquer mutação futura. Hoje: kind `RENEWAL`, provado por
+   `student_course_renewal_binding(p_offer)` (migration `20260917150000`).
+3. **`apply_active_student_payment_event`** (RPC) rejeitava a mesma referência
+   (`reference_mismatch` → TRIAGE). Cópia integral com o ramo novo em `20260917160000`.
+4. **Deadlock**: a reativação oficial exige a cobrança no ledger local
+   (`SUBSCRIPTION_PAYMENT_PROVIDER_ONLY`), e o ledger só aceita cobrança de aluno ATIVO
+   (`student_lifecycle_or_binding_changed`). Resolvido na mão: `profiles` → ativo (sem
+   operação em voo, o guard deixa), o trigger `apply_pending_renewal_schedule_on_reactivation`
+   criou a agenda, e os 4 eventos da inbox foram reenfileirados (`status='RETRY'`).
+   ⚠️ **Estrutural, ainda aberto**: a reativação via `school-admin` precisa aceitar aluno
+   com renovação SYNCED sem exigir a cobrança no ledger (ou importá-la). Até lá, renovação
+   de suspenso termina com este ritual.
+- `SUBSCRIPTION_CREATED` da renovação fica em TRIAGE (`student_subscription_operation_
+  unresolved`): o vínculo já foi gravado pelo `finish … SYNCED`; é ruído, não perda.
+
 ### Central de Ajuda do professor + Planner IA vivo de novo ✅
 
 - **Central de Ajuda** (`components/TeacherSupportCenter.tsx`, botão flutuante "Ajuda" em toda
