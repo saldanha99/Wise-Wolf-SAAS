@@ -1942,6 +1942,42 @@ numa frase humana que reage ao que a pessoa acabou de dizer.
   editar `ETAPAS`.
 - Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
 
+### Preço para o lead: a IA propõe a frase, o código veta o número ✅
+
+> **Leia antes de mexer em `commercial-response-policy.ts`, `lead-pricing.ts` ou no
+> prompt da atendente.** Conserto de 17/09/2026.
+
+**O caso (lead Diná, 07:12–07:21):** pediu "estimativa de valores" e ouviu um bloco
+fixo ("As aulas são de 30 minutos, e isso é proposital… Os planos começam em
+R$ 169"); perguntou **"4 vezes na semana qual valor?"** e ouviu, duas vezes, *"esse
+horário já está aguardando o aceite de um professor"*. Escreveu que estava sendo
+tratada "como idiota com essas mensagens repetidas" e a direção mandou a tabela na
+mão. Três defeitos, nenhum do modelo:
+
+1. **A política SUBSTITUÍA a resposta** por um texto fixo a cada palavra "valor" —
+   sem a tabela e sem a frequência pedida. Hoje a resposta do modelo com valores do
+   catálogo (`student_pricing_plans`, carregado em `loadLeadPriceCatalog`) **passa
+   inteira**; valor de fora do catálogo é barrado (`blocked_foreign_price`); pergunta
+   de preço sem número ganha o mínimo; **frequência dita ganha os valores dela + a
+   tabela no formato da direção** (uma vez por conversa — `priceListAlreadySent`);
+   "??" ou reclamação depois de preço sem resposta é cobrança e recebe a tabela.
+2. **O modelo repetia `schedule_trial` do pedido anterior** em toda mensagem, e o
+   ramo `alreadyPending` (e o `keep` da aula com dono) sobrescrevia qualquer
+   resposta. Só mensagem que fala de horário (`mentionsSchedule`) ouve o aviso.
+3. **A resposta de preço engolia a promessa de verificar o professor** quando os dois
+   pedidos vinham na mesma mensagem ("As 10" + "estimativa de valores"). A promessa
+   é anexada (`TRIAL_PROMISE`).
+
+- ⚠️ **O mensal (fidelidade 1) existe no catálogo e NÃO entra na tabela** — a
+  direção manda só 6 e 12 meses (`LIST_MIN_DURATION_MONTHS`). O modelo recebe o
+  catálogo inteiro como fato e cita o mensal só se perguntarem por opção sem
+  fidelidade.
+- ⚠️ **Não volte a colocar texto fixo no lugar da resposta.** Robô que repete a
+  mesma frase é o que a direção pediu para acabar. O que é fixo é o **número**; a
+  frase é do modelo, e o histórico enviado a ele já traz o que foi dito.
+- Testes: `lead-pricing.test.ts` e `commercial-response-policy.test.ts` (a conversa
+  real como regressão). Os dois no `release.sh` (fmt + test).
+
 ### Áudio vale para lead e candidato, não só para a direção
 
 O Whisper já estava pago e ligado, mas **só o grupo da direção usava**: lead e candidato que
