@@ -1043,6 +1043,42 @@ a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
   nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
   booking — continua manual.
 
+### 🚦 Teto e aquecimento do WhatsApp — todo envio automático pede licença ao banco ✅
+
+> Migration `20260918000000`. **Leia antes de criar qualquer disparo automático.**
+
+**O caso (17/09/2026, 14:15):** o WhatsApp **restringiu o número da escola por 21 h**
+depois de ~130 mensagens automáticas em 7 h (pico de 37/h), boa parte para contato frio.
+Um número só concentra atendente, lembretes, acompanhamento, cobertura e Gestão — banimento
+definitivo derruba tudo de uma vez.
+
+- **Choke point:** `sendWhatsTextToResolvedDestinationDetailed` em `_shared/evolution-send.ts`
+  (26 módulos passam por ele) chama `whatsapp_outbound_permit(instância, destino)` antes do
+  POST. `allowed=false` → `{outcome:"rejected", throttled:true, retryAfterMs}`; `sendWhatsText`
+  devolve `false` (quem "marca antes e apaga se falhar" tenta na rodada seguinte — é o
+  espalhamento desejado). `wait_ms ≤ 12 s` → dorme e manda. Sem `SUPABASE_URL`/chave (testes)
+  ou com o banco fora, **não trava** (fail-open com `console.error`).
+- **O tipo é do destino, não do chamador** (`private.whatsapp_outbound_kind`): `group`;
+  `reply` (a pessoa escreveu ao número nas últimas 72 h — sem espaçamento); `staff` (perfil da
+  equipe — sem espaçamento); `transactional` (aluno/responsável com perfil — 20–40 s);
+  `outreach` (o resto: lead frio, follow-up — 60–120 s, teto 10/h e 50/dia por padrão).
+  Tetos por instância em `whatsapp_outbound_policy` (linha criada sozinha no 1º envio;
+  `enabled=false` desliga a régua).
+- **Aquecimento:** `warmup_started_at` → 40 % dos tetos no dia da volta, 70 % no seguinte,
+  100 % depois. Depois de QUALQUER restrição: `update whatsapp_outbound_policy set
+  warmup_started_at = <hora da volta>`.
+- **Fila (`process-notification-queue`):** espia a régua (`p_reserve=false`) ANTES do fence
+  e, se vetada, `defer_notification_delivery` devolve a vaga **sem gastar `attempts`** (o
+  claim já tinha somado 1). Corrida rara depois do fence vira `pending` com backoff.
+- `throttle: "skip"` só para envio manual de gente (inbox). Os 12 chamadores que fazem
+  `fetch` direto em `message/sendText` (broadcast-opportunity, hr, register-teacher, inbox
+  proxy…) **não** passam pela régua — baixo volume; ao criar disparo novo, use o helper.
+- Livro em `whatsapp_outbound_ledger` (2 dias, cron `wisewolf-wa-ledger-prune`). Diagnóstico:
+  `select kind, count(*) from whatsapp_outbound_ledger where slot_at > now()-interval '1 day'
+  group by 1` e `docker logs … | grep "adiado pelo teto"`.
+- `sdr-followups` caiu de 15 para **5 por rodada**; `care-sweeper` e `sdr-followups` ficaram
+  pausados em 17/09 e voltam com a régua no ar.
+
 ### ⚠️ Link para GENTE usa `SUPABASE_PUBLIC_URL`, nunca `SUPABASE_URL` (17/09/2026) ✅
 
 Dentro do container `SUPABASE_URL` é **`http://kong:8000`** (rede interna). `whatsapp-inbound`

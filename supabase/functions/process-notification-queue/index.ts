@@ -804,6 +804,39 @@ async function resolveDeliveryIntegration(
   }
 }
 
+/** Espia o teto sem reservar vaga (a reserva acontece no envio). */
+async function peekOutboundPermit(
+  instanceId: string,
+  destination: string,
+): Promise<
+  { allowed: boolean; wait_ms?: number; kind?: string; reason?: string } | null
+> {
+  const url = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return null;
+  try {
+    const resp = await fetch(`${url}/rest/v1/rpc/whatsapp_outbound_permit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        p_instance: instanceId,
+        p_destination: destination,
+        p_reserve: false,
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data && typeof data === "object" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 async function markClaim(
   supabase: SupabaseClient,
   item: Pick<QueueItem, "id" | "claim_token" | "attempts">,
@@ -1347,6 +1380,41 @@ serve(async (req) => {
         instance: instanceId,
         to: destination,
       });
+
+      // Teto do WhatsApp (17/09/2026): espia a régua ANTES do fence. Adiado não
+      // é tentativa — o claim devolve a vaga sem gastar `attempts`.
+      const throttlePeek = await peekOutboundPermit(
+        instanceId,
+        providerDestination,
+      );
+      if (throttlePeek && throttlePeek.allowed === false) {
+        const delaySeconds = Math.max(
+          30,
+          Math.ceil(Number(throttlePeek.wait_ms || 60_000) / 1000),
+        );
+        const { data: deferred } = await supabaseClient.rpc(
+          "defer_notification_delivery",
+          {
+            p_notification_id: item.id,
+            p_claim_token: item.claim_token,
+            p_delay_seconds: delaySeconds,
+            p_reason: `throttled_${throttlePeek.kind || "outbound"}_${
+              throttlePeek.reason || ""
+            }`.slice(0, 120),
+          },
+        );
+        const ok = Boolean(
+          deferred && typeof deferred === "object" &&
+            (deferred as Record<string, unknown>).ok === true,
+        );
+        persistenceFailed ||= !ok;
+        results.push({
+          id,
+          status: ok ? "deferred" : "marker_failed",
+          error: throttlePeek.reason || "throttled",
+        });
+        continue;
+      }
 
       let paymentOutboundClaim:
         | Awaited<ReturnType<typeof claimOutboundMessage>>

@@ -1,7 +1,7 @@
 import type { EvolutionSendResult } from "../_shared/evolution-send.ts";
 
 export type QueueDeliveryDecision = {
-  status: "sent" | "failed" | "uncertain";
+  status: "sent" | "failed" | "uncertain" | "pending";
   reason: string | null;
   releaseOccurrenceReceipt: boolean;
 };
@@ -103,6 +103,14 @@ export function queueDeliveryDecision(
       status: "uncertain",
       reason: "provider_accepted_without_message_id",
       releaseOccurrenceReceipt: false,
+    };
+  }
+  if (result.outcome === "rejected" && result.throttled === true) {
+    // Vetado pelo teto do WhatsApp: nada cruzou o provedor, tenta mais tarde.
+    return {
+      status: "pending",
+      reason: `throttled_${result.throttleKind || "outbound"}`,
+      releaseOccurrenceReceipt: true,
     };
   }
   if (result.outcome === "rejected") {

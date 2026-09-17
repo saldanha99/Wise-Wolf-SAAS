@@ -205,7 +205,8 @@ serve(async (req) => {
         .order("last_outbound_at").order("id")
     );
     for (const candidate of leads || []) {
-      if (result.followups >= 15) break;
+      // 5 por rodada (era 15): follow-up é contato frio, o que o WhatsApp mais pune.
+      if (result.followups >= 5) break;
       const phone = cleanPhone(candidate.phone || "");
       if (phone.length < 12 || isCandidatePhone(candidate.tenant_id, phone)) {
         continue;

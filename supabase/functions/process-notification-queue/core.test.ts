@@ -249,3 +249,17 @@ Deno.test("alerta de conflito é reconstruído com dados atuais", () => {
       "Pode nos contar como foi essa aula? Enquanto analisamos, somente esta aula fica em revisão.",
   );
 });
+
+Deno.test("fila: vetado pelo teto volta para pending, nunca failed", () => {
+  const d = queueDeliveryDecision({
+    outcome: "rejected",
+    messageId: null,
+    httpStatus: 429,
+    throttled: true,
+    retryAfterMs: 60_000,
+    throttleKind: "outreach",
+  });
+  assertEquals(d.status, "pending");
+  assertEquals(d.reason, "throttled_outreach");
+  assertEquals(d.releaseOccurrenceReceipt, true);
+});
