@@ -94,6 +94,7 @@ function serviceHarness(options: {
         sendText: vi.fn().mockResolvedValue({ status: options.sendStatus ?? 'sent' }),
         markRead: vi.fn().mockResolvedValue(undefined),
         setHandoff: vi.fn().mockResolvedValue(undefined),
+        fetchMedia: vi.fn().mockResolvedValue({ base64: 'T2xh', mimetype: 'audio/ogg', fileName: null }),
         subscribe: vi.fn().mockReturnValue(() => undefined),
     };
     return service;
@@ -306,5 +307,21 @@ describe('<WhatsappInbox />', () => {
         expect(secondCall?.clientRequestId).toBe(firstCall?.clientRequestId);
         expect(secondCall?.text).toBe('Mensagem idempotente');
         expect(await screen.findByLabelText('Enviada')).toBeInTheDocument();
+    });
+});
+
+// Áudio e foto abrem na própria inbox (17/09/2026): o arquivo vem do provedor
+// sob demanda, pelo proxy, quando a pessoa clica — nada é baixado antes disso.
+describe('<WhatsappInbox /> mídia', () => {
+    it('busca o áudio pelo serviço só ao clicar em "Ouvir áudio" e mostra o player', async () => {
+        const audioMessage: WhatsappMessage = { ...incomingMessage, id: 'msg-audio', message_type: 'audio', body: '[Áudio]' };
+        const service = serviceHarness({ enabled: true, withConversations: true, messages: [audioMessage] });
+        render(<WhatsappInbox user={user} tenantId="tenant-1" service={service} />);
+        fireEvent.click(await screen.findByText('Ana Aluna'));
+        const button = await screen.findByRole('button', { name: /ouvir áudio/i });
+        expect(service.fetchMedia).not.toHaveBeenCalled();
+        fireEvent.click(button);
+        await waitFor(() => expect(service.fetchMedia).toHaveBeenCalledWith('tenant-1', 'escola-central', conversations[0].id, 'msg-audio'));
+        await waitFor(() => expect(document.querySelector('audio')?.getAttribute('src')).toBe('data:audio/ogg;base64,T2xh'));
     });
 });

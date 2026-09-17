@@ -13,8 +13,11 @@ import {
     Check,
     CheckCheck,
     Clock3,
+    Download,
+    Image as ImageIcon,
     Loader2,
     MessageCircle,
+    Play,
     RefreshCw,
     Search,
     Send,
@@ -32,6 +35,7 @@ import {
     type WhatsappConversation,
     type WhatsappInboxService,
     type WhatsappInstance,
+    type WhatsappMediaFile,
     type WhatsappMessage,
 } from '../services/whatsappInboxService';
 
@@ -167,12 +171,93 @@ function MessageStatus({ message }: { message: WhatsappMessage }) {
     return <Check size={13} aria-label="Enviada" className="text-white/80" />;
 }
 
+const MEDIA_TYPES = new Set(['audio', 'image', 'video', 'document', 'sticker']);
+
+/**
+ * Áudio, foto e documento abrem AQUI, sob demanda. A plataforma guarda só o
+ * texto e o tipo; o arquivo fica no provedor e é buscado pelo proxy quando a
+ * pessoa clica (17/09/2026: a direção lia "[Áudio]" e "[Imagem]" e tinha de ir
+ * ao celular). O resultado fica em memória enquanto a conversa está aberta.
+ */
+function MediaAttachment({
+    message,
+    fetchMedia,
+}: {
+    message: WhatsappMessage;
+    fetchMedia?: (message: WhatsappMessage) => Promise<WhatsappMediaFile>;
+}) {
+    const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+    const [file, setFile] = useState<WhatsappMediaFile | null>(null);
+    const [error, setError] = useState('');
+    const outgoing = message.direction === 'out';
+    if (!fetchMedia || !MEDIA_TYPES.has(message.message_type)) return null;
+
+    const load = async () => {
+        if (state === 'loading' || state === 'ready') return;
+        setState('loading');
+        setError('');
+        try {
+            const media = await fetchMedia(message);
+            setFile(media);
+            setState('ready');
+        } catch (loadError) {
+            setError(loadError instanceof Error ? loadError.message : 'Não foi possível abrir o arquivo.');
+            setState('error');
+        }
+    };
+    const dataUrl = file ? `data:${file.mimetype};base64,${file.base64}` : '';
+    const label = message.message_type === 'audio'
+        ? 'Ouvir áudio'
+        : message.message_type === 'image' || message.message_type === 'sticker'
+            ? 'Ver foto'
+            : message.message_type === 'video' ? 'Ver vídeo' : 'Abrir documento';
+    const buttonClass = `mt-2 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${outgoing
+        ? 'bg-white/15 text-white hover:bg-white/25'
+        : 'bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20'}`;
+
+    if (state === 'ready' && file) {
+        if (message.message_type === 'audio') {
+            return <audio controls autoPlay preload="auto" src={dataUrl} className="mt-2 w-full max-w-[280px]" aria-label="Áudio da mensagem" />;
+        }
+        if (message.message_type === 'image' || message.message_type === 'sticker') {
+            return (
+                <a href={dataUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block" title="Abrir em tamanho real">
+                    <img src={dataUrl} alt={message.body || 'Imagem recebida'} className="max-h-72 max-w-full rounded-xl border border-black/10 object-contain" />
+                </a>
+            );
+        }
+        if (message.message_type === 'video') {
+            return <video controls src={dataUrl} className="mt-2 max-h-72 w-full max-w-[320px] rounded-xl" />;
+        }
+        return (
+            <a href={dataUrl} download={file.fileName || 'documento'} className={buttonClass}>
+                <Download size={12} aria-hidden="true" /> Baixar {file.fileName || 'documento'}
+            </a>
+        );
+    }
+    return (
+        <div>
+            <button type="button" onClick={() => void load()} disabled={state === 'loading'} className={buttonClass}>
+                {state === 'loading'
+                    ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                    : message.message_type === 'audio'
+                        ? <Play size={12} aria-hidden="true" />
+                        : <ImageIcon size={12} aria-hidden="true" />}
+                {state === 'loading' ? 'Carregando…' : state === 'error' ? 'Tentar de novo' : label}
+            </button>
+            {state === 'error' && <p className={`mt-1 text-[10px] ${outgoing ? 'text-white/80' : 'text-red-500'}`}>{error}</p>}
+        </div>
+    );
+}
+
 function MessageBubble({
     message,
     onRetry,
+    fetchMedia,
 }: {
     message: WhatsappMessage;
     onRetry?: (message: WhatsappMessage) => void;
+    fetchMedia?: (message: WhatsappMessage) => Promise<WhatsappMediaFile>;
 }) {
     const outgoing = message.direction === 'out';
     const senderLabel = outgoing
@@ -192,6 +277,7 @@ function MessageBubble({
                         {senderLabel}
                     </p>
                     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{messageText(message)}</p>
+                    <MediaAttachment message={message} fetchMedia={fetchMedia} />
                     <span className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] ${outgoing ? 'text-white/70' : 'text-brand-muted'}`}>
                         {formatMessageTime(message.occurred_at)}
                         <MessageStatus message={message} />
@@ -1006,6 +1092,9 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                                     message={message}
                                                     onRetry={message.status === 'uncertain' && !retryingRequestId
                                                         ? (retryMessage) => void handleSafeRetry(retryMessage)
+                                                        : undefined}
+                                                    fetchMedia={tenantId && selectedInstanceName && selectedConversation
+                                                        ? (mediaMessage) => service.fetchMedia(tenantId, selectedInstanceName, selectedConversation.id, mediaMessage.id)
                                                         : undefined}
                                                 />
                                             </React.Fragment>

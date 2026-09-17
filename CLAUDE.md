@@ -1972,6 +1972,16 @@ renovação com mudança de plano:
 - `SUBSCRIPTION_CREATED` da renovação fica em TRIAGE (`student_subscription_operation_
   unresolved`): o vínculo já foi gravado pelo `finish … SYNCED`; é ruído, não perda.
 
+### Inbox do WhatsApp: áudio e foto abrem na plataforma ✅
+
+A inbox guarda só texto e tipo (`whatsapp_messages.message_type`); o arquivo fica no
+provedor. Botão **Ouvir áudio / Ver foto / Abrir documento** na bolha
+(`MediaAttachment`, `components/WhatsappInbox.tsx`) busca sob demanda pela ação
+`inbox/media` do `whatsapp-evolution-proxy` (`chat/getBase64FromMediaMessage`, o mesmo
+endpoint que o bot usa para transcrever), validando conversa + instância + escola e o
+tipo da mensagem; teto de 12 MB de base64. ⚠️ Mensagem antiga pode não ter mais mídia
+no provedor — a resposta é "não está mais disponível", não erro de sistema.
+
 ### Acompanhamento de aluno e professor — a manutenção de conversa ✅
 
 > Migration `20260917180000`, edge `care-sweeper` (cron `wisewolf-care-sweeper`, 15 min),

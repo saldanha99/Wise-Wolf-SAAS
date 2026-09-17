@@ -534,8 +534,13 @@ values (
     now() at time zone 'America/Sao_Paulo' - interval '1 hour',
     'YYYY-MM-DD'
   ),
+  -- Minuto :15 de propósito: os bookings do fixture ficam em :00/:30, e a
+  -- ocorrência aqui vira booking (linha ~708) no MESMO dia da semana. Com
+  -- `now() - 1 hour` cru, um release às 13:00 gerava "12:00" e batia no
+  -- uq_bookings_no_dup_active (aconteceu em 17/09/2026).
   to_char(
-    now() at time zone 'America/Sao_Paulo' - interval '1 hour',
+    date_trunc('hour', now() at time zone 'America/Sao_Paulo' - interval '1 hour')
+      + interval '15 minutes',
     'HH24:MI'
   ),
   'STUDENT',

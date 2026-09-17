@@ -39,6 +39,7 @@ const allowedActions = new Set([
   "inbox/sendText",
   "inbox/markRead",
   "inbox/setHandoff",
+  "inbox/media",
 ]);
 
 const allowedRoles = [
@@ -59,12 +60,23 @@ const inboxActions = new Set([
   "inbox/sendText",
   "inbox/markRead",
   "inbox/setHandoff",
+  "inbox/media",
 ]);
 const inboxEnabledActions = new Set([
   "inbox/sync",
   "inbox/sendText",
   "inbox/markRead",
   "inbox/setHandoff",
+  "inbox/media",
+]);
+// Mídia que a inbox sabe buscar no provedor (áudio, foto, vídeo, documento,
+// figurinha). Texto/reação/contato não têm arquivo.
+const inboxMediaTypes = new Set([
+  "audio",
+  "image",
+  "video",
+  "document",
+  "sticker",
 ]);
 const inboxRoles = new Set(["SUPER_ADMIN", "SCHOOL_ADMIN", "COORDINATOR"]);
 const operationalTenantStatuses = new Set(["active", "trial", "trialing"]);
@@ -1550,6 +1562,73 @@ export async function handleRequest(
         encodeURIComponent(instanceName)
       }?getParticipants=false`;
       break;
+    case "inbox/media": {
+      // A plataforma guarda só texto e tipo; o arquivo fica no provedor. A
+      // direção ouvia "[Áudio]" e via "[Imagem]" sem conseguir abrir
+      // (17/09/2026). Busca sob demanda, pelo mesmo endpoint que o bot usa
+      // para transcrever: a mensagem precisa ser desta conversa, desta
+      // instância e desta escola.
+      method = "POST";
+      const conversationId = limitedString(payload.conversationId, 80);
+      const messageId = limitedString(payload.messageId, 80);
+      if (!uuidPattern.test(conversationId) || !uuidPattern.test(messageId)) {
+        return json({
+          error: "Mensagem inv\u00e1lida",
+          code: "INVALID_MESSAGE",
+        }, 400);
+      }
+      const validated = await findInboxConversation(conversationId);
+      if (validated.failed) {
+        return json({
+          error: "N\u00e3o foi poss\u00edvel validar a conversa",
+          code: "CONVERSATION_VALIDATION_FAILED",
+        }, 503);
+      }
+      if (!validated.conversation) {
+        return json({
+          error: "Conversa n\u00e3o encontrada",
+          code: "CONVERSATION_NOT_FOUND",
+        }, 404);
+      }
+      const { data: mediaRow, error: mediaError } = await supabaseAdmin
+        .from("whatsapp_messages")
+        .select("id, provider_message_id, message_type, direction")
+        .eq("tenant_id", effectiveTenantId)
+        .eq("conversation_id", conversationId)
+        .eq("id", messageId)
+        .maybeSingle();
+      if (mediaError) {
+        return json({
+          error: "N\u00e3o foi poss\u00edvel localizar a mensagem",
+          code: "MESSAGE_LOOKUP_FAILED",
+        }, 503);
+      }
+      const providerMessageId = asString(mediaRow?.provider_message_id).trim();
+      if (
+        !mediaRow || !providerMessageId ||
+        !inboxMediaTypes.has(asString(mediaRow.message_type))
+      ) {
+        return json({
+          error: "Esta mensagem n\u00e3o tem arquivo para abrir",
+          code: "MESSAGE_HAS_NO_MEDIA",
+        }, 404);
+      }
+      integrationPurpose = "chat.history";
+      relativeEndpoint = `/chat/getBase64FromMediaMessage/${
+        encodeURIComponent(instanceName)
+      }`;
+      upstreamBody = JSON.stringify({
+        message: {
+          key: {
+            id: providerMessageId,
+            remoteJid: validated.conversation.remoteJid,
+            fromMe: mediaRow.direction === "out",
+          },
+        },
+        convertToMp4: false,
+      });
+      break;
+    }
     case "inbox/sync": {
       method = "POST";
       const conversationId = limitedString(payload.conversationId, 80);
@@ -1794,6 +1873,31 @@ export async function handleRequest(
     }
     case "group/fetchAllGroups":
       return json({ ok: true, groups: upstreamGroups(data) });
+    case "inbox/media": {
+      const root = isObject(data) ? data : {};
+      const base64 = asString(root.base64);
+      if (!base64) {
+        return json({
+          error: "O provedor n\u00e3o devolveu o arquivo",
+          code: "MEDIA_UNAVAILABLE",
+        }, 404);
+      }
+      // Teto para a resposta da função: foto de celular cabe; vídeo longo não
+      // (o cliente mostra o aviso e a pessoa abre no WhatsApp).
+      if (base64.length > 12_000_000) {
+        return json({
+          error: "Arquivo grande demais para abrir aqui",
+          code: "MEDIA_TOO_LARGE",
+        }, 413);
+      }
+      return json({
+        ok: true,
+        base64,
+        mimetype: asString(root.mimetype).split(";")[0] ||
+          "application/octet-stream",
+        fileName: asString(root.fileName).slice(0, 160) || null,
+      });
+    }
     case "inbox/sync": {
       let managementGroupJid: string | null = null;
       if (inboxSyncMode === "chats") {
