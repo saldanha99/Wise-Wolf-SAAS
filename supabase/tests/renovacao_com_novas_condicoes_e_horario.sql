@@ -71,7 +71,8 @@ insert into ids select 'new', private.issue_student_course_renewal_offer(
 select private.cancel_student_course_renewal_offer((select (v->>'id')::uuid from ids where k = 'old'), 'Superada por novas condições');
 select pg_temp.assert_true((select status = 'CANCELLED' and cancelled_at is not null from private.student_course_renewal_offers
   where id = (select (v->>'id')::uuid from ids where k = 'old')), 'oferta superada não foi cancelada');
-select pg_temp.assert_true((select public.sign_student_course_renewal(v->>'token', 'Aluna Renovacao Sintetica')->>'ok' = 'false' from ids where k = 'old'),
+select pg_temp.assert_true((select public.sign_student_course_renewal(v->>'token', 'Aluna Renovacao Sintetica',
+  (now() at time zone 'America/Sao_Paulo')::date + 1)->>'ok' = 'false' from ids where k = 'old'),
   'oferta cancelada ainda aceita assinatura');
 select pg_temp.assert_true((select public.get_student_course_renewal_public(v->>'token')->>'ok' = 'false' from ids where k = 'old'),
   'oferta cancelada ainda abre na página pública');
@@ -93,7 +94,8 @@ select pg_temp.assert_true((select jsonb_array_length(public.get_student_course_
   from ids where k = 'new'), 'página pública não mostra o horário');
 
 -- [5] Assinatura com aluna suspensa.
-select pg_temp.assert_true((select public.sign_student_course_renewal(v->>'token', 'Aluna Renovacao Sintetica')->>'ok' = 'true' from ids where k = 'new'),
+select pg_temp.assert_true((select public.sign_student_course_renewal(v->>'token', 'Aluna Renovacao Sintetica',
+  (now() at time zone 'America/Sao_Paulo')::date + 1)->>'ok' = 'true' from ids where k = 'new'),
   'assinatura da nova oferta falhou');
 select pg_temp.assert_true((select monthly_fee = 261 and class_frequency = '3x' and due_day = extract(day from (now() at time zone 'America/Sao_Paulo')::date + 1)
   from public.profiles where id = '7e180000-0000-4000-8000-000000000021') or extract(day from (now() at time zone 'America/Sao_Paulo')::date + 1) > 28,

@@ -331,7 +331,7 @@ select pg_temp.assert_true(
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
-          'public.sign_student_course_renewal(text,text)',
+          'public.sign_student_course_renewal(text,text,date)',
           'public.sign_student_plan_change(text,text)'
         ]::text[]) as reviewed(signature)
         where to_regprocedure(reviewed.signature) = procedure.oid
@@ -353,7 +353,7 @@ begin
     'public.respond_schedule_change_public(text,boolean)',
     'public.submit_lesson_quality_feedback(text,jsonb)',
     'public.get_student_course_renewal_public(text)',
-    'public.sign_student_course_renewal(text,text)',
+    'public.sign_student_course_renewal(text,text,date)',
     'public.resolve_public_tenant(text)',
     'public.hub_get_public_settings()'
   ]

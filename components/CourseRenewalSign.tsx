@@ -8,6 +8,7 @@ type Renewal = {
   monthly_fee_cents: number; classes_per_week: number; contract_start: string;
   first_due_date: string; last_due_date: string; service_end_date: string;
   status: 'PENDING_SIGNATURE' | 'SIGNED'; billing_status: string; expired: boolean;
+  dates_adjusted?: boolean;
   // Horário que o aluno assina junto (renovação com novas condições). Ausente = mantém a agenda atual.
   schedule?: RenewalSchedule | null;
   // Marca da escola (tenants.branding). Valor inválido é ignorado: a página cai no visual padrão.
@@ -111,7 +112,12 @@ export default function CourseRenewalSign() {
   })(); }, [token]);
   const sign = async () => {
     setSigning(true); setError('');
-    const response = await supabase.rpc('sign_student_course_renewal', { p_token: token, p_typed_signature: signature });
+    if (!data) { setSigning(false); setError('Não foi possível confirmar as datas.'); return; }
+    const response = await supabase.rpc('sign_student_course_renewal', {
+      p_token: token,
+      p_typed_signature: signature,
+      p_expected_first_due_date: data.first_due_date,
+    });
     setSigning(false);
     if (response.error || !response.data?.ok) { setError(response.data?.error || 'Não foi possível assinar.'); return; }
     setData(current => current ? { ...current, status: 'SIGNED', billing_status: String(response.data.billing_status || current.billing_status) } : current);
@@ -191,6 +197,11 @@ export default function CourseRenewalSign() {
           <CalendarDays size={18} className="mt-0.5 shrink-0 text-slate-400" />
           <p>São 6 parcelas mensais, da competência de {date(data.first_due_date)} até {date(data.last_due_date)}. A última parcela mantém as aulas até {date(data.service_end_date)}.</p>
         </div>
+        {data.dates_adjusted && (
+          <div role="status" className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
+            Como as aulas já começaram, o primeiro vencimento foi atualizado para uma data válida. Confira as datas acima antes de assinar.
+          </div>
+        )}
         <p className="mt-3 text-xs leading-relaxed text-slate-400">Esta renovação prorroga o contrato anterior. As demais cláusulas continuam válidas; somente vigência, parcelas, valor{schedule ? ', frequência e horário ficam confirmados' : ' e frequência ficam confirmados'} conforme o resumo acima.</p>
 
         {data.expired ? (

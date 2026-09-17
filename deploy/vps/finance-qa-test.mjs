@@ -30,6 +30,9 @@ const migrations = [
   'supabase/migrations/20260915042000_allow_suspended_course_renewal_recipients.sql',
   'supabase/migrations/20260915043000_skip_elapsed_course_renewal_milestones.sql',
   'supabase/migrations/20260915172000_renovacao_claim_sem_ambiguidade.sql',
+  'supabase/migrations/20260915174000_renovacao_com_novas_condicoes_e_horario.sql',
+  'supabase/migrations/20260915178000_renovacao_pagina_com_marca_da_escola.sql',
+  'supabase/migrations/20260917105957_renewal_due_date_roll_forward.sql',
 ];
 const tests = process.argv.slice(2);
 if (!tests.length) throw new Error('Informe pelo menos um arquivo supabase/tests/*.sql.');
@@ -47,7 +50,7 @@ for (const test of tests) {
   const source = readFileSync(resolve(root, test), 'utf8');
   if (/^\s*commit\s*;/im.test(source)) throw new Error('Teste não pode confirmar uma transação.');
   const body = source.replace(/^\s*(begin|rollback)\s*;[^\n]*$/gim, '');
-  const sql = `\nBEGIN;\nSET LOCAL statement_timeout='30s';\nSET LOCAL lock_timeout='5s';\n` +
+  const sql = `\n\\set VERBOSITY verbose\nBEGIN;\nSET LOCAL statement_timeout='30s';\nSET LOCAL lock_timeout='5s';\n` +
     `SET LOCAL idle_in_transaction_session_timeout='45s';\nSET LOCAL client_min_messages=warning;\n` +
     definitions + '\n' + definitions + '\n' + body + '\nROLLBACK;\n';
   const run = spawnSync('ssh', [...ssh,
