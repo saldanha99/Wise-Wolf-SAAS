@@ -1,3 +1,20 @@
+import type { CatalogPrice } from "./trial-closing.ts";
+import {
+  allowedPrices,
+  asksFullPriceList,
+  complainsAboutRepetition,
+  detectFrequencyRequest,
+  extractPricesBrl,
+  formatFrequencyAnswer,
+  formatPriceList,
+  hasForeignPrice,
+  hasUnansweredPriceQuestion,
+  isFollowUpNudge,
+  minimumCatalogPrice,
+  priceListAlreadySent,
+  TABLE_MIN_PRICES,
+} from "./lead-pricing.ts";
+
 export const CLASS_DURATION_MINUTES = 30;
 export const MINIMUM_PLAN_PRICE_BRL = 169;
 
@@ -97,12 +114,27 @@ const METODO_30_MIN =
   "e no contexto do aluno — vale para adulto e para criança. A experimental é " +
   "gratuita.";
 
+const METODO_30_MIN_CURTO =
+  "As aulas são de 30 minutos, 100% conversação, montadas na rotina e no " +
+  "contexto do aluno — e a experimental é gratuita.";
+
+/**
+ * Quando o pedido de experimental chega junto com a pergunta de preço, a
+ * resposta de preço substituía a promessa de verificar o professor — e o lead
+ * nunca ficava sabendo que o pedido tinha sido registrado (Diná, 07:14).
+ */
+const TRIAL_PROMISE =
+  "Sobre a experimental: vou verificar o professor desse horário e te confirmo " +
+  "hoje mesmo — se ninguém puder, eu te aviso e a gente combina outra opção 😊";
+
 export function applyCommercialReplyPolicy(opts: {
   history: HistoryMessage[];
   currentMessage: string;
   modelReply: string;
   trialRequested: boolean;
   commercialPolicy: CommercialPolicy | null;
+  /** `student_pricing_plans` da escola; sem ele, só o mínimo configurado vale. */
+  catalog?: CatalogPrice[];
   consultativeLead?: {
     goal?: string | null;
     level?: string | null;
@@ -114,65 +146,7 @@ export function applyCommercialReplyPolicy(opts: {
   const priceRequests = countPriceRequests(opts.history, opts.currentMessage);
   const leakedPrice = PRICE_IN_REPLY.test(opts.modelReply || "");
   if (opts.consultativeLead) {
-    const lead = opts.consultativeLead;
-    const onlyPrice =
-      /\b(?:so|somente|apenas)\b[^.!?\n]{0,35}\b(?:pre[cç]o|valor|valores|quanto|mensalidade)\b/i
-        .test(
-          opts.currentMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
-        );
-    // Até 16/09/2026 o valor só saía na SEGUNDA pergunta, ou quando objetivo e
-    // nível já estavam preenchidos. Na prática o lead perguntava o preço e ouvia
-    // "os valores variam conforme a quantidade de aulas" — que não é resposta.
-    // Decisão da direção: preço perguntado é preço respondido, sempre a partir do
-    // mínimo, e junto vem o porquê do método (é o que a direção fala no áudio).
-    const mayQuote = asksPrice;
-    const wrongDuration = opts.modelReply.split(/[.!?\n]/).some((sentence) =>
-      /\b(?:aula|aulas|experimental)\b/i.test(sentence) &&
-      hasWrongDuration(sentence, CLASS_DURATION_MINUTES)
-    );
-    const facts: string[] = [];
-    const asksClassDuration = asksDuration &&
-      /\b(?:aula|aulas|experimental)\b/i.test(opts.currentMessage);
-    if (wrongDuration || asksClassDuration) {
-      facts.push(METODO_30_MIN);
-    }
-    if (mayQuote) {
-      // O método explica o preço: sem ele, R$ 169 é só um número solto.
-      if (!facts.includes(METODO_30_MIN)) facts.push(METODO_30_MIN);
-      facts.push(
-        opts.commercialPolicy
-          ? `Os planos começam em R$ ${opts.commercialPolicy.minimumPlanPriceBrl} por mês e variam conforme a quantidade de aulas por semana.`
-          : "Não tenho um valor confirmado aqui. A coordenação pode te informar os planos e valores.",
-      );
-      return {
-        reply: facts.join("\n\n"),
-        policy: opts.commercialPolicy
-          ? "consultative_price_answer"
-          : "price_unavailable",
-      };
-    }
-    if (asksPrice || leakedPrice) {
-      facts.push(
-        "Os valores variam conforme a quantidade de aulas por semana.",
-      );
-      facts.push(
-        !lead.goal?.trim()
-          ? "Para te orientar melhor, qual é seu principal objetivo com o inglês?"
-          : !lead.level?.trim()
-          ? "E como você considera seu inglês hoje: iniciante, intermediário ou já consegue se comunicar?"
-          : "Podemos escolher a frequência de aulas de acordo com sua rotina e seu objetivo.",
-      );
-      return {
-        reply: facts.join("\n\n"),
-        policy: asksPrice
-          ? "understand_before_price"
-          : "blocked_unsolicited_price",
-      };
-    }
-    if (facts.length) {
-      return { reply: facts.join("\n\n"), policy: "corrected_duration" };
-    }
-    return { reply: opts.modelReply, policy: null };
+    return applyConsultativePolicy(opts, { asksPrice, asksDuration });
   }
   const wrongDuration = opts.commercialPolicy
     ? hasWrongDuration(
@@ -226,4 +200,177 @@ export function applyCommercialReplyPolicy(opts: {
     : null;
 
   return { reply: facts.join(" "), policy };
+}
+
+/**
+ * A atendente da Wise Wolf: a IA PROPÕE a frase, o código VETA o número.
+ *
+ * Até 17/09/2026 esta função SUBSTITUÍA a resposta do modelo por um bloco fixo
+ * ("As aulas são de 30 minutos, e isso é proposital… Os planos começam em
+ * R$ 169") toda vez que aparecia a palavra "valor" — o mesmo texto, sem a
+ * tabela, mesmo quando o lead já tinha dito quantas vezes por semana queria.
+ * Agora: resposta do modelo com valores do catálogo passa inteira; valor que
+ * não existe no catálogo é barrado; pergunta de preço sem número na resposta
+ * ganha o número; frequência dita pelo lead ganha a tabela, como a direção
+ * manda na mão.
+ */
+function applyConsultativePolicy(
+  opts: Parameters<typeof applyCommercialReplyPolicy>[0],
+  flags: { asksPrice: boolean; asksDuration: boolean },
+): { reply: string; policy: string | null } {
+  const lead = opts.consultativeLead!;
+  const catalog = (opts.catalog || []).filter((price) =>
+    Number(price.value) > 0
+  );
+  const hasCatalog = catalog.length > 0;
+  const minimum = minimumCatalogPrice(catalog) ??
+    opts.commercialPolicy?.minimumPlanPriceBrl ?? null;
+  const allowed = allowedPrices(catalog, minimum);
+  const message = opts.currentMessage || "";
+  const modelReply = String(opts.modelReply || "");
+
+  const frequency = detectFrequencyRequest(message);
+  const wantsList = asksFullPriceList(message);
+  const pendingPrice = hasUnansweredPriceQuestion(opts.history, isPriceRequest);
+  // "??" ou "se não me passar o valor não tenho interesse" depois de uma
+  // pergunta de preço sem resposta é a MESMA pergunta, mais brava.
+  const insists = pendingPrice &&
+    (isFollowUpNudge(message) || complainsAboutRepetition(message));
+  const asksPrice = flags.asksPrice || insists || frequency !== null;
+  const listSent = priceListAlreadySent(opts.history);
+  const modelPrices = extractPricesBrl(modelReply);
+  const foreign = hasForeignPrice(modelReply, allowed);
+
+  const metodoJaDito = opts.history.some((m) =>
+    m.role === "assistant" && /isso é proposital/.test(m.content || "")
+  );
+  const metodo = metodoJaDito ? METODO_30_MIN_CURTO : METODO_30_MIN;
+  const wrongDuration = modelReply.split(/[.!?\n]/).some((sentence) =>
+    /\b(?:aula|aulas|experimental)\b/i.test(sentence) &&
+    hasWrongDuration(sentence, CLASS_DURATION_MINUTES)
+  );
+  const asksClassDuration = flags.asksDuration &&
+    /\b(?:aula|aulas|experimental)\b/i.test(message);
+  const trialLine = opts.trialRequested &&
+      !/verific|confirmo|te aviso|professor/i.test(modelReply)
+    ? TRIAL_PROMISE
+    : null;
+  const withTrial = (parts: string[]): string =>
+    [...parts, ...(trialLine ? [trialLine] : [])].join("\n\n");
+
+  // Sem valor nenhum configurado, ninguém inventa: coordenação.
+  if (asksPrice && minimum === null) {
+    return {
+      reply: withTrial([
+        "Não tenho um valor confirmado aqui. A coordenação pode te informar os planos e valores.",
+      ]),
+      policy: "price_unavailable",
+    };
+  }
+
+  // 1) Frequência dita → valores daquela frequência + a tabela (uma vez).
+  if (frequency !== null && hasCatalog) {
+    const answer = formatFrequencyAnswer(catalog, frequency);
+    const modelOk = !foreign && modelPrices.length > 0 &&
+      (answer === null ||
+        catalog.some((p) =>
+          p.frequency === frequency && modelPrices.includes(Number(p.value))
+        ));
+    const head = modelOk
+      ? modelReply
+      : answer
+      ? answer
+      : `Não temos plano de ${frequency}x por semana na tabela — as opções são estas:`;
+    const parts = [head];
+    // O modelo pode ter escrito a tabela ele mesmo (com números certos):
+    // anexar a nossa em seguida seria a tabela duas vezes.
+    const modelWroteTable = modelOk && modelPrices.length >= TABLE_MIN_PRICES;
+    if (!listSent && !modelWroteTable) parts.push(formatPriceList(catalog));
+    else if (!modelOk) {
+      parts.push("A tabela completa é a que te mandei acima 😊");
+    }
+    return {
+      reply: withTrial(parts),
+      policy: modelOk
+        ? "frequency_price_answer_model"
+        : "frequency_price_answer",
+    };
+  }
+
+  // 2) Pediu a tabela, ou está cobrando um preço que ficou sem resposta.
+  if ((wantsList || insists) && hasCatalog) {
+    if (!listSent) {
+      const intro = insists
+        ? "Desculpa a demora com o valor! Segue a tabela completa:"
+        : "Claro! Segue a tabela completa (mensalidade, aulas de 30 minutos):";
+      return {
+        reply: withTrial([
+          intro,
+          formatPriceList(catalog),
+          "Quer que eu te explique alguma opção? 😊",
+        ]),
+        policy: "price_list",
+      };
+    }
+    if (!foreign && modelPrices.length > 0) {
+      return { reply: withTrial([modelReply]), policy: "price_list_model" };
+    }
+    return {
+      reply: withTrial([
+        "Os valores são os da tabela que te mandei acima 😊 Me diz quantas vezes por semana você pensa em fazer que eu te indico a melhor opção.",
+      ]),
+      policy: "price_list_repeat",
+    };
+  }
+
+  // 3) Pergunta de preço: a frase do modelo vale se os números forem do catálogo.
+  if (asksPrice) {
+    if (!foreign && modelPrices.length > 0 && !wrongDuration) {
+      return { reply: withTrial([modelReply]), policy: "price_answer_model" };
+    }
+    // A tabela já foi: repetir "começam em R$ 169" seria o robozinho de novo.
+    if (listSent) {
+      return {
+        reply: withTrial([
+          "Os valores são os da tabela que te mandei acima 😊 Me diz quantas vezes por semana você pensa em fazer que eu te indico a melhor opção.",
+        ]),
+        policy: "price_list_repeat",
+      };
+    }
+    const facts: string[] = [metodo];
+    facts.push(
+      `Os planos começam em R$ ${minimum} por mês e variam conforme a quantidade de aulas por semana.`,
+    );
+    facts.push(
+      !lead.goal?.trim()
+        ? "Para eu te indicar o plano certo: qual é seu principal objetivo com o inglês?"
+        : !lead.level?.trim()
+        ? "E como você considera seu inglês hoje: iniciante, intermediário ou já consegue se comunicar?"
+        : "Quantas vezes por semana você pensa em fazer? Assim te passo o valor certinho.",
+    );
+    return {
+      reply: withTrial(facts),
+      policy: foreign ? "blocked_foreign_price" : "consultative_price_answer",
+    };
+  }
+
+  // 4) Ninguém perguntou preço: número de fora do catálogo é barrado; do
+  //    catálogo passa (o lead pode estar continuando o assunto).
+  if (foreign) {
+    const facts = minimum === null
+      ? [
+        "Não tenho um valor confirmado aqui. A coordenação pode te informar os planos e valores.",
+      ]
+      : [
+        metodo,
+        `Os planos começam em R$ ${minimum} por mês e variam conforme a quantidade de aulas por semana.`,
+        "Podemos escolher a frequência de aulas de acordo com sua rotina e seu objetivo.",
+      ];
+    return { reply: withTrial(facts), policy: "blocked_unsolicited_price" };
+  }
+
+  if (wrongDuration || asksClassDuration) {
+    return { reply: withTrial([metodo]), policy: "corrected_duration" };
+  }
+  return { reply: opts.modelReply, policy: null };
 }

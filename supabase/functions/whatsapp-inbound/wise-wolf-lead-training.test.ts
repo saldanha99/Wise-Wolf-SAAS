@@ -23,9 +23,12 @@ const base = {
 // aconteceu com um lead real, que perguntou o custo e ouviu "os valores variam".
 // Agora preço perguntado é preço respondido, a partir do mínimo, junto com o
 // porquê do método. A descoberta continua, mas depois da resposta.
+// O modelo do `base` inventa R$ 999: desde 17/09/2026 a política registra que
+// barrou um valor de fora do catálogo (`blocked_foreign_price`) em vez do nome
+// genérico — a resposta ao lead é a mesma.
 Deno.test("primeira pergunta de preço já recebe o valor mínimo", () => {
   const result = applyCommercialReplyPolicy(base);
-  assertEquals(result.policy, "consultative_price_answer");
+  assertEquals(result.policy, "blocked_foreign_price");
   assertStringIncludes(result.reply, "R$ 169 por mês");
   // O valor inventado pelo modelo (R$ 999) nunca passa.
   assertEquals(result.reply.includes("999"), false);
@@ -50,7 +53,7 @@ Deno.test("insistência, pedido só de preço, qualificação e pós-aula recebe
     ]
   ) {
     const result = applyCommercialReplyPolicy({ ...base, ...options });
-    assertEquals(result.policy, "consultative_price_answer");
+    assertEquals(result.policy, "blocked_foreign_price");
     assertStringIncludes(result.reply, "R$ 169 por mês");
     assertEquals(result.reply.includes("999"), false);
   }

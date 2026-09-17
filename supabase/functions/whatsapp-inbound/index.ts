@@ -12,6 +12,7 @@ import {
   resolveTenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import {
+  type CatalogPrice,
   parseEnrollmentDuration,
   parseEnrollmentSlots,
   parseTrialDenial,
@@ -51,6 +52,7 @@ import {
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
 import { wiseWolfLeadTraining } from "./wise-wolf-lead-training.ts";
+import { catalogFactsForPrompt, mentionsSchedule } from "./lead-pricing.ts";
 import {
   isStudentBillingMethodChangeIntent,
   studentBillingMethodChangeReply,
@@ -5546,6 +5548,32 @@ async function dispatchTrial(
   return { dispatched, teachers: names, superseded };
 }
 
+/**
+ * `student_pricing_plans` da escola no formato que `trial-closing.ts` já usa.
+ * Mesmo recorte de `private.trial_closing_prices`: ativo, 1–6 aulas/semana,
+ * fidelidade 1/6/12, valor > 0. Falha de leitura vira catálogo vazio — a
+ * atendente cai no mínimo configurado em vez de derrubar a conversa.
+ */
+async function loadLeadPriceCatalog(
+  sb: any,
+  tenantId: string,
+): Promise<CatalogPrice[]> {
+  const { data, error } = await sb.from("student_pricing_plans")
+    .select("classes_per_week, fidelity_months, monthly_price")
+    .eq("tenant_id", tenantId).eq("active", true)
+    .gte("classes_per_week", 1).lte("classes_per_week", 6)
+    .in("fidelity_months", [1, 6, 12]).gt("monthly_price", 0);
+  if (error) {
+    console.warn("[sdr] catálogo de preços indisponível", error.message);
+    return [];
+  }
+  return (data || []).map((row: any) => ({
+    frequency: Number(row.classes_per_week),
+    duration: Number(row.fidelity_months),
+    value: Number(row.monthly_price),
+  }));
+}
+
 async function handleSDR(
   sb: any,
   instance: string,
@@ -5798,14 +5826,25 @@ async function handleSDR(
   const training = resolveAtendenteTraining(cfg);
   const commercialConfig = resolveCommercialPolicy(cfg);
   const leadTraining = wiseWolfLeadTraining(tenantId);
+  // O cardápio real da escola (`student_pricing_plans`). O modelo escreve a
+  // frase; a política (`commercial-response-policy.ts`) veta número que não
+  // esteja aqui. Sem catálogo, vale só o mínimo configurado.
+  const catalog = leadTraining ? await loadLeadPriceCatalog(sb, tenantId) : [];
+  const catalogFacts = catalogFactsForPrompt(catalog);
   const commercialRules = leadTraining
     ? `- A experimental Wise Wolf é gratuita e dura 30 minutos.
 - Entenda e personalize antes de convidar para a experiência. Na primeira pergunta de preço sem contexto, faça uma pergunta relevante; não conduza diretamente ao agendamento.
-- Com objetivo e nível conhecidos, ou se o lead insistir ou pedir somente preço, informe o valor configurado sem exigir experimental: ${
-      commercialConfig
-        ? `planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês`
-        : "valor indisponível; encaminhe à coordenação sem inventar"
-    }. Não invente tabela, descontos ou condições.
+- PREÇO: preço perguntado é preço respondido. Use SOMENTE a TABELA DE PLANOS abaixo — nunca invente valor, desconto, taxa ou condição que não esteja nela.${
+      catalogFacts
+        ? `\n  • Primeira pergunta de preço: diga que começa em R$ ${
+          Math.min(...catalog.map((p) => Number(p.value)))
+        }/mês e varia pela quantidade de aulas por semana, e pergunte quantas vezes por semana a pessoa pensa em fazer (se ainda não souber).\n  • Quando o lead disser a frequência (ex.: "4x por semana"), responda com os valores DAQUELA frequência nos planos de 6 e 12 meses, com naturalidade, como uma pessoa faria. O sistema anexa a tabela completa em seguida — não a repita.\n  • Se ele pedir a tabela, a lista, "estimativa de valores" ou "todos os planos", o sistema manda a tabela completa; você só apresenta em uma frase curta.\n  • O mensal (sem fidelidade) só entra se perguntarem por opção sem fidelidade.\nTABELA DE PLANOS (mensalidade; aulas de 30 minutos):\n${catalogFacts}`
+        : commercialConfig
+        ? ` Valor configurado: planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês.`
+        : " Valor indisponível: encaminhe à coordenação sem inventar."
+    }
+- NUNCA repita uma frase que você já mandou nesta conversa (o histórico mostra o que foi dito). Se o lead responder "??" ou reclamar de repetição, responda de outro jeito e vá direto ao ponto que ficou sem resposta.
+- schedule_trial só é preenchido quando o lead escolhe ou muda um horário NESTA mensagem. Se o horário já foi pedido antes e a mensagem atual é sobre outra coisa (preço, dúvida, frequência), deixe schedule_trial=null.
 - Siga a BASE OBRIGATÓRIA DE ATENDIMENTO WISE WOLF abaixo.`
     : commercialConfig
     ? `- TODAS as aulas duram ${commercialConfig.classDurationMinutes} minutos, inclusive a experimental. NUNCA diga outra duração.\n- Na PRIMEIRA pergunta sobre preço, NÃO informe nenhum valor: explique que os planos variam e conduza para a aula experimental gratuita.\n- Somente se o lead INSISTIR em preço numa mensagem posterior, informe apenas: \"planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês\". NUNCA liste a tabela completa e NUNCA informe outro valor.\n- Se perguntarem sobre troca de forma de pagamento (ex.: de Pix para Cartão de Crédito), explique que o aluno pode alterar com total segurança diretamente pelo Portal do Aluno (no menu Financeiro > Forma de Pagamento > Cartão de crédito), sem passar dados de cartão no WhatsApp.`
@@ -5952,6 +5991,7 @@ async function handleSDR(
     modelReply: reply,
     trialRequested: Boolean(st?.date && st?.time),
     commercialPolicy: commercialConfig,
+    catalog,
     consultativeLead: leadTraining
       ? {
         goal: freshLead.goal,
@@ -6006,10 +6046,15 @@ async function handleSDR(
             opportunity_id: decision.trial.opportunityId,
             superseded: fechadas,
           };
-          reply =
-            `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${
-              formatSlot(decision.slot)
-            } 😊 Qualquer coisa é só me avisar por aqui!`;
+          // Mesmo eco do `schedule_trial` da cobertura de `alreadyPending`:
+          // só quem falou de horário ouve a confirmação; pergunta de preço
+          // fica com a resposta de preço.
+          if (mentionsSchedule(text)) {
+            reply =
+              `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${
+                formatSlot(decision.slot)
+              } 😊 Qualquer coisa é só me avisar por aqui!`;
+          }
         } else if (decision.action === "confirm") {
           // A aula já tem dono; qualquer leilão antigo do mesmo lead precisa
           // morrer antes de alguém aceitar uma duplicata enquanto aguardamos.
@@ -6134,8 +6179,14 @@ async function handleSDR(
               );
             }
           } else if (res.alreadyPending) {
-            reply =
-              "Esse horário já está aguardando o aceite de um professor. O prazo de 60 minutos continua contando desde o primeiro pedido; eu retorno por aqui se precisarmos de outra opção.";
+            // O modelo repete `schedule_trial` do pedido anterior mesmo quando a
+            // mensagem é sobre outra coisa. A Diná perguntou "4 vezes na semana
+            // qual valor?" e ouviu isto duas vezes (17/09/2026). Só quem está
+            // falando de horário recebe o aviso; o resto fica com a resposta.
+            if (mentionsSchedule(text)) {
+              reply =
+                "Esse horário já está aguardando o aceite de um professor. O prazo de 60 minutos continua contando desde o primeiro pedido; eu retorno por aqui se precisarmos de outra opção.";
+            }
           } else if (res.directed) {
             reply =
               "Já existe uma solicitação anterior aguardando confirmação. Este novo horário não foi registrado e nenhuma aula foi agendada; a coordenação vai falar com você para ajustar com segurança.";

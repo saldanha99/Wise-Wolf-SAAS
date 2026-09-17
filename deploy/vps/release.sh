@@ -524,7 +524,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
+  supabase/functions/whatsapp-inbound/commercial-response-policy.ts \
   supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -732,6 +735,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
   supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
