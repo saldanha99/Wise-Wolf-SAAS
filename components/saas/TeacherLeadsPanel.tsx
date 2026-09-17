@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import {
     User, Mail, Phone, FileText, CheckCircle, X, Loader2,
     Globe, Zap, TrendingUp, Star, Building2, ArrowRight,
-    AlertTriangle, Copy, Check, RefreshCw, ExternalLink,
+    AlertTriangle, Copy, RefreshCw, ExternalLink,
     ChevronDown, Filter
 } from 'lucide-react';
 
@@ -92,8 +92,8 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
 
     const [step, setStep] = useState<'form' | 'done'>('form');
     const [loading, setLoading] = useState(false);
-    const [copied, setCopied] = useState(false);
-    const [inviteLink, setInviteLink] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [result, setResult] = useState<{ tenantId: string; ownerEmail: string; activation: 'SENT' | 'FAILED'; message: string } | null>(null);
     const [form, setForm] = useState({
         schoolName: lead.school_name || `Escola de ${displayName}`,
         slug: generateSlug(lead.school_name || displayName),
@@ -102,61 +102,49 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
         sendTrial: true,
     });
 
+    // A criação do tenant, a conta do dono e o e-mail de ativação acontecem no
+    // servidor (`activate-teacher-tenant`). Antes o painel inseria o tenant pelo
+    // navegador e mostrava um link `/teacher-onboarding?tenant=…` que a tela
+    // recusa — o professor recebia um link morto.
     const handleActivate = async () => {
         setLoading(true);
+        setError(null);
         try {
-            // 1. Criar tenant
-            const { data: tenant, error: tenantErr } = await supabase
-                .from('tenants')
-                .insert({
-                    name: form.schoolName,
+            const { data, error: invokeError } = await supabase.functions.invoke('activate-teacher-tenant', {
+                body: {
+                    leadId: lead.id,
+                    planId: form.planId,
                     slug: form.slug,
-                    domain: `${form.slug}.wisewolf.com.br`,
-                    owner_email: form.adminEmail,
-                    plan_id: form.planId || null,
-                    saas_status: form.sendTrial ? 'trial' : 'active',
-                    trial_ends_at: form.sendTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
-                    tenant_type: 'teacher',
-                    parent_tenant_id: lead.parent_tenant_id || null,
-                })
-                .select('id,slug,trial_ends_at')
-                .single();
-
-            if (tenantErr) throw tenantErr;
-
-            // 2. Criar saas_subscription
-            if (form.planId) {
-                await supabase.from('saas_subscriptions').insert({
-                    tenant_id: tenant.id,
-                    plan_id: form.planId,
-                    status: form.sendTrial ? 'trial' : 'active',
-                    trial_ends_at: form.sendTrial ? tenant.trial_ends_at : null,
-                    parent_tenant_id: lead.parent_tenant_id || null,
-                });
+                    schoolName: form.schoolName,
+                    ownerEmail: form.adminEmail.trim().toLowerCase(),
+                    trialDays: form.sendTrial ? 14 : 0,
+                },
+            });
+            let payload = data as Record<string, unknown> | null;
+            if (invokeError) {
+                // O corpo do erro (409/500) traz a mensagem em português.
+                const response = (invokeError as { context?: Response }).context;
+                if (response && typeof response.json === 'function') {
+                    payload = await response.json().catch(() => null);
+                }
+                if (!payload?.error) throw new Error(invokeError.message || 'Falha ao ativar.');
             }
-
-            // 3. Atualizar lead
-            await supabase.from('saas_leads').update({
-                status: 'CLOSED',
-                converted_tenant_id: tenant.id,
-            }).eq('id', lead.id);
-
-            // 4. Gerar link de acesso
-            const link = `${window.location.origin}/teacher-onboarding?tenant=${tenant.slug}&email=${encodeURIComponent(form.adminEmail)}`;
-            setInviteLink(link);
+            if (!payload || payload.ok !== true) {
+                throw new Error(typeof payload?.error === 'string' ? payload.error : 'Falha ao ativar.');
+            }
+            setResult({
+                tenantId: String(payload.tenantId || ''),
+                ownerEmail: String(payload.ownerEmail || form.adminEmail),
+                activation: payload.activation === 'FAILED' ? 'FAILED' : 'SENT',
+                message: String(payload.message || ''),
+            });
             setStep('done');
             onSuccess();
-        } catch (err: any) {
-            alert('Erro ao ativar: ' + err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Erro ao ativar.');
         } finally {
             setLoading(false);
         }
-    };
-
-    const copyLink = () => {
-        navigator.clipboard.writeText(inviteLink);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
     };
 
     return (
@@ -186,10 +174,9 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                             />
                         </FormField>
 
-                        <FormField label="Subdomínio (slug)">
+                        <FormField label="Identificador do ambiente (slug)">
                             <div className="flex items-center bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5">
                                 <Globe size={14} className="text-slate-500 mr-2 shrink-0" />
-                                <span className="text-slate-500 text-sm">wisewolf.com.br/</span>
                                 <input
                                     value={form.slug}
                                     onChange={e => setForm({ ...form, slug: e.target.value })}
@@ -212,7 +199,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                                 onChange={e => setForm({ ...form, planId: e.target.value })}
                                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
-                                <option value="">Sem plano (manual)</option>
+                                {teacherPlans.length === 0 && <option value="">Nenhum plano de professor ativo</option>}
                                 {teacherPlans.map(p => (
                                     <option key={p.id} value={p.id}>
                                         {p.name} — R${p.price}/mês
@@ -233,12 +220,16 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
 
                         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex gap-2">
                             <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
-                            <p className="text-xs text-amber-300">Um novo tenant isolado será criado com a marca do professor. O link de acesso será gerado ao confirmar.</p>
+                            <p className="text-xs text-amber-300">Um novo tenant isolado será criado para o professor. Ao confirmar, ele recebe por e-mail o link para definir a senha e entrar.</p>
                         </div>
+
+                        {error && (
+                            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-300">{error}</div>
+                        )}
 
                         <button
                             onClick={handleActivate}
-                            disabled={loading || !form.schoolName || !form.adminEmail}
+                            disabled={loading || !form.schoolName || !form.adminEmail || !form.planId}
                             className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:from-indigo-500 hover:to-purple-500"
                         >
                             {loading ? <><Loader2 className="animate-spin" size={16} /> Criando...</> : <><CheckCircle size={16} /> Ativar Mini-Escola</>}
@@ -250,14 +241,18 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                             <CheckCircle size={32} className="text-emerald-400" />
                         </div>
                         <h4 className="text-lg font-black text-white mb-2">Mini-escola ativada!</h4>
-                        <p className="text-sm text-slate-400 mb-6">Envie este link para <b className="text-white">{form.adminEmail}</b> completar o cadastro.</p>
-
-                        <div className="bg-slate-800 rounded-xl p-3 flex items-center gap-2 mb-4 text-left">
-                            <code className="text-xs text-indigo-300 flex-1 break-all">{inviteLink}</code>
-                            <button onClick={copyLink} className="shrink-0 p-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors text-slate-300">
-                                {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                            </button>
-                        </div>
+                        <p className="text-sm text-slate-400 mb-4">
+                            Ambiente <code className="text-indigo-300">{result?.tenantId}</code> criado.
+                        </p>
+                        {result?.activation === 'SENT' ? (
+                            <p className="text-sm text-slate-300 mb-6">
+                                <b className="text-white">{result.ownerEmail}</b> recebeu o e-mail <i>“Ative seu acesso à Wise Wolf”</i> com o link para definir a senha.
+                            </p>
+                        ) : (
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300 mb-6 text-left">
+                                O ambiente foi criado, mas o e-mail de ativação não saiu. Feche e clique em <b>Ativar</b> de novo para reenviar — o tenant não é duplicado.
+                            </div>
+                        )}
 
                         <button onClick={onClose} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl transition-colors">
                             Fechar

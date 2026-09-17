@@ -83,6 +83,68 @@ curto, sem seções). Celular não muda: gaveta + barra inferior.
 
 ---
 
+## Wise Wolf Hub — a Biblioteca é o produto de entrada para o professor autônomo ✅
+
+> **Decisão da direção (17/09/2026):** o Hub vende **estrutura de materiais por nicho × nível**
+> para o professor autônomo usar com os alunos dele (Professor Essencial R$59 = só biblioteca);
+> Educador IA/Wolfie são expansão e o **tenant (Professor Negócio) é o upsell**. Todo o acervo
+> é de autoria da Wise Wolf, liberado para licenciamento por assinatura.
+
+**Estado medido antes:** catálogo "aberto" desde 26/08 com **1 item** (e a prévia dele era outro
+PDF); 2 contas de QA, 0 trials, 0 checkouts, 0 leads na história. Estava no ar sem estoque.
+
+**O trilho de publicação (não invente outro):** `pedagogical_materials` → consentimento do diretor
+(`hub_catalog_opt_in`, `hub_rights_basis`, `hub_rights_declaration`, `hub_preview_source_path`) →
+verificação por **outro** ator (`hub_commercial_approved`, `hub_rights_verified_by`, SUPER_ADMIN)
+→ edge `sync-hub-material` copia FULL e PREVIEW para o bucket privado `hub-library` → trigger
+`hub_sync_pedagogical_material_catalog` espelha em `hub_content_items` (ativo/publicado). Guardas:
+`hub_material_object_has_provenance` (o arquivo tem de estar em `materials` sob
+`<tenant>/<uid>/<uuid>.pdf` com `storage.objects.owner_id` de perfil do tenant),
+`hub_validate_material_publication_sources`, e `private.hub_catalog_is_ready()` (fail-closed).
+
+- ✅ **35 materiais publicados em 17/09/2026** pelo trilho acima, com prévia GERADA
+  (2–3 páginas iniciais, marca d'água "AMOSTRA · WISE WOLF HUB" + rodapé; script em sessão, não
+  no repo). Curadoria feita por SQL com `auth.uid()` nulo (caminho previsto para service jobs),
+  `requested_by` = diretor, `verified_by` = SUPER_ADMIN, declaração cita a autorização da direção.
+- ⚠️ **Upload com service role não carrega `owner_id`** — a provenance falha. Depois de subir a
+  prévia, `update storage.objects set owner_id = <uid do diretor>` para os objetos novos.
+- ⚠️ **`sync-hub-material` processa 10 por chamada** e o worker morre em 150 s: chame com
+  `materialIds` em lotes de ≤5 (35 itens = 7 chamadas, todas < 10 s).
+- ⚠️ **Nicho NÃO carrega nível.** `B2_GERAL`, `BUSINESS_ENGLISH_B2`, `TOEFL_TRIAL_LESSON_B1B2` e
+  `B1_TOEFL` foram remapeados para `GENERAL`/`BUSINESS`/`TOEFL_IELTS` (e apagados de
+  `tenant_niches`); o Hub só tem rótulo para os nichos base (`NICHE_META` do
+  `MaterialsLibrary`) — chave custom apareceria crua no catálogo.
+- **Livros no Hub** (`hub_collections`) não nascem sozinhos: espelhar `pedagogical_collections`
+  por título e gravar `collection_id`/`part_number` nos itens, senão o modo "Pastas" não agrupa.
+  Hoje: BOOK A1 (5), BOOK A2 (3), BOOK B2 (5), Business English B2 (8), KIDS A1 (5 — o "PART 5"
+  da escola é o mesmo arquivo do PART 4, ficou fora), TOEFL B1 (6) + avulsos.
+- **Fora do catálogo de propósito:** "Teste" (é o onboarding interno de professores),
+  "COMO MONTAR AULA?" (metodologia interna) e o KIDS PART 5 duplicado. Os 18 itens inativos sem
+  fonte (material apagado da escola depois do espelho de julho, ex.: Travel/Tech A1) ainda têm o
+  PDF em `hub-library/pedagogical/<id>/material.pdf` — recuperáveis, não publicados.
+- **Item órfão "English for IT Students"** (fonte apagada) foi mantido: prévia própria em
+  `pedagogical/b727e699…/preview.pdf`, nicho TECH.
+- **Lacunas de estoque** (o que a promessa "por nicho e nível" ainda não cobre): Kids acima de
+  A1, Business abaixo de B2, Viagem/Tech/Medicina, C1/C2, Geral B1. Cobrir isso é papel do
+  gerador de material (Educador IA) — ainda só o planner de aula está ligado no Hub.
+
+**Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
+(lead_type `teacher`). Migration `20260918010000`:
+- trigger `zzz_saas_lead_notify_management` avisa o grupo da Gestão da escola operadora
+  (`hub_settings.metadata.salesNoticeTenantId`, dado e não código) pela `notification_queue`
+  (MANAGEMENT_NOTICE, idempotente por `saas_lead:<id>`); falha no aviso nunca derruba o lead;
+- `convert_teacher_lead_to_tenant` (service_role, idempotente) cria tenant `teacher` em trial +
+  `saas_subscriptions`; a edge **`activate-teacher-tenant`** (SUPER_ADMIN) chama a RPC, cria a
+  conta SCHOOL_ADMIN do dono e manda o e-mail "Ative seu acesso à Wise Wolf"
+  (`sendAccountActivation`, o mesmo de professor/aluno). `TeacherLeadsPanel` usa isso.
+- ⚠️ O painel antes inseria o tenant pelo navegador e mostrava `/teacher-onboarding?tenant=…`,
+  que `TeacherOnboarding` recusa (só aceita `?offer=<uuid>`) — link morto. Não volte a gerar
+  link ali; a ativação é o e-mail.
+- E-mail que já pertence a professor/aluno/diretor de outro ambiente é **recusado**
+  (`OWNER_EMAIL_IN_USE`); só conta NON_STUDENT (vinda do Hub) evolui para dona do tenant.
+
+---
+
 ## Wolfie: gratuito x premium — a VOZ é a fronteira ✅
 
 > **A separação não é de tela, é de servidor.** Antes existiam dois blocos na

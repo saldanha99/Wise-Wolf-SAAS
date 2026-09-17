@@ -905,6 +905,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/create-student-account/index.ts \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/create-teacher-account/index.ts \
+  supabase/functions/activate-teacher-tenant/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/create-asaas-subaccount/index.ts \
   supabase/functions/transfer-teacher-pay/index.ts \
@@ -1349,6 +1350,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917190000_professor_troca_horario_pelo_whatsapp.sql"
   "supabase/migrations/20260917200000_cobertura_com_pacote_do_aluno.sql"
   "supabase/migrations/20260918000000_teto_e_aquecimento_do_whatsapp.sql"
+  "supabase/migrations/20260918010000_lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1476,6 +1478,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/tour_de_novidades_por_usuario.sql"
   "supabase/tests/cobertura_de_aula_que_ja_aconteceu.sql"
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
+  "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1547,6 +1550,7 @@ HARDENED_FUNCTIONS=(
   create-saas-checkout
   create-student-account
   create-teacher-account
+  activate-teacher-tenant
   admin-update-subscription
   create-asaas-subaccount
   send-whatsapp
