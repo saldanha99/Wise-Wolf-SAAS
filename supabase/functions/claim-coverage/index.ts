@@ -438,7 +438,22 @@ async function handlePost(req: Request): Promise<Response> {
       );
   }
   if (result.ok === true) {
-    if (result.already !== true) await notifyAfterClaim(supabase, result);
+    if (result.already !== true) {
+      await notifyAfterClaim(supabase, result);
+      // Contato do aluno + últimas aulas para quem cobre, e aviso à família
+      // (o grupo já foi avisado acima). Melhor esforço.
+      if (result.coverage_id) {
+        const { error: briefError } = await supabase.rpc(
+          "coverage_briefing_enqueue",
+          { p_coverage_id: String(result.coverage_id), p_notify_group: false },
+        );
+        if (briefError) {
+          console.warn("[claim-coverage] pacote do aluno não enfileirado", {
+            code: briefError.code,
+          });
+        }
+      }
+    }
     const date = formatDate(result.class_date) ?? "";
     const time = formatTime(result.class_time) ?? "";
     return respond(

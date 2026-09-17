@@ -1347,6 +1347,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917170000_reativacao_pelo_painel_com_renovacao_sincronizada.sql"
   "supabase/migrations/20260917180000_acompanhamento_de_aluno_e_professor.sql"
   "supabase/migrations/20260917190000_professor_troca_horario_pelo_whatsapp.sql"
+  "supabase/migrations/20260917200000_cobertura_com_pacote_do_aluno.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

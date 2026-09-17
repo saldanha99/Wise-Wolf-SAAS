@@ -106,3 +106,26 @@ export function absenceConfirmationAnswer(text: string): "yes" | "no" | null {
   }
   return null;
 }
+
+/**
+ * Resposta a um convite de cobertura pelo texto ("Consigo sim", "aceito",
+ * "não consigo", "infelizmente não"). Mais generoso que o sim/não da falta,
+ * porque o professor responde como quem conversa com a coordenação.
+ */
+export function coverageInviteAnswer(text: string): "yes" | "no" | null {
+  const t = normalizeAbsenceText(text);
+  if (
+    /^(nao|n|nn)\b/.test(t) ||
+    /^(infelizmente|nao consigo|nao posso|nao vou|nao da|nao tenho como|dessa vez nao)\b/
+      .test(t) ||
+    /\b(nao (consigo|posso|vou conseguir|vou poder|da|tenho como))\b/.test(t)
+  ) return "no";
+  // "Combinado"/"ok"/"perfeito" são acuso de recebimento, não aceite: registrar
+  // cobertura (e avisar a família) por um "ok" seria pior que perguntar.
+  if (
+    /^(sim|s|ss|confirmo|confirma|pode sim|claro|com certeza|consigo|aceito|topo|fechado|fechou|bora|posso|pode ser|vou sim|dou|assumo|eu pego|pego)\b/
+      .test(t) ||
+    /\b(consigo sim|posso sim|aceito sim|pode deixar|deixa comigo)\b/.test(t)
+  ) return "yes";
+  return null;
+}

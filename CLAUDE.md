@@ -1020,6 +1020,45 @@ vigência amanhã, choque checado, Gestão avisada) — o bot não inventou regr
   acompanhamento. `fold_accents` já existia no banco (usada pela RPC da tela) — não crie
   outra função de tirar acento.
 
+### Cobertura aceita traz o pacote do aluno; o substituto responde "sim" por texto (migration `20260917200000`) ✅
+
+A coordenação negociava com a Bruna na mão ("10:30 você consegue?" / "Consigo sim" / "vou te
+mandar o contato e o conteúdo"). Hoje, ao ACEITAR uma cobertura — pelo link
+(`accept-coverage` → `resolve_coverage_invite_and_brief`), pela disputa do dia
+(`claim-coverage` → `coverage_briefing_enqueue`) ou **respondendo "consigo sim"/"não consigo"
+ao número da escola** (`handleTeacherCoverageReply`, com `teacher_pending_coverage_invites`) —
+`coverage_briefing_enqueue` põe na `notification_queue` (instância central, kind
+`MANAGEMENT_NOTICE`, idempotente por `coverage:<id>:briefing|family|group`): o pacote para o
+substituto (contato do aluno em `wa.me/`, responsável se kids, última avaliação de nível do
+professor, objetivo, **últimas 3 aulas com "próx." e lição**), o aviso à família de quem dá
+a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
+- ⚠️ `profiles.level` é nível de **gamificação** (XP), não CEFR — o briefing usa
+  `class_logs.assessment_level` mais recente. Aula de 1 h vira dois lançamentos iguais: linha
+  repetida é pulada.
+- ⚠️ "Combinado"/"ok"/"perfeito" **não** aceitam cobertura (`coverageInviteAnswer`): são acuso
+  de recebimento; registrar cobertura e avisar a família por um "ok" seria pior que perguntar.
+  Vários convites pendentes: o professor escolhe pelo horário ou responde "todas".
+- ⚠️ `private.management_group_default_actor` nasceu com dono `supabase_admin` e ACL só para
+  ele; função com dono `postgres` que a chama precisa do `grant execute … to postgres` (feito
+  nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
+  booking — continua manual.
+
+### A atendente respeita a janela de horário do lead — e o código veta horário inventado ✅
+
+A Ana Carolina (17/09/2026) disse "sábados ou dias de semana depois das 18h". Nenhum professor
+tem sábado na grade; a atendente ofereceu "2026-09-19 às 09:00" (inventado, data crua), o
+leilão falhou e a alternativa foi 10:30 num dia útil. Em `_shared/sdr-scheduling.ts`:
+`parseAvailabilityWindows` (dias × faixa: "depois das 18h", "antes das 12", "entre 19h e 21h",
+"de manhã", "fim de semana", "dias de semana", nomes de dia; negação não vira janela; hora com
+data por perto é escolha, não disponibilidade) → a lista dada ao modelo é filtrada pela janela
+(`filterSlotsByWindows`), o prompt recebe `availabilityFacts` ("aos sábados → NENHUM professor
+livre; seg–sex depois das 18:00 → 58 opções"), `rankTrialAlternatives` trata a janela como
+filtro duro quando há opção dentro dela, e `replyOffersUnknownSlot` **veta** resposta que
+oferece data+horário fora da lista livre (vira `unavailablePreferenceNote` + alternativas
+reais). Datas saem como "sex 18/09 às 18:00" (`formatSlotBr`/`humanizeIsoDates`).
+⚠️ O veto não roda com experimental já marcada (`activeTrial`): o modelo cita o horário dela,
+que não está na lista livre.
+
 ### Folha do mês por professor no grupo (migrations `20260916250000`/`260000`) ✅
 
 `gestao_payroll_summary(tenant, mês)` lê `teacher_closings` (a folha oficial) e as

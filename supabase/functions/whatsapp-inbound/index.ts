@@ -79,6 +79,7 @@ import {
 } from "./billing-method-intent.ts";
 import {
   absenceConfirmationAnswer,
+  coverageInviteAnswer,
   detectTeacherAbsenceIntent,
 } from "./teacher-absence.ts";
 import {
@@ -131,9 +132,15 @@ import { enqueueSdrInput, runSdrWork } from "./sdr-work.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
   alternativeQuestion,
+  availabilityFacts,
   availableMenu,
+  filterSlotsByWindows,
+  humanizeIsoDates,
   loadAvailableTrialSlots,
+  parseAvailabilityWindows,
   rankTrialAlternatives,
+  replyOffersUnknownSlot,
+  unavailablePreferenceNote,
 } from "../_shared/sdr-scheduling.ts";
 import {
   canUseManagementTool,
@@ -1617,6 +1624,113 @@ async function handleTeacherScheduleChangeMessage(
 }
 
 /**
+ * COBERTURA ACEITA POR TEXTO (17/09/2026). A coordenação negociava a cobertura
+ * com a Bruna na mão ("10:30 você consegue?" / "Consigo sim") e depois
+ * mandava contato e conteúdo. Com convite pendente para o professor, o
+ * "sim"/"não" dele no número da escola resolve o convite pela MESMA RPC do
+ * link, e o pacote do aluno sai pela fila. Vários convites pendentes: ele
+ * escolhe pelo horário ou responde "todas". Devolve true quando tratou.
+ */
+async function handleTeacherCoverageReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const answer = coverageInviteAnswer(text);
+  const wantsAll = /\btodas?\b|\bambas\b|\bas duas\b/i.test(text);
+  const times = [...text.matchAll(/\b(\d{1,2})[:h](\d{2})\b/g)].map((m) =>
+    `${m[1].padStart(2, "0")}:${m[2]}`
+  );
+  if (!answer && !wantsAll && !times.length) return false;
+  const { data: raw } = await sb.rpc("teacher_pending_coverage_invites", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const invites = (Array.isArray(raw) ? raw : []) as Array<
+    Record<string, unknown>
+  >;
+  if (!invites.length) return false;
+
+  let chosen: Array<Record<string, unknown>> = [];
+  if (invites.length === 1) {
+    if (!answer) return false;
+    chosen = invites;
+  } else if (wantsAll) {
+    chosen = invites;
+  } else if (times.length) {
+    chosen = invites.filter((inv) =>
+      times.includes(String(inv.class_time || ""))
+    );
+    if (!chosen.length) return false;
+  } else {
+    // "sim" solto com mais de um convite: pergunta qual, sem chutar.
+    const list = invites.map((inv) =>
+      `• ${String(inv.when)} — ${String(inv.student_name)} (de ${
+        String(inv.original_teacher_name).split(/\s+/)[0]
+      })`
+    ).join("\n");
+    const reply =
+      `Você tem ${invites.length} convites de cobertura abertos:\n${list}\n\nQual você aceita? Responda o horário (ex.: *${
+        String(invites[0].class_time)
+      }*) ou *todas*.`;
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "coverage", "out", reply, {
+      teacher_id: profile.id,
+      entregue,
+      msg_id: msgId,
+    });
+    return true;
+  }
+
+  const accept = answer !== "no";
+  await logMsg(sb, tenantId, phone, "coverage", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    coverage_ids: chosen.map((c) => String(c.coverage_id)),
+    accept,
+  });
+  const lines: string[] = [];
+  for (const inv of chosen) {
+    const { data: result, error } = await sb.rpc(
+      "resolve_coverage_invite_and_brief",
+      { p_token: String(inv.token), p_accept: accept },
+    );
+    const label = `${String(inv.when)} — ${String(inv.student_name)}`;
+    if (error || !result || result.ok !== true) {
+      const code = String(result?.error || error?.code || "");
+      console.error("[coverage] aceite por texto falhou", {
+        coverageId: inv.coverage_id,
+        code,
+      });
+      lines.push(
+        code === "substituto_nao_esta_mais_disponivel"
+          ? `⚠️ ${label}: sua grade não tem esse horário livre — a coordenação vai ajustar por aqui.`
+          : code === "conflito_criado_apos_o_convite"
+          ? `⚠️ ${label}: apareceu outra aula sua nesse horário; não registrei.`
+          : `⚠️ ${label}: não consegui registrar agora, a coordenação vai ver.`,
+      );
+      continue;
+    }
+    lines.push(
+      accept
+        ? `✅ ${label}: cobertura registrada. Já te mando o contato do aluno e o conteúdo das últimas aulas.`
+        : `❌ ${label}: recusa registrada, a coordenação vai procurar outro professor.`,
+    );
+  }
+  const reply = lines.join("\n");
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "coverage", "out", reply, {
+    teacher_id: profile.id,
+    entregue,
+  });
+  return true;
+}
+
+/**
  * Professor escrevendo para a instância da escola que não vai dar aula.
  * Reconhece → lista as aulas do dia → pergunta "confirma?" → no SIM abre a
  * cobertura do dia em nome dele (p_source='teacher'), avisa o grupo da Gestão
@@ -2360,7 +2474,7 @@ async function createCoverageInviteDirect(
   const message =
     `Olá ${coverFirstName}! 🐺\n\nA coordenação precisa de uma *cobertura pontual*:\n\n📅 ${formattedDate} às *${
       String(result.class_time || action.class_time || "").slice(0, 5)
-    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar:\n${link}`;
+    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar — ou responda *sim* / *não* por aqui:\n${link}\n\nAo aceitar, te mando o contato do aluno e o conteúdo das últimas aulas.`;
   const notified = await sendWhats(instance, phone, message);
   if (notified && result.coverage_id) {
     await sb.from("class_coverages").update({
@@ -6565,7 +6679,18 @@ async function handleSDR(
     undefined,
     activeTrial?.teacherId || null,
   );
-  const menu = availableMenu(availableSlots);
+  // Janela dita pelo lead ("sábados ou semana depois das 18h") filtra o que o
+  // modelo enxerga; o que não tem professor (sábado) vira fato explícito em
+  // vez de horário inventado. A mensagem atual entra junto: a preferência
+  // costuma chegar nela e só é gravada em weekly_availability depois.
+  const availabilityWindows = afterTrial
+    ? []
+    : parseAvailabilityWindows(`${lead.weekly_availability || ""}\n${text}`);
+  const menuSlots = filterSlotsByWindows(availableSlots, availabilityWindows);
+  const menu = availableMenu(menuSlots.length ? menuSlots : availableSlots);
+  const availabilityLine = availabilityWindows.length
+    ? `\n${availabilityFacts(availabilityWindows, availableSlots)}`
+    : "";
   const stageInstructions = closing
     ? trialClosingStageInstructions(closing, leadTraining ? "" : catalogFacts)
     : afterTrial
@@ -6600,7 +6725,7 @@ async function handleSDR(
     : "";
 
   const system =
-    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription} (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
+    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription} (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}${availabilityLine}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
@@ -6703,6 +6828,26 @@ async function handleSDR(
   });
   reply = commercialReply.reply;
   if (commercialReply.policy === "price_unavailable") ai.handoff = true;
+  // "IA propõe, o código veta" também para horário: a Ana Carolina ouviu
+  // "2026-09-19 às 09:00" (sábado sem professor, data crua). Oferta de
+  // data+horário fora da lista livre vira as alternativas reais, dentro da
+  // janela que o lead disse. Com experimental já marcada o modelo cita o
+  // horário dela (que não está na lista livre) — aí não se veta.
+  if (!afterTrial && !activeTrial && availableSlots.length) {
+    reply = humanizeIsoDates(reply);
+    if (replyOffersUnknownSlot(reply, availableSlots)) {
+      const alternatives = rankTrialAlternatives(
+        availableSlots,
+        null,
+        freshLead.weekly_availability || "",
+      );
+      reply = unavailablePreferenceNote(availabilityWindows, availableSlots) +
+        alternativeQuestion(alternatives);
+      console.warn("[sdr] resposta ofereceu horário fora da lista; vetada", {
+        leadId: lead.id,
+      });
+    }
+  }
   if (
     st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) &&
     /^\d{2}:\d{2}$/.test(st.time)
@@ -8172,6 +8317,24 @@ serve(async (req) => {
           String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
           !rateLimited && !isMedia && String(text || "").trim() &&
           await handleTeacherScheduleChangeMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        // Convite de cobertura pendente: "consigo sim" / "não consigo" pelo
+        // número da escola vale como o clique no link — e o pacote do aluno
+        // (contato + últimas aulas) sai em seguida.
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherCoverageReply(
             sb,
             instance,
             tenantId,
