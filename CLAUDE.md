@@ -945,9 +945,11 @@ mas qualquer RPC que **exija** o uuid (`if p_actor_id is null`, ou que grave `co
 /`created_by` com ele) quebra só para quem escreve pelo grupo. Foi assim que a cobertura do
 Theo passou pela autorização e morreu no INSERT (`active_coverage_already_started`, porque
 `confirmed_by` nulo é "cobertura futura" para o trigger), em 16/09/2026 à noite.
-Regra: `v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant))`
-(o diretor ativo da escola) para atribuição; a auditoria (`gestao_action_audit`) guarda o
-jid real. ⚠️ Testar RPC de grupo **com `p_actor_id := null`** e uma linha `executing` em
+Regra (migration `20260917000000`): `v_attester := coalesce(p_actor_id,
+private.management_group_default_actor(p_tenant))` (o diretor ativo da escola) para
+atribuição; a auditoria (`gestao_action_audit`) guarda o jid real. ⚠️ O release **recusa
+migration já aplicada com checksum diferente** — editar a de ontem derrubou o deploy; o
+conserto vai em migration nova com `create or replace`. ⚠️ Testar RPC de grupo **com `p_actor_id := null`** e uma linha `executing` em
 `gestao_acao_pendente` — testar só com o uuid do diretor, como fiz na véspera, passa e
 não prova nada.
 

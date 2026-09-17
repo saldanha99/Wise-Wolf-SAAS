@@ -1,35 +1,45 @@
--- Cobertura de aula que JÁ aconteceu, pelo grupo da Gestão.
+-- Ações do grupo da Gestão pedidas por participante `@lid` (16/09/2026, noite).
 --
--- O caso (16/09/2026): o professor acordou com a garganta inflamada e a
--- Débora deu a aula. À tarde, no grupo, a direção pediu a cobertura e ouviu
--- "precisa ser para uma aula que ainda não começou". A aula ficou no
--- financeiro de quem não a deu, e a diferença só apareceria se alguém
--- lembrasse dela no fechamento.
+-- A Evolution entrega quem escreve no grupo como `99201044238394@lid`, sem
+-- telefone: o servidor não acha o perfil e a ação segue com `p_actor_id` NULO.
+-- A AUTORIZAÇÃO vem da ação pendente confirmada por código
+-- (`private.management_group_execution_authorized`, por `request_id`) — mas as
+-- três RPCs da véspera exigiam o uuid: a cobertura do Theo passou pela
+-- autorização e morreu no INSERT (`confirmed_by` nulo é "cobertura futura" para
+-- o trigger → `active_coverage_already_started`); troca de plano e cobertura do
+-- dia recusavam na entrada (`parametros_invalidos`).
 --
--- A regra: quem atesta é a direção. Para aula futura, nada muda (convite ao
--- substituto, aceite pelo link). Para aula que já começou, a cobertura nasce
--- CONFIRMADA em nome de quem pediu (`confirmed_by`) e `apply_coverage_acceptance`
--- — a MESMA rotina do aceite — move o lançamento existente para o substituto
--- ou deixa o lançamento futuro com ele, recalculando o fechamento dos dois.
--- Aula por aula, o realizado do mês vai se afastando do previsto pela agenda
--- exatamente pelo que foi coberto — que é o que o fechamento no grupo mostra.
+-- Regra: `v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant))`
+-- — a conta do diretor ativo da escola assina a atribuição; a auditoria
+-- (`gestao_action_audit`) guarda o jid real de quem pediu.
 --
--- Limites: 31 dias para trás; mês já fechado (`teacher_closings.status <>
--- 'PENDENTE'`) recusa com `mes_fechado`. Grade declarada do substituto só é
--- exigida no convite: para aula dada, o fato vale mais que o cadastro.
--- Achado no caminho (16/09/2026): `teacher_absences` tem CHECKs criados fora do
--- repositório (reason enum, status maiúsculo) e a RPC gravava texto livre +
--- 'active' — ou seja, nenhuma cobertura pelo grupo jamais passou do insert da
--- ausência (0 linhas em `teacher_absences`, 0 coberturas com `request_id`).
--- Corrigido aqui e nos dois escritores do painel (`coverage-admin`,
--- `AbsenceCoverageManager`).
--- Re-executável: roda a cada release.
+-- Migration nova porque o release recusa editar migration já aplicada
+-- (checksum). Re-executável: só `create or replace`.
+-- Reproduzido e provado em BEGIN…ROLLBACK na VPS com `p_actor_id := null` e
+-- uma linha `executing` em `gestao_acao_pendente`.
 
-alter table public.class_coverages
-  add column if not exists confirmed_by uuid references auth.users(id) on delete set null;
-comment on column public.class_coverages.confirmed_by is
-  'Quem atestou a cobertura sem convite (direção, aula já dada). NULL = o substituto aceitou pelo link.';
+create or replace function private.management_group_default_actor(p_tenant text)
+returns uuid
+language sql
+stable
+security definer
+set search_path to ''
+as $$
+  select m.user_id
+    from public.tenant_memberships m
+    join public.profiles p on p.id = m.user_id
+   where m.tenant_id = p_tenant
+     and m.status = 'ACTIVE'
+     and m.role in ('SCHOOL_ADMIN', 'COORDINATOR')
+     and lower(coalesce(p.lifecycle_status, 'active')) not in ('suspended', 'offboarded')
+   order by case m.role when 'SCHOOL_ADMIN' then 0 else 1 end, m.created_at
+   limit 1
+$$;
+revoke all on function private.management_group_default_actor(text) from public, anon, authenticated;
 
+-- ---------------------------------------------------------------------------
+-- 1) Cobertura de aula (inclusive já dada)
+-- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.gestao_create_coverage_invite(p_tenant text, p_actor_id uuid, p_booking_id uuid, p_cover_teacher_id uuid, p_class_date date, p_class_time text, p_reason text, p_request_id text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -53,6 +63,7 @@ DECLARE
   v_retroactive boolean := false;
   v_apply jsonb;
   v_original_phone text;
+  v_attester uuid;
 BEGIN
   IF coalesce(auth.role(), '') <> 'service_role' THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'service_role_required';
@@ -208,6 +219,8 @@ BEGIN
   -- na hora (lançamento existente muda de professor; futuro lançamento é do
   -- substituto). O aviso aos dois professores fica com quem chamou.
   v_retroactive := v_class_start <= now();
+  -- Participante do grupo sem identidade (@lid): a direção assina.
+  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
   IF v_retroactive AND EXISTS (
     SELECT 1
       FROM public.teacher_closings AS closing
@@ -517,7 +530,7 @@ BEGIN
     CASE WHEN v_retroactive THEN NULL
          ELSE least(v_class_start, now() + interval '48 hours') END,
     CASE WHEN v_retroactive THEN now() END,
-    CASE WHEN v_retroactive THEN p_actor_id END
+    CASE WHEN v_retroactive THEN v_attester END
   )
   RETURNING * INTO v_coverage;
 
@@ -551,6 +564,8 @@ BEGIN
     'class_coverage',
     v_coverage.id::text,
     jsonb_build_object(
+      'attested_by', v_attester,
+      'requested_by_group_member', p_actor_id IS NULL,
       'booking_id', p_booking_id,
       'student_id', v_booking.student_id,
       'original_teacher_id', v_booking.teacher_id,
@@ -971,4 +986,322 @@ BEGIN
 
   RETURN NEW;
 END;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 2) Troca de plano pelo grupo
+-- ---------------------------------------------------------------------------
+create or replace function public.gestao_create_plan_change(
+  p_tenant text,
+  p_actor_id uuid,
+  p_request_id text,
+  p_tipo text,
+  p_student_id uuid,
+  p_to_frequency text,
+  p_to_fee numeric,
+  p_update_pending_payments boolean default true
+) returns jsonb
+language plpgsql
+security definer
+set search_path to 'pg_catalog', 'public'
+as $function$
+declare
+  v_actor_role text;
+  v_student record;
+  v_freq text;
+  v_existing public.student_plan_changes%rowtype;
+  v_row public.student_plan_changes%rowtype;
+  v_phone text;
+  v_attester uuid;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception using errcode = '42501', message = 'service_role_required';
+  end if;
+  -- p_actor_id pode ser NULL (participante @lid do grupo): a autorização vem
+  -- da ação pendente confirmada, e a proposta fica em nome da direção.
+  if p_tenant is null or p_student_id is null then
+    return jsonb_build_object('ok', false, 'error', 'parametros_invalidos');
+  end if;
+  if coalesce(length(btrim(p_request_id)), 0) not between 8 and 200 then
+    return jsonb_build_object('ok', false, 'error', 'request_id_invalido');
+  end if;
+  if p_tipo not in ('mudanca_plano', 'transferencia_professor') then
+    return jsonb_build_object('ok', false, 'error', 'tipo_invalido');
+  end if;
+
+  v_freq := lower(btrim(coalesce(p_to_frequency, '')));
+  if v_freq !~ '^[1-9][0-9]?x$' then
+    return jsonb_build_object('ok', false, 'error', 'frequencia_invalida');
+  end if;
+  if p_to_fee is null or p_to_fee <= 0 or p_to_fee > 100000 then
+    return jsonb_build_object('ok', false, 'error', 'valor_invalido');
+  end if;
+
+  select membership.role
+    into v_actor_role
+    from public.tenant_memberships as membership
+    join public.profiles as actor on actor.id = membership.user_id
+   where membership.user_id = p_actor_id
+     and membership.tenant_id = p_tenant
+     and membership.status = 'ACTIVE'
+     and membership.role in ('SCHOOL_ADMIN', 'COORDINATOR')
+     and lower(coalesce(actor.lifecycle_status, 'active')) not in ('suspended', 'offboarded')
+   limit 1;
+  if v_actor_role is null and not private.management_group_execution_authorized(
+       p_tenant, p_actor_id, p_request_id,
+       jsonb_build_object(
+         'tipo', p_tipo, 'student_id', p_student_id,
+         'nova_frequencia', v_freq, 'novo_valor', p_to_fee
+       )
+     ) then
+    raise exception using errcode = '42501', message = 'actor_not_allowed';
+  end if;
+
+  -- Idempotência por request_id: o grupo pode reprocessar a mesma confirmação.
+  perform pg_advisory_xact_lock(hashtextextended('plan-change-request:' || p_tenant || ':' || left(btrim(p_request_id), 200), 0));
+  select * into v_existing
+    from public.student_plan_changes
+   where tenant_id = p_tenant and request_id = left(btrim(p_request_id), 200)
+   for update;
+  if found then
+    if v_existing.student_id is distinct from p_student_id then
+      return jsonb_build_object('ok', false, 'error', 'request_id_em_conflito');
+    end if;
+    select full_name, coalesce(nullif(attendance_phone, ''), phone) as phone into v_student
+      from public.profiles where id = p_student_id;
+    return jsonb_build_object(
+      'ok', true, 'idempotent', true, 'token', v_existing.token, 'status', v_existing.status,
+      'student_name', v_student.full_name, 'student_phone', v_student.phone,
+      'from_frequency', v_existing.from_frequency, 'to_frequency', v_existing.to_frequency,
+      'from_fee', v_existing.from_monthly_fee, 'to_fee', v_existing.to_monthly_fee
+    );
+  end if;
+
+  select p.id, p.full_name, p.tenant_id, p.class_frequency, p.monthly_fee, p.fidelity_plan,
+         coalesce(nullif(p.attendance_phone, ''), p.phone) as phone
+    into v_student
+    from public.profiles as p
+   where p.id = p_student_id
+     and p.role = 'STUDENT'
+     and p.tenant_id = p_tenant
+     and lower(coalesce(p.lifecycle_status, 'active')) not in ('suspended', 'offboarded');
+  if v_student.id is null then
+    return jsonb_build_object('ok', false, 'error', 'aluno_invalido');
+  end if;
+  if v_freq = lower(coalesce(v_student.class_frequency, '')) and p_to_fee = v_student.monthly_fee then
+    return jsonb_build_object('ok', false, 'error', 'plano_igual_ao_atual');
+  end if;
+
+  -- Uma proposta aberta por aluno (índice uq_plan_change_one_pending): a nova
+  -- substitui a anterior, como na tela.
+  update public.student_plan_changes
+     set status = 'CANCELLED', cancelled_at = now()
+   where student_id = p_student_id and status = 'PENDING';
+
+  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
+
+  insert into public.student_plan_changes (
+    tenant_id, student_id, created_by,
+    from_frequency, to_frequency, from_monthly_fee, to_monthly_fee, fidelity_plan,
+    update_pending_payments, request_id
+  ) values (
+    p_tenant, p_student_id, v_attester,
+    v_student.class_frequency, v_freq, v_student.monthly_fee, p_to_fee, v_student.fidelity_plan,
+    coalesce(p_update_pending_payments, true), left(btrim(p_request_id), 200)
+  )
+  returning * into v_row;
+
+  insert into public.audit_logs (tenant_id, user_id, user_role, action, resource_type, resource_id, new_values)
+  values (
+    p_tenant, p_actor_id, v_actor_role,
+    'plan_change_proposed_via_management_group', 'student_plan_change', v_row.id::text,
+    jsonb_build_object(
+      'student_id', p_student_id, 'from_frequency', v_student.class_frequency, 'to_frequency', v_freq,
+      'from_fee', v_student.monthly_fee, 'to_fee', p_to_fee, 'via', p_tipo,
+      'attested_by', v_attester, 'requested_by_group_member', p_actor_id is null,
+      'request_id', left(btrim(p_request_id), 200)
+    )
+  );
+
+  return jsonb_build_object(
+    'ok', true, 'token', v_row.token, 'status', v_row.status,
+    'expires_at', v_row.expires_at,
+    'student_name', v_student.full_name, 'student_phone', v_student.phone,
+    'from_frequency', v_student.class_frequency, 'to_frequency', v_freq,
+    'from_fee', v_student.monthly_fee, 'to_fee', p_to_fee
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 3) Cobertura do dia (oportunidade para vários)
+-- ---------------------------------------------------------------------------
+create or replace function public.gestao_open_coverage_day(
+  p_tenant text,
+  p_actor_id uuid,
+  p_request_id text,
+  p_teacher_id uuid,
+  p_date date,
+  p_reason text,
+  p_source text default 'group'
+) returns jsonb
+language plpgsql
+security definer
+set search_path to 'pg_catalog', 'public'
+as $function$
+declare
+  v_actor_role text;
+  v_teacher record;
+  v_absence public.teacher_absences%rowtype;
+  v_booking record;
+  v_opp public.coverage_opportunities%rowtype;
+  v_start timestamptz;
+  v_dow_name text;
+  v_items jsonb := '[]'::jsonb;
+  v_skipped jsonb := '[]'::jsonb;
+  v_invites jsonb;
+  v_cand record;
+  v_inv public.coverage_opportunity_invites%rowtype;
+  v_student_name text;
+  v_attester uuid;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception using errcode = '42501', message = 'service_role_required';
+  end if;
+  -- p_actor_id pode ser NULL (participante @lid do grupo; ver
+  -- private.management_group_default_actor).
+  if p_tenant is null or p_teacher_id is null or p_date is null then
+    return jsonb_build_object('ok', false, 'error', 'parametros_invalidos');
+  end if;
+  if coalesce(length(btrim(p_request_id)), 0) not between 8 and 200 then
+    return jsonb_build_object('ok', false, 'error', 'request_id_invalido');
+  end if;
+  if p_source not in ('group', 'teacher') then
+    return jsonb_build_object('ok', false, 'error', 'origem_invalida');
+  end if;
+  if p_date < (now() at time zone 'America/Sao_Paulo')::date
+     or p_date > (now() at time zone 'America/Sao_Paulo')::date + 14 then
+    return jsonb_build_object('ok', false, 'error', 'data_fora_da_janela');
+  end if;
+  if coalesce(length(btrim(p_reason)), 0) not between 3 and 200 then
+    return jsonb_build_object('ok', false, 'error', 'motivo_invalido');
+  end if;
+
+  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
+
+  select t.id, t.full_name into v_teacher
+    from public.profiles t
+    join public.tenant_memberships m on m.user_id = t.id and m.tenant_id = p_tenant and m.role = 'TEACHER' and m.status = 'ACTIVE'
+   where t.id = p_teacher_id and t.role = 'TEACHER' and t.tenant_id = p_tenant
+     and lower(coalesce(t.lifecycle_status, 'active')) not in ('suspended', 'offboarded');
+  if v_teacher.id is null then
+    return jsonb_build_object('ok', false, 'error', 'professor_invalido');
+  end if;
+
+  -- Aval: direção/coordenação, ação confirmada no grupo, ou o próprio professor
+  -- atestando a própria ausência (porta da instância da escola).
+  select membership.role into v_actor_role
+    from public.tenant_memberships membership
+    join public.profiles actor on actor.id = membership.user_id
+   where membership.user_id = p_actor_id and membership.tenant_id = p_tenant
+     and membership.status = 'ACTIVE' and membership.role in ('SCHOOL_ADMIN', 'COORDINATOR')
+     and lower(coalesce(actor.lifecycle_status, 'active')) not in ('suspended', 'offboarded')
+   limit 1;
+  if v_actor_role is null and p_source = 'teacher' and p_actor_id = p_teacher_id then
+    v_actor_role := 'TEACHER';
+  end if;
+  if v_actor_role is null and not private.management_group_execution_authorized(
+       p_tenant, p_actor_id, p_request_id,
+       jsonb_build_object('tipo', 'cobertura_dia', 'teacher_id', p_teacher_id, 'data', p_date::text)
+     ) then
+    raise exception using errcode = '42501', message = 'actor_not_allowed';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('coverage-day:' || p_tenant || ':' || left(btrim(p_request_id), 200), 0));
+
+  -- Reprocessamento da mesma confirmação: devolve o que já existe, sem reenviar.
+  if exists (select 1 from public.coverage_opportunities o where o.tenant_id = p_tenant and o.request_id = left(btrim(p_request_id), 200)) then
+    select jsonb_agg(jsonb_build_object(
+             'opportunity_id', o.id, 'status', o.status, 'class_time', o.class_time,
+             'student_name', s.full_name, 'invites', '[]'::jsonb))
+      into v_items
+      from public.coverage_opportunities o left join public.profiles s on s.id = o.student_id
+     where o.tenant_id = p_tenant and o.request_id = left(btrim(p_request_id), 200);
+    return jsonb_build_object('ok', true, 'idempotent', true, 'teacher_name', v_teacher.full_name,
+                              'opportunities', coalesce(v_items, '[]'::jsonb), 'skipped', '[]'::jsonb);
+  end if;
+
+  -- Ausência do dia (mesmo formato dos outros escritores: enum + MAIÚSCULA).
+  select * into v_absence from public.teacher_absences a
+   where a.tenant_id = p_tenant and a.teacher_id = p_teacher_id and lower(a.status) = 'active'
+     and a.starts_at::date <= p_date and a.ends_at::date >= p_date
+   order by a.created_at limit 1 for update;
+  if not found then
+    insert into public.teacher_absences (tenant_id, teacher_id, starts_at, ends_at, reason, notes, status)
+    values (p_tenant, p_teacher_id, p_date, p_date,
+            case when btrim(p_reason) ~* '(doen|garganta|febre|gripe|sa[uú]de|m[eé]dic|hospital|enferm|covid|sick|dor )' then 'SICK' else 'OTHER' end,
+            btrim(p_reason), 'ACTIVE')
+    returning * into v_absence;
+  end if;
+
+  v_dow_name := (array['Domingo','Segunda','Terca','Quarta','Quinta','Sexta','Sabado'])[extract(dow from p_date)::int + 1];
+
+  for v_booking in
+    select b.id, b.student_id, left(coalesce(b.time_slot, ''), 5) as slot
+      from public.bookings b
+     where b.tenant_id = p_tenant and b.teacher_id = p_teacher_id and b.student_id is not null
+       and upper(coalesce(b.status, '')) = 'SCHEDULED'
+       and (b.date = p_date
+            or (b.date is null and public.fold_accents(b.day_of_week) = lower(v_dow_name)
+                and (b.start_date is null or b.start_date <= p_date)))
+     order by left(coalesce(b.time_slot, ''), 5)
+  loop
+    select full_name into v_student_name from public.profiles where id = v_booking.student_id;
+    v_start := (p_date::text || ' ' || v_booking.slot || ':00-03')::timestamptz;
+    if v_booking.slot !~ '^(0[0-9]|1[0-9]|2[0-3]):(00|30)$' or v_start <= now() + interval '5 minutes' then
+      v_skipped := v_skipped || jsonb_build_object('student_name', v_student_name, 'class_time', v_booking.slot, 'motivo', 'ja_comecou');
+      continue;
+    end if;
+    if exists (select 1 from public.class_coverages cc where cc.tenant_id = p_tenant and cc.booking_id = v_booking.id and cc.class_date = p_date
+                 and (lower(cc.status) = 'confirmed' or (lower(cc.status) = 'pending' and now() < coalesce(cc.invite_expires_at, v_start))))
+       or exists (select 1 from public.coverage_opportunities o where o.booking_id = v_booking.id and o.class_date = p_date and o.status = 'OPEN') then
+      v_skipped := v_skipped || jsonb_build_object('student_name', v_student_name, 'class_time', v_booking.slot, 'motivo', 'ja_tem_cobertura');
+      continue;
+    end if;
+
+    insert into public.coverage_opportunities (
+      tenant_id, booking_id, original_teacher_id, student_id, absence_id, class_date, class_time,
+      reason, source, request_id, created_by, expires_at
+    ) values (
+      p_tenant, v_booking.id, p_teacher_id, v_booking.student_id, v_absence.id, p_date, v_booking.slot,
+      btrim(p_reason), p_source, left(btrim(p_request_id), 200), v_attester, v_start - interval '5 minutes'
+    ) returning * into v_opp;
+
+    v_invites := '[]'::jsonb;
+    for v_cand in select * from private.coverage_candidates(p_tenant, v_booking.id, p_date) where phone is not null loop
+      insert into public.coverage_opportunity_invites (opportunity_id, teacher_id, phone)
+      values (v_opp.id, v_cand.teacher_id, v_cand.phone)
+      returning * into v_inv;
+      v_invites := v_invites || jsonb_build_object(
+        'invite_id', v_inv.id, 'token', v_inv.token, 'teacher_id', v_cand.teacher_id,
+        'teacher_name', v_cand.full_name, 'phone', v_cand.phone);
+    end loop;
+    if jsonb_array_length(v_invites) = 0 then
+      update public.coverage_opportunities set status = 'EXPIRED' where id = v_opp.id;
+    end if;
+
+    v_items := v_items || jsonb_build_object(
+      'opportunity_id', v_opp.id, 'status', case when jsonb_array_length(v_invites) = 0 then 'EXPIRED' else 'OPEN' end,
+      'class_time', v_booking.slot, 'student_name', v_student_name, 'invites', v_invites);
+  end loop;
+
+  insert into public.audit_logs (tenant_id, user_id, user_role, action, resource_type, resource_id, new_values)
+  values (p_tenant, p_actor_id, v_actor_role, 'coverage_day_opened', 'teacher_absence', v_absence.id::text,
+          jsonb_build_object('teacher_id', p_teacher_id, 'date', p_date, 'source', p_source,
+                             'attested_by', v_attester, 'requested_by_group_member', p_actor_id is null,
+                             'opportunities', jsonb_array_length(v_items), 'request_id', left(btrim(p_request_id), 200)));
+
+  return jsonb_build_object('ok', true, 'teacher_name', v_teacher.full_name, 'absence_id', v_absence.id,
+                            'opportunities', v_items, 'skipped', v_skipped);
+end;
 $function$;

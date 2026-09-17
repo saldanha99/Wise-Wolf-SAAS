@@ -175,14 +175,11 @@ declare
   v_cand record;
   v_inv public.coverage_opportunity_invites%rowtype;
   v_student_name text;
-  v_attester uuid;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
-  -- p_actor_id pode ser NULL (participante @lid do grupo; ver
-  -- private.management_group_default_actor).
-  if p_tenant is null or p_teacher_id is null or p_date is null then
+  if p_tenant is null or p_actor_id is null or p_teacher_id is null or p_date is null then
     return jsonb_build_object('ok', false, 'error', 'parametros_invalidos');
   end if;
   if coalesce(length(btrim(p_request_id)), 0) not between 8 and 200 then
@@ -198,8 +195,6 @@ begin
   if coalesce(length(btrim(p_reason)), 0) not between 3 and 200 then
     return jsonb_build_object('ok', false, 'error', 'motivo_invalido');
   end if;
-
-  v_attester := coalesce(p_actor_id, private.management_group_default_actor(p_tenant));
 
   select t.id, t.full_name into v_teacher
     from public.profiles t
@@ -286,7 +281,7 @@ begin
       reason, source, request_id, created_by, expires_at
     ) values (
       p_tenant, v_booking.id, p_teacher_id, v_booking.student_id, v_absence.id, p_date, v_booking.slot,
-      btrim(p_reason), p_source, left(btrim(p_request_id), 200), v_attester, v_start - interval '5 minutes'
+      btrim(p_reason), p_source, left(btrim(p_request_id), 200), p_actor_id, v_start - interval '5 minutes'
     ) returning * into v_opp;
 
     v_invites := '[]'::jsonb;
@@ -310,7 +305,6 @@ begin
   insert into public.audit_logs (tenant_id, user_id, user_role, action, resource_type, resource_id, new_values)
   values (p_tenant, p_actor_id, v_actor_role, 'coverage_day_opened', 'teacher_absence', v_absence.id::text,
           jsonb_build_object('teacher_id', p_teacher_id, 'date', p_date, 'source', p_source,
-                             'attested_by', v_attester, 'requested_by_group_member', p_actor_id is null,
                              'opportunities', jsonb_array_length(v_items), 'request_id', left(btrim(p_request_id), 200)));
 
   return jsonb_build_object('ok', true, 'teacher_name', v_teacher.full_name, 'absence_id', v_absence.id,
