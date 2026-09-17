@@ -102,7 +102,7 @@ verificação por **outro** ator (`hub_commercial_approved`, `hub_rights_verifie
 `<tenant>/<uid>/<uuid>.pdf` com `storage.objects.owner_id` de perfil do tenant),
 `hub_validate_material_publication_sources`, e `private.hub_catalog_is_ready()` (fail-closed).
 
-- ✅ **35 materiais publicados em 17/09/2026** pelo trilho acima, com prévia GERADA
+- ✅ **35 materiais da escola publicados em 17/09/2026** pelo trilho acima, com prévia GERADA
   (2–3 páginas iniciais, marca d'água "AMOSTRA · WISE WOLF HUB" + rodapé; script em sessão, não
   no repo). Curadoria feita por SQL com `auth.uid()` nulo (caminho previsto para service jobs),
   `requested_by` = diretor, `verified_by` = SUPER_ADMIN, declaração cita a autorização da direção.
@@ -119,14 +119,22 @@ verificação por **outro** ator (`hub_commercial_approved`, `hub_rights_verifie
   Hoje: BOOK A1 (5), BOOK A2 (3), BOOK B2 (5), Business English B2 (8), KIDS A1 (5 — o "PART 5"
   da escola é o mesmo arquivo do PART 4, ficou fora), TOEFL B1 (6) + avulsos.
 - **Fora do catálogo de propósito:** "Teste" (é o onboarding interno de professores),
-  "COMO MONTAR AULA?" (metodologia interna) e o KIDS PART 5 duplicado. Os 18 itens inativos sem
-  fonte (material apagado da escola depois do espelho de julho, ex.: Travel/Tech A1) ainda têm o
-  PDF em `hub-library/pedagogical/<id>/material.pdf` — recuperáveis, não publicados.
+  "COMO MONTAR AULA?" (metodologia interna) e o KIDS PART 5 duplicado.
+- **Órfãos recuperados (17/09, a pedido da direção):** dos 18 itens inativos sem fonte (material
+  apagado da escola depois do espelho de julho), **6 eram únicos** e foram ativados direto em
+  `hub_content_items` — FULL continua em `hub-library/pedagogical/<id antigo>/material.pdf`,
+  prévia gerada em `pedagogical/<item id>/preview.pdf` (`metadata.source =
+  curated_recovery_20260917`): English for Travelers A1 (2), Cyber Wolf IT A1, Wise Wolf Part 3
+  A2 TI Edition, BOOK B1 WISE WOLF Part 1 (livro B1 criado no Hub), TOEFL Trial Lesson B1/B2.
+  Os outros 12: 10 eram **cópias byte a byte ou de conteúdo** de itens já publicados (TOEFL
+  módulos, Business Units 1,2 e 17-20), "Onboarding do Professor" é MATERIAL INTERNO. ⚠️ Esses 6
+  **não existem na biblioteca da escola** — editar título/nicho é SQL no Hub, não a tela.
 - **Item órfão "English for IT Students"** (fonte apagada) foi mantido: prévia própria em
-  `pedagogical/b727e699…/preview.pdf`, nicho TECH.
+  `pedagogical/b727e699…/preview.pdf`, nicho TECH. Total no ar: **42 itens, 7 livros**.
 - **Lacunas de estoque** (o que a promessa "por nicho e nível" ainda não cobre): Kids acima de
-  A1, Business abaixo de B2, Viagem/Tech/Medicina, C1/C2, Geral B1. Cobrir isso é papel do
-  gerador de material (Educador IA) — ainda só o planner de aula está ligado no Hub.
+  A1, Business abaixo de B2, Viagem/Tech só A1–A2, Medicina vazio, C1/C2, Geral B1 com uma
+  parte só. Cobrir isso é papel do gerador de material (Educador IA) — ainda só o planner de
+  aula está ligado no Hub.
 
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:
