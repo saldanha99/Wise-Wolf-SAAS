@@ -41,6 +41,13 @@ const EVOLUTION_TOKENS = Array.from(
   ),
 );
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
+// Link que o professor abre: host público (`SUPABASE_URL` é a rede interna,
+// `http://kong:8000` — convite com esse host nunca abre no celular).
+const PUBLIC_FUNCTIONS_URL =
+  (Deno.env.get("SUPABASE_PUBLIC_URL")?.trim() || SUPABASE_URL).replace(
+    /\/$/,
+    "",
+  );
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ABSENCE_DAYS = 31;
@@ -987,9 +994,12 @@ async function sendCoverageInvite(
     return "rejected";
   }
   const phone = item.coverPhone;
-  if (!phone || !SUPABASE_URL || !EVOLUTION_TOKENS.length) return "rejected";
+  if (!phone || !PUBLIC_FUNCTIONS_URL || !EVOLUTION_TOKENS.length) {
+    return "rejected";
+  }
 
-  const link = `${SUPABASE_URL}/functions/v1/accept-coverage?token=${token}`;
+  const link =
+    `${PUBLIC_FUNCTIONS_URL}/functions/v1/accept-coverage?token=${token}`;
   const firstName = item.coverName.split(" ")[0] || "Professor";
   const date = parseDateKey(item.classDate)!;
   const dataFmt = new Intl.DateTimeFormat("pt-BR", {

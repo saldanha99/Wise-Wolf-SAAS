@@ -1043,6 +1043,17 @@ a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
   nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
   booking — continua manual.
 
+### ⚠️ Link para GENTE usa `SUPABASE_PUBLIC_URL`, nunca `SUPABASE_URL` (17/09/2026) ✅
+
+Dentro do container `SUPABASE_URL` é **`http://kong:8000`** (rede interna). `whatsapp-inbound`
+(convite individual e disputa do dia) e `coverage-admin` montavam
+`…/functions/v1/accept-coverage?token=` com ele — **todo convite de cobertura saía com link que
+não abre no celular**. Medido: 0 coberturas com `dispatched_at` na história. Hoje:
+`publicFunctionsBase()` / `PUBLIC_FUNCTIONS_URL` = `SUPABASE_PUBLIC_URL`
+(`https://api.wisewolflanguage.com.br`), com `SUPABASE_URL` só como fallback. Cliente
+supabase-js continua com `SUPABASE_URL` (interno, correto). Ao criar link que uma pessoa
+abre, procure `SUPABASE_PUBLIC_URL` — e teste com `curl -I` no host público.
+
 ### A atendente respeita a janela de horário do lead — e o código veta horário inventado ✅
 
 A Ana Carolina (17/09/2026) disse "sábados ou dias de semana depois das 18h". Nenhum professor

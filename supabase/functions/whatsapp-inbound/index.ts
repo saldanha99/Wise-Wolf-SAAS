@@ -292,6 +292,12 @@ const inboundEvolutionTransportCache = new Map<
 >();
 let inboundServiceClient: any = null;
 
+/** Base pública das edge functions para links enviados a gente (não a rede interna). */
+function publicFunctionsBase(): string {
+  return (Deno.env.get("SUPABASE_PUBLIC_URL") || Deno.env.get("SUPABASE_URL") ||
+    "").trim().replace(/\/$/, "");
+}
+
 function getInboundServiceClient(): any {
   if (!inboundServiceClient) {
     inboundServiceClient = createClient(
@@ -1408,7 +1414,10 @@ async function openCoverageDayDirect(
     };
   }
 
-  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  // Link que o PROFESSOR abre: host público. `SUPABASE_URL` dentro do
+  // container é `http://kong:8000` — todo convite saía com link inalcançável
+  // (medido em 17/09/2026: 0 coberturas jamais despachadas).
+  const supabaseUrl = publicFunctionsBase();
   const teacherFirst =
     String(result.teacher_name || "o professor").trim().split(/\s+/)[0];
   const [y, m, d] = classDate.split("-");
@@ -2446,7 +2455,10 @@ async function createCoverageInviteDirect(
 
   const token = String(result.token || "");
   const phone = normalizePhone(String(result.cover_teacher_phone || ""));
-  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  // Link que o PROFESSOR abre: host público. `SUPABASE_URL` dentro do
+  // container é `http://kong:8000` — todo convite saía com link inalcançável
+  // (medido em 17/09/2026: 0 coberturas jamais despachadas).
+  const supabaseUrl = publicFunctionsBase();
   if (!/^[a-f0-9]{32}$/i.test(token) || !phone || !supabaseUrl) {
     return {
       ok: true,
