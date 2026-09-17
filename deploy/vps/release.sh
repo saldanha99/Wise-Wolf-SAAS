@@ -1322,6 +1322,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916250000_folha_por_professor_no_grupo_da_gestao.sql"
   "supabase/migrations/20260916260000_cron_da_folha_no_grupo_da_gestao.sql"
   "supabase/migrations/20260917000000_acoes_do_grupo_com_participante_lid.sql"
+  "supabase/migrations/20260917001000_alerta_pagamento_recebido_em_triagem.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
