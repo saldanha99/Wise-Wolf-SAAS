@@ -1329,6 +1329,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917001000_alerta_pagamento_recebido_em_triagem.sql"
   "supabase/migrations/20260917105957_renewal_due_date_roll_forward.sql"
   "supabase/migrations/20260917120000_pos_experimental_conversa_e_briefing_do_professor.sql"
+  "supabase/migrations/20260917130000_pos_experimental_uma_abertura_por_telefone.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
