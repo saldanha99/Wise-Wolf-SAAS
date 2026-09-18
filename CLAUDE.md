@@ -175,6 +175,15 @@ nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "m
   present perfect para status de embarque; gastronomia A1 → there is/are na cozinha; teen
   intercâmbio A2 → present continuous com a host family. `goal`/`audience` são colunas
   (migration `20260918040000`); o resto vive no jsonb `material`.
+- **Jornada de 90 dias (`kind = journey`, migration `20260918050000`):** plano de 12 semanas
+  por objetivo — cada semana com tema, ponto gramatical em progressão dentro do nível, tipo de
+  material, resultado, 3 passos da aula de 30 min e lição; checkpoints (4/8/12) e **ações de
+  retenção** para o professor (semanas 1/3/6/10, só na versão do professor). Semana faltando
+  ou tipo inventado reprova (`MATERIAL_JOURNEY_INCOMPLETE`). Sem blocos comuns (a jornada é
+  o plano; o material da semana é que os carrega). Na tela, "Gerar <tipo> desta semana"
+  pré-preenche tipo + tema mantendo objetivo/nível/faixa — é a estrutura que o professor
+  mostra na primeira aula e o que atravessa o 3º mês. Medido: teen A1 → to be, possessivos,
+  there is/are, present simple…; gastronomia B1 → present perfect, first conditional, modais…
 
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:

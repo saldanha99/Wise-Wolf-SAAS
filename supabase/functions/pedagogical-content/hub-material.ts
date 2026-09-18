@@ -20,7 +20,12 @@ export const HUB_MATERIAL_KINDS = [
   "grammar_drill",
   "reading",
   "conversation",
+  "journey",
 ] as const;
+
+// A jornada tem sempre 12 semanas (90 dias): é o horizonte em que o aluno
+// autônomo costuma desistir, e o plano existe para atravessá-lo.
+export const HUB_JOURNEY_WEEKS = 12;
 export type HubMaterialKind = typeof HUB_MATERIAL_KINDS[number];
 
 export const HUB_MATERIAL_NICHES = [
@@ -120,6 +125,8 @@ const KIND_LABEL: Record<HubMaterialKind, string> = {
   grammar_drill: "drill de gramática",
   reading: "leitura com compreensão",
   conversation: "roteiro de conversação / role-play",
+  journey:
+    "jornada de 90 dias (plano de 12 semanas, uma por linha, com progressão gramatical dentro do nível)",
 };
 
 const collapse = (value: string): string => value.replace(/\s+/g, " ").trim();
@@ -150,7 +157,9 @@ export function parseHubMaterialSpec(body: JsonObject): HubMaterialSpecParse {
   }
   const topic = sanitizeFreeText(body.topic, HUB_MATERIAL_MAX_TOPIC);
   if (topic.length < 3) return { ok: false, code: "MATERIAL_TOPIC_REQUIRED" };
-  const rawCount = body.count === undefined || body.count === null
+  const rawCount = kind === "journey"
+    ? HUB_JOURNEY_WEEKS
+    : body.count === undefined || body.count === null
     ? 8
     : Number(body.count);
   if (
@@ -272,6 +281,22 @@ const HUB_MATERIAL_SCHEMAS: Record<HubMaterialKind, JsonObject> = {
     open_questions: arr(obj({ prompt: str, model_answer: str })),
     homework_pt: str,
   }),
+  journey: obj({
+    title: str,
+    objective_pt: str,
+    promise_pt: str,
+    weeks: arr(obj({
+      week: int,
+      theme: str,
+      grammar_point: str,
+      material_kind: str,
+      outcome_pt: str,
+      class_plan_pt: arr(str),
+      homework_pt: str,
+    })),
+    milestones: arr(obj({ week: int, checkpoint_pt: str })),
+    retention_moves_pt: arr(obj({ week: int, move_pt: str })),
+  }),
   conversation: obj({
     title: str,
     situation_pt: str,
@@ -316,6 +341,8 @@ const countGuidance = (spec: HubMaterialSpec): string => {
       } lacunas (fill_blanks, "___" na frase, resposta e dica em pt-BR), ${
         Math.max(3, Math.round(n / 2))
       } questões de múltipla escolha (4 alternativas, uma correta), 3 perguntas abertas com resposta-modelo e uma tarefa de casa curta (homework_pt).`;
+    case "journey":
+      return `Monte a JORNADA DE 90 DIAS do aluno: exatamente ${HUB_JOURNEY_WEEKS} semanas em "weeks" (week de 1 a ${HUB_JOURNEY_WEEKS}), cada uma com: "theme" (situação real do objetivo do aluno, em inglês), "grammar_point" (UM ponto do leque gramatical do nível, em ordem progressiva — comece pelo mais básico e não repita sem propósito), "material_kind" (um de: worksheet, quiz, vocab_cards, grammar_drill, reading, conversation — varie ao longo das semanas), "outcome_pt" (o que o aluno consegue fazer ao fim da semana, em pt-BR, ligado ao objetivo), "class_plan_pt" (3 passos da aula de 30 minutos, em pt-BR) e "homework_pt" (tarefa curta para a semana). "promise_pt": 1–2 frases dizendo onde o aluno vai estar no dia 90. "milestones": checkpoints nas semanas 4, 8 e 12 (o que avaliar e como o aluno percebe o progresso). "retention_moves_pt": 4 ações do professor para segurar o aluno nas semanas 1, 3, 6 e 10 (mensagem de boas-vindas com o plano, mostrar o progresso, renegociar rotina, preparar a renovação).`;
     case "conversation":
       return `Descreva a situação em pt-BR, defina 2 papéis, liste ${n} frases úteis (en + pt), escreva um diálogo-modelo de 10–16 falas alternando os papéis, "shadowing" com 4–6 falas do diálogo para o aluno repetir em voz alta (lines) e o foco de entonação em pt-BR (focus_pt), 4 perguntas para praticar sem roteiro e notas para o professor (teacher_notes_pt).`;
   }
@@ -340,12 +367,18 @@ export function buildHubMaterialPrompt(spec: HubMaterialSpec): string {
     `GRAMÁTICA PERMITIDA NO NÍVEL ${spec.level}: ${
       CEFR_GRAMMAR_MAP[spec.level]
     }.`,
-    `Em "grammar_focus" escolha UM ponto desse leque que sirva ao objetivo e ao tema: "point" em inglês (ex.: "Present simple for routines"), "why_pt" explica em 1–2 frases por que esse ponto abre porta para o objetivo do aluno, "patterns" traz 3 padrões de frase (en + pt) no contexto do aluno, "watch_out_pt" lista 2 erros comuns de brasileiro nesse ponto. Nada de estrutura acima do nível em nenhuma parte do material.`,
+    spec.kind === "journey"
+      ? "Na jornada, cada semana usa UM ponto desse leque, em progressão; nada acima do nível."
+      : `Em "grammar_focus" escolha UM ponto desse leque que sirva ao objetivo e ao tema: "point" em inglês (ex.: "Present simple for routines"), "why_pt" explica em 1–2 frases por que esse ponto abre porta para o objetivo do aluno, "patterns" traz 3 padrões de frase (en + pt) no contexto do aluno, "watch_out_pt" lista 2 erros comuns de brasileiro nesse ponto. Nada de estrutura acima do nível em nenhuma parte do material.`,
     ``,
     countGuidance(spec),
     ``,
-    `"opportunity_pt": 1–2 frases em pt-BR dizendo o que o aluno passa a conseguir fazer no objetivo dele com este material (ex.: "Com isso você consegue apresentar o status de um embarque na reunião semanal").`,
-    `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (ChatGPT ou o Wolfie) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
+    spec.kind === "journey"
+      ? ""
+      : `"opportunity_pt": 1–2 frases em pt-BR dizendo o que o aluno passa a conseguir fazer no objetivo dele com este material (ex.: "Com isso você consegue apresentar o status de um embarque na reunião semanal").`,
+    spec.kind === "journey"
+      ? ""
+      : `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (ChatGPT ou o Wolfie) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
     ``,
     `Regras:`,
     `- Vocabulário e gramática 100% dentro do nível ${spec.level}; situações reais do nicho e do objetivo, nada genérico.`,
@@ -519,6 +552,94 @@ const normalizeShadowing = (value: unknown): JsonObject => {
   };
 };
 
+// Jornada de 90 dias: 12 semanas numeradas 1..12 sem buraco, cada uma com tema,
+// ponto gramatical, tipo de material válido e resultado. Semana faltando ou
+// tipo inventado reprova — o professor vai clicar em "gerar material desta
+// semana" e o tipo precisa existir.
+const MATERIAL_KINDS_FOR_WEEKS = new Set<string>(
+  HUB_MATERIAL_KINDS.filter((kind) => kind !== "journey"),
+);
+
+const normalizeJourney = (
+  spec: HubMaterialSpec,
+  raw: JsonObject,
+  title: string,
+): HubMaterialNormalization => {
+  const byWeek = new Map<number, JsonObject>();
+  if (Array.isArray(raw.weeks)) {
+    for (const item of raw.weeks) {
+      if (!isObject(item)) continue;
+      const week = Number(item.week);
+      const theme = text(item.theme, 200);
+      const grammar_point = text(item.grammar_point, 160);
+      const material_kind = text(item.material_kind, 40).toLowerCase();
+      if (
+        !Number.isInteger(week) || week < 1 || week > HUB_JOURNEY_WEEKS ||
+        !theme || !grammar_point ||
+        !MATERIAL_KINDS_FOR_WEEKS.has(material_kind) ||
+        byWeek.has(week)
+      ) continue;
+      byWeek.set(week, {
+        week,
+        theme,
+        grammar_point,
+        material_kind,
+        outcome_pt: text(item.outcome_pt, 400),
+        class_plan_pt: textList(item.class_plan_pt, 5),
+        homework_pt: text(item.homework_pt, 400),
+      });
+    }
+  }
+  const weeks = Array.from(
+    { length: HUB_JOURNEY_WEEKS },
+    (_, index) => byWeek.get(index + 1),
+  );
+  if (weeks.some((week) => !week)) {
+    return {
+      ok: false,
+      code: "MATERIAL_JOURNEY_INCOMPLETE",
+      detail: `${byWeek.size} de ${HUB_JOURNEY_WEEKS} semanas válidas`,
+    };
+  }
+  const milestones = Array.isArray(raw.milestones)
+    ? raw.milestones.flatMap((item) => {
+      if (!isObject(item)) return [];
+      const week = Number(item.week);
+      const checkpoint_pt = text(item.checkpoint_pt, 400);
+      return Number.isInteger(week) && week >= 1 && week <= HUB_JOURNEY_WEEKS &&
+          checkpoint_pt
+        ? [{ week, checkpoint_pt }]
+        : [];
+    }).slice(0, 4)
+    : [];
+  const retention_moves_pt = Array.isArray(raw.retention_moves_pt)
+    ? raw.retention_moves_pt.flatMap((item) => {
+      if (!isObject(item)) return [];
+      const week = Number(item.week);
+      const move_pt = text(item.move_pt, 400);
+      return Number.isInteger(week) && week >= 1 && week <= HUB_JOURNEY_WEEKS &&
+          move_pt
+        ? [{ week, move_pt }]
+        : [];
+    }).slice(0, 6)
+    : [];
+  return {
+    ok: true,
+    value: {
+      title,
+      dropped: 0,
+      material: {
+        title,
+        objective_pt: text(raw.objective_pt, 600) || spec.goal,
+        promise_pt: text(raw.promise_pt, 500),
+        weeks: weeks as JsonObject[],
+        milestones,
+        retention_moves_pt,
+      },
+    },
+  };
+};
+
 export function normalizeHubMaterial(
   spec: HubMaterialSpec,
   raw: unknown,
@@ -527,6 +648,7 @@ export function normalizeHubMaterial(
   const minimum = Math.min(3, spec.count);
   let dropped = 0;
   const title = text(raw.title, 140) || `${spec.topic} — ${spec.level}`;
+  if (spec.kind === "journey") return normalizeJourney(spec, raw, title);
   const common = normalizeCommonBlocks(raw);
   if (!common.ok) return { ok: false, code: common.code };
   const blocks = common.blocks;

@@ -156,3 +156,49 @@ describe('Gerador de material do Hub', () => {
     expect(text).toContain('Wise Wolf Hub');
   });
 });
+
+describe('Jornada de 90 dias', () => {
+  const journey = {
+    title: '90 days to the warehouse floor',
+    objective_pt: 'Reportar embarques em inglês',
+    promise_pt: 'No dia 90 você conduz o status semanal em inglês.',
+    weeks: Array.from({ length: 12 }, (_, index) => ({
+      week: index + 1,
+      theme: `Week ${index + 1}: shipment ${index + 1}`,
+      grammar_point: 'Present simple',
+      material_kind: index === 0 ? 'reading' : 'worksheet',
+      outcome_pt: 'Consegue descrever a rotina.',
+      class_plan_pt: ['Warm-up', 'Prática', 'Produção'],
+      homework_pt: 'Grave um áudio.',
+    })),
+    milestones: [{ week: 4, checkpoint_pt: 'Teste oral curto' }],
+    retention_moves_pt: [{ week: 1, move_pt: 'Mande o plano pelo WhatsApp.' }],
+  };
+
+  it('gera a jornada com 12 semanas fixas e prefill de "gerar material desta semana"', async () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([]));
+    supabaseMocks.invoke.mockResolvedValue({
+      data: { material_id: 'mat-j', title: journey.title, kind: 'journey', niche: 'BUSINESS', level: 'A1', topic: 'Galpão', goal: 'logística', audience: 'adults', material: journey, dropped: 0, created_at: '2026-09-18T12:00:00.000Z' },
+      error: null,
+    });
+    render(<HubMaterialGenerator bootstrap={bootstrap()} onRefresh={vi.fn(async () => {})} onUpgrade={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Jornada de 90 dias/ }));
+    expect(screen.getByDisplayValue('12 (90 dias)')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Ponto de partida / contexto da jornada'), { target: { value: 'Galpão' } });
+    fireEvent.change(screen.getByLabelText('Objetivo do aluno'), { target: { value: 'logística' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar material' }));
+
+    await waitFor(() => expect(supabaseMocks.invoke).toHaveBeenCalledTimes(1));
+    expect(supabaseMocks.invoke.mock.calls[0][1].body).toMatchObject({ kind: 'journey', count: 12, goal: 'logística' });
+    expect(await screen.findByText(/Promessa do dia 90/)).toBeTruthy();
+    expect(screen.getByText('Week 1: shipment 1')).toBeTruthy();
+    expect(screen.getByText(/Ações de retenção/)).toBeTruthy();
+
+    // Clicar em "gerar leitura desta semana" preenche tipo e tema para a próxima geração.
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar leitura desta semana' }));
+    expect(screen.getByRole('button', { name: /^Leitura/ }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Tema / situação do aluno') as HTMLInputElement).value).toBe('Week 1: shipment 1');
+    expect(screen.getByText(/Semana 1 da jornada/)).toBeTruthy();
+  });
+});

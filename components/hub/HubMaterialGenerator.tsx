@@ -10,6 +10,7 @@ import {
   FileText,
   Layers,
   ListChecks,
+  Map,
   MessageSquare,
   Printer,
   RefreshCw,
@@ -28,7 +29,7 @@ import type { HubBootstrap } from './types';
 // Aqui só existe o que é do navegador: formulário, histórico, renderização e
 // impressão (versão do aluno ou versão do professor, com gabarito).
 
-export type HubMaterialKind = 'worksheet' | 'quiz' | 'vocab_cards' | 'grammar_drill' | 'reading' | 'conversation';
+export type HubMaterialKind = 'worksheet' | 'quiz' | 'vocab_cards' | 'grammar_drill' | 'reading' | 'conversation' | 'journey';
 
 interface McQuestion { prompt: string; options: string[]; correct: number; explanation_pt: string }
 interface Pair { en: string; pt: string }
@@ -68,6 +69,7 @@ export const HUB_MATERIAL_KIND_OPTIONS: Array<{ value: HubMaterialKind; label: s
   { value: 'grammar_drill', label: 'Drill de gramática', hint: 'Regra explicada + exercícios de lacuna', icon: <Wand2 size={18} /> },
   { value: 'reading', label: 'Leitura', hint: 'Texto no nível, glossário e compreensão', icon: <BookOpen size={18} /> },
   { value: 'conversation', label: 'Conversação', hint: 'Situação, papéis, frases úteis e diálogo-modelo', icon: <MessageSquare size={18} /> },
+  { value: 'journey', label: 'Jornada de 90 dias', hint: '12 semanas por objetivo, com progressão gramatical, checkpoints e retenção', icon: <Map size={18} /> },
 ];
 
 export const HUB_MATERIAL_NICHE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -199,6 +201,20 @@ export const materialAsText = (record: HubMaterialRecord): string => {
       if (typeof m.homework_pt === 'string' && m.homework_pt) lines.push(`Lição de casa: ${m.homework_pt}`);
       break;
     }
+    case 'journey': {
+      if (typeof m.promise_pt === 'string' && m.promise_pt) lines.push(`Promessa do dia 90: ${m.promise_pt}`, '');
+      (Array.isArray(m.weeks) ? m.weeks.filter(isRecord) : []).forEach((week) => {
+        lines.push(`Semana ${String(week.week)} — ${String(week.theme)} · ${String(week.grammar_point)} · ${kindLabel(String(week.material_kind))}`);
+        if (week.outcome_pt) lines.push(`  Resultado: ${String(week.outcome_pt)}`);
+        strList(week.class_plan_pt).forEach((step, index) => lines.push(`  ${index + 1}) ${step}`));
+        if (week.homework_pt) lines.push(`  Lição: ${String(week.homework_pt)}`);
+      });
+      const milestones = Array.isArray(m.milestones) ? m.milestones.filter(isRecord) : [];
+      if (milestones.length) { lines.push('', 'Checkpoints:'); milestones.forEach((item) => lines.push(`• Semana ${String(item.week)}: ${String(item.checkpoint_pt)}`)); }
+      const moves = Array.isArray(m.retention_moves_pt) ? m.retention_moves_pt.filter(isRecord) : [];
+      if (moves.length) { lines.push('', 'Ações de retenção:'); moves.forEach((item) => lines.push(`• Semana ${String(item.week)}: ${String(item.move_pt)}`)); }
+      break;
+    }
     case 'conversation':
       lines.push(`Situação: ${m.situation_pt}`, '');
       pairList(m.roles, 'name', 'description_pt').forEach((pair) => lines.push(`Papel — ${pair.en}: ${pair.pt}`));
@@ -260,7 +276,7 @@ const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string; hideRigh
   </table>
 );
 
-export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean }> = ({ record, teacher }) => {
+export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, onGenerateWeek }) => {
   const m = record.material;
   return (
     <article id="hub-material-print" className="rounded-[2rem] border border-brand-border bg-white p-6 text-slate-900 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-8">
@@ -372,6 +388,37 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
         {typeof m.homework_pt === 'string' && m.homework_pt && (<><SectionTitle>Lição de casa</SectionTitle><p className="mt-2 text-sm">{m.homework_pt}</p></>)}
       </>)}
 
+      {record.kind === 'journey' && (<>
+        {typeof m.promise_pt === 'string' && m.promise_pt && <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm print:bg-white print:p-0"><span className="font-black">Promessa do dia 90: </span>{m.promise_pt}</p>}
+        <SectionTitle>As 12 semanas</SectionTitle>
+        <ol className="mt-3 space-y-3">
+          {(Array.isArray(m.weeks) ? m.weeks.filter(isRecord) : []).map((week) => (
+            <li key={String(week.week)} className="break-inside-avoid rounded-2xl border border-brand-border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-tenant-primary print:text-black">Semana {String(week.week)} · {String(week.grammar_point)}</p>
+                  <p className="mt-1 text-base font-black">{String(week.theme)}</p>
+                  {typeof week.outcome_pt === 'string' && week.outcome_pt && <p className="mt-1 text-sm text-slate-600">{week.outcome_pt}</p>}
+                </div>
+                {onGenerateWeek && (
+                  <button type="button" onClick={() => onGenerateWeek({ week: Number(week.week), theme: String(week.theme), material_kind: String(week.material_kind) as HubMaterialKind })} className="shrink-0 rounded-xl border border-tenant-primary/40 px-3 py-1.5 text-xs font-black text-tenant-primary print:hidden">Gerar {kindLabel(String(week.material_kind)).toLowerCase()} desta semana</button>
+                )}
+              </div>
+              {strList(week.class_plan_pt).length > 0 && <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm">{strList(week.class_plan_pt).map((step, index) => <li key={index}>{step}</li>)}</ol>}
+              {typeof week.homework_pt === 'string' && week.homework_pt && <p className="mt-2 text-xs text-slate-500">Lição: {week.homework_pt}</p>}
+            </li>
+          ))}
+        </ol>
+        {Array.isArray(m.milestones) && m.milestones.filter(isRecord).length > 0 && (<>
+          <SectionTitle>Checkpoints</SectionTitle>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{m.milestones.filter(isRecord).map((item, index) => <li key={index}><span className="font-black">Semana {String(item.week)}:</span> {String(item.checkpoint_pt)}</li>)}</ul>
+        </>)}
+        {teacher && Array.isArray(m.retention_moves_pt) && m.retention_moves_pt.filter(isRecord).length > 0 && (<>
+          <SectionTitle>Ações de retenção (para o professor)</SectionTitle>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{m.retention_moves_pt.filter(isRecord).map((item, index) => <li key={index}><span className="font-black">Semana {String(item.week)}:</span> {String(item.move_pt)}</li>)}</ul>
+        </>)}
+      </>)}
+
       {record.kind === 'conversation' && (<>
         <p className="mt-4 text-sm"><span className="font-black">Situação:</span> {String(m.situation_pt)}</p>
         {pairList(m.roles, 'name', 'description_pt').length > 0 && (<><SectionTitle>Papéis</SectionTitle><PairTable pairs={pairList(m.roles, 'name', 'description_pt')} left="Papel" right="Quem é" /></>)}
@@ -470,6 +517,17 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
 
   useEffect(() => { void loadHistory(); }, [loadHistory]);
 
+  // "Gerar material desta semana": a jornada vira o material da semana com um
+  // clique — o mesmo objetivo, nível e faixa; tema e tipo vêm da semana.
+  const [weekNote, setWeekNote] = useState('');
+  const prefillFromWeek = (week: { week: number; theme: string; material_kind: HubMaterialKind }) => {
+    setKind(week.material_kind);
+    setTopic(week.theme);
+    setWeekNote(`Semana ${week.week} da jornada`);
+    setExtra((current) => current || `Material da semana ${week.week} da jornada de 90 dias.`);
+    document.getElementById('hub-material-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const generate = async (event: React.FormEvent) => {
     event.preventDefault();
     if (topic.trim().length < 3) {
@@ -491,7 +549,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
           topic: topic.trim(),
           goal: goal.trim(),
           audience,
-          count,
+          count: kind === 'journey' ? 12 : count,
           bilingual,
           extra: extra.trim(),
         },
@@ -521,6 +579,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
       };
       setCurrent(record);
       setTeacherVersion(true);
+      setWeekNote('');
       await Promise.all([loadHistory(), onRefresh()]);
     } catch (caught) {
       setError(friendlyError(caught));
@@ -566,11 +625,12 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
     <div className="space-y-5">
       <style>{`@media print { body * { visibility: hidden; } #hub-material-print, #hub-material-print * { visibility: visible; } #hub-material-print { position: absolute; left: 0; top: 0; width: 100%; } }`}</style>
 
-      <form onSubmit={generate} className="rounded-[2rem] border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7 print:hidden">
+      <form id="hub-material-form" onSubmit={generate} className="rounded-[2rem] border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7 print:hidden">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary">Educador IA · Gerador de material</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-brand-text">Material pronto por nicho e nível</h1>
+            {weekNote && <p className="mt-1 inline-flex rounded-full bg-tenant-primary/10 px-3 py-1 text-xs font-black text-tenant-primary">{weekNote} · tema e tipo preenchidos</p>}
             <p className="mt-1 text-sm text-brand-muted">Escolha o tipo, o objetivo do aluno, o nível e o tema. Todo material abre com o foco gramatical do nível, mostra a porta que o inglês abre no objetivo dele e fecha com homework para praticar com IA. O gabarito passa por verificação antes de chegar aqui.</p>
           </div>
           <p className="shrink-0 rounded-2xl bg-brand-surface-2 px-4 py-2 text-xs font-bold text-brand-text" data-testid="hub-material-quota">
@@ -604,8 +664,10 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
               {LEVELS.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
-          <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Itens</span>
-            <input type="number" min={4} max={15} value={count} onChange={(event) => setCount(Math.min(15, Math.max(4, Number(event.target.value) || 4)))} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none" />
+          <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">{kind === 'journey' ? 'Semanas' : 'Itens'}</span>
+            {kind === 'journey'
+              ? <input value="12 (90 dias)" readOnly className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-muted outline-none" />
+              : <input type="number" min={4} max={15} value={count} onChange={(event) => setCount(Math.min(15, Math.max(4, Number(event.target.value) || 4)))} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none" />}
           </label>
           <label className="flex items-end gap-3 pb-3">
             <input type="checkbox" checked={bilingual} onChange={(event) => setBilingual(event.target.checked)} className="size-5 rounded" />
@@ -619,7 +681,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
               {HUB_MATERIAL_AUDIENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
-          <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Tema / situação do aluno</span>
+          <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">{kind === 'journey' ? 'Ponto de partida / contexto da jornada' : 'Tema / situação do aluno'}</span>
             <input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={200} placeholder="Ex.: check-in no hotel, reunião de status com o time, consulta de rotina, primeiro dia na escola…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" />
           </label>
           <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Instruções extras (opcional)</span>
@@ -651,7 +713,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
             </div>
             {current.dropped_items > 0 && <p className="text-xs text-brand-muted">{current.dropped_items} {current.dropped_items === 1 ? 'questão foi descartada' : 'questões foram descartadas'} na verificação do gabarito.</p>}
           </div>
-          <HubMaterialView record={current} teacher={teacherVersion} />
+          <HubMaterialView record={current} teacher={teacherVersion} onGenerateWeek={prefillFromWeek} />
         </section>
       )}
 

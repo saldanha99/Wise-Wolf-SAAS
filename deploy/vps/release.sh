@@ -1357,6 +1357,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918020000_gerador_de_material_do_hub.sql"
   "supabase/migrations/20260918030000_essencial_ganha_3_geracoes_por_mes.sql"
   "supabase/migrations/20260918040000_material_do_hub_com_objetivo_e_faixa_etaria.sql"
+  "supabase/migrations/20260918050000_jornada_de_90_dias_no_gerador.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

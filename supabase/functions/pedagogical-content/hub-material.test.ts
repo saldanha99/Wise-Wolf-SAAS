@@ -543,3 +543,78 @@ Deno.test("v2: homework com IA sem prompt cai fora; leitura normaliza skimming/s
     "foco gramatical não espelhado",
   );
 });
+
+const journeyWeeks = (count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    week: index + 1,
+    theme: `Week ${index + 1} at the warehouse`,
+    grammar_point: index % 2 === 0 ? "Present simple" : "There is / there are",
+    material_kind: ["worksheet", "quiz", "reading", "conversation"][index % 4],
+    outcome_pt: "Consegue descrever a rotina do galpão.",
+    class_plan_pt: ["Warm-up", "Prática guiada", "Produção"],
+    homework_pt: "Grave um áudio de 1 minuto.",
+  }));
+
+Deno.test("jornada: 12 semanas em ordem viram o plano; count é fixo em 12 e sem blocos comuns", () => {
+  const parsed = parseHubMaterialSpec({
+    ...base,
+    kind: "journey",
+    level: "A1",
+    goal: "trabalhar na logística de uma multinacional",
+    count: 5,
+  });
+  assert(parsed.ok, "spec de jornada recusada");
+  assert(parsed.spec.count === 12, "jornada deveria fixar 12 semanas");
+  const prompt = buildHubMaterialPrompt(parsed.spec);
+  assert(
+    prompt.includes("JORNADA DE 90 DIAS") && !prompt.includes('"ai_homework"'),
+    "prompt da jornada pede blocos que ela não tem",
+  );
+  const result = normalizeHubMaterial(parsed.spec, {
+    title: "90 days to report at the warehouse",
+    objective_pt: "Reportar embarques",
+    promise_pt: "No dia 90 você conduz o status semanal em inglês.",
+    weeks: [...journeyWeeks(12)].reverse(),
+    milestones: [{ week: 4, checkpoint_pt: "Teste oral curto" }, {
+      week: 40,
+      checkpoint_pt: "fora",
+    }],
+    retention_moves_pt: [{ week: 1, move_pt: "Mande o plano pelo WhatsApp." }],
+  });
+  assert(
+    result.ok,
+    `jornada válida recusada: ${!result.ok ? result.code : ""}`,
+  );
+  const material = result.value.material as Record<string, unknown>;
+  const weeks = material.weeks as Array<{ week: number }>;
+  assert(
+    weeks.length === 12 &&
+      weeks.every((week, index) => week.week === index + 1),
+    "semanas fora de ordem",
+  );
+  assert(
+    (material.milestones as unknown[]).length === 1,
+    "milestone fora da faixa sobreviveu",
+  );
+  assert(
+    !("grammar_focus" in material),
+    "jornada não deveria carregar grammar_focus",
+  );
+});
+
+Deno.test("jornada: semana faltando ou tipo de material inventado reprova", () => {
+  const parsed = parseHubMaterialSpec({ ...base, kind: "journey" });
+  assert(parsed.ok, "spec recusada");
+  const missing = normalizeHubMaterial(parsed.spec, {
+    title: "x",
+    weeks: journeyWeeks(11),
+  });
+  assert(
+    !missing.ok && missing.code === "MATERIAL_JOURNEY_INCOMPLETE",
+    "11 semanas passaram",
+  );
+  const weeks = journeyWeeks(12);
+  weeks[5].material_kind = "podcast";
+  const invalid = normalizeHubMaterial(parsed.spec, { title: "x", weeks });
+  assert(!invalid.ok, "tipo de material inventado passou");
+});
