@@ -12,6 +12,8 @@ vi.mock('../../lib/supabase', () => ({
         data: { subscription: { unsubscribe: vi.fn() } },
       })),
     },
+    // A mesa do aluno convidado consulta o servidor; aqui ele ainda não tem professor ligado.
+    rpc: vi.fn(async () => ({ data: { ok: false, code: 'NOT_A_LEARNER_HERE' }, error: null })),
   },
 }));
 
@@ -84,8 +86,21 @@ describe('Papel funcional no Hub', () => {
     expect(screen.queryByRole('button', { name: 'Educador IA' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Criar com IA' })).toBeNull();
     expect(screen.queryByText('Prepare uma aula')).toBeNull();
-    expect(screen.getAllByRole('button', { name: 'Biblioteca' }).length).toBeGreaterThan(0);
+    // Aluno convidado numa conta de professor/escola: vê o que é dele e o Wolfie,
+    // nunca a biblioteca licenciada ao professor nem os planos.
+    expect(screen.getAllByRole('button', { name: 'Meus estudos' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Wolfie' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Biblioteca' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Planos' })).toBeNull();
+  });
+
+  it('esconde o Wolfie do aluno convidado quando o plano do professor não tem cota', () => {
+    const noWolfie = bootstrap('LEARNER');
+    noWolfie.entitlements['wolfie.turn'] = { limit: 0, resetPeriod: 'MONTH', used: 0 };
+    render(<HubPortal bootstrap={noWolfie} plans={[]} settings={settings} content={[]} userId="00000000-0000-4000-8000-000000000001" userEmail="member@example.invalid" onRefresh={async () => {}} onLogout={async () => {}} />);
+
+    expect(screen.getAllByRole('button', { name: 'Meus estudos' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Wolfie' })).toBeNull();
   });
 
   it('mantém o módulo nativo disponível para um membro educador', () => {
@@ -101,6 +116,9 @@ describe('Papel funcional no Hub', () => {
     expect(screen.queryByRole('button', { name: 'Educador IA' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Criar com IA' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Wolfie' }).length).toBeGreaterThan(0);
+    // Conta pessoal de aluno (Wolfie individual) continua com a navegação própria, sem "Meus estudos".
+    expect(screen.getAllByRole('button', { name: 'Biblioteca' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Meus estudos' })).toBeNull();
   });
 
   it('mantém Educador IA para OWNER com persona educadora', () => {
@@ -111,7 +129,7 @@ describe('Papel funcional no Hub', () => {
   });
 
   it('personaliza um membro aluno pela função individual, não pela conta institucional', () => {
-    const learnerBootstrap = bootstrap('LEARNER');
+    const learnerBootstrap = bootstrap('LEARNER', 'OWNER', 'LEARNER');
     learnerBootstrap.memberProfile = {
       ...learnerBootstrap.memberProfile!,
       onboarding_completed: false,

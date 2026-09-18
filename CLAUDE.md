@@ -185,6 +185,29 @@ nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "m
   mostra na primeira aula e o que atravessa o 3º mês. Medido: teen A1 → to be, possessivos,
   there is/are, present simple…; gastronomia B1 → present perfect, first conditional, modais…
 
+**Assentos de aluno no Hub (18/09, migration `20260918060000`):** o aluno do professor entra
+no ambiente do professor como membro `MEMBER/LEARNER` — sem tenant. `team.seats` do plano é o
+número de alunos (Descoberta 1 · Essencial 2 · Pro 8 · Studio 25 · Institucional 100).
+- **Convite por link:** `hub_invite_learner(conta, perfil)` grava `invite_token` (64 hex, 14 dias)
+  em `hub_educator_learners`; o professor manda `https://hub.wisewolflanguage.com.br/?convite=<token>`
+  pelo WhatsApp (`HubLearnersPanel`, modo "Meus alunos" da aba Educador IA). O `HubApp` lê
+  `?convite=` (guardado em `sessionStorage` para sobreviver ao login), mostra a prévia
+  (`hub_learner_invite_preview`, anon) e `hub_accept_learner_invite` cria membership + perfil de
+  membro e liga `member_user_id`. Convite renovado do mesmo aluno não conta assento novo.
+- **O gabarito nunca sai do servidor:** o aluno não tem select em `hub_educator_materials` nem
+  em `hub_learner_assignments`; recebe tudo por `hub_learner_desk`, que passa cada material por
+  `private.hub_strip_answer_keys` (tira `correct`, `explanation_pt`, `answer`, `model_answer`,
+  `tip_pt`, `watch_out_pt`, `teacher_notes_pt`, `retention_moves_pt`, resposta do scanning e
+  tradução dos chunks). `hub_complete_assignment` marca feito + recado; o professor vê em
+  `hub_list_learner_seats` (RPC-only: a tabela de perfis de aluno não tem grant a authenticated,
+  e policy que consulte essa tabela por dentro dá "permission denied" — use predicado definer).
+- **Navegação do aluno convidado** (`subjectRole = LEARNER` numa conta que não é `LEARNER`):
+  só "Meus estudos" (`HubStudentDesk`) e Wolfie quando `wolfie.turn` do plano > 0. Sem
+  biblioteca (licença é do professor), sem planos, sem Educador IA. Conta pessoal de aluno
+  (audience `LEARNER`, Wolfie individual) não muda.
+- Teste: `supabase/tests/assentos_de_aluno_no_hub.sql` (convite, teto, aceite, prévia, mesa sem
+  gabarito, estranho recusado, conclusão).
+
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:
 - trigger `zzz_saas_lead_notify_management` avisa o grupo da Gestão da escola operadora

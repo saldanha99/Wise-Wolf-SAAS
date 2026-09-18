@@ -14,6 +14,8 @@ interface HubAuthDialogProps {
   initialMode: 'login' | 'signup';
   initialAudience: HubAudience;
   checkoutIntent?: HubCheckoutIntent | null;
+  // Convite de aluno: muda a copy (não é "descoberta grátis") e trava a audiência em LEARNER.
+  invite?: { teacher_name: string; learner_name: string } | null;
   onClose: () => void;
   onAuthenticated: (audience: HubAudience, accountName?: string) => Promise<void>;
 }
@@ -22,11 +24,12 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
   initialMode,
   initialAudience,
   checkoutIntent,
+  invite = null,
   onClose,
   onAuthenticated,
 }) => {
   const [mode, setMode] = useState(initialMode);
-  const [audience, setAudience] = useState<HubAudience>(initialMode === 'signup' ? 'EDUCATOR' : initialAudience);
+  const [audience, setAudience] = useState<HubAudience>(invite ? 'LEARNER' : initialMode === 'signup' ? 'EDUCATOR' : initialAudience);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -155,7 +158,7 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
               {confirmationSent
                 ? 'Confirme seu e-mail'
                 : mode === 'signup'
-                  ? continuingCheckout ? 'Crie sua conta para continuar' : 'Comece sua descoberta grátis'
+                  ? invite ? `Entre na turma de ${invite.teacher_name}` : continuingCheckout ? 'Crie sua conta para continuar' : 'Comece sua descoberta grátis'
                   : 'Bem-vindo de volta'}
             </h2>
           </div>
@@ -207,14 +210,14 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
 
               <button type="submit" disabled={loading} className="hub-auth-submit flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,.9)] hover:bg-blue-500 disabled:opacity-60">
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <ArrowRight size={18} />}
-                {loading ? 'Preparando...' : mode === 'signup' ? continuingCheckout ? 'Criar conta e continuar' : 'Criar conta e descobrir' : 'Entrar no Hub'}
+                {loading ? 'Preparando...' : mode === 'signup' ? invite ? 'Criar conta e entrar na turma' : continuingCheckout ? 'Criar conta e continuar' : 'Criar conta e descobrir' : 'Entrar no Hub'}
               </button>
             </form>
 
             <p className="hub-auth-switch mt-6 text-center text-sm text-slate-400">
               {mode === 'signup' ? 'Já possui uma conta?' : 'Ainda não possui uma conta?'}{' '}
-              <button type="button" onClick={() => { const nextMode = mode === 'signup' ? 'login' : 'signup'; setMode(nextMode); if (nextMode === 'signup') setAudience('EDUCATOR'); setError(''); }} className="font-black text-blue-400">
-                {mode === 'signup' ? 'Entrar' : 'Começar grátis'}
+              <button type="button" onClick={() => { const nextMode = mode === 'signup' ? 'login' : 'signup'; setMode(nextMode); if (nextMode === 'signup') setAudience(invite ? 'LEARNER' : 'EDUCATOR'); setError(''); }} className="font-black text-blue-400">
+                {mode === 'signup' ? 'Entrar' : invite ? 'Criar conta de aluno' : 'Começar grátis'}
               </button>
             </p>
           </>

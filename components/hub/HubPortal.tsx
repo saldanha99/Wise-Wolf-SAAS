@@ -17,6 +17,7 @@ import {
   Sun,
   X,
   Zap,
+  GraduationCap,
 } from 'lucide-react';
 import MaterialsLibrary, { type CollectionItem, type MaterialItem } from '../MaterialsLibrary';
 import ModernSidebar, { type SidebarMenuItem } from '../ModernSidebar';
@@ -45,9 +46,11 @@ import { resolveSystemAppUrl } from './hubRoutes';
 
 const HubEducatorPlanner = React.lazy(() => import('./HubEducatorPlanner'));
 const HubMaterialGenerator = React.lazy(() => import('./HubMaterialGenerator'));
+const HubLearnersPanel = React.lazy(() => import('./HubLearnersPanel'));
+const HubStudentDesk = React.lazy(() => import('./HubStudentDesk'));
 const HubWolfieStudio = React.lazy(() => import('./HubWolfieStudio'));
 
-export type HubTab = 'overview' | 'library' | 'educator' | 'wolfie' | 'saas' | 'plans';
+export type HubTab = 'overview' | 'library' | 'educator' | 'wolfie' | 'saas' | 'plans' | 'desk';
 
 interface HubPortalProps {
   bootstrap: HubBootstrap;
@@ -68,6 +71,7 @@ interface HubPortalProps {
 const BRAND_LOGO = 'https://wisewolflanguage.com.br/logo.png';
 
 const NAV_ITEMS: Array<SidebarMenuItem & { id: HubTab }> = [
+  { id: 'desk', label: 'Meus estudos', icon: GraduationCap, primary: true },
   { id: 'overview', label: 'Início', icon: LayoutDashboard, primary: true },
   { id: 'library', label: 'Biblioteca', icon: Library, primary: true },
   { id: 'educator', label: 'Educador IA', icon: Sparkles },
@@ -205,7 +209,7 @@ const HubOverview: React.FC<{
 // Educador IA tem duas ferramentas com a mesma cota (`educator_ai.generate`):
 // o gerador de material por nicho × nível (sem aluno — é o produto de entrada)
 // e o planner de aula (com perfil de aluno). Uma aba, um seletor.
-type HubEducatorMode = 'materials' | 'planner';
+type HubEducatorMode = 'materials' | 'planner' | 'learners';
 
 const HubEducatorWorkspace: React.FC<{
   bootstrap: HubBootstrap;
@@ -220,6 +224,7 @@ const HubEducatorWorkspace: React.FC<{
         {([
           ['materials', 'Gerar material'],
           ['planner', 'Planner de aula'],
+          ['learners', 'Meus alunos'],
         ] as Array<[HubEducatorMode, string]>).map(([value, label]) => (
           <button
             key={value}
@@ -236,7 +241,9 @@ const HubEducatorWorkspace: React.FC<{
       <React.Suspense fallback={<HubModuleLoading />}>
         {mode === 'materials'
           ? <HubMaterialGenerator bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
-          : <HubEducatorPlanner bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={onUpgrade} />}
+          : mode === 'learners'
+            ? <HubLearnersPanel bootstrap={bootstrap} />
+            : <HubEducatorPlanner bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={onUpgrade} />}
       </React.Suspense>
     </div>
   );
@@ -605,9 +612,16 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
   const personalizationAudience = bootstrap.membership.membership_role === 'MEMBER'
     ? bootstrap.memberProfile?.subjectRole || 'LEARNER'
     : bootstrap.account.audience;
+  // Aluno convidado = membro LEARNER numa conta que não é de aluno (a do professor).
+  // Ele vê o que é dele (Meus estudos) e o Wolfie se o plano do professor tiver cota;
+  // não vê a biblioteca licenciada ao professor, nem planos, nem Educador IA.
+  const isInvitedLearner = bootstrap.memberProfile?.subjectRole === 'LEARNER' && bootstrap.account.audience !== 'LEARNER';
+  const wolfieAvailable = (bootstrap.entitlements['wolfie.turn']?.limit ?? 0) !== 0;
   const visibleNavItems = useMemo(
-    () => NAV_ITEMS.filter((item) => item.id !== 'educator' || canUseEducator),
-    [canUseEducator],
+    () => isInvitedLearner
+      ? NAV_ITEMS.filter((item) => item.id === 'desk' || (item.id === 'wolfie' && wolfieAvailable))
+      : NAV_ITEMS.filter((item) => item.id !== 'desk' && (item.id !== 'educator' || canUseEducator)),
+    [canUseEducator, isInvitedLearner, wolfieAvailable],
   );
   const hubTenant = useMemo<Tenant>(() => ({
     id: bootstrap.account.id,
@@ -665,7 +679,11 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
   useEffect(() => {
     if (tab === 'educator' && !canUseEducator) setTab('overview');
   }, [canUseEducator, tab]);
+  useEffect(() => {
+    if (isInvitedLearner && !visibleNavItems.some((item) => item.id === tab)) setTab('desk');
+  }, [isInvitedLearner, tab, visibleNavItems]);
   const render = () => {
+    if (tab === 'desk') return <React.Suspense fallback={<HubModuleLoading />}><HubStudentDesk bootstrap={bootstrap} /></React.Suspense>;
     if (!hasCurrentAccess && ['library', 'educator', 'wolfie'].includes(tab)) return <HubAccessRequired onChoosePlan={() => navigate('plans')} />;
     if (tab === 'educator' && !canUseEducator) return <HubAccessRequired onChoosePlan={() => navigate('overview')} />;
     if (tab === 'library') return <HubLibrary bootstrap={bootstrap} content={content} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
