@@ -100,6 +100,45 @@ export function resolveTenantConfiguredWhatsAppDestination(
   return allowed.has(normalized) ? normalized : null;
 }
 
+export type TenantNoticeChannel =
+  | "direcao"
+  | "coordenacao"
+  | "comercial"
+  | "professores";
+
+/**
+ * Grupo de um CANAL de aviso (18/09/2026): dinheiro em `direcao`, agenda em
+ * `coordenacao`, funil em `comercial`, disparos em `professores`. Resolvido no
+ * banco (`notice_channel_destination` → `private.tenant_notice_destination`):
+ * canal configurado em `tenant_notice_channels`, senão o grupo que já cumpria
+ * esse papel (professores → `teachers_group_id`; comercial →
+ * `directors_group_id`), senão o grupo da Gestão. Devolve null só quando a
+ * escola não tem grupo nenhum — aí o chamador decide (normalmente, não manda).
+ *
+ * O valor vem da configuração da própria escola, chaveado por tenant no
+ * servidor: passe-o por `resolveTenantConfiguredWhatsAppDestination`, nunca
+ * pela trava estrita de corpo de requisição.
+ */
+export async function loadTenantNoticeDestination(
+  admin: any,
+  tenantId: string,
+  channel: TenantNoticeChannel,
+): Promise<string | null> {
+  const { data, error } = await admin.rpc("notice_channel_destination", {
+    p_tenant: tenantId,
+    p_channel: channel,
+  });
+  if (error) {
+    console.error("[notice-channel] destino indisponível", {
+      tenantId,
+      channel,
+      code: (error as { code?: string }).code,
+    });
+    return null;
+  }
+  return safeWhatsAppGroupId(data) || safePhone(data);
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

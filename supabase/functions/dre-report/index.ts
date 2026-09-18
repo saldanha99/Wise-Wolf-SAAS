@@ -25,6 +25,7 @@ import {
   markFinancialReportMessageSubmitting,
 } from "../_shared/financial-report-message-fence.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -201,9 +202,15 @@ serve(async (req) => {
         );
         continue;
       }
+      // Canal de direção (dinheiro); sem grupo próprio, o destino do DRE.
+      const canal = await loadTenantNoticeDestination(
+        supabase,
+        tenantId,
+        "direcao",
+      );
       const destino = resolveTenantConfiguredWhatsAppDestination(
         route,
-        alvo.destino,
+        canal || alvo.destino,
       );
       if (!destino) {
         // Recusa VISIVEL. Antes isto virava um item em  dentro do

@@ -1174,9 +1174,18 @@ histórico, sem aviso, sem `audit_logs`.
 - Tela `TeacherReschedules`: motivo (obrigatório ao remarcar), ⚠️ "em breve", histórico
   (`reschedule_events`, RLS: professor vê as suas), Desmarcar. Regras espelhadas em
   `lib/rescheduleRules.ts` (com teste).
-- **Ainda não feito:** professor remarcando pelo WhatsApp da escola ("a reposição do Theo
-  passou para terça 15h"), comando "reposições" e resumo de segunda no grupo, cobrança de
-  reposição vencida sem lançamento.
+- **Etapa 2 (migration `20260918110000`):** o professor marca/remarca/desmarca pelo
+  WhatsApp da escola — "a reposição do Theo passou para terça 15h", "marca a reposição da
+  Ana amanhã 16:30", "desmarca a reposição do Vinícius" (`teacher-reschedule-move.ts`,
+  puro, testado; roteado ANTES da troca de horário fixo porque "passou para 15h" casa nos
+  dois — a palavra *reposição* decide). Proposta + "confirma?" (motivo junto: "sim, aluno
+  pediu") → `teacher_reschedule_prompt_apply` age como o professor pela MESMA RPC da tela,
+  com `app.reschedule_source = whatsapp_professor`. Comando **"reposições"** no grupo
+  (Direção ou Coordenação) e **resumo toda segunda** no canal de coordenação
+  (`daily-automations`, kind `RESCHEDULE_WEEKLY`); **reposição vencida** (data passou, sem
+  lançamento) cobra o professor uma vez por reposição (`RESCHEDULE_OVERDUE`, marca em
+  `automation_sent` antes da fila) e resume no grupo (`RESCHEDULE_OVERDUE_GROUP`).
+  Composição em `_shared/reschedule-messages.ts` (ritual completo no `release.sh`).
 
 ### Canais de aviso — um grupo de WhatsApp por assunto (migration `20260918100000`) ✅
 
@@ -1195,11 +1204,19 @@ marcada/aceita/sem professor, pós-experimental, follow-up), `professores` (disp
   `channel=`, RPCs `get_notice_channels` / `save_notice_channel`).
 - Já roteados: eventos de reposição, `coverage_briefing_enqueue` (resumo da cobertura) e
   `teacher_apply_student_schedule_change` (troca de horário) → `coordenacao`.
-- **Ainda na Gestão (próxima etapa):** o que sai direto das edge functions
-  (`claim-coverage`, `whatsapp-inbound` — cobertura/ausência/dia, pós-experimental,
-  `payment-split-notify`, `dre-report`, `management-payroll-report`,
-  `monthly-reserve-notify`) e os **comandos** (o bot só ouve o grupo de
-  `dre_report_settings.destino`; Coordenação/Comercial ainda não recebem comandos).
+- **Etapa 2 (migration `20260918110000`):** `comercial` cai em `profiles.directors_group_id`
+  ("EXPERIMENTAL CONFIRMADAS") antes da Gestão. Edge functions leem o canal por
+  `loadTenantNoticeDestination(sb, tenant, canal)` (`_shared/tenant-communication.ts` →
+  RPC `notice_channel_destination`, service_role): `claim-coverage`, ausência e cobertura
+  do dia no `whatsapp-inbound` → `coordenacao`; `payment-split-notify`, `dre-report`,
+  `management-payroll-report`, `monthly-reserve-notify`, renovação → `direcao`. **O bot
+  ouve os grupos por canal**: ingress e inbox aceitam o conjunto de `notice_channel_jids`
+  (menos o dos professores); `private.management_group_jid_is_authorized` entra em
+  `management_group_execution_authorized` e `whatsapp_inbox_remote_jid_is_allowed`.
+  Escopo: Direção/Gestão = tudo; **Coordenação** = cobertura, cobertura do dia,
+  transferência, troca de horário, treinamento, reposições (pedido de dinheiro ou pergunta
+  de gestão ganha "isso é no grupo da Direção" — o retrato financeiro não sai lá);
+  **Comercial** = só avisos (comando vira um ponteiro).
 
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 

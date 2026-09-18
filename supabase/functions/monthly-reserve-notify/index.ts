@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
 import { sendWhatsTextToResolvedDestinationDetailed } from "../_shared/evolution-send.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -53,9 +54,15 @@ serve(async (req) => {
           { requireDeliveryReceipts: true },
         );
         if (!route) return null;
+        // Caixinha é dinheiro: canal de direção (sem grupo próprio, o do DRE).
+        const canal = await loadTenantNoticeDestination(
+          client,
+          tenantId,
+          "direcao",
+        );
         const destination = resolveTenantConfiguredWhatsAppDestination(
           route,
-          settings.data.destino,
+          canal || settings.data.destino,
         );
         if (!destination || !/^[0-9]{10,25}@g\.us$/.test(destination)) {
           return null;

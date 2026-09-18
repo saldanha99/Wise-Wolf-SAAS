@@ -8,10 +8,22 @@ import {
   dateInSaoPaulo,
   isQueueDuplicateError,
 } from "./core.ts";
+import {
+  rescheduleBacklogMessage,
+  type RescheduleBacklogRow,
+  rescheduleOverdueGroupMessage,
+  type RescheduleOverdueRow,
+  rescheduleOverdueTeacherMessage,
+} from "../_shared/reschedule-messages.ts";
+import { loadTenantNoticeDestination } from "../_shared/tenant-communication.ts";
 
 // Cron diário (manhã): automações por tenant, entregues pela fila transacional da escola.
-//   1. BIRTHDAY        — aniversário de alunos E professores
-//   2. TEACHER_AGENDA  — agenda de aulas do dia para cada professor
+//   1. BIRTHDAY            — aniversário de alunos E professores
+//   2. TEACHER_AGENDA      — agenda de aulas do dia para cada professor
+//   3. RESCHEDULE_OVERDUE  — reposição com data passada e sem lançamento: cobra o
+//                            professor e avisa o canal de coordenação (18/09/2026)
+//   4. RESCHEDULE_WEEKLY   — segunda: passivo de reposição por professor no canal
+//                            de coordenação (decisão da direção: sem prazo, mas visível)
 // O follow-up experimental legado foi aposentado: ele inferia que a aula aconteceu
 // apenas pelo appointment e concorria com o post-trial-pipeline, que exige class_log,
 // feedback, oportunidade aberta e ausência de proposta válida.
@@ -91,6 +103,8 @@ serve(async (req) => {
       birthdays: 0,
       agendas: 0,
       trials: 0,
+      reschedules_overdue: 0,
+      reschedules_weekly: 0,
       skipped: 0,
       failures: [] as string[],
     };
@@ -209,6 +223,166 @@ serve(async (req) => {
         else result.skipped++;
       } catch (error) {
         result.failures.push(`agenda ${subj}: ${(error as Error).message}`);
+      }
+    }
+
+    // ───────────────────────────── 3. REPOSIÇÃO VENCIDA SEM LANÇAMENTO
+    // O professor é cobrado quando aparece uma reposição vencida NOVA (marca
+    // por reposição em automation_sent, kind RESCHEDULE_OVERDUE); a mensagem
+    // lista todas as vencidas dele. Uma linha no canal de coordenação por dia.
+    const { data: tenantRows, error: tenantRowsError } = tenantId
+      ? { data: [{ id: tenantId }], error: null }
+      : await supabase.from("tenants").select("id").in("saas_status", [
+        "active",
+        "trial",
+        "trialing",
+      ]);
+    if (tenantRowsError) throw tenantRowsError;
+    const isMonday = new Date(`${today}T12:00:00-03:00`).getUTCDay() === 1;
+    for (const tenantRow of (tenantRows || []) as Array<{ id: string }>) {
+      const tid = tenantRow.id;
+      try {
+        const { data: overdueRaw, error: overdueError } = await supabase.rpc(
+          "reschedule_overdue_rows",
+          { p_tenant: tid },
+        );
+        if (overdueError) throw overdueError;
+        const overdue = (Array.isArray(overdueRaw)
+          ? overdueRaw
+          : []) as RescheduleOverdueRow[];
+        const byTeacher = new Map<string, RescheduleOverdueRow[]>();
+        for (const row of overdue) {
+          const list = byTeacher.get(row.teacher_id) || [];
+          list.push(row);
+          byTeacher.set(row.teacher_id, list);
+        }
+        const notified: RescheduleOverdueRow[] = [];
+        for (const [teacherId, rows] of byTeacher) {
+          const fresh: RescheduleOverdueRow[] = [];
+          for (const row of rows) {
+            const { data: seen } = await supabase.from("automation_sent")
+              .select("id").eq("kind", "RESCHEDULE_OVERDUE")
+              .eq("subject_id", row.reschedule_id).eq("ref_date", row.date)
+              .maybeSingle();
+            if (!seen) {
+              fresh.push(row);
+            }
+          }
+          if (!fresh.length) {
+            result.skipped++;
+            continue;
+          }
+          const phone = normPhone(rows[0].teacher_phone || "");
+          if (phone.length < 12) {
+            result.failures.push(
+              `reposicao vencida ${teacherId}: telefone inválido`,
+            );
+            continue;
+          }
+          try {
+            const outcome = await enqueue({
+              tenantId: tid,
+              subjectId: teacherId,
+              kind: "RESCHEDULE_OVERDUE",
+              destination: phone,
+              message: rescheduleOverdueTeacherMessage(
+                rows[0].teacher_name,
+                rows,
+              ),
+              refDate: today,
+              scheduledAt,
+              teacherId,
+              studentName: rows[0].teacher_name,
+            });
+            if (outcome === "queued") {
+              result.reschedules_overdue++;
+              notified.push(...fresh);
+              // Marca ANTES da entrega (mesma regra do resto da casa): a fila
+              // é quem entrega; a marca evita cobrar a mesma reposição de novo.
+              for (const row of fresh) {
+                await supabase.from("automation_sent").upsert({
+                  kind: "RESCHEDULE_OVERDUE",
+                  subject_id: row.reschedule_id,
+                  ref_date: row.date,
+                }, { onConflict: "kind,subject_id,ref_date" });
+              }
+            } else result.skipped++;
+          } catch (error) {
+            result.failures.push(
+              `reposicao vencida ${teacherId}: ${(error as Error).message}`,
+            );
+          }
+        }
+        if (notified.length) {
+          const group = await loadTenantNoticeDestination(
+            supabase,
+            tid,
+            "coordenacao",
+          );
+          if (group && /@g\.us$/.test(group)) {
+            try {
+              await enqueue({
+                tenantId: tid,
+                subjectId: tid,
+                kind: "RESCHEDULE_OVERDUE_GROUP",
+                destination: group,
+                message: rescheduleOverdueGroupMessage(notified),
+                refDate: today,
+                scheduledAt,
+                studentName: "Coordenação",
+              });
+            } catch (error) {
+              result.failures.push(
+                `reposicao vencida grupo ${tid}: ${(error as Error).message}`,
+              );
+            }
+          }
+        }
+
+        // ───────────────────────────── 4. SEGUNDA: PASSIVO POR PROFESSOR
+        if (isMonday && !(await already("RESCHEDULE_WEEKLY", tid))) {
+          const group = await loadTenantNoticeDestination(
+            supabase,
+            tid,
+            "coordenacao",
+          );
+          if (group && /@g\.us$/.test(group)) {
+            const { data: backlogRaw, error: backlogError } = await supabase
+              .rpc(
+                "reschedule_backlog_summary",
+                { p_tenant: tid },
+              );
+            if (backlogError) {
+              throw backlogError;
+            }
+            const backlog = (Array.isArray(backlogRaw)
+              ? backlogRaw
+              : []) as RescheduleBacklogRow[];
+            try {
+              const outcome = await enqueue({
+                tenantId: tid,
+                subjectId: tid,
+                kind: "RESCHEDULE_WEEKLY",
+                destination: group,
+                message: rescheduleBacklogMessage(backlog, {
+                  heading: "🔁 *Reposições em aberto — semana que começa*",
+                }),
+                refDate: today,
+                scheduledAt,
+                studentName: "Coordenação",
+              });
+              if (outcome === "queued") {
+                result.reschedules_weekly++;
+              } else result.skipped++;
+            } catch (error) {
+              result.failures.push(
+                `reposicao semanal ${tid}: ${(error as Error).message}`,
+              );
+            }
+          }
+        }
+      } catch (error) {
+        result.failures.push(`reposicoes ${tid}: ${(error as Error).message}`);
       }
     }
 

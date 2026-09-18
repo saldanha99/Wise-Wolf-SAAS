@@ -519,6 +519,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/care-conversation.test.ts \
   supabase/functions/whatsapp-inbound/teacher-schedule-change.ts \
   supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.test.ts \
+  supabase/functions/_shared/reschedule-messages.ts \
+  supabase/functions/_shared/reschedule-messages.test.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -738,6 +742,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/_shared/payroll-message.test.ts \
+  supabase/functions/_shared/reschedule-messages.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.test.ts \
   supabase/functions/whatsapp-inbound/teacher-absence.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
@@ -1363,6 +1369,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918080000_substituto_enxerga_o_aluno_que_cobre.sql"
   "supabase/migrations/20260918090000_cobertura_cancelada_nao_bloqueia_a_proxima.sql"
   "supabase/migrations/20260918100000_reposicao_com_trilha_e_canais_de_aviso.sql"
+  "supabase/migrations/20260918110000_reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1496,6 +1503,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
   "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
   "supabase/tests/reposicao_com_trilha_e_canais_de_aviso.sql"
+  "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1541,6 +1549,7 @@ SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 SHARED_PAYROLL_MESSAGE_RELATIVE="supabase/functions/_shared/payroll-message.ts"
+SHARED_RESCHEDULE_MESSAGES_RELATIVE="supabase/functions/_shared/reschedule-messages.ts"
 SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
 SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/financial-report-message-fence.ts"
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
@@ -1707,6 +1716,7 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 [[ -s "$SHARED_PAYROLL_MESSAGE_RELATIVE" ]] || die "compositor da folha ausente"
+[[ -s "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" ]] || die "compositor das reposições ausente"
 [[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
 [[ -s "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" ]] || die "fence de relatórios financeiros ausente"
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
@@ -1831,6 +1841,7 @@ append_release_input_checksum() {
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
     "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
+    "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" \
     "$SHARED_EVOLUTION_SEND_RELATIVE" \
     "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
@@ -2011,6 +2022,8 @@ rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 rsync -a -- "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payroll-message.ts"
+rsync -a -- "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/reschedule-messages.ts"
 rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
 rsync -a -- "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
@@ -2207,6 +2220,7 @@ hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 lead_contact_shared_swapped=0
 payroll_message_shared_swapped=0
+reschedule_messages_shared_swapped=0
 evolution_send_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
@@ -2381,6 +2395,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 [[ -s "$release_dir/functions/_shared/payroll-message.ts" ]]
+[[ -s "$release_dir/functions/_shared/reschedule-messages.ts" ]]
 [[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
 [[ -s "$release_dir/functions/_shared/financial-report-message-fence.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
@@ -2671,6 +2686,14 @@ restore_previous_release() {
         "$functions_dir/_shared/payroll-message.ts"
     else
       rm -f -- "$functions_dir/_shared/payroll-message.ts"
+    fi
+  fi
+  if [[ "$reschedule_messages_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/reschedule-messages.ts" ]]; then
+      cp -a -- "$backup_dir/reschedule-messages.ts" \
+        "$functions_dir/_shared/reschedule-messages.ts"
+    else
+      rm -f -- "$functions_dir/_shared/reschedule-messages.ts"
     fi
   fi
   if [[ "$evolution_send_shared_swapped" = "1" ]]; then
@@ -4033,6 +4056,14 @@ fi
 payroll_message_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/payroll-message.ts" \
   "$functions_dir/_shared/payroll-message.ts"
+
+if [[ -f "$functions_dir/_shared/reschedule-messages.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/reschedule-messages.ts" \
+    "$backup_dir/reschedule-messages.ts"
+fi
+reschedule_messages_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/reschedule-messages.ts" \
+  "$functions_dir/_shared/reschedule-messages.ts"
 
 if [[ -f "$functions_dir/_shared/evolution-send.ts" ]]; then
   cp -a -- "$functions_dir/_shared/evolution-send.ts" \

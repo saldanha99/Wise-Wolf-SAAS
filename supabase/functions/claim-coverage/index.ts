@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { sendWhatsText } from "../_shared/evolution-send.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -221,10 +222,15 @@ async function notifyAfterClaim(
     const cobre = String(result.cover_teacher_name || "Professor").trim();
     const ausente = String(result.original_teacher_name || "Professor").trim();
 
+    // Canal de coordenação (sem grupo configurado, cai na Gestão) — a
+    // cobertura é agenda, não dinheiro.
     const { data: conf } = await supabase.from("dre_report_settings")
-      .select("destino,is_active").eq("tenant_id", tenantId).maybeSingle();
-    const destino = conf?.is_active
-      ? resolveTenantConfiguredWhatsAppDestination(route, conf.destino)
+      .select("is_active").eq("tenant_id", tenantId).maybeSingle();
+    const canal = conf?.is_active
+      ? await loadTenantNoticeDestination(supabase, tenantId, "coordenacao")
+      : null;
+    const destino = canal
+      ? resolveTenantConfiguredWhatsAppDestination(route, canal)
       : null;
     if (destino) {
       await send(

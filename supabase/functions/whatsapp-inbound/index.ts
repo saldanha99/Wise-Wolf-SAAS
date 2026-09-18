@@ -87,6 +87,20 @@ import {
   type PayrollSummary,
 } from "../_shared/payroll-message.ts";
 import {
+  rescheduleBacklogMessage,
+  type RescheduleBacklogRow,
+} from "../_shared/reschedule-messages.ts";
+import {
+  parseConfirmationWithReason,
+  parseTeacherRescheduleMessage,
+  proposeRescheduleMove,
+  type RescheduleCandidateStudent,
+  rescheduleMoveAppliedMessage,
+  rescheduleMoveConfirmationMessage,
+  type RescheduleProposalItem,
+} from "./teacher-reschedule-move.ts";
+import { loadTenantNoticeDestination } from "../_shared/tenant-communication.ts";
+import {
   handleRenewalManagementCommand,
   handleRenewalStudentMessage,
   handleRenewalTeacherReply,
@@ -1633,6 +1647,137 @@ async function handleTeacherScheduleChangeMessage(
 }
 
 /**
+ * PROFESSOR MARCA / REMARCA / DESMARCA REPOSIÇÃO PELO WHATSAPP (18/09/2026).
+ *
+ * "A reposição do Theo passou para terça 15h" → o bot acha o aluno nas
+ * reposições abertas do professor, mostra o que entendeu, pergunta "confirma?"
+ * (o motivo pode vir junto: "sim, aluno pediu") e aplica no SIM pela MESMA RPC
+ * da tela, agindo como o professor — origem `whatsapp_professor` na trilha,
+ * coordenação e família avisadas pelo servidor. Devolve true quando tratou.
+ */
+async function handleTeacherRescheduleMessage(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: pending } = await sb.rpc("teacher_reschedule_prompt_pending", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const answer = parseConfirmationWithReason(text);
+  if (pending && typeof pending === "object" && answer) {
+    await logMsg(sb, tenantId, phone, "reschedule_move", "in", text, {
+      teacher_id: profile.id,
+      prompt_id: pending.id,
+      msg_id: msgId,
+    });
+    let reply: string;
+    if (!answer.yes) {
+      await sb.rpc("teacher_reschedule_prompt_cancel", { p_id: pending.id });
+      reply =
+        "Ok, não mexi na reposição. Se quiser, me manda de novo como ficou.";
+    } else {
+      const { data: applied, error } = await sb.rpc(
+        "teacher_reschedule_prompt_apply",
+        { p_id: pending.id, p_reason: answer.reason },
+      );
+      if (error || !applied || typeof applied !== "object") {
+        console.error("[reschedule-move] apply falhou", {
+          promptId: pending.id,
+          code: error?.code,
+        });
+        reply =
+          "Não consegui aplicar agora. A coordenação vai marcar por aqui e te aviso.";
+      } else if (applied.error === "proposta_expirada") {
+        reply =
+          "Essa proposta venceu (passaram 2 horas). Me manda de novo como ficou que eu refaço.";
+      } else {
+        reply = rescheduleMoveAppliedMessage({
+          applied: Array.isArray(applied.applied) ? applied.applied : [],
+          errors: Array.isArray(applied.errors) ? applied.errors : [],
+        });
+      }
+    }
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "reschedule_move", "out", reply, {
+      prompt_id: pending.id,
+      entregue,
+    });
+    return true;
+  }
+
+  const entry = parseTeacherRescheduleMessage(text, nowBRT());
+  if (!entry) return false;
+  const { data: candidates, error: candError } = await sb.rpc(
+    "teacher_reschedule_candidates",
+    {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_names: [entry.name || ""],
+    },
+  );
+  if (candError || !Array.isArray(candidates)) {
+    console.error("[reschedule-move] candidatos indisponíveis", {
+      code: candError?.code,
+    });
+    return false;
+  }
+  const matches = Array.isArray(candidates[0]?.matches)
+    ? candidates[0].matches as RescheduleCandidateStudent[]
+    : [];
+  await logMsg(sb, tenantId, phone, "reschedule_move", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    entry,
+  });
+  let item: RescheduleProposalItem | null = null;
+  let ask: string | null = null;
+  let ambiguous: string[] | null = null;
+  let unknownName: string | null = null;
+  if (!matches.length) {
+    unknownName = entry.name || "esse aluno";
+  } else if (matches.length > 1) {
+    // Sem nome ("minha reposição de hoje") com vários alunos: pergunta qual.
+    ambiguous = matches.map((m) => m.student_name);
+  } else {
+    const proposed = proposeRescheduleMove(entry, matches[0]);
+    item = proposed.item;
+    ask = proposed.ask;
+  }
+  let promptId: string | null = null;
+  if (item) {
+    const { data } = await sb.rpc("teacher_reschedule_prompt_open", {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_phone: phone,
+      p_proposal: {
+        items: [item],
+        reason: entry.reason,
+        source_text: text.slice(0, 500),
+      },
+    });
+    promptId = data ? String(data) : null;
+  }
+  const reply = rescheduleMoveConfirmationMessage({
+    item,
+    ask,
+    ambiguous,
+    unknownName,
+    reason: entry.reason,
+  });
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "reschedule_move", "out", reply, {
+    prompt_id: promptId,
+    entregue,
+  });
+  return true;
+}
+
+/**
  * COBERTURA ACEITA POR TEXTO (17/09/2026). A coordenação negociava a cobertura
  * com a Bruna na mão ("10:30 você consegue?" / "Consigo sim") e depois
  * mandava contato e conteúdo. Com convite pendente para o professor, o
@@ -1838,12 +1983,12 @@ async function handleTeacherAbsenceMessage(
         }. Você não precisa fazer mais nada. Melhoras! 💜`,
       );
     }
-    // Grupo da Gestão fica sabendo na hora, com o mesmo resumo do comando do grupo.
-    const { data: conf } = await sb.from("dre_report_settings").select(
-      "destino,is_active",
-    ).eq("tenant_id", tenantId).maybeSingle();
-    const destino = String(conf?.destino || "").trim();
-    if (conf?.is_active && /@g\.us$/.test(destino)) {
+    // O canal de coordenação fica sabendo na hora, com o mesmo resumo do
+    // comando do grupo (sem grupo configurado, cai na Gestão).
+    const destino = String(
+      await loadTenantNoticeDestination(sb, tenantId, "coordenacao") || "",
+    ).trim();
+    if (/@g\.us$/.test(destino)) {
       const corpo = opened.ok === true
         ? `Cobertura aberta:\n${lines.join("\n") || "• (sem aulas a cobrir)"}`
         : `⚠️ Não consegui abrir a cobertura automaticamente (${
@@ -3048,12 +3193,71 @@ function renewalBotDeps(
         temperature: 0.3,
       }),
     managementGroup: async () => {
-      const { data } = await sb.from("dre_report_settings")
-        .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
-      const destino = String(data?.destino || "").trim();
-      return data?.is_active && /@g\.us$/.test(destino) ? destino : null;
+      // Renovação e plano são dinheiro: canal de direção (cai na Gestão).
+      const destino = String(
+        await loadTenantNoticeDestination(sb, tenantId, "direcao") || "",
+      ).trim();
+      return /@g\.us$/.test(destino) ? destino : null;
     },
   };
+}
+
+type ManagementChannel = "direcao" | "coordenacao" | "comercial";
+
+/** Comandos que o grupo de COORDENAÇÃO pode pedir — agenda, não dinheiro. */
+const COORDENACAO_TIPOS = new Set([
+  "cobertura_aula",
+  "cobertura_dia",
+  "transferencia_professor",
+  "repasse_aula",
+  "alterar_horario_aluno",
+  "agendar_treinamento",
+  "reposicoes",
+]);
+
+/**
+ * Qual canal é este grupo. O da Gestão (dre_report_settings.destino) vale como
+ * direção. Grupo fora dos canais configurados: silêncio, como sempre foi —
+ * responder "sem permissão" confirmaria que existe um assistente ali.
+ */
+async function managementChannelForGroup(
+  sb: any,
+  tenantId: string,
+  groupJid: string,
+): Promise<ManagementChannel | null> {
+  const { data } = await sb.rpc("notice_channel_jids", { p_tenant: tenantId });
+  const jids = (data && typeof data === "object" ? data : {}) as Record<
+    string,
+    unknown
+  >;
+  const same = (value: unknown) => String(value || "").trim() === groupJid;
+  if (same(jids.gestao) || same(jids.direcao)) return "direcao";
+  if (same(jids.coordenacao)) return "coordenacao";
+  if (same(jids.comercial)) return "comercial";
+  return null;
+}
+
+/**
+ * O que responder quando o pedido não cabe neste grupo. Null = segue o fluxo.
+ * Comercial não executa nada; Coordenação não mexe em dinheiro nem responde
+ * pergunta financeira (o retrato da escola tem faturamento e margem).
+ */
+function managementChannelScopeReply(
+  channel: ManagementChannel,
+  acao: Record<string, unknown> | null,
+): string | null {
+  if (channel === "direcao") return null;
+  const tipo = String(acao?.tipo || "").trim();
+  if (channel === "comercial") {
+    return "Este grupo é só de avisos comerciais (leads, experimentais, pós-experimental). Comandos de agenda ficam no grupo da Coordenação e dinheiro/planos no da Direção.";
+  }
+  if (!tipo) {
+    return 'Aqui eu cuido de agenda: cobertura ("a Bruna cobriu a aula do Theo hoje 10:30"), cobertura do dia ("cobertura do dia hoje do Flávio"), transferência de aluno, troca de horário, treinamento e "reposições". Perguntas de gestão e dinheiro são no grupo da Direção.';
+  }
+  if (!COORDENACAO_TIPOS.has(tipo)) {
+    return "Isso é dinheiro/plano — peça no grupo da Direção. Aqui eu cuido de cobertura, cobertura do dia, transferência, troca de horário, treinamento e reposições.";
+  }
+  return null;
 }
 
 async function handleGestao(
@@ -3076,7 +3280,11 @@ async function handleGestao(
       "tenant_id",
       tenantId,
     ).maybeSingle();
-  if (!conf?.is_active || String(conf.destino || "") !== groupJid) return;
+  if (!conf?.is_active) return;
+  // Qual grupo é este? Gestão/Direção ouvem tudo; Coordenação só agenda;
+  // Comercial só recebe avisos (18/09/2026 — um grupo por assunto).
+  const channel = await managementChannelForGroup(sb, tenantId, groupJid);
+  if (!channel) return;
 
   const participant = managementGroupParticipant(item, groupJid);
   let actor = await resolveManagementActor(sb, tenantId, item);
@@ -3836,6 +4044,9 @@ FOLHA DO MÊS POR PROFESSOR: se perguntarem quanto cada professor ganhou/recebe,
 {"responder": true, "resposta": "<uma frase curta>", "acao": {"tipo": "folha_professores", "mes": "<AAAA-MM>"}}
 - "agosto" vira o AAAA-MM daquele agosto; sem mês, use o mes_fechado dos dados.
 
+REPOSIÇÕES EM ABERTO: se perguntarem das reposições (quais estão sem data, vencidas, marcadas, "reposições", "passivo de reposição", "quem está devendo reposição"), devolva TAMBÉM o campo acao (é só leitura, sem confirmação):
+{"responder": true, "resposta": "<uma frase curta>", "acao": {"tipo": "reposicoes"}}
+
 COBERTURA DO DIA (professor não vai dar NENHUMA aula num dia — doente, imprevisto): devolva TAMBÉM o campo acao:
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_dia", "professor": "<nome do professor ausente>", "data": "<AAAA-MM-DD>", "motivo": "<motivo curto>"}}
 - "hoje"/"amanhã" viram a data certa (HOJE está nos dados). Sem data, assuma hoje.
@@ -3918,6 +4129,15 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     | Record<string, unknown>
     | null;
   const fila = acoesLidas.slice(1) as Record<string, unknown>[];
+  const escopo = managementChannelScopeReply(channel, acao);
+  if (escopo) {
+    await sendWhats(instance, groupJid, escopo);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", escopo, {
+      channel,
+      scope_blocked: true,
+    });
+    return;
+  }
   if (
     await proposeManagementAction(
       {
@@ -4319,6 +4539,22 @@ async function proposeManagementAction(
       : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
+    return true;
+  }
+
+  if (acao && acao.tipo === "reposicoes") {
+    // Só leitura: passivo por professor (sem data, vencidas, marcadas na semana).
+    const { data: rows, error: rowsError } = await sb.rpc(
+      "reschedule_backlog_summary",
+      { p_tenant: tenantId },
+    );
+    const msg = rowsError
+      ? "Não consegui montar o resumo das reposições agora. Tente de novo em instantes."
+      : rescheduleBacklogMessage(
+        (Array.isArray(rows) ? rows : []) as RescheduleBacklogRow[],
+      );
+    await sendWhats(instance, groupJid, msg);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
     return true;
   }
 
@@ -7370,14 +7606,38 @@ async function persistEventMessagesForInbox(
   const hasGroupMessage = items.some((item) =>
     parseEvolutionMessage(item)?.remoteJid.endsWith("@g.us")
   );
-  let managementGroupJid = "";
+  // Grupos que entram na inbox e falam com o bot: o da Gestão e os canais de
+  // aviso configurados (coordenação, comercial, direção).
+  let managementGroupJid: string[] = [];
   if (hasGroupMessage) {
     const { data: groupConfig } = await sb.from("dre_report_settings")
       .select("destino,is_active")
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (groupConfig?.is_active === true) {
-      managementGroupJid = String(groupConfig.destino || "").trim();
+      const { data: jids } = await sb.rpc("notice_channel_jids", {
+        p_tenant: tenantId,
+      });
+      const set = new Set<string>();
+      for (
+        const value of Object.values(
+          (jids && typeof jids === "object" ? jids : {}) as Record<
+            string,
+            unknown
+          >,
+        )
+      ) {
+        const jid = String(value || "").trim();
+        if (/@g\.us$/.test(jid)) set.add(jid);
+      }
+      const destino = String(groupConfig.destino || "").trim();
+      if (/@g\.us$/.test(destino)) set.add(destino);
+      // O grupo dos professores é só disparo: não entra na inbox nem fala com o bot.
+      const profs = String(
+        (jids as Record<string, unknown> | null)?.professores || "",
+      ).trim();
+      if (profs) set.delete(profs);
+      managementGroupJid = Array.from(set);
     }
   }
 
@@ -8311,6 +8571,24 @@ serve(async (req) => {
           String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
           !rateLimited && String(text || "").trim() &&
           await handleTeacherAbsenceMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        // Reposição marcada/remarcada/desmarcada pelo professor: vem ANTES da
+        // troca de horário fixo, porque "passou para 15h" casaria nos dois — a
+        // palavra "reposição" decide.
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherRescheduleMessage(
             sb,
             instance,
             tenantId,
