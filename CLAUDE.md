@@ -133,8 +133,30 @@ verificação por **outro** ator (`hub_commercial_approved`, `hub_rights_verifie
   `pedagogical/b727e699…/preview.pdf`, nicho TECH. Total no ar: **42 itens, 7 livros**.
 - **Lacunas de estoque** (o que a promessa "por nicho e nível" ainda não cobre): Kids acima de
   A1, Business abaixo de B2, Viagem/Tech só A1–A2, Medicina vazio, C1/C2, Geral B1 com uma
-  parte só. Cobrir isso é papel do gerador de material (Educador IA) — ainda só o planner de
-  aula está ligado no Hub.
+  parte só. O que cobre isso é o **gerador de material** abaixo.
+
+**Gerador de material (Educador IA, desde 18/09/2026):** aba Educador IA do portal tem dois
+modos — *Gerar material* (default) e *Planner de aula*. O gerador não precisa de perfil de
+aluno: tipo (`worksheet | quiz | vocab_cards | grammar_drill | reading | conversation`) ×
+nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "material"`
+(`components/hub/HubMaterialGenerator.tsx`).
+- **Servidor:** `pedagogical-content/hub-material.ts` (puro, testado) tem o prompt, o
+  **schema estrito por tipo** (structured output, `strict: true` — todo objeto com
+  `additionalProperties: false` e `required` completo, sem `minItems`) e a normalização, que
+  passa cada questão de múltipla escolha pela **auditoria de gabarito do `wolfie-activity`**
+  e descarta a reprovada (`dropped_items`). Reprovou o material inteiro → retry no modelo de
+  mais precisão; ainda assim → 502 e **a reserva é liberada, não cobra**.
+- **Cota:** a mesma `educator_ai.generate` do planner (Descoberta 2, Pro 40/mês, Studio
+  120/mês; **Essencial 0 → tela de bloqueio com caminho para o Pro**). Reserva →
+  geração → `hub_educator_materials` → commit; idempotente por `requestKey`.
+- **Tabela `hub_educator_materials`** (migration `20260918020000`): escrita só service_role,
+  leitura/apagar pelo criador ou OWNER/ADMIN da conta (mesmo desenho de `hub_educator_plans`).
+  Teste `supabase/tests/gerador_de_material_do_hub.sql`.
+- Medido em 18/09 dentro da VPS com `openai/gpt-4o-mini`: worksheet, quiz e conversação em
+  6–8 s, ~1.000 tokens cada, 0 questões descartadas; o schema estrito foi aceito pelo provedor.
+- Impressão: `window.print()` com CSS que esconde tudo fora de `#hub-material-print`; o
+  toggle "versão do professor" decide se o gabarito sai no papel. Copiar texto sempre leva o
+  gabarito (quem copia é quem ensina).
 
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:

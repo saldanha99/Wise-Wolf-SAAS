@@ -44,6 +44,7 @@ import HubPersonalization from './HubPersonalization';
 import { resolveSystemAppUrl } from './hubRoutes';
 
 const HubEducatorPlanner = React.lazy(() => import('./HubEducatorPlanner'));
+const HubMaterialGenerator = React.lazy(() => import('./HubMaterialGenerator'));
 const HubWolfieStudio = React.lazy(() => import('./HubWolfieStudio'));
 
 export type HubTab = 'overview' | 'library' | 'educator' | 'wolfie' | 'saas' | 'plans';
@@ -197,6 +198,46 @@ const HubOverview: React.FC<{
           </button>
         ))}
       </section>
+    </div>
+  );
+};
+
+// Educador IA tem duas ferramentas com a mesma cota (`educator_ai.generate`):
+// o gerador de material por nicho × nível (sem aluno — é o produto de entrada)
+// e o planner de aula (com perfil de aluno). Uma aba, um seletor.
+type HubEducatorMode = 'materials' | 'planner';
+
+const HubEducatorWorkspace: React.FC<{
+  bootstrap: HubBootstrap;
+  userEmail: string;
+  onRefresh: () => Promise<void>;
+  onUpgrade: () => void;
+}> = ({ bootstrap, userEmail, onRefresh, onUpgrade }) => {
+  const [mode, setMode] = useState<HubEducatorMode>('materials');
+  return (
+    <div className="space-y-5">
+      <div role="tablist" aria-label="Ferramentas do Educador IA" className="inline-flex rounded-2xl border border-brand-border bg-brand-surface p-1 print:hidden">
+        {([
+          ['materials', 'Gerar material'],
+          ['planner', 'Planner de aula'],
+        ] as Array<[HubEducatorMode, string]>).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={mode === value}
+            onClick={() => setMode(value)}
+            className={`rounded-xl px-4 py-2 text-xs font-black transition ${mode === value ? 'bg-tenant-primary text-white' : 'text-brand-muted hover:text-brand-text'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <React.Suspense fallback={<HubModuleLoading />}>
+        {mode === 'materials'
+          ? <HubMaterialGenerator bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
+          : <HubEducatorPlanner bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={onUpgrade} />}
+      </React.Suspense>
     </div>
   );
 };
@@ -628,7 +669,7 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
     if (!hasCurrentAccess && ['library', 'educator', 'wolfie'].includes(tab)) return <HubAccessRequired onChoosePlan={() => navigate('plans')} />;
     if (tab === 'educator' && !canUseEducator) return <HubAccessRequired onChoosePlan={() => navigate('overview')} />;
     if (tab === 'library') return <HubLibrary bootstrap={bootstrap} content={content} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
-    if (tab === 'educator') return <React.Suspense fallback={<HubModuleLoading />}><HubEducatorPlanner bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} /></React.Suspense>;
+    if (tab === 'educator') return <HubEducatorWorkspace bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
     if (tab === 'wolfie') return <React.Suspense fallback={<HubModuleLoading />}><HubWolfieStudio bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} /></React.Suspense>;
     if (tab === 'saas') return <HubSchoolSystemAccess bootstrap={bootstrap} settings={settings} />;
     if (tab === 'plans') return <><HubPlans plans={plans} settings={settings} accountId={bootstrap.account.id} accountAudience={bootstrap.account.audience} activePlan={activePaidPlan} activeBillingCycle={activeBillingCycle} isManager={bootstrap.isManager === true} accountName={bootstrap.account.name} email={userEmail} initialPlanIntent={initialPlanIntent} onPlanIntentConsumed={onPlanIntentConsumed} catalogReady={isHubCatalogReady(settings, content)} /><HubSubscriptionCancellation bootstrap={bootstrap} onRefresh={onRefresh} /></>;

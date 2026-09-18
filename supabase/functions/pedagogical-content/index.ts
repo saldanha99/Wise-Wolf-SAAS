@@ -22,6 +22,14 @@ import {
   WISE_WOLF_PROMPT_VERSION,
   WISE_WOLF_TRAINING_ENGINE_PROMPT,
 } from "../lesson-planner/wise-wolf-training-engine.ts";
+import {
+  buildHubMaterialPrompt,
+  HUB_MATERIAL_PROMPT_VERSION,
+  hubMaterialResponseSchema,
+  type HubMaterialSpec,
+  normalizeHubMaterial,
+  parseHubMaterialSpec,
+} from "./hub-material.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1366,6 +1374,257 @@ async function handleHubPlannerGenerate(
   });
 }
 
+// Gerador de material do Hub (action=material): tipo × nicho × nível × tema,
+// sem perfil de aluno. Mesma cota e mesmo trilho de reserva do planner; o
+// resultado passa por `normalizeHubMaterial` (auditoria de gabarito incluída)
+// antes de ser gravado em `hub_educator_materials`. Idempotente por requestKey.
+const HUB_MATERIAL_ACTION = "material";
+
+async function handleHubMaterialGenerate(
+  client: HubRpcClient,
+  userId: string,
+  body: JsonObject,
+  reservationState: HubReservationState,
+): Promise<Response> {
+  const parsed = parseHubMaterialSpec(body);
+  if (!parsed.ok) throw new HttpError(400, parsed.code);
+  const spec: HubMaterialSpec = parsed.spec;
+  const accountId = parseOptionalUuid(
+    plannerValue(body, "accountId", "account_id"),
+    "INVALID_ACCOUNT_ID",
+  );
+  const requestKey = parseOptionalUuid(
+    plannerValue(body, "requestKey", "request_key") ?? crypto.randomUUID(),
+    "INVALID_REQUEST_KEY",
+  )!;
+  const requestFingerprint = await sha256Hex(JSON.stringify({
+    feature: "educator_ai.generate",
+    action: HUB_MATERIAL_ACTION,
+    accountId,
+    spec,
+  }));
+
+  // Replay por requestKey: a reserva já foi cobrada, então devolve o material
+  // guardado. `scopeAccountId` pode vir nulo quando a reserva responde
+  // REQUEST_ALREADY_COMPLETED sem conta; a chave (usuário + requestKey) basta.
+  const replayStoredMaterial = async (
+    scopeAccountId: string | null,
+    subscriptionId: string | null,
+  ): Promise<Response | null> => {
+    let query = client
+      .from("hub_educator_materials")
+      .select(
+        "id,subscription_id,request_fingerprint,kind,niche,level_tag,topic,item_count,bilingual,title,material,dropped_items,created_at",
+      )
+      .eq("created_by", userId)
+      .eq("request_key", requestKey);
+    if (scopeAccountId) query = query.eq("account_id", scopeAccountId);
+    const { data: prior, error: priorError } = await query.maybeSingle();
+    if (priorError) {
+      console.error("Hub material replay lookup failed", {
+        code: priorError.code,
+      });
+      throw new HttpError(503, "HUB_MATERIAL_PERSISTENCE_UNAVAILABLE");
+    }
+    if (!prior) return null;
+    if (
+      prior.request_fingerprint !== requestFingerprint ||
+      (subscriptionId && prior.subscription_id !== subscriptionId)
+    ) {
+      throw new HttpError(409, "IDEMPOTENCY_KEY_REUSED");
+    }
+    return jsonResponse(200, {
+      material_id: prior.id,
+      title: prior.title,
+      kind: prior.kind,
+      niche: prior.niche,
+      level: prior.level_tag,
+      topic: prior.topic,
+      material: prior.material,
+      dropped: prior.dropped_items,
+      created_at: prior.created_at,
+      idempotent: true,
+    });
+  };
+
+  const { data: usage, error: usageError } = await client.rpc(
+    "hub_reserve_feature",
+    {
+      p_user_id: userId,
+      p_feature_key: "educator_ai.generate",
+      p_units: 1,
+      p_request_key: requestKey,
+      p_request_fingerprint: requestFingerprint,
+      p_account_id: accountId,
+      p_metadata: { source: "pedagogical-content", kind: spec.kind },
+    },
+  );
+  if (usageError) {
+    console.error("Hub material usage reservation failed", {
+      code: usageError.code,
+    });
+    throw new HttpError(503, "HUB_ACCESS_UNAVAILABLE");
+  }
+  if (!usage?.allowed) {
+    if (usage?.code === "REQUEST_ALREADY_COMPLETED") {
+      const replay = await replayStoredMaterial(
+        accountId,
+        typeof usage.subscriptionId === "string" ? usage.subscriptionId : null,
+      );
+      if (replay) return replay;
+    }
+    const code = typeof usage?.code === "string"
+      ? usage.code
+      : "FEATURE_NOT_INCLUDED";
+    throw new HttpError(hubAccessStatus(code), code);
+  }
+  if (
+    typeof usage.accountId !== "string" ||
+    !UUID_PATTERN.test(usage.accountId) ||
+    typeof usage.subscriptionId !== "string" ||
+    !UUID_PATTERN.test(usage.subscriptionId) ||
+    typeof usage.reservationId !== "string" ||
+    typeof usage.leaseToken !== "string"
+  ) {
+    throw new HttpError(503, "HUB_ACCESS_UNAVAILABLE");
+  }
+  reservationState.current = {
+    client,
+    userId,
+    reservationId: usage.reservationId,
+    leaseToken: usage.leaseToken,
+    requestKey,
+  };
+
+  await authorizeHubPlannerAccess(client, userId, usage.accountId);
+
+  const prior = await replayStoredMaterial(
+    usage.accountId,
+    usage.subscriptionId,
+  );
+  if (prior) {
+    await commitHubReservation(reservationState);
+    return prior;
+  }
+
+  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
+  const usageDb = usageRecorder();
+  const recordMaterialUsage = (model: string, payload: unknown) => {
+    if (!usageDb) return;
+    return recordAiUsage(usageDb, {
+      tenantId: null,
+      userId,
+      feature: "hub_educator_material",
+      model,
+      usage: parseAiUsage(payload),
+    });
+  };
+  const economyModel = Deno.env.get("OPENROUTER_MATERIAL_MODEL")?.trim() ||
+    Deno.env.get("OPENROUTER_PLANNER_MODEL")?.trim() ||
+    "openai/gpt-4o-mini";
+  const highAccuracyModel =
+    Deno.env.get("OPENROUTER_PLANNER_FALLBACK_MODEL")?.trim() ||
+    "openai/gpt-5-mini";
+  const providerUser = await safetyIdentifier(`hub:${usage.accountId}`, userId);
+  const providerOptions = (
+    model: string,
+    qualityRetry = false,
+  ): ProviderGenerationOptions => {
+    const modelProfile = plannerModelProfile(model, qualityRetry);
+    return {
+      maxCompletionTokens: 5_000,
+      attemptMs: modelProfile.timeoutMs,
+      deadlineMs: modelProfile.timeoutMs + 1_000,
+      responseSchema: hubMaterialResponseSchema(spec.kind),
+      responseSchemaName: `wise_wolf_material_${spec.kind}`,
+      models: [model],
+      user: providerUser,
+      reasoningEffort: modelProfile.supportsReasoning ? "low" : undefined,
+      temperature: modelProfile.temperature ?? 0.5,
+    };
+  };
+  const prompt = redactDirectIdentifiers(buildHubMaterialPrompt(spec));
+
+  reservationState.releaseReason = "PROVIDER_FAILED";
+  let generated = await callOpenRouter(
+    apiKey,
+    prompt,
+    recordMaterialUsage,
+    providerOptions(economyModel),
+  );
+  let normalized = normalizeHubMaterial(spec, generated.result);
+  let qualityRetried = false;
+  if (!normalized.ok) {
+    // Segunda chance com o modelo de mais precisão: gabarito reprovado ou
+    // seção faltando é motivo para tentar de novo, não para cobrar o professor.
+    qualityRetried = true;
+    generated = await callOpenRouter(
+      apiKey,
+      `${prompt}\n\nRETRY DE QUALIDADE: a tentativa anterior falhou em "${normalized.code}". Confira cada gabarito (uma única alternativa correta e gramatical) e gere o objeto completo de novo.`,
+      recordMaterialUsage,
+      providerOptions(highAccuracyModel, true),
+    );
+    normalized = normalizeHubMaterial(spec, generated.result);
+  }
+  if (!normalized.ok) {
+    console.error("Hub material failed normalization", {
+      code: normalized.code,
+      kind: spec.kind,
+    });
+    throw new HttpError(502, "AI_PROVIDER_INVALID_RESPONSE");
+  }
+
+  reservationState.releaseReason = "PERSISTENCE_FAILED";
+  const { data: row, error: rowError } = await client
+    .from("hub_educator_materials")
+    .insert({
+      account_id: usage.accountId,
+      created_by: userId,
+      subscription_id: usage.subscriptionId,
+      request_key: requestKey,
+      request_fingerprint: requestFingerprint,
+      kind: spec.kind,
+      niche: spec.niche,
+      level_tag: spec.level,
+      topic: spec.topic,
+      item_count: spec.count,
+      bilingual: spec.bilingual,
+      extra_instructions: spec.extra,
+      title: normalized.value.title,
+      material: normalized.value.material,
+      dropped_items: normalized.value.dropped,
+      model_id: generated.model,
+      prompt_version: HUB_MATERIAL_PROMPT_VERSION,
+      response_id: generated.responseId,
+      provider_usage: {
+        ...(generated.usage ?? {}),
+        quality_retry: qualityRetried,
+      },
+    })
+    .select("id,created_at")
+    .single();
+  if (rowError || !row) {
+    console.error("Hub material persistence failed", { code: rowError?.code });
+    throw new HttpError(503, "HUB_MATERIAL_PERSISTENCE_UNAVAILABLE");
+  }
+
+  reservationState.releaseReason = "REQUEST_FAILED";
+  await commitHubReservation(reservationState);
+  return jsonResponse(200, {
+    material_id: row.id,
+    title: normalized.value.title,
+    kind: spec.kind,
+    niche: spec.niche,
+    level: spec.level,
+    topic: spec.topic,
+    material: normalized.value.material,
+    dropped: normalized.value.dropped,
+    created_at: row.created_at,
+    idempotent: false,
+  });
+}
+
 async function handleHubPlannerSave(
   client: HubRpcClient,
   userId: string,
@@ -1982,7 +2241,9 @@ serve(async (req) => {
     const hubMode = body.hubMode === true;
     const studentComplementaryMode =
       body.action === STUDENT_COMPLEMENTARY_ACTION;
-    const plannerInput = hubMode && !studentComplementaryMode
+    const hubMaterialMode = hubMode && body.action === HUB_MATERIAL_ACTION;
+    const plannerInput = hubMode && !studentComplementaryMode &&
+        !hubMaterialMode
       ? parseHubPlannerInput(body)
       : null;
     if (profile.role === "NON_STUDENT" && !hubMode) {
@@ -2005,7 +2266,8 @@ serve(async (req) => {
     }
     if (
       fixture.is_test_account === true &&
-      (plannerInput?.action === "generate" || studentComplementaryMode)
+      (plannerInput?.action === "generate" || studentComplementaryMode ||
+        hubMaterialMode)
     ) {
       throw new HttpError(403, "AI_DISABLED_FOR_TEST_FIXTURE");
     }
@@ -2041,6 +2303,17 @@ serve(async (req) => {
         profile,
         generationRequestKey,
         studentReservationState,
+      );
+    }
+
+    if (hubMaterialMode) {
+      const userId = auth.context.userId;
+      if (!userId) throw new HttpError(401, "AUTH_REQUIRED");
+      return await handleHubMaterialGenerate(
+        auth.context.admin,
+        userId,
+        body,
+        reservationState,
       );
     }
 

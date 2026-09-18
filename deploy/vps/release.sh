@@ -637,6 +637,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
+  supabase/functions/pedagogical-content/hub-material.ts \
+  supabase/functions/pedagogical-content/hub-material.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -799,6 +801,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
+  supabase/functions/pedagogical-content/hub-material.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1351,6 +1354,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260917200000_cobertura_com_pacote_do_aluno.sql"
   "supabase/migrations/20260918000000_teto_e_aquecimento_do_whatsapp.sql"
   "supabase/migrations/20260918010000_lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
+  "supabase/migrations/20260918020000_gerador_de_material_do_hub.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1479,6 +1483,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cobertura_de_aula_que_ja_aconteceu.sql"
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
   "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
+  "supabase/tests/gerador_de_material_do_hub.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
