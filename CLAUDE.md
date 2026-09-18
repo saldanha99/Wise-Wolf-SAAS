@@ -146,9 +146,13 @@ nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "m
   passa cada questão de múltipla escolha pela **auditoria de gabarito do `wolfie-activity`**
   e descarta a reprovada (`dropped_items`). Reprovou o material inteiro → retry no modelo de
   mais precisão; ainda assim → 502 e **a reserva é liberada, não cobra**.
-- **Cota:** a mesma `educator_ai.generate` do planner (Descoberta 2, Pro 40/mês, Studio
-  120/mês; **Essencial 0 → tela de bloqueio com caminho para o Pro**). Reserva →
-  geração → `hub_educator_materials` → commit; idempotente por `requestKey`.
+- **Cota:** a mesma `educator_ai.generate` do planner (Descoberta 2, **Essencial 3/mês**
+  — migration `20260918030000`, decisão da direção de 18/09; Pro 40/mês, Studio 120/mês).
+  Plano com limite 0 vê a tela de bloqueio. Reserva → geração → `hub_educator_materials` →
+  commit; idempotente por `requestKey`.
+  ⚠️ **Cota de plano do Hub muda por MIGRATION, nunca por UPDATE na mão**: o seed de
+  `marketing_hub_foundation` roda a cada release com `on conflict do update` e devolveria
+  o valor antigo no deploy seguinte.
 - **Tabela `hub_educator_materials`** (migration `20260918020000`): escrita só service_role,
   leitura/apagar pelo criador ou OWNER/ADMIN da conta (mesmo desenho de `hub_educator_plans`).
   Teste `supabase/tests/gerador_de_material_do_hub.sql`.

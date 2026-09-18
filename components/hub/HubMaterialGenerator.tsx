@@ -452,7 +452,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
       <section className="mx-auto max-w-2xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-8 text-center shadow-sm sm:p-12">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><Sparkles size={24} /></div>
         <h1 className="mt-5 text-3xl font-black tracking-tight text-brand-text">Gerador de material não incluído neste plano</h1>
-        <p className="mx-auto mt-3 max-w-lg leading-7 text-brand-muted">Worksheets, quizzes, cards, drills, leituras e roteiros por nicho e nível entram a partir do Professor Pro. A Biblioteca continua disponível no seu plano.</p>
+        <p className="mx-auto mt-3 max-w-lg leading-7 text-brand-muted">Worksheets, quizzes, cards, drills, leituras e roteiros por nicho e nível entram a partir do Professor Essencial (3 por mês) e do Professor Pro (40 por mês).</p>
         <button type="button" onClick={onUpgrade} className="mt-7 rounded-2xl bg-tenant-primary px-6 py-3.5 text-sm font-black text-white">Ver planos com Educador IA</button>
       </section>
     );

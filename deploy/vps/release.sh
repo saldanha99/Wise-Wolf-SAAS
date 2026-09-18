@@ -1355,6 +1355,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918000000_teto_e_aquecimento_do_whatsapp.sql"
   "supabase/migrations/20260918010000_lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
   "supabase/migrations/20260918020000_gerador_de_material_do_hub.sql"
+  "supabase/migrations/20260918030000_essencial_ganha_3_geracoes_por_mes.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
