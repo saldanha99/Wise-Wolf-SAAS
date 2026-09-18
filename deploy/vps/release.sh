@@ -1361,6 +1361,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918060000_assentos_de_aluno_no_hub.sql"
   "supabase/migrations/20260918070000_aceite_do_convite_completa_o_perfil.sql"
   "supabase/migrations/20260918080000_substituto_enxerga_o_aluno_que_cobre.sql"
+  "supabase/migrations/20260918090000_cobertura_cancelada_nao_bloqueia_a_proxima.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1492,6 +1493,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/gerador_de_material_do_hub.sql"
   "supabase/tests/assentos_de_aluno_no_hub.sql"
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
+  "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
