@@ -15,6 +15,8 @@ import {
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
+import { localYMD } from '../lib/dateUtils';
+import { coverageAgendaItems, dateWindow, rescheduleAgendaItems, type CoverageAgendaRow, type RescheduleAgendaRow } from '../lib/coverageAgenda';
 import StudentProfileForm from './StudentProfileForm';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -185,6 +187,84 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       });
     }
 
+    // 4. Coberturas ASSUMIDAS e reposições dos próximos 7 dias — aulas que são
+    // deste professor sem serem agendamento dele. Entram na grade com a data,
+    // como a experimental, e não abrem o formulário do aluno: a origem (o
+    // agendamento do outro professor / a reposição) não é editada daqui.
+    const todayStr = localYMD(new Date());
+    const window = dateWindow(todayStr, 7);
+    const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+    const placeDated = (dateStr: string, timeKey: string, entry: Record<string, unknown>) => {
+      if (dateStr === todayStr && timeKey < nowHHMM) return; // já passou hoje
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      const editorDayIdx = dt.getDay() - 1; // Seg=0 … Sáb=5; domingo fica fora da grade
+      if (editorDayIdx < 0 || editorDayIdx >= DAYS.length) return;
+      const key = `${editorDayIdx}-${timeKey}`;
+      if (newBookings[key] && !newBookings[key].isExperimental) return; // aula fixa tem precedência visual
+      newBookings[key] = {
+        ...entry,
+        dateLabel: dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        readOnly: true,
+      };
+    };
+
+    const { data: coverageRows, error: coverageError } = await supabase
+      .from('class_coverages')
+      .select(`
+        id, booking_id, class_date, class_time, status, notes, original_teacher_id, cover_teacher_id,
+        student:student_id(id, full_name, phone, avatar_url, module, meeting_link),
+        original_teacher:original_teacher_id(full_name),
+        cover_teacher:cover_teacher_id(full_name)
+      `)
+      .eq('cover_teacher_id', teacherId)
+      .eq('status', 'confirmed')
+      .gte('class_date', window[0])
+      .lte('class_date', window[window.length - 1]);
+    if (coverageError) {
+      console.warn('[TeacherAvailabilityEditor] Falha ao carregar coberturas:', coverageError);
+    }
+    for (const item of coverageAgendaItems((coverageRows || []) as unknown as CoverageAgendaRow[], teacherId)) {
+      if (item.papel !== 'assumida') continue;
+      placeDated(item.classDate, item.time, {
+        id: item.coverageId,
+        studentId: item.studentId,
+        student: item.studentName,
+        module: item.studentModule || 'COB',
+        type: 'COBERTURA',
+        avatar: item.studentAvatar,
+        fullProfile: { full_name: item.studentName, phone: item.studentPhone, module: item.studentModule },
+        isExperimental: false,
+        caption: item.combinedTime
+          ? `Cobertura da aula de ${item.otherTeacherName || 'outro professor'} · combinado ${item.combinedTime}`
+          : `Cobertura da aula de ${item.otherTeacherName || 'outro professor'}`,
+      });
+    }
+
+    const { data: rescheduleRows, error: rescheduleError } = await supabase
+      .from('reschedules')
+      .select('id, date, time, fault_type, used_at, student:student_id(id, full_name, phone, avatar_url, module, meeting_link)')
+      .eq('teacher_id', teacherId)
+      .is('used_at', null)
+      .gte('date', window[0])
+      .lte('date', window[window.length - 1]);
+    if (rescheduleError) {
+      console.warn('[TeacherAvailabilityEditor] Falha ao carregar reposições:', rescheduleError);
+    }
+    for (const item of rescheduleAgendaItems((rescheduleRows || []) as unknown as RescheduleAgendaRow[])) {
+      placeDated(item.classDate, item.time, {
+        id: item.rescheduleId,
+        studentId: item.studentId,
+        student: item.studentName,
+        module: item.studentModule || 'REPO',
+        type: 'REPOSIÇÃO',
+        avatar: item.studentAvatar,
+        fullProfile: { full_name: item.studentName, phone: item.studentPhone, module: item.studentModule },
+        isExperimental: false,
+        caption: item.faultType === 'TEACHER' ? 'Reposição (falta do professor)' : 'Reposição',
+      });
+    }
+
     setBookings(newBookings);
   };
 
@@ -298,7 +378,8 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     }
   };
 
-  const bookedCount = Object.keys(bookings).length;
+  // Cobertura/reposição datada é aula da semana, não ocupação da grade fixa.
+  const bookedCount = Object.values(bookings).filter((b: any) => !b?.readOnly).length;
   const availableCount = availableSlots.size;
   const totalHours = bookedCount + availableCount;
   const occupancyRate = Math.round((bookedCount / (bookedCount + availableCount || 1)) * 100);
@@ -347,6 +428,10 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
           <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Experimental</span>
+        </div>
+        <div className="flex items-center gap-2" data-tour="agenda-coverage-legend">
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Cobertura / Reposição (com a data)</span>
         </div>
       </div>
 
@@ -407,10 +492,11 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                       >
                         {booking ? (
                           <div
-                            onClick={() => setEditingProfile(booking)}
-                            className={`w-full h-full rounded-lg px-2 flex items-center justify-between cursor-pointer hover:scale-[1.02] transition-transform shadow-sm relative overflow-hidden group/card ${booking.isExperimental
+                            onClick={() => { if (!booking.readOnly) setEditingProfile(booking); }}
+                            title={booking.caption || undefined}
+                            className={`w-full h-full rounded-lg px-2 flex items-center justify-between ${booking.readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-[1.02]'} transition-transform shadow-sm relative overflow-hidden group/card ${booking.isExperimental
                               ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                              : booking.type === 'REPOSIÇÃO'
+                              : booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA'
                                 ? 'bg-amber-400/20 text-amber-500 border border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
                                 : 'bg-brand-accent/20 text-brand-text border border-brand-accent shadow-[0_0_10px_rgba(var(--brand-accent),0.3)]'
                               }`}
@@ -418,20 +504,21 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                             {/* Glass highlight effect */}
                             <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
                             <div className="flex items-center gap-1.5 overflow-hidden relative z-10">
-                              <div className={`w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' ? 'bg-amber-500 text-amber-950' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
+                              <div className={`w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
                                 }`}>
                                 {booking.student[0]}
                               </div>
                               <span className="text-[10px] font-bold truncate uppercase tracking-wide">
                                 {booking.student.split(' ')[0]}
                               </span>
-                              {booking.isExperimental && booking.dateLabel && (
+                              {booking.dateLabel && (
                                 <span className="text-[8px] opacity-70 font-medium ml-1">{booking.dateLabel}</span>
                               )}
                             </div>
                             {/* Only show badge if space permits or on hover */}
                             {booking.isExperimental && <span className="text-[8px] font-black opacity-80 relative z-10">EXP</span>}
                             {!booking.isExperimental && booking.type === 'REPOSIÇÃO' && <span className="text-[8px] font-black opacity-80 relative z-10">REPO</span>}
+                            {!booking.isExperimental && booking.type === 'COBERTURA' && <span className="text-[8px] font-black opacity-80 relative z-10">COB</span>}
                           </div>
                         ) : (
                           <button

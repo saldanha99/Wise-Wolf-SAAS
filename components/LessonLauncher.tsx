@@ -80,6 +80,10 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [notStarted, setNotStarted] = useState<NotStartedRow[]>([]);
   const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Aulas da janela que NÃO puderam ser montadas porque o aluno não veio no
+  // join (bloqueio de leitura). Até 18/09/2026 isso era descartado em silêncio:
+  // a Bruna tinha três coberturas confirmadas e via "sem aulas" (e não recebia).
+  const [hiddenLessons, setHiddenLessons] = useState(0);
   const [pendingTrialFeedback, setPendingTrialFeedback] = useState<PendingTrialFeedback[]>([]);
   const [feedbackLoadError, setFeedbackLoadError] = useState<string | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<PendingTrialFeedback | null>(null);
@@ -131,6 +135,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
       const allLessons: any[] = [];
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
+      let hidden = 0; // aulas descartadas por aluno inacessível — viram aviso, não silêncio
 
       // Link de reunião do professor (buscado uma única vez; usado no botão "Avisar aluno").
       const { data: tProf } = await supabase
@@ -257,7 +262,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // Helper to process lesson
         const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO' | 'ANTECIPAÇÃO', time: string) => {
           const student = b.student as any;
-          if (!student) return;
+          if (!student) { hidden += 1; return; }
 
           // Fetch Topic Info if exists
           let topicInfo = null;
@@ -340,7 +345,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             if (!b.time_slot) continue; // booking sem horário definido: ignorar
             // Um booking cujo aluno foi bloqueado pela RLS (como o antigo perfil
             // NON_STUDENT "TREINAMENTO") não pode ocupar o slot de uma aula real.
-            if (!b.student) continue;
+            if (!b.student) { hidden += 1; continue; }
             candidatos.push(b);
           }
 
@@ -382,7 +387,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         for (const c of assumidas) {
           if (c.class_date !== dateStr) continue;
           const ab = assumedBookings.find(x => x.id === c.booking_id);
-          if (!ab) continue;
+          if (!ab) { hidden += 1; continue; }
           if (i === 0 && isStillFutureToday(ab.time_slot || c.class_time)) continue;
           if (logs?.some(l => l.booking_id === ab.id)) continue;
           await processLesson(ab, 'REGULAR', ab.time_slot || c.class_time);
@@ -431,6 +436,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       }
 
       setLaunchedTodayCount(launchedToday);
+      setHiddenLessons(hidden);
       setNotStarted(Array.from(naoIniciados.values()));
       // Mostra tudo dentro da janela de 45 dias (inclui mês anterior). Antes filtrava só o
       // mês atual, escondendo aulas atrasadas da virada de mês e impedindo o lançamento.
@@ -443,6 +449,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       // após um erro, o que causava relançamentos duplicados.
       setTodayLessons([]);
       setNotStarted([]);
+      setHiddenLessons(0);
       // Erro visível: "sem aulas hoje" escondia falha de carregamento e o professor
       // achava que não tinha nada para lançar.
       setLoadError(err?.message || 'Não foi possível carregar sua agenda agora.');
@@ -620,6 +627,17 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             </div>
           )}
         </section>
+      )}
+
+      {/* Aula que existe no servidor mas não pôde ser montada aqui: avisa em vez de sumir. */}
+      {!loading && hiddenLessons > 0 && (
+        <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-bold">{hiddenLessons === 1 ? '1 aula desta janela não pôde ser montada' : `${hiddenLessons} aulas desta janela não puderam ser montadas`}</p>
+            <p className="mt-0.5 font-medium">O cadastro do aluno não está acessível para você. A aula continua registrada — avise a direção para liberar o acesso; ela volta a aparecer aqui para lançar.</p>
+          </div>
+        </div>
       )}
 
       {/* Bulk Form */}

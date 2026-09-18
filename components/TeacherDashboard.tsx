@@ -6,6 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { localMonth, localYMD } from '../lib/dateUtils';
 import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
+import { coverageAgendaItems, coverageCaption, coverageDisplayTime, type CoverageAgendaRow } from '../lib/coverageAgenda';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { setPlannerIntent } from '../lib/plannerIntent';
 import { User as UserType } from '../types';
@@ -249,6 +250,28 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('date', todayISO)
         .eq('tenant_id', effectiveTenantId);
 
+      // Coberturas de HOJE, nos dois sentidos. A que este professor ASSUMIU entra
+      // na lista (é aula dele hoje, mesmo sendo agendamento de outro); a que ele
+      // CEDEU sai (quem dá é o substituto). Até 18/09/2026 nada disso aparecia
+      // aqui — o substituto abria o Início e via "sem aulas".
+      const { data: coverageRows, error: coverageError } = await supabase
+        .from('class_coverages')
+        .select(`
+          id, booking_id, class_date, class_time, status, notes, original_teacher_id, cover_teacher_id,
+          student:student_id(id, full_name, phone, avatar_url, module, meeting_link),
+          original_teacher:original_teacher_id(full_name),
+          cover_teacher:cover_teacher_id(full_name)
+        `)
+        .eq('tenant_id', effectiveTenantId)
+        .eq('class_date', todayISO)
+        .eq('status', 'confirmed');
+      if (coverageError) throw coverageError;
+      const todayCoverages = coverageAgendaItems((coverageRows || []) as unknown as CoverageAgendaRow[], user.id);
+      const cededBookingIds = new Set(
+        todayCoverages.filter(c => c.papel === 'cedida' && c.bookingId).map(c => c.bookingId as string)
+      );
+      const assumedToday = todayCoverages.filter(c => c.papel === 'assumida');
+
       // Lançamentos do mês — usados para a AGENDA (esconder da lista "próximas
       // aulas" o que já foi lançado) e para o gráfico da semana. Não servem mais
       // para calcular dinheiro: ver o bloco logo abaixo.
@@ -277,7 +300,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
       setStats({
         activeStudents: Number(projection?.active_students ?? uniqueStudents.size),
-        classesToday: (todayBookings.length + (todayRepos?.length || 0)),
+        classesToday: (todayBookings.filter((o: any) => !cededBookingIds.has(o.booking_id)).length + (todayRepos?.length || 0) + assumedToday.length),
         monthlyEarnings: projection?.amount_logged == null ? null : Number(projection.amount_logged),
         completionRate: 100
       });
@@ -317,6 +340,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('tenant_id', effectiveTenantId);
 
       const upcomingRegular = (todayFixed as any[])
+        .filter(b => !cededBookingIds.has(b.id))
         .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
         .map(b => ({
           name: (b.student as any)?.full_name || 'Desconhecido',
@@ -363,7 +387,26 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           class_date: todayISO,
         }));
 
-      setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials]
+      // Cobertura assumida hoje: fica na lista até o horário combinado (ou o
+      // slot) passar, e some quando a aula já foi lançada.
+      const upcomingCoverages = assumedToday
+        .filter(c => coverageDisplayTime(c) >= currentTimeStr)
+        .filter(c => !logs?.some(l => l.booking_id === c.bookingId && l.class_date === todayISO))
+        .map(c => ({
+          name: c.studentName,
+          studentId: c.studentId,
+          time: coverageDisplayTime(c),
+          module: coverageCaption(c),
+          img: c.studentAvatar,
+          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', c.bookingId || '', todayISO, c.studentMeetingLink),
+          phone: c.studentPhone,
+          type: 'COBERTURA',
+          source_id: c.coverageId,
+          source_type: 'COVERAGE',
+          class_date: todayISO,
+        }));
+
+      setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials, ...upcomingCoverages]
         .sort((a, b) => a.time.localeCompare(b.time))
       );
 
@@ -651,7 +694,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           <TeacherAffiliateCard user={user} />
 
           {/* Schedule Section */}
-          <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">
+          <div data-tour="today-lessons" className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-sm font-bold text-brand-text">Aulas de Hoje</h3>
               <div className="flex items-center gap-2">
@@ -678,10 +721,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                 return (
                 <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border transition-all group ${aula.type === 'TRIAL'
                   ? 'border-brand-accent/40 bg-brand-accent/5'
-                  : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
+                  : aula.type === 'COBERTURA'
+                    ? 'border-amber-400/50 bg-amber-400/5'
+                    : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
                   <div className="relative shrink-0">
                     <img src={aula.img} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt={aula.name} />
-                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-brand-surface rounded-full ${aula.type === 'TRIAL' ? 'bg-brand-accent' : 'bg-emerald-500'}`} />
+                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-brand-surface rounded-full ${aula.type === 'TRIAL' ? 'bg-brand-accent' : aula.type === 'COBERTURA' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -692,6 +737,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                       </span>
                       {aula.type === 'TRIAL' ? (
                         <span className="text-[9px] font-black bg-brand-accent text-white px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse">Experimental</span>
+                      ) : aula.type === 'COBERTURA' ? (
+                        <span className="truncate text-amber-600 dark:text-amber-400 font-semibold" title={aula.module}>{aula.module}</span>
                       ) : (
                         <span className="truncate">{aula.module}</span>
                       )}
@@ -701,8 +748,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                   <div className="flex gap-2 items-center shrink-0">
                     {/* Em modo AUTO o botão manual fica oculto para impedir que
                         o mesmo lembrete seja enviado pelos dois caminhos. */}
+                    {/* Cobertura não tem lembrete daqui: a edge só conhece booking/reposição/experimental. */}
                     {teacherWa.automation === false && (
-                      <button
+                      aula.source_type !== 'COVERAGE' && <button
                         onClick={() => handleDispatch(aula, dispatchKey)}
                         disabled={dispatchState === 'sending' || dispatchState === 'sent'}
                         className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm border text-xs font-bold ${

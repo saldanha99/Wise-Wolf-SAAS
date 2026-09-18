@@ -99,6 +99,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-18-coberturas-na-agenda',
+    title: 'Coberturas e reposições na sua agenda',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'today-lessons',
+        view: 'dashboard',
+        title: 'Aula que você cobre aparece aqui 🐺',
+        text: 'Quando a direção registra que você vai cobrir a aula de outro professor, ela entra em "Aulas de Hoje" com o nome do aluno, o telefone e a sala — marcada como Cobertura, com o horário combinado. Reposição marcada com você também entra. Depois da aula, é só lançar em "Lançar Aula": ela conta no seu pagamento.',
+      },
+      {
+        target: 'agenda-coverage-legend',
+        view: 'schedule',
+        title: 'Na Agenda, com a data',
+        text: 'Cobertura e reposição dos próximos 7 dias aparecem na grade em âmbar, com a data ao lado do nome (COB / REPO). Elas não são horário fixo seu — por isso não abrem o cadastro do aluno e não mexem na sua disponibilidade.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
