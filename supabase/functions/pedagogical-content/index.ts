@@ -1414,7 +1414,7 @@ async function handleHubMaterialGenerate(
     let query = client
       .from("hub_educator_materials")
       .select(
-        "id,subscription_id,request_fingerprint,kind,niche,level_tag,topic,item_count,bilingual,title,material,dropped_items,created_at",
+        "id,subscription_id,request_fingerprint,kind,niche,level_tag,topic,goal,audience,item_count,bilingual,title,material,dropped_items,created_at",
       )
       .eq("created_by", userId)
       .eq("request_key", requestKey);
@@ -1440,6 +1440,8 @@ async function handleHubMaterialGenerate(
       niche: prior.niche,
       level: prior.level_tag,
       topic: prior.topic,
+      goal: prior.goal,
+      audience: prior.audience,
       material: prior.material,
       dropped: prior.dropped_items,
       created_at: prior.created_at,
@@ -1591,6 +1593,8 @@ async function handleHubMaterialGenerate(
       niche: spec.niche,
       level_tag: spec.level,
       topic: spec.topic,
+      goal: spec.goal,
+      audience: spec.audience,
       item_count: spec.count,
       bilingual: spec.bilingual,
       extra_instructions: spec.extra,
@@ -1621,6 +1625,8 @@ async function handleHubMaterialGenerate(
     niche: spec.niche,
     level: spec.level,
     topic: spec.topic,
+    goal: spec.goal,
+    audience: spec.audience,
     material: normalized.value.material,
     dropped: normalized.value.dropped,
     created_at: row.created_at,

@@ -33,17 +33,27 @@ export type HubMaterialKind = 'worksheet' | 'quiz' | 'vocab_cards' | 'grammar_dr
 interface McQuestion { prompt: string; options: string[]; correct: number; explanation_pt: string }
 interface Pair { en: string; pt: string }
 
+export type HubMaterialAudience = 'kids' | 'teens' | 'adults';
+
 export interface HubMaterialRecord {
   id: string;
   kind: HubMaterialKind;
   niche: string;
   level_tag: string;
   topic: string;
+  goal?: string;
+  audience?: HubMaterialAudience;
   title: string;
   created_at: string;
   dropped_items: number;
   material: Record<string, unknown>;
 }
+
+export const HUB_MATERIAL_AUDIENCE_OPTIONS: Array<{ value: HubMaterialAudience; label: string }> = [
+  { value: 'adults', label: 'Adulto' },
+  { value: 'teens', label: 'Adolescente' },
+  { value: 'kids', label: 'Criança' },
+];
 
 interface HubMaterialGeneratorProps {
   bootstrap: HubBootstrap;
@@ -116,6 +126,15 @@ const pairList = (value: unknown, a: string, b: string): Pair[] => Array.isArray
 export const materialAsText = (record: HubMaterialRecord): string => {
   const m = record.material;
   const lines: string[] = [`${record.title} — ${record.level_tag} · ${nicheLabel(record.niche).replace(/^[^\s\w]+\s*/, '')}`, ''];
+  if (record.goal) lines.push(`Objetivo do aluno: ${record.goal}`, '');
+  if (typeof m.opportunity_pt === 'string' && m.opportunity_pt) lines.push(`Porta que abre: ${m.opportunity_pt}`, '');
+  if (isRecord(m.grammar_focus) && typeof m.grammar_focus.point === 'string') {
+    lines.push(`Foco gramatical (${record.level_tag}): ${m.grammar_focus.point}`);
+    if (typeof m.grammar_focus.why_pt === 'string' && m.grammar_focus.why_pt) lines.push(`  ${m.grammar_focus.why_pt}`);
+    pairList(m.grammar_focus.patterns, 'en', 'pt').forEach((pair) => lines.push(`  • ${pair.en} — ${pair.pt}`));
+    strList(m.grammar_focus.watch_out_pt).forEach((item) => lines.push(`  ⚠ ${item}`));
+    lines.push('');
+  }
   const pushQuestions = (heading: string, questions: McQuestion[]) => {
     if (!questions.length) return;
     lines.push(heading);
@@ -142,13 +161,24 @@ export const materialAsText = (record: HubMaterialRecord): string => {
       lines.push('');
       pushQuestions('Exercícios', questionList(m.exercises));
       break;
-    case 'reading':
-      lines.push(String(m.text || ''), '', 'Glossário:');
+    case 'reading': {
+      const strategies = isRecord(m.strategies) ? m.strategies : {};
+      const skimming = isRecord(strategies.skimming) ? strategies.skimming : null;
+      if (skimming && typeof skimming.question === 'string') lines.push(`Skimming (${String(skimming.time_seconds || 60)} s): ${String(skimming.instruction_pt || '')} — ${skimming.question}`, '');
+      lines.push(String(m.text || ''), '');
+      const scanning = pairList(strategies.scanning, 'question', 'answer');
+      if (scanning.length) { lines.push('Scanning:'); scanning.forEach((pair, index) => lines.push(`${index + 1}. ${pair.en} → ${pair.pt}`)); lines.push(''); }
+      const chunks = pairList(strategies.chunks, 'chunk', 'pt');
+      if (chunks.length) { lines.push('Chunking:'); chunks.forEach((pair) => lines.push(`• ${pair.en} — ${pair.pt}`)); lines.push(''); }
+      const shadowing = isRecord(strategies.shadowing) ? strategies.shadowing : null;
+      if (shadowing && typeof shadowing.passage === 'string' && shadowing.passage) lines.push(`Shadowing: "${shadowing.passage}"`, `  Foco: ${String(shadowing.focus_pt || '')}`, '');
+      lines.push('Glossário:');
       pairList(m.glossary, 'term', 'translation_pt').forEach((pair) => lines.push(`• ${pair.en} — ${pair.pt}`));
       lines.push('');
       pushQuestions('Compreensão', questionList(m.questions));
       strList(m.discussion).forEach((item, index) => lines.push(`Discussão ${index + 1}: ${item}`));
       break;
+    }
     case 'worksheet': {
       if (typeof m.objective_pt === 'string') lines.push(`Objetivo: ${m.objective_pt}`, '');
       const warm = strList(m.warm_up);
@@ -177,9 +207,20 @@ export const materialAsText = (record: HubMaterialRecord): string => {
       lines.push('', 'Diálogo-modelo:');
       pairList(m.dialogue, 'speaker', 'line').forEach((pair) => lines.push(`${pair.en}: ${pair.pt}`));
       lines.push('');
+      if (isRecord(m.shadowing) && strList(m.shadowing.lines).length) {
+        lines.push('Shadowing (repita em voz alta):', ...strList(m.shadowing.lines).map((line) => `• ${line}`), `  Foco: ${String(m.shadowing.focus_pt || '')}`, '');
+      }
       strList(m.practice_questions).forEach((item, index) => lines.push(`Pratique ${index + 1}: ${item}`));
       if (typeof m.teacher_notes_pt === 'string' && m.teacher_notes_pt) lines.push('', `Notas para o professor: ${m.teacher_notes_pt}`);
       break;
+  }
+  const homework = Array.isArray(m.ai_homework) ? m.ai_homework.filter(isRecord) : [];
+  if (homework.length) {
+    lines.push('', 'Homework com IA:');
+    homework.forEach((item, index) => {
+      lines.push(`${index + 1}. ${String(item.task_pt || '')}`, `   Prompt: ${String(item.prompt_en || '')}`);
+      if (item.tip_pt) lines.push(`   Dica: ${String(item.tip_pt)}`);
+    });
   }
   lines.push('', 'Gerado no Wise Wolf Hub · Educador IA');
   return lines.join('\n');
@@ -212,10 +253,10 @@ const Questions: React.FC<{ questions: McQuestion[]; teacher: boolean }> = ({ qu
   </ol>
 );
 
-const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string }> = ({ pairs, left, right }) => (
+const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string; hideRight?: boolean }> = ({ pairs, left, right, hideRight = false }) => (
   <table className="mt-3 w-full border-collapse text-sm">
     <thead><tr className="text-left text-[10px] font-black uppercase tracking-widest text-brand-muted print:text-black"><th className="border-b border-brand-border py-1.5 pr-3">{left}</th><th className="border-b border-brand-border py-1.5">{right}</th></tr></thead>
-    <tbody>{pairs.map((pair, index) => <tr key={index} className="align-top"><td className="border-b border-brand-border/60 py-1.5 pr-3 font-bold text-brand-text print:text-black">{pair.en}</td><td className="border-b border-brand-border/60 py-1.5 text-brand-text print:text-black">{pair.pt}</td></tr>)}</tbody>
+    <tbody>{pairs.map((pair, index) => <tr key={index} className="align-top"><td className="border-b border-brand-border/60 py-1.5 pr-3 font-bold text-brand-text print:text-black">{pair.en}</td><td className="border-b border-brand-border/60 py-1.5 text-brand-text print:text-black">{hideRight ? '' : pair.pt}</td></tr>)}</tbody>
   </table>
 );
 
@@ -226,8 +267,24 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
       <header className="border-b border-brand-border pb-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tenant-primary print:text-black">{kindLabel(record.kind)} · {record.level_tag} · {nicheLabel(record.niche)}</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight">{record.title}</h2>
-        <p className="mt-1 text-sm text-slate-500">Tema: {record.topic}{teacher ? ' · versão do professor (com gabarito)' : ' · versão do aluno'}</p>
+        <p className="mt-1 text-sm text-slate-500">Tema: {record.topic}{record.goal ? ` · Objetivo: ${record.goal}` : ''}{teacher ? ' · versão do professor (com gabarito)' : ' · versão do aluno'}</p>
       </header>
+
+      {typeof m.opportunity_pt === 'string' && m.opportunity_pt && (
+        <p className="mt-4 rounded-2xl border border-tenant-primary/30 bg-tenant-primary/5 p-4 text-sm print:border-slate-300 print:bg-white"><span className="font-black">Porta que abre: </span>{m.opportunity_pt}</p>
+      )}
+
+      {isRecord(m.grammar_focus) && typeof m.grammar_focus.point === 'string' && (
+        <section className="mt-4 rounded-2xl border border-brand-border p-4 print:break-inside-avoid">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary print:text-black">Foco gramatical · {record.level_tag}</p>
+          <p className="mt-1 text-lg font-black">{m.grammar_focus.point}</p>
+          {typeof m.grammar_focus.why_pt === 'string' && m.grammar_focus.why_pt && <p className="mt-1 text-sm text-slate-600">{m.grammar_focus.why_pt}</p>}
+          {pairList(m.grammar_focus.patterns, 'en', 'pt').length > 0 && <PairTable pairs={pairList(m.grammar_focus.patterns, 'en', 'pt')} left="Padrão" right="Português" />}
+          {teacher && strList(m.grammar_focus.watch_out_pt).length > 0 && (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-800 print:text-black">{strList(m.grammar_focus.watch_out_pt).map((item, index) => <li key={index}>Atenção: {item}</li>)}</ul>
+          )}
+        </section>
+      )}
 
       {record.kind === 'quiz' && (<>
         {typeof m.instructions_pt === 'string' && m.instructions_pt && <p className="mt-4 text-sm">{m.instructions_pt}</p>}
@@ -259,8 +316,26 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
       </>)}
 
       {record.kind === 'reading' && (<>
+        {isRecord(m.strategies) && isRecord(m.strategies.skimming) && typeof m.strategies.skimming.question === 'string' && m.strategies.skimming.question && (
+          <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm print:bg-white print:p-0"><span className="font-black">Skimming ({String(m.strategies.skimming.time_seconds || 60)} s): </span>{String(m.strategies.skimming.instruction_pt || '')} <span className="italic">{m.strategies.skimming.question}</span></p>
+        )}
         <SectionTitle>Texto</SectionTitle>
         {String(m.text || '').split(/\n+/).map((paragraph, index) => <p key={index} className="mt-3 text-[15px] leading-7">{paragraph}</p>)}
+        {isRecord(m.strategies) && pairList(m.strategies.scanning, 'question', 'answer').length > 0 && (<>
+          <SectionTitle>Scanning</SectionTitle>
+          <ol className="mt-2 space-y-1.5 text-sm">
+            {pairList(m.strategies.scanning, 'question', 'answer').map((pair, index) => <li key={index}>{index + 1}. {pair.en}{teacher && <span className="ml-2 rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-900 print:bg-white">→ {pair.pt}</span>}</li>)}
+          </ol>
+        </>)}
+        {isRecord(m.strategies) && pairList(m.strategies.chunks, 'chunk', 'pt').length > 0 && (<>
+          <SectionTitle>Chunking</SectionTitle>
+          <PairTable pairs={pairList(m.strategies.chunks, 'chunk', 'pt')} left="Bloco de sentido" right={teacher ? 'Português' : 'Sua tradução'} hideRight={!teacher} />
+        </>)}
+        {isRecord(m.strategies) && isRecord(m.strategies.shadowing) && typeof m.strategies.shadowing.passage === 'string' && m.strategies.shadowing.passage && (<>
+          <SectionTitle>Shadowing</SectionTitle>
+          <p className="mt-2 text-[15px] italic leading-7">“{m.strategies.shadowing.passage}”</p>
+          {typeof m.strategies.shadowing.focus_pt === 'string' && m.strategies.shadowing.focus_pt && <p className="mt-1 text-xs text-slate-500">Foco: {m.strategies.shadowing.focus_pt}</p>}
+        </>)}
         {pairList(m.glossary, 'term', 'translation_pt').length > 0 && (<><SectionTitle>Glossário</SectionTitle><PairTable pairs={pairList(m.glossary, 'term', 'translation_pt')} left="Termo" right="Tradução" /></>)}
         <SectionTitle>Compreensão</SectionTitle>
         <Questions questions={questionList(m.questions)} teacher={teacher} />
@@ -306,9 +381,30 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
         <div className="mt-2 space-y-1.5 text-sm">
           {pairList(m.dialogue, 'speaker', 'line').map((turn, index) => <p key={index}><span className="font-black">{turn.en}:</span> {turn.pt}</p>)}
         </div>
+        {isRecord(m.shadowing) && strList(m.shadowing.lines).length > 0 && (<>
+          <SectionTitle>Shadowing</SectionTitle>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm italic">{strList(m.shadowing.lines).map((line, index) => <li key={index}>{line}</li>)}</ul>
+          {typeof m.shadowing.focus_pt === 'string' && m.shadowing.focus_pt && <p className="mt-1 text-xs text-slate-500">Foco: {m.shadowing.focus_pt}</p>}
+        </>)}
         {strList(m.practice_questions).length > 0 && (<><SectionTitle>Agora sem roteiro</SectionTitle><ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{strList(m.practice_questions).map((item, index) => <li key={index}>{item}</li>)}</ul></>)}
         {teacher && typeof m.teacher_notes_pt === 'string' && m.teacher_notes_pt && (<><SectionTitle>Notas para o professor</SectionTitle><p className="mt-2 rounded-2xl bg-amber-50 p-4 text-sm print:bg-white print:p-0">{m.teacher_notes_pt}</p></>)}
       </>)}
+
+      {Array.isArray(m.ai_homework) && m.ai_homework.filter(isRecord).length > 0 && (
+        <section className="mt-6 rounded-2xl border border-dashed border-brand-border p-4 print:break-inside-avoid">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary print:text-black">Homework com IA</p>
+          <p className="mt-1 text-xs text-slate-500">Cole o prompt no ChatGPT ou no Wolfie e siga a conversa. Traga o resultado para a próxima aula.</p>
+          <ol className="mt-3 space-y-3 text-sm">
+            {m.ai_homework.filter(isRecord).map((item, index) => (
+              <li key={index}>
+                <p className="font-bold">{index + 1}. {String(item.task_pt || '')}</p>
+                <pre className="mt-1 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 font-mono text-xs print:bg-white print:p-0">{String(item.prompt_en || '')}</pre>
+                {teacher && item.tip_pt ? <p className="mt-1 text-xs italic text-slate-500">Dica: {String(item.tip_pt)}</p> : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <footer className="mt-8 border-t border-brand-border pt-3 text-[10px] uppercase tracking-widest text-slate-400">Gerado no Wise Wolf Hub · Educador IA</footer>
     </article>
@@ -323,6 +419,8 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
   const [niche, setNiche] = useState('GENERAL');
   const [level, setLevel] = useState('A2');
   const [topic, setTopic] = useState('');
+  const [goal, setGoal] = useState('');
+  const [audience, setAudience] = useState<HubMaterialAudience>('adults');
   const [count, setCount] = useState(8);
   const [bilingual, setBilingual] = useState(true);
   const [extra, setExtra] = useState('');
@@ -344,7 +442,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
   const loadHistory = useCallback(async () => {
     const { data, error: loadError } = await supabase
       .from('hub_educator_materials')
-      .select('id,kind,niche,level_tag,topic,title,created_at,dropped_items,material')
+      .select('id,kind,niche,level_tag,topic,goal,audience,title,created_at,dropped_items,material')
       .eq('account_id', bootstrap.account.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -360,6 +458,8 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
         niche: String(row.niche || 'GENERAL'),
         level_tag: String(row.level_tag || ''),
         topic: String(row.topic || ''),
+        goal: typeof row.goal === 'string' ? row.goal : '',
+        audience: (['kids', 'teens', 'adults'].includes(String(row.audience)) ? String(row.audience) : 'adults') as HubMaterialAudience,
         title: String(row.title || ''),
         created_at: String(row.created_at || ''),
         dropped_items: Number(row.dropped_items || 0),
@@ -389,6 +489,8 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
           niche,
           level,
           topic: topic.trim(),
+          goal: goal.trim(),
+          audience,
           count,
           bilingual,
           extra: extra.trim(),
@@ -410,6 +512,8 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
         niche,
         level_tag: level,
         topic: String(payload.topic || topic.trim()),
+        goal: goal.trim(),
+        audience,
         title: String(payload.title || topic.trim()),
         created_at: String(payload.created_at || new Date().toISOString()),
         dropped_items: Number(payload.dropped || 0),
@@ -467,7 +571,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary">Educador IA · Gerador de material</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-brand-text">Material pronto por nicho e nível</h1>
-            <p className="mt-1 text-sm text-brand-muted">Escolha o tipo, o contexto do aluno e o tema. O gabarito das questões passa por verificação antes de chegar aqui.</p>
+            <p className="mt-1 text-sm text-brand-muted">Escolha o tipo, o objetivo do aluno, o nível e o tema. Todo material abre com o foco gramatical do nível, mostra a porta que o inglês abre no objetivo dele e fecha com homework para praticar com IA. O gabarito passa por verificação antes de chegar aqui.</p>
           </div>
           <p className="shrink-0 rounded-2xl bg-brand-surface-2 px-4 py-2 text-xs font-bold text-brand-text" data-testid="hub-material-quota">
             {remaining === null ? `${entitlement?.used || 0} gerações usadas · ilimitado` : `${remaining} de ${entitlement?.limit} gerações restantes`}
@@ -506,6 +610,14 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
           <label className="flex items-end gap-3 pb-3">
             <input type="checkbox" checked={bilingual} onChange={(event) => setBilingual(event.target.checked)} className="size-5 rounded" />
             <span className="text-sm font-bold text-brand-text">Traduções em pt-BR</span>
+          </label>
+          <label className="sm:col-span-3"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Objetivo do aluno</span>
+            <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={200} placeholder="Ex.: logística numa multinacional, estudante de gastronomia, intercâmbio no Canadá, virar influencer, assistir filme sem legenda…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" />
+          </label>
+          <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Faixa etária</span>
+            <select value={audience} onChange={(event) => setAudience(event.target.value as HubMaterialAudience)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">
+              {HUB_MATERIAL_AUDIENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
           </label>
           <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Tema / situação do aluno</span>
             <input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={200} placeholder="Ex.: check-in no hotel, reunião de status com o time, consulta de rotina, primeiro dia na escola…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" />

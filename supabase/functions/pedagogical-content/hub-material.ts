@@ -11,7 +11,7 @@
 
 import { auditQuestionKey } from "../wolfie-activity/answer-key-audit.ts";
 
-export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-09-18";
+export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-09-18.v2";
 
 export const HUB_MATERIAL_KINDS = [
   "worksheet",
@@ -50,15 +50,50 @@ export const HUB_MATERIAL_MAX_ITEMS = 15;
 export const HUB_MATERIAL_MAX_TOPIC = 200;
 export const HUB_MATERIAL_MAX_EXTRA = 600;
 
+export const HUB_MATERIAL_AUDIENCES = ["kids", "teens", "adults"] as const;
+export type HubMaterialAudience = typeof HUB_MATERIAL_AUDIENCES[number];
+
 export interface HubMaterialSpec {
   kind: HubMaterialKind;
   niche: HubMaterialNiche;
   level: HubMaterialLevel;
   topic: string;
+  // Objetivo do aluno em texto livre ("logística numa multinacional",
+  // "intercâmbio no Canadá", "virar influencer"): é o que personaliza o
+  // material e faz o aluno enxergar o inglês dentro da oportunidade dele.
+  goal: string;
+  audience: HubMaterialAudience;
   count: number;
   bilingual: boolean;
   extra: string;
 }
+
+// Leque gramatical por nível (CEFR): o modelo escolhe UM ponto daqui para o
+// foco gramatical e não pode usar estrutura acima do nível. É o "guia
+// gramatical de acordo com o nivelamento" que abre todo material.
+export const CEFR_GRAMMAR_MAP: Record<HubMaterialLevel, string> = {
+  A1:
+    "verbo to be; present simple (afirmativa, negativa, perguntas com do/does); artigos a/an/the; plural; pronomes pessoais e possessivos; there is/there are; can/can't; preposições de lugar e tempo básicas; perguntas com WH; imperativo simples",
+  A2:
+    "past simple (regulares e irregulares); present continuous; going to e will; comparativos e superlativos; countable/uncountable com some/any/much/many; advérbios de frequência; should e have to; like/love + -ing; preposições de movimento",
+  B1:
+    "present perfect x past simple; first conditional; modais de dedução (must/might/can't); used to; relative clauses com who/which/that; passive básica; phrasal verbs comuns; question tags; too/enough; future com present continuous",
+  B2:
+    "second e third conditional; reported speech; passive completa; relative clauses definidas e não definidas; wish/if only; modais no passado (should have, could have); linking words de contraste e causa; gerúndio x infinitivo; ênfase com so/such",
+  C1:
+    "mixed conditionals; inversão (Not only…, Rarely…); cleft sentences (What I need is…); hedging e linguagem diplomática; discourse markers; registro formal x informal; collocations e expressões idiomáticas; substantivação",
+  C2:
+    "precisão idiomática e estilo; gramática do discurso; ênfase, elipse e substituição; nuance de modalidade; tudo liberado, com atenção a naturalidade e registro",
+};
+
+const AUDIENCE_GUIDANCE: Record<HubMaterialAudience, string> = {
+  kids:
+    "criança: linguagem lúdica, frases curtas, muita repetição, personagens e jogo; nada de contexto corporativo",
+  teens:
+    "adolescente: escola, amigos, redes sociais, intercâmbio, host family; tom leve, exemplos que um teen reconhece",
+  adults:
+    "adulto: situações reais de trabalho ou vida pessoal conforme o objetivo; tom direto e respeitoso",
+};
 
 export type HubMaterialSpecParse =
   | { ok: true; spec: HubMaterialSpec }
@@ -124,6 +159,12 @@ export function parseHubMaterialSpec(body: JsonObject): HubMaterialSpecParse {
   ) {
     return { ok: false, code: "INVALID_MATERIAL_COUNT" };
   }
+  const audience = typeof body.audience === "string"
+    ? body.audience.trim().toLowerCase()
+    : "adults";
+  if (!(HUB_MATERIAL_AUDIENCES as readonly string[]).includes(audience)) {
+    return { ok: false, code: "INVALID_MATERIAL_AUDIENCE" };
+  }
   return {
     ok: true,
     spec: {
@@ -131,6 +172,8 @@ export function parseHubMaterialSpec(body: JsonObject): HubMaterialSpecParse {
       niche: niche as HubMaterialNiche,
       level: level as HubMaterialLevel,
       topic,
+      goal: sanitizeFreeText(body.goal, HUB_MATERIAL_MAX_TOPIC),
+      audience: audience as HubMaterialAudience,
       count: rawCount,
       bilingual: body.bilingual !== false,
       extra: sanitizeFreeText(body.extra, HUB_MATERIAL_MAX_EXTRA),
@@ -161,15 +204,40 @@ const MC_QUESTION = obj({
   explanation_pt: str,
 });
 
+// Blocos que TODO material carrega: foco gramatical do nível, a "porta que
+// abre" (o inglês dentro da oportunidade do aluno) e homework com IA (o aluno
+// aprende a se virar com a inteligência artificial entre as aulas).
+const COMMON_BLOCKS = {
+  grammar_focus: obj({
+    point: str,
+    why_pt: str,
+    patterns: arr(obj({ en: str, pt: str })),
+    watch_out_pt: arr(str),
+  }),
+  opportunity_pt: str,
+  ai_homework: arr(obj({ task_pt: str, prompt_en: str, tip_pt: str })),
+};
+
+const READING_STRATEGIES = obj({
+  skimming: obj({ instruction_pt: str, question: str, time_seconds: int }),
+  scanning: arr(obj({ question: str, answer: str })),
+  chunks: arr(obj({ chunk: str, pt: str })),
+  shadowing: obj({ passage: str, focus_pt: str }),
+});
+
+const SHADOWING = obj({ lines: arr(str), focus_pt: str });
+
 const HUB_MATERIAL_SCHEMAS: Record<HubMaterialKind, JsonObject> = {
   quiz: obj({
     title: str,
     instructions_pt: str,
+    ...COMMON_BLOCKS,
     questions: arr(MC_QUESTION),
   }),
   vocab_cards: obj({
     title: str,
     instructions_pt: str,
+    ...COMMON_BLOCKS,
     cards: arr(obj({
       term: str,
       translation_pt: str,
@@ -181,19 +249,23 @@ const HUB_MATERIAL_SCHEMAS: Record<HubMaterialKind, JsonObject> = {
   grammar_drill: obj({
     title: str,
     rule_pt: str,
+    ...COMMON_BLOCKS,
     examples: arr(obj({ en: str, pt: str })),
     exercises: arr(MC_QUESTION),
   }),
   reading: obj({
     title: str,
     text: str,
+    ...COMMON_BLOCKS,
     glossary: arr(obj({ term: str, translation_pt: str })),
+    strategies: READING_STRATEGIES,
     questions: arr(MC_QUESTION),
     discussion: arr(str),
   }),
   worksheet: obj({
     title: str,
     objective_pt: str,
+    ...COMMON_BLOCKS,
     warm_up: arr(str),
     fill_blanks: arr(obj({ prompt: str, answer: str, hint_pt: str })),
     multiple_choice: arr(MC_QUESTION),
@@ -203,9 +275,11 @@ const HUB_MATERIAL_SCHEMAS: Record<HubMaterialKind, JsonObject> = {
   conversation: obj({
     title: str,
     situation_pt: str,
+    ...COMMON_BLOCKS,
     roles: arr(obj({ name: str, description_pt: str })),
     useful_phrases: arr(obj({ en: str, pt: str })),
     dialogue: arr(obj({ speaker: str, line: str })),
+    shadowing: SHADOWING,
     practice_questions: arr(str),
     teacher_notes_pt: str,
   }),
@@ -235,7 +309,7 @@ const countGuidance = (spec: HubMaterialSpec): string => {
           : spec.level === "B1" || spec.level === "B2"
           ? "150–220"
           : "220–320"
-      } palavras sobre o tema, um glossário de 6 termos, exatamente ${n} perguntas de compreensão (4 alternativas, uma correta) e 3 perguntas de discussão oral.`;
+      } palavras sobre o tema, um glossário de 6 termos, exatamente ${n} perguntas de compreensão (4 alternativas, uma correta) e 3 perguntas de discussão oral. Em "strategies": skimming (instrução em pt-BR, UMA pergunta de ideia geral e um limite de tempo em segundos entre 30 e 90), scanning (3 perguntas de dado específico com a resposta exata do texto), chunks (o texto dividido em 6–10 blocos de sentido, cada um com a tradução) e shadowing (um trecho de 2–3 frases do texto para o aluno repetir em voz alta junto com o áudio, com o foco de pronúncia/ritmo em pt-BR).`;
     case "worksheet":
       return `Monte uma folha de exercícios com: 3 perguntas de aquecimento oral (warm_up), ${
         Math.max(3, Math.round(n / 2))
@@ -243,7 +317,7 @@ const countGuidance = (spec: HubMaterialSpec): string => {
         Math.max(3, Math.round(n / 2))
       } questões de múltipla escolha (4 alternativas, uma correta), 3 perguntas abertas com resposta-modelo e uma tarefa de casa curta (homework_pt).`;
     case "conversation":
-      return `Descreva a situação em pt-BR, defina 2 papéis, liste ${n} frases úteis (en + pt), escreva um diálogo-modelo de 10–16 falas alternando os papéis, 4 perguntas para praticar sem roteiro e notas para o professor (teacher_notes_pt).`;
+      return `Descreva a situação em pt-BR, defina 2 papéis, liste ${n} frases úteis (en + pt), escreva um diálogo-modelo de 10–16 falas alternando os papéis, "shadowing" com 4–6 falas do diálogo para o aluno repetir em voz alta (lines) e o foco de entonação em pt-BR (focus_pt), 4 perguntas para praticar sem roteiro e notas para o professor (teacher_notes_pt).`;
   }
 };
 
@@ -251,19 +325,30 @@ export function buildHubMaterialPrompt(spec: HubMaterialSpec): string {
   const bilingual = spec.bilingual
     ? "Traduções e explicações em português do Brasil, conteúdo de prática em inglês."
     : "Explicações em português do Brasil curtas; o máximo possível do material em inglês (professor prefere imersão).";
+  const goal = spec.goal || `usar inglês em ${NICHE_LABEL[spec.niche]}`;
   return [
-    `Você está criando material de aula para um professor de inglês autônomo usar com o aluno dele.`,
+    `Você está criando material de aula para um professor de inglês autônomo usar com o aluno dele. O material inteiro é PERSONALIZADO ao objetivo do aluno: ele precisa enxergar o inglês dentro da oportunidade dele, não em situações genéricas.`,
     ``,
     `TIPO DE MATERIAL: ${KIND_LABEL[spec.kind]}`,
     `NICHO / CONTEXTO: ${NICHE_LABEL[spec.niche]}`,
+    `OBJETIVO DO ALUNO: ${goal}`,
+    `FAIXA ETÁRIA: ${AUDIENCE_GUIDANCE[spec.audience]}`,
     `NÍVEL CEFR: ${spec.level}`,
     `TEMA PEDIDO PELO PROFESSOR: ${spec.topic}`,
     spec.extra ? `INSTRUÇÕES EXTRAS DO PROFESSOR: ${spec.extra}` : "",
     ``,
+    `GRAMÁTICA PERMITIDA NO NÍVEL ${spec.level}: ${
+      CEFR_GRAMMAR_MAP[spec.level]
+    }.`,
+    `Em "grammar_focus" escolha UM ponto desse leque que sirva ao objetivo e ao tema: "point" em inglês (ex.: "Present simple for routines"), "why_pt" explica em 1–2 frases por que esse ponto abre porta para o objetivo do aluno, "patterns" traz 3 padrões de frase (en + pt) no contexto do aluno, "watch_out_pt" lista 2 erros comuns de brasileiro nesse ponto. Nada de estrutura acima do nível em nenhuma parte do material.`,
+    ``,
     countGuidance(spec),
     ``,
+    `"opportunity_pt": 1–2 frases em pt-BR dizendo o que o aluno passa a conseguir fazer no objetivo dele com este material (ex.: "Com isso você consegue apresentar o status de um embarque na reunião semanal").`,
+    `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (ChatGPT ou o Wolfie) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
+    ``,
     `Regras:`,
-    `- Vocabulário e gramática 100% dentro do nível ${spec.level}; situações reais do nicho, nada genérico.`,
+    `- Vocabulário e gramática 100% dentro do nível ${spec.level}; situações reais do nicho e do objetivo, nada genérico.`,
     `- ${bilingual}`,
     `- Cada questão de múltipla escolha tem UMA resposta correta e as outras alternativas são plausíveis mas erradas; "correct" é o índice da correta; a explicação em pt-BR cita a resposta certa.`,
     `- Sem markdown, asteriscos ou bullets dentro dos valores. Título curto em inglês.`,
@@ -358,6 +443,82 @@ const pairList = (value: unknown, a: string, b: string, max = 20) =>
     }).slice(0, max)
     : [];
 
+// Blocos comuns. O foco gramatical é obrigatório (é o "guia gramatical por
+// nivelamento" que abre o material); os outros degradam para vazio.
+const normalizeGrammarFocus = (
+  value: unknown,
+): JsonObject | null => {
+  if (!isObject(value)) return null;
+  const point = text(value.point, 160);
+  const patterns = pairList(value.patterns, "en", "pt", 6);
+  if (!point || patterns.length < 1) return null;
+  return {
+    point,
+    why_pt: text(value.why_pt, 600),
+    patterns,
+    watch_out_pt: textList(value.watch_out_pt, 4),
+  };
+};
+
+const normalizeAiHomework = (value: unknown): JsonObject[] =>
+  Array.isArray(value)
+    ? value.flatMap((item) => {
+      if (!isObject(item)) return [];
+      const task_pt = text(item.task_pt, 500);
+      const prompt_en = text(item.prompt_en, 900);
+      return task_pt && prompt_en
+        ? [{ task_pt, prompt_en, tip_pt: text(item.tip_pt, 400) }]
+        : [];
+    }).slice(0, 3)
+    : [];
+
+const normalizeCommonBlocks = (
+  raw: JsonObject,
+): { ok: true; blocks: JsonObject } | { ok: false; code: string } => {
+  const grammar_focus = normalizeGrammarFocus(raw.grammar_focus);
+  if (!grammar_focus) {
+    return { ok: false, code: "MATERIAL_GRAMMAR_FOCUS_MISSING" };
+  }
+  return {
+    ok: true,
+    blocks: {
+      grammar_focus,
+      opportunity_pt: text(raw.opportunity_pt, 500),
+      ai_homework: normalizeAiHomework(raw.ai_homework),
+    },
+  };
+};
+
+const normalizeReadingStrategies = (value: unknown): JsonObject => {
+  const source = isObject(value) ? value : {};
+  const skimming = isObject(source.skimming) ? source.skimming : {};
+  const shadowing = isObject(source.shadowing) ? source.shadowing : {};
+  const seconds = Number(skimming.time_seconds);
+  return {
+    skimming: {
+      instruction_pt: text(skimming.instruction_pt, 400),
+      question: text(skimming.question, 300),
+      time_seconds: Number.isInteger(seconds) && seconds >= 15 && seconds <= 180
+        ? seconds
+        : 60,
+    },
+    scanning: pairList(source.scanning, "question", "answer", 6),
+    chunks: pairList(source.chunks, "chunk", "pt", 14),
+    shadowing: {
+      passage: text(shadowing.passage, 600),
+      focus_pt: text(shadowing.focus_pt, 300),
+    },
+  };
+};
+
+const normalizeShadowing = (value: unknown): JsonObject => {
+  const source = isObject(value) ? value : {};
+  return {
+    lines: textList(source.lines, 8),
+    focus_pt: text(source.focus_pt, 300),
+  };
+};
+
 export function normalizeHubMaterial(
   spec: HubMaterialSpec,
   raw: unknown,
@@ -366,6 +527,9 @@ export function normalizeHubMaterial(
   const minimum = Math.min(3, spec.count);
   let dropped = 0;
   const title = text(raw.title, 140) || `${spec.topic} — ${spec.level}`;
+  const common = normalizeCommonBlocks(raw);
+  if (!common.ok) return { ok: false, code: common.code };
+  const blocks = common.blocks;
 
   switch (spec.kind) {
     case "quiz": {
@@ -385,6 +549,7 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             instructions_pt: text(raw.instructions_pt, 600),
             questions: questions.kept,
           },
@@ -416,6 +581,7 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             instructions_pt: text(raw.instructions_pt, 600),
             cards,
           },
@@ -440,6 +606,7 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             rule_pt,
             examples: pairList(raw.examples, "en", "pt", 6),
             exercises: exercises.kept,
@@ -465,8 +632,10 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             text: body,
             glossary: pairList(raw.glossary, "term", "translation_pt", 12),
+            strategies: normalizeReadingStrategies(raw.strategies),
             questions: questions.kept,
             discussion: textList(raw.discussion, 6),
           },
@@ -508,6 +677,7 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             objective_pt: text(raw.objective_pt, 600),
             warm_up: textList(raw.warm_up, 6),
             fill_blanks,
@@ -536,10 +706,12 @@ export function normalizeHubMaterial(
           dropped,
           material: {
             title,
+            ...blocks,
             situation_pt: text(raw.situation_pt, 800),
             roles: pairList(raw.roles, "name", "description_pt", 4),
             useful_phrases,
             dialogue,
+            shadowing: normalizeShadowing(raw.shadowing),
             practice_questions: textList(raw.practice_questions, 8),
             teacher_notes_pt: text(raw.teacher_notes_pt, 800),
           },

@@ -31,6 +31,16 @@ const bootstrap = (limit: number | null = 40, used = 3): HubBootstrap => ({
 const quizMaterial = {
   title: 'Daily stand-up quiz',
   instructions_pt: 'Escolha a alternativa correta.',
+  grammar_focus: {
+    point: 'Present simple for routines',
+    why_pt: 'É o que você usa para contar o seu dia no stand-up.',
+    patterns: [{ en: 'I test the app every morning.', pt: 'Eu testo o app toda manhã.' }],
+    watch_out_pt: ['Esquecer o -s na 3ª pessoa.'],
+  },
+  opportunity_pt: 'Com isso você reporta seu dia no stand-up sem travar.',
+  ai_homework: [
+    { task_pt: 'Simule um stand-up com a IA.', prompt_en: 'Act as my scrum master and ask me about yesterday, today and blockers.', tip_pt: 'Peça uma versão mais natural.' },
+  ],
   questions: [
     { prompt: 'We ___ a stand-up every morning.', options: ['have', 'has', 'having', 'haves'], correct: 0, explanation_pt: "Sujeito 'we' pede 'have'." },
     { prompt: 'She ___ the blocker yesterday.', options: ['fix', 'fixed', 'fixes', 'fixing'], correct: 1, explanation_pt: 'Passado simples.' },
@@ -71,15 +81,22 @@ describe('Gerador de material do Hub', () => {
     fireEvent.change(screen.getByLabelText('Nicho'), { target: { value: 'TECH' } });
     fireEvent.change(screen.getByLabelText('Nível CEFR'), { target: { value: 'B1' } });
     fireEvent.change(screen.getByLabelText('Tema / situação do aluno'), { target: { value: 'Daily stand-up' } });
+    fireEvent.change(screen.getByLabelText('Objetivo do aluno'), { target: { value: 'Trabalhar numa multinacional' } });
+    fireEvent.change(screen.getByLabelText('Faixa etária'), { target: { value: 'teens' } });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar material' }));
 
     await waitFor(() => expect(supabaseMocks.invoke).toHaveBeenCalledTimes(1));
     const [functionName, options] = supabaseMocks.invoke.mock.calls[0];
     expect(functionName).toBe('pedagogical-content');
-    expect(options.body).toMatchObject({ hubMode: true, action: 'material', accountId, kind: 'quiz', niche: 'TECH', level: 'B1', topic: 'Daily stand-up', count: 8, bilingual: true });
+    expect(options.body).toMatchObject({ hubMode: true, action: 'material', accountId, kind: 'quiz', niche: 'TECH', level: 'B1', topic: 'Daily stand-up', goal: 'Trabalhar numa multinacional', audience: 'teens', count: 8, bilingual: true });
     expect(typeof options.body.requestKey).toBe('string');
 
     expect(await screen.findByText('Daily stand-up quiz')).toBeTruthy();
+    // Blocos comuns da v2: porta que abre, foco gramatical e homework com IA.
+    expect(screen.getByText(/Com isso você reporta seu dia/)).toBeTruthy();
+    expect(screen.getByText('Present simple for routines')).toBeTruthy();
+    expect(screen.getByText(/Act as my scrum master/)).toBeTruthy();
+    expect(screen.getByText(/Atenção: Esquecer o -s/)).toBeTruthy();
     // Versão do professor: a alternativa correta é marcada e a explicação aparece.
     expect(screen.getAllByLabelText('resposta correta')).toHaveLength(3);
     expect(screen.getByText("Sujeito 'we' pede 'have'.")).toBeTruthy();
@@ -90,6 +107,9 @@ describe('Gerador de material do Hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver versão do aluno' }));
     expect(screen.queryAllByLabelText('resposta correta')).toHaveLength(0);
     expect(screen.queryByText("Sujeito 'we' pede 'have'.")).toBeNull();
+    // O aluno continua vendo o prompt de IA, mas não os "cuidados" do professor nem a dica.
+    expect(screen.getByText(/Act as my scrum master/)).toBeTruthy();
+    expect(screen.queryByText(/Atenção: Esquecer o -s/)).toBeNull();
   });
 
   it('traduz o limite atingido e não deixa o erro de cota virar mensagem genérica', async () => {
@@ -131,6 +151,8 @@ describe('Gerador de material do Hub', () => {
     expect(text).toContain('1. We ___ a stand-up every morning.');
     expect(text).toContain('A) have');
     expect(text).toContain('Gabarito: 1-A · 2-B · 3-A');
+    expect(text).toContain('Foco gramatical (B1): Present simple for routines');
+    expect(text).toContain('Prompt: Act as my scrum master');
     expect(text).toContain('Wise Wolf Hub');
   });
 });

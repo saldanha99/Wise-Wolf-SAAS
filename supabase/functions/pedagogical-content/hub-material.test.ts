@@ -20,6 +20,34 @@ const base = {
   count: 5,
 };
 
+// Blocos que todo material carrega desde a v2 do motor.
+const common = {
+  grammar_focus: {
+    point: "Present simple for routines",
+    why_pt: "É o que o aluno usa para contar o que faz todo dia no stand-up.",
+    patterns: [{
+      en: "I test the app every morning.",
+      pt: "Eu testo o app toda manhã.",
+    }],
+    watch_out_pt: ["Esquecer o -s na 3ª pessoa."],
+  },
+  opportunity_pt:
+    "Com isso você consegue reportar seu dia no stand-up sem travar.",
+  ai_homework: [
+    {
+      task_pt: "Simule um stand-up com a IA.",
+      prompt_en:
+        "Act as my scrum master. Ask me about yesterday, today and blockers. Correct my English at B1.",
+      tip_pt: "Peça uma versão mais natural das suas frases.",
+    },
+    {
+      task_pt: "Peça correção.",
+      prompt_en: "Correct these sentences and explain in Portuguese: ...",
+      tip_pt: "",
+    },
+  ],
+};
+
 Deno.test("spec: aceita entrada válida e normaliza nicho/nível", () => {
   const parsed = parseHubMaterialSpec(base);
   assert(parsed.ok, "spec válida recusada");
@@ -133,6 +161,7 @@ const quizSpec = () => {
 Deno.test("quiz: gabarito que viola concordância é descartado (o print da aluna, de novo)", () => {
   const result = normalizeHubMaterial(quizSpec(), {
     title: "Stand-up",
+    ...common,
     instructions_pt: "Escolha a alternativa correta.",
     questions: [
       // Errada de propósito: "My name am Ana" — outra alternativa é gramatical.
@@ -180,6 +209,7 @@ Deno.test("quiz: gabarito que viola concordância é descartado (o print da alun
 Deno.test("quiz: índice fora das alternativas, alternativa vazia ou repetida derrubam a questão", () => {
   const result = normalizeHubMaterial(quizSpec(), {
     title: "x",
+    ...common,
     instructions_pt: "",
     questions: [
       {
@@ -216,6 +246,7 @@ Deno.test("worksheet: lacuna sem ___ ou sem resposta sai; conta total mínima va
   assert(parsed.ok, "spec recusada");
   const result = normalizeHubMaterial(parsed.spec, {
     title: "Stand-up worksheet",
+    ...common,
     objective_pt: "Praticar",
     warm_up: ["How was your day?", 42, "What did you do yesterday?"],
     fill_blanks: [
@@ -253,6 +284,7 @@ Deno.test("reading: texto curto demais é recusado", () => {
   assert(parsed.ok, "spec recusada");
   const result = normalizeHubMaterial(parsed.spec, {
     title: "t",
+    ...common,
     text: "Too short.",
     glossary: [],
     questions: [
@@ -289,6 +321,7 @@ Deno.test("conversation: diálogo curto ou frases de menos falham; válido passa
   assert(parsed.ok, "spec recusada");
   const ok = normalizeHubMaterial(parsed.spec, {
     title: "At the stand-up",
+    ...common,
     situation_pt: "Reunião diária",
     roles: [{ name: "Scrum Master", description_pt: "conduz" }, {
       name: "Dev",
@@ -343,4 +376,170 @@ Deno.test({
       `metadata da reserva fora da allowlist: ${reservations[0]}`,
     );
   },
+});
+
+Deno.test("spec v2: objetivo e faixa etária entram; faixa inválida é recusada", () => {
+  const parsed = parseHubMaterialSpec({
+    ...base,
+    goal: "trabalhar na logística de uma multinacional",
+    audience: "Teens",
+  });
+  assert(parsed.ok, "spec recusada");
+  assert(
+    parsed.spec.goal.includes("logística") && parsed.spec.audience === "teens",
+    "objetivo/faixa não entraram",
+  );
+  assert(
+    parseHubMaterialSpec({ ...base }).ok &&
+      (parseHubMaterialSpec({ ...base }) as { spec: { audience: string } }).spec
+          .audience === "adults",
+    "faixa default deveria ser adults",
+  );
+  assert(
+    !parseHubMaterialSpec({ ...base, audience: "seniors" }).ok,
+    "faixa inválida passou",
+  );
+});
+
+Deno.test("prompt v2: leva o leque gramatical do nível, o objetivo, a faixa e pede os blocos comuns", () => {
+  const parsed = parseHubMaterialSpec({
+    ...base,
+    level: "A1",
+    goal: "estudante de gastronomia",
+    audience: "adults",
+  });
+  assert(parsed.ok, "spec recusada");
+  const prompt = buildHubMaterialPrompt(parsed.spec);
+  for (
+    const needle of [
+      "GRAMÁTICA PERMITIDA NO NÍVEL A1: verbo to be",
+      "OBJETIVO DO ALUNO: estudante de gastronomia",
+      "FAIXA ETÁRIA: adulto",
+      '"grammar_focus"',
+      '"opportunity_pt"',
+      '"ai_homework"',
+      "Nada de estrutura acima do nível",
+    ]
+  ) {
+    assert(prompt.includes(needle), `prompt v2 sem "${needle}"`);
+  }
+  const c1 = parseHubMaterialSpec({ ...base, level: "C1" });
+  assert(c1.ok, "spec C1 recusada");
+  assert(
+    buildHubMaterialPrompt(c1.spec).includes("mixed conditionals"),
+    "leque gramatical não muda com o nível",
+  );
+});
+
+Deno.test("v2: material sem foco gramatical é recusado (o guia por nivelamento é obrigatório)", () => {
+  const result = normalizeHubMaterial(quizSpec(), {
+    title: "x",
+    instructions_pt: "",
+    opportunity_pt: "",
+    ai_homework: [],
+    questions: [
+      {
+        prompt: "We ___ ready.",
+        options: ["are", "is", "am", "be"],
+        correct: 0,
+        explanation_pt: "",
+      },
+      {
+        prompt: "She ___ ready.",
+        options: ["is", "are", "am", "be"],
+        correct: 0,
+        explanation_pt: "",
+      },
+      {
+        prompt: "They ___ here.",
+        options: ["are", "is", "am", "be"],
+        correct: 0,
+        explanation_pt: "",
+      },
+    ],
+  });
+  assert(
+    !result.ok && result.code === "MATERIAL_GRAMMAR_FOCUS_MISSING",
+    "faltou recusar sem grammar_focus",
+  );
+});
+
+Deno.test("v2: homework com IA sem prompt cai fora; leitura normaliza skimming/scanning/chunks/shadowing", () => {
+  const parsed = parseHubMaterialSpec({ ...base, kind: "reading", count: 4 });
+  assert(parsed.ok, "spec recusada");
+  const result = normalizeHubMaterial(parsed.spec, {
+    ...common,
+    ai_homework: [
+      { task_pt: "sem prompt", prompt_en: "", tip_pt: "" },
+      {
+        task_pt: "ok",
+        prompt_en: "Ask me three questions about my stand-up.",
+        tip_pt: "",
+      },
+    ],
+    title: "Stand-up notes",
+    text: Array.from({ length: 60 }, (_, index) => `word${index}`).join(" "),
+    glossary: [{ term: "blocker", translation_pt: "impedimento" }],
+    strategies: {
+      skimming: {
+        instruction_pt: "Leia em 40 segundos.",
+        question: "What is the text about?",
+        time_seconds: 9999,
+      },
+      scanning: [{ question: "When is the stand-up?", answer: "At 9." }],
+      chunks: [{ chunk: "Every morning at nine", pt: "Toda manhã às nove" }, {
+        chunk: "the team meets",
+        pt: "o time se reúne",
+      }],
+      shadowing: {
+        passage: "Every morning at nine the team meets.",
+        focus_pt: "Ligação entre 'at' e 'nine'.",
+      },
+    },
+    questions: [
+      {
+        prompt: "Q1?",
+        options: ["a", "b", "c", "d"],
+        correct: 1,
+        explanation_pt: "",
+      },
+      {
+        prompt: "Q2?",
+        options: ["a", "b", "c", "d"],
+        correct: 1,
+        explanation_pt: "",
+      },
+      {
+        prompt: "Q3?",
+        options: ["a", "b", "c", "d"],
+        correct: 1,
+        explanation_pt: "",
+      },
+    ],
+    discussion: ["Do you like stand-ups?"],
+  });
+  assert(result.ok, `leitura v2 recusada: ${!result.ok ? result.code : ""}`);
+  const material = result.value.material as Record<string, unknown>;
+  const homework = material.ai_homework as unknown[];
+  assert(homework.length === 1, "homework sem prompt deveria cair fora");
+  const strategies = material.strategies as Record<string, unknown>;
+  assert(
+    (strategies.skimming as Record<string, unknown>).time_seconds === 60,
+    "tempo de skimming fora da faixa deveria virar 60",
+  );
+  assert(
+    (strategies.chunks as unknown[]).length === 2 &&
+      (strategies.scanning as unknown[]).length === 1,
+    "chunks/scanning perdidos",
+  );
+  assert(
+    ((strategies.shadowing as Record<string, unknown>).passage as string)
+      .includes("nine"),
+    "shadowing perdido",
+  );
+  assert(
+    (material.grammar_focus as Record<string, unknown>).point ===
+      "Present simple for routines",
+    "foco gramatical não espelhado",
+  );
 });

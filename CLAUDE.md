@@ -161,6 +161,20 @@ nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "m
 - Impressão: `window.print()` com CSS que esconde tudo fora de `#hub-material-print`; o
   toggle "versão do professor" decide se o gabarito sai no papel. Copiar texto sempre leva o
   gabarito (quem copia é quem ensina).
+- **Motor v2 (18/09, pedido da direção):** todo material é personalizado ao **objetivo do
+  aluno** (`goal`, texto livre: "logística numa multinacional", "estudante de gastronomia",
+  "intercâmbio no Canadá") e à **faixa etária** (`audience` kids/teens/adults), e carrega
+  três blocos comuns: `grammar_focus` (UM ponto escolhido do **leque gramatical do nível**,
+  `CEFR_GRAMMAR_MAP` em `hub-material.ts` — o modelo não pode usar estrutura acima do
+  nível), `opportunity_pt` (a "porta que abre": o que o aluno passa a conseguir fazer no
+  objetivo dele) e `ai_homework` (2 tarefas com o prompt pronto em inglês para o aluno colar
+  no ChatGPT/Wolfie e a dica de como continuar — ensina o aluno a se virar com IA).
+  Leitura ganha `strategies` (skimming com tempo, scanning com resposta, chunking com
+  tradução, shadowing com foco); conversação ganha `shadowing`. Foco gramatical ausente
+  reprova o material (retry → 502, não cobra). Medido com o provedor real: logística B1 →
+  present perfect para status de embarque; gastronomia A1 → there is/are na cozinha; teen
+  intercâmbio A2 → present continuous com a host family. `goal`/`audience` são colunas
+  (migration `20260918040000`); o resto vive no jsonb `material`.
 
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:
