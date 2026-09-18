@@ -117,6 +117,14 @@ select pg_temp.assert_true(
   and (select p.display_name = 'Aluno Um' and p.level = 'A2' from public.hub_member_profiles p where p.account_id = '7c000000-0000-4000-8000-000000000301' and p.user_id = '7c000000-0000-4000-8000-000000000102')
   and (select l.member_user_id = '7c000000-0000-4000-8000-000000000102' and l.invite_token is null from public.hub_educator_learners l where l.id = '7c000000-0000-4000-8000-000000000501'),
   'membership/perfil/assento do aluno não ficaram como esperado');
+-- O trigger da membership cria o perfil antes do aceite; o aceite tem de completar
+-- o que o trigger não sabe (objetivo do professor, onboarding feito) — senão o
+-- aluno cai no formulário genérico do Wolfie em vez da mesa (produção, 18/09/2026).
+select pg_temp.assert_true(
+  (select p.goal = 'Check-in no hotel' and p.onboarding_completed and p.personalized_at is not null
+     from public.hub_member_profiles p
+    where p.account_id = '7c000000-0000-4000-8000-000000000301' and p.user_id = '7c000000-0000-4000-8000-000000000102'),
+  'aceite não completou o perfil do aluno (objetivo/onboarding) por cima do trigger');
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claims', '{"sub":"7c000000-0000-4000-8000-000000000102","role":"authenticated"}', true);
 

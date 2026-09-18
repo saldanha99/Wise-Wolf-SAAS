@@ -1359,6 +1359,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918040000_material_do_hub_com_objetivo_e_faixa_etaria.sql"
   "supabase/migrations/20260918050000_jornada_de_90_dias_no_gerador.sql"
   "supabase/migrations/20260918060000_assentos_de_aluno_no_hub.sql"
+  "supabase/migrations/20260918070000_aceite_do_convite_completa_o_perfil.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

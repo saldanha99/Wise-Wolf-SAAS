@@ -179,8 +179,9 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
               <div className="hub-auth-context mt-7 flex items-center gap-3 rounded-2xl border border-blue-400/25 bg-blue-500/10 p-4">
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-300"><BookOpen size={20} /></div>
                 <div>
-                  <p className="text-sm font-black text-white">Acesso profissional para educadores</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-400">Biblioteca e planejamento pedagógico ficam separados do Wolfie individual e do sistema institucional.</p>
+                  {/* Quem chega por convite é aluno do professor: a conta não tem plano nem biblioteca própria. */}
+                  <p className="text-sm font-black text-white">{invite ? `Conta de aluno de ${invite.teacher_name}` : 'Acesso profissional para educadores'}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">{invite ? 'Sem mensalidade do Hub: você recebe os materiais e a jornada que seu professor preparou e pratica entre as aulas.' : 'Biblioteca e planejamento pedagógico ficam separados do Wolfie individual e do sistema institucional.'}</p>
                 </div>
               </div>
             )}
