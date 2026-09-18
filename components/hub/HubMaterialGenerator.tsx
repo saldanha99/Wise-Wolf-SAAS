@@ -525,7 +525,9 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
     setTopic(week.theme);
     setWeekNote(`Semana ${week.week} da jornada`);
     setExtra((current) => current || `Material da semana ${week.week} da jornada de 90 dias.`);
-    document.getElementById('hub-material-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const form = document.getElementById('hub-material-form');
+    // jsdom não tem scrollIntoView; no navegador, leva o professor ao formulário já preenchido.
+    if (form && typeof form.scrollIntoView === 'function') form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const generate = async (event: React.FormEvent) => {
