@@ -1330,22 +1330,37 @@ const App: React.FC = () => {
             return;
           }
 
-          // A RPC aceita somente id, data e hora. Aluno, professor, tenant,
+          // A RPC aceita id, data, hora e motivo. Aluno, professor, tenant,
           // booking original e fault_type nunca saem do controle do banco.
-          const { error } = await supabase.rpc('schedule_reschedule', {
+          // Remarcar (já tinha data) exige motivo — o servidor recusa sem ele.
+          const { data: saved, error } = await supabase.rpc('schedule_reschedule', {
             p_reschedule_id: String(data.id),
             p_date: data.date,
             p_time: data.time,
+            p_reason: data.reason || null,
           });
           if (error) {
             console.error('Save Reschedule Error:', error);
-            alert(`Erro ao salvar reposição: ${error.message}`);
+            alert(error.message === 'motivo_obrigatorio'
+              ? 'Remarcar exige um motivo — ele vai para a coordenação e para a família.'
+              : `Erro ao salvar reposição: ${error.message}`);
           } else {
-            // O aviso sai exclusivamente pelo botão persistente/idempotente da
-            // tela de reposições. O envio direto pelo navegador podia duplicar
-            // a mensagem e não deixava receipt auditável.
+            // Coordenação e família recebem o aviso pela fila do servidor
+            // (evento da reposição, idempotente) — nada sai do navegador.
+            const event = (saved as any)?.event;
+            if (event?.em_cima_da_hora) {
+              alert('Registrado. Como foi em cima da hora, a coordenação recebe o aviso destacado.');
+            }
             loadAppData();
           }
+        }}
+        onUnschedule={async (id, reason) => {
+          const { error } = await supabase.rpc('unschedule_reschedule', { p_reschedule_id: id, p_reason: reason });
+          if (error) {
+            alert(error.message === 'motivo_obrigatorio' ? 'Desmarcar exige um motivo.' : `Erro ao desmarcar: ${error.message}`);
+            return;
+          }
+          loadAppData();
         }}
       />,
       'evolution': <EvolutionView user={user} />,

@@ -71,8 +71,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-18-coberturas-na-agenda');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-16-menu-no-topo');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-18-reposicao-com-trilha');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-18-reposicao-com-trilha');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });
 

@@ -100,6 +100,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-18-canais-de-aviso',
+    title: 'Um grupo de WhatsApp por assunto',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'notice-channels',
+        view: 'automation',
+        title: 'Os avisos da gestão ganham endereço 📮',
+        text: 'Dinheiro vai para Direção, agenda (cobertura, ausência, reposição, troca de horário) para Coordenação, funil (lead, experimental) para Comercial. Escolha o grupo de cada canal aqui, na conexão do WhatsApp. Canal sem grupo continua caindo no grupo da Gestão — nada se perde enquanto você cria os grupos.',
+      },
+    ],
+  },
+  {
     id: '2026-09-18-coberturas-na-agenda',
     title: 'Coberturas e reposições na sua agenda',
     roles: ['TEACHER'],
@@ -115,6 +128,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
         view: 'schedule',
         title: 'Na Agenda, com a data',
         text: 'Cobertura e reposição dos próximos 7 dias aparecem na grade em âmbar, com a data ao lado do nome (COB / REPO). Elas não são horário fixo seu — por isso não abrem o cadastro do aluno e não mexem na sua disponibilidade.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-18-reposicao-com-trilha',
+    title: 'Reposição: marque no sistema',
+    roles: ['TEACHER', 'SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'reschedule-history',
+        view: 'reschedules',
+        title: 'Reposição só existe com data marcada aqui 🔁',
+        text: 'Combinou com o aluno? Marque a data e a hora nesta tela. Remarcar pede um motivo, e cada mudança fica no histórico (este botão). A coordenação e a família recebem o aviso na hora — ninguém mais precisa perguntar "que horas ficou?". Em cima da hora pode, mas sai destacado. Reposição sem data não aparece para lançar e não conta.',
       },
     ],
   },

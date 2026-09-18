@@ -313,6 +313,35 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                             description="Onde chegarão os novos leads e confirmações."
                                             dbColumn="directors_group_id"
                                         />
+                                        {/* Canais de aviso: um grupo por assunto. Canal sem grupo cai no grupo da Gestão
+                                            (o mesmo do relatório DRE) — nada se perde enquanto os grupos são criados. */}
+                                        <div data-tour="notice-channels" className="rounded-2xl border border-brand-border bg-brand-surface-2/30 p-4 space-y-1">
+                                            <p className="text-xs font-black uppercase tracking-widest text-brand-text">Canais de aviso da gestão</p>
+                                            <p className="text-xs text-brand-muted">
+                                                Cada assunto tem um grupo: dinheiro em <strong>Direção</strong>, agenda (cobertura, ausência, reposição, troca de horário) em <strong>Coordenação</strong>, funil (lead, experimental, pós-experimental) em <strong>Comercial</strong>. O grupo dos professores continua sendo o de oportunidades acima. Canal sem grupo usa o grupo da Gestão.
+                                            </p>
+                                        </div>
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Direção · Financeiro"
+                                            description="Rateio, DRE, folha, cobrança, planos e leads de professor. Perguntas de gestão ao assistente."
+                                            channel="direcao"
+                                        />
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Coordenação · Aulas"
+                                            description="Ausência, cobertura, reposição marcada/remarcada, troca de horário, aluno faltando, briefing de experimental."
+                                            channel="coordenacao"
+                                        />
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Comercial · Leads"
+                                            description="Lead novo, experimental marcada/aceita/sem professor, pós-experimental, follow-ups."
+                                            channel="comercial"
+                                        />
                                     </div>
                                 )}
                             </div>

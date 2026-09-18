@@ -4,12 +4,20 @@ import { supabase } from '../lib/supabase';
 import { whatsappService } from '../services/whatsappService';
 import { Users, Save, Loader } from 'lucide-react';
 
+export type NoticeChannel = 'direcao' | 'coordenacao' | 'comercial';
+
 interface GroupSelectorProps {
     user: any;
     instanceName: string;
     label?: string;
     description?: string;
     dbColumn?: string;
+    /**
+     * Canal de aviso (tenant_notice_channels) em vez de coluna do perfil: o valor
+     * vai e volta pelas RPCs get_notice_channels / save_notice_channel. Sem grupo
+     * escolhido, o canal cai no grupo da Gestão — a tela diz isso.
+     */
+    channel?: NoticeChannel;
 }
 
 const GroupSelector: React.FC<GroupSelectorProps> = ({
@@ -17,10 +25,12 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
     instanceName,
     label = "Grupo de Destino",
     description = "Selecione o grupo de WhatsApp onde as vagas serão publicadas.",
-    dbColumn = "teachers_group_id"
+    dbColumn = "teachers_group_id",
+    channel
 }) => {
     const [groups, setGroups] = useState<any[]>([]);
     const [selectedGroup, setSelectedGroup] = useState('');
+    const [fallbackNote, setFallbackNote] = useState('');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [feedback, setFeedback] = useState('');
@@ -37,6 +47,18 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
     }, [user, instanceName]);
 
     const fetchCurrentSelection = async () => {
+        if (channel) {
+            const { data } = await supabase.rpc('get_notice_channels');
+            const row = Array.isArray(data) ? data.find((c: any) => c?.channel === channel) : null;
+            if (row?.group_jid) {
+                setSelectedGroup(row.group_jid);
+                setFallbackNote('');
+            } else {
+                setSelectedGroup('');
+                setFallbackNote('Sem grupo escolhido: os avisos deste canal caem no grupo da Gestão.');
+            }
+            return;
+        }
         const { data } = await supabase
             .from('profiles')
             .select(dbColumn)
@@ -69,9 +91,17 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
     };
 
     const handleSave = async () => {
-        if (!selectedGroup) return;
+        if (!selectedGroup && !channel) return;
         setSaving(true);
         try {
+            if (channel) {
+                const { error } = await supabase.rpc('save_notice_channel', { p_channel: channel, p_group_jid: selectedGroup || null });
+                if (error) throw error;
+                setFallbackNote(selectedGroup ? '' : 'Sem grupo escolhido: os avisos deste canal caem no grupo da Gestão.');
+                setFeedback("✅ Canal salvo!");
+                setTimeout(() => setFeedback(''), 3000);
+                return;
+            }
             const updateObj = { [dbColumn]: selectedGroup }; // Dynamic key
             const { error } = await supabase
                 .from('profiles')
@@ -108,7 +138,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
                         disabled={loading}
                         className="w-full bg-brand-surface border border-brand-border dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none truncate pr-8"
                     >
-                        <option value="">{loading ? "Carregando..." : "Selecione..."}</option>
+                        <option value="">{loading ? "Carregando..." : channel ? "Usar o grupo da Gestão" : "Selecione..."}</option>
                         {groups.map((g) => (
                             <option key={g.id} value={g.id}>
                                 {g.subject.substring(0, 30)}
@@ -119,13 +149,17 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
 
                 <button
                     onClick={handleSave}
-                    disabled={saving || !selectedGroup}
+                    disabled={saving || (!selectedGroup && !channel)}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg font-bold text-xs transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
                     {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
                     Salvar
                 </button>
             </div>
+
+            {fallbackNote && (
+                <p className="mt-2 text-[10px] font-bold text-amber-600 dark:text-amber-400">{fallbackNote}</p>
+            )}
 
             {feedback && (
                 <div className="mt-2 text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in absolute bottom-2 right-6">

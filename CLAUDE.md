@@ -1140,6 +1140,67 @@ Teste: `supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql`.
   a aula seja às 18:00 — o combinado vai no motivo/notes (mesma regra do Theo/Débora). O
   `class_log` nasce com o horário do slot.
 
+### Reposição com trilha — só existe marcada no sistema (migration `20260918100000`) ✅
+
+**O caso (18/09/2026):** o Flávio "passou a reposição que tinha marcado para hoje" e a direção
+não sabia horário nem motivo — as 13 dele estão `Pendente`; a reposição foi combinada por
+fora. Medido em 60 dias: **138 criadas, 16 com data (12%), 11 dadas, 122 abertas sem data**
+(Mateus 127, Lais 34, Flávio 13, Débora 10). A tela só gravava data/hora, sem motivo, sem
+histórico, sem aviso, sem `audit_logs`.
+
+- **`reschedule_events`** (trigger `trg_zz_reschedule_events_capture` em `reschedules`):
+  criada · marcada · remarcada · desmarcada · professor_trocado · atestada · dada, com ator,
+  origem (`app` tela · `whatsapp_professor` · `whatsapp_aluno` acompanhamento · `direcao` ·
+  `sistema`), motivo e `em_cima_da_hora` (< 3 h). Origem/motivo entram por
+  `set_config('app.reschedule_source'|'app.reschedule_reason', …, true)` antes do UPDATE —
+  a RPC e o `care_set_reschedule_slot` já fazem isso. **Venha de onde vier a mudança, a
+  trilha existe.** `set_config('app.reschedule_silent','on',true)` cala os avisos num
+  reparo em massa por SQL.
+- **Avisos automáticos** (fila `notification_queue`, kind `MANAGEMENT_NOTICE`, idempotente
+  `reschedule-event:<id>:group|family`): uma linha no **canal de coordenação** e uma para a
+  família (marcada/remarcada/desmarcada; atestado e troca de professor são internos).
+- **`schedule_reschedule(id, data, hora, motivo)`** — remarcar (já tinha data) sem motivo
+  → `motivo_obrigatorio`. A assinatura de 3 argumentos foi derrubada (PostgREST recusaria
+  por ambiguidade). **`unschedule_reschedule(id, motivo)`** volta a `Pendente`.
+- ⚠️ **Reposição de falta do PROFESSOR dada por OUTRO professor nunca pagava:**
+  `teacher_reschedule_financial_origin_is_proven` só conhecia o lançamento de falta do
+  próprio titular. Agora a direção **atesta** (`attest_teacher_fault_reschedule(id, motivo)`,
+  SCHOOL_ADMIN/COORDINATOR ou service_role) — como na cobertura de aula já dada. Colunas
+  `attested_*` são do servidor (`trg_aa_reschedule_server_fields_guard`, chave
+  `app.reschedule_attest`); `fault_type` só muda por admin/service_role/DBA. Professor não
+  tem policy de UPDATE em `reschedules` — escreve só pelas RPCs.
+- **`reschedule_backlog_summary(tenant)`**: por professor, sem data · vencidas · marcadas
+  em 7 dias · mais antiga. Base do resumo semanal e do comando do grupo (ainda por ligar).
+- Tela `TeacherReschedules`: motivo (obrigatório ao remarcar), ⚠️ "em breve", histórico
+  (`reschedule_events`, RLS: professor vê as suas), Desmarcar. Regras espelhadas em
+  `lib/rescheduleRules.ts` (com teste).
+- **Ainda não feito:** professor remarcando pelo WhatsApp da escola ("a reposição do Theo
+  passou para terça 15h"), comando "reposições" e resumo de segunda no grupo, cobrança de
+  reposição vencida sem lançamento.
+
+### Canais de aviso — um grupo de WhatsApp por assunto (migration `20260918100000`) ✅
+
+Decisão da direção (18/09/2026): o grupo da Gestão centralizava dinheiro, agenda, funil e
+o assistente. Agora **4 canais**: `direcao` (rateio, DRE, folha, cobrança, planos, lead de
+professor, perguntas de gestão), `coordenacao` (ausência, cobertura, reposição, troca de
+horário, aluno faltando, briefing de experimental), `comercial` (lead, experimental
+marcada/aceita/sem professor, pós-experimental, follow-up), `professores` (disparos —
+`profiles.teachers_group_id`).
+
+- **Fonte:** `tenant_notice_channels (tenant, channel, group_jid)`; resolver
+  **`private.tenant_notice_destination(tenant, canal)`** → configurado, senão
+  `teachers_group_id` (só `professores`), senão `management_group_destination` (Gestão).
+  **Canal sem grupo cai na Gestão** — nada se perde enquanto os grupos são criados.
+- Tela: *WhatsApp (Conexão)* → "Canais de aviso da gestão" (`GroupSelector` com
+  `channel=`, RPCs `get_notice_channels` / `save_notice_channel`).
+- Já roteados: eventos de reposição, `coverage_briefing_enqueue` (resumo da cobertura) e
+  `teacher_apply_student_schedule_change` (troca de horário) → `coordenacao`.
+- **Ainda na Gestão (próxima etapa):** o que sai direto das edge functions
+  (`claim-coverage`, `whatsapp-inbound` — cobertura/ausência/dia, pós-experimental,
+  `payment-split-notify`, `dre-report`, `management-payroll-report`,
+  `monthly-reserve-notify`) e os **comandos** (o bot só ouve o grupo de
+  `dre_report_settings.destino`; Coordenação/Comercial ainda não recebem comandos).
+
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 
 O modelo `class_coverages` é **um convite para um professor** e o trigger proíbe dois
