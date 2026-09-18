@@ -328,6 +328,10 @@ select pg_temp.assert_true(
           'public.get_referrer_name(uuid)',
           'public.get_transfer_public(text)',
           'public.hub_get_public_settings()',
+          -- Prévia do convite de aluno do Hub: token de 64 hex com validade de
+          -- 14 dias, devolve só o nome do professor e do aluno (migration
+          -- 20260918060000, suíte assentos_de_aluno_no_hub.sql).
+          'public.hub_learner_invite_preview(text)',
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
@@ -355,7 +359,8 @@ begin
     'public.get_student_course_renewal_public(text)',
     'public.sign_student_course_renewal(text,text,date)',
     'public.resolve_public_tenant(text)',
-    'public.hub_get_public_settings()'
+    'public.hub_get_public_settings()',
+    'public.hub_learner_invite_preview(text)'
   ]
   loop
     perform pg_temp.assert_true(
