@@ -1456,7 +1456,10 @@ async function handleHubMaterialGenerate(
       p_request_key: requestKey,
       p_request_fingerprint: requestFingerprint,
       p_account_id: accountId,
-      p_metadata: { source: "pedagogical-content", kind: spec.kind },
+      // `hub_reserve_feature` só aceita a chave `source` para esta feature
+      // (allowlist, 22023 em qualquer outra) — o tipo do material fica na
+      // linha de `hub_educator_materials`, não na reserva.
+      p_metadata: { source: "pedagogical-content" },
     },
   );
   if (usageError) {

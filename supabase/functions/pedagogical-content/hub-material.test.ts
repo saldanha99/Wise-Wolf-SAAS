@@ -317,3 +317,30 @@ Deno.test("conversation: diálogo curto ou frases de menos falham; válido passa
   });
   assert(!short.ok, "conversa vazia passou");
 });
+
+// A reserva de cota tem allowlist de metadata no banco (`hub_reserve_feature`
+// aceita só `source` para educator_ai.generate e responde 22023 a qualquer outra
+// chave). Foi assim que a primeira geração real morreu em 18/09/2026.
+Deno.test({
+  name: "reserva do gerador manda metadata exatamente como o banco aceita",
+  permissions: { read: true },
+  async fn() {
+    const edge = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const start = edge.indexOf("async function handleHubMaterialGenerate");
+    const end = edge.indexOf("async function handleHubPlannerSave", start);
+    const handler = edge.slice(start, end);
+    assert(start > 0 && end > start, "handler do gerador não encontrado");
+    const reservations = handler.match(/p_metadata:\s*\{[^}]*\}/g) ?? [];
+    assert(
+      reservations.length === 1,
+      "esperava exatamente uma reserva no gerador",
+    );
+    assert(
+      reservations[0].replace(/\s+/g, "") ===
+        'p_metadata:{source:"pedagogical-content"}',
+      `metadata da reserva fora da allowlist: ${reservations[0]}`,
+    );
+  },
+});
