@@ -205,8 +205,19 @@ número de alunos (Descoberta 1 · Essencial 2 · Pro 8 · Studio 25 · Instituc
   só "Meus estudos" (`HubStudentDesk`) e Wolfie quando `wolfie.turn` do plano > 0. Sem
   biblioteca (licença é do professor), sem planos, sem Educador IA. Conta pessoal de aluno
   (audience `LEARNER`, Wolfie individual) não muda.
-- Teste: `supabase/tests/assentos_de_aluno_no_hub.sql` (convite, teto, aceite, prévia, mesa sem
-  gabarito, estranho recusado, conclusão).
+- ⚠️ **O insert da membership dispara `hub_memberships_seed_member_profile`**, que cria o
+  perfil de membro ANTES do aceite — o insert do perfil em `hub_accept_learner_invite` cai
+  sempre no `on conflict`, e o update tem de carregar TUDO (objetivo, `onboarding_completed`,
+  `personalized_at`). O primeiro aluno convidado em produção viu o formulário genérico do
+  Wolfie em vez da mesa por isso (migration `20260918070000` conserta e repara via one-shot).
+- ⚠️ **Rota anônima nova = entrada em `security_definer_authorization_hardening.sql`.** A
+  suíte recusa qualquer SECURITY DEFINER com EXECUTE para anon fora da allowlist exata (nas
+  duas listas: a exata e a de rotas obrigatórias). `hub_learner_invite_preview(text)` derrubou
+  um release por isso.
+- Teste: `supabase/tests/assentos_de_aluno_no_hub.sql` (convite, teto, aceite com perfil
+  completo, prévia, mesa sem gabarito, estranho recusado, conclusão). Verificado ponta a ponta
+  em produção em 18/09/2026 com a conta QA (`qa-gerador-…` → `qa-aluno-assento-…`, as duas
+  com `test_fixture` no metadata do auth).
 
 **Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
 (lead_type `teacher`). Migration `20260918010000`:
