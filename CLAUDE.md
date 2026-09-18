@@ -1106,6 +1106,40 @@ conserto vai em migration nova com `create or replace`. ⚠️ Testar RPC de gru
 `gestao_acao_pendente` — testar só com o uuid do diretor, como fiz na véspera, passa e
 não prova nada.
 
+### ⚠️ O substituto precisa ENXERGAR o aluno — senão a cobertura "registrada" não chega ao lançamento (18/09/2026) ✅
+
+A Bruna tinha três coberturas confirmadas de 16/09 e o `Lançar Aula` mostrava nada ("Não
+aparece para eu lançar aula"). `coverages_for_teacher_in_tenant` devolvia as três, os
+`bookings` do Flávio apareciam — mas `_teacher_can_access_student` só reconhecia
+`professor_id`/`professor_id2` e `bookings` SCHEDULED; o join `student:student_id(...)` do
+`LessonLauncher` voltava `null` e a aula era descartada em silêncio (`if (!student) return`).
+Como o pagamento é `class_logs` × tarifa, a substituta não recebia. Migration
+`20260918080000`: cobertura confirmada (`cover_teacher_id`) e reposição atribuída
+(`reschedules.teacher_id`) abrem o aluno para o professor (só a projeção de diretório —
+grants de coluna continuam). Medido por pessoa em produção: só Bruna, Débora e Mateus mudam.
+Teste: `supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql`.
+
+- ⚠️ **Convite recusado/cancelado bloqueava a próxima cobertura da MESMA aula.** A UNIQUE
+  `(booking_id, class_date)` de `class_coverages` (criada fora do repositório) valia para linha
+  cancelada — o atestado retroativo do Theo (convite cancelado na véspera) morria em
+  `duplicate key`. Migration `20260918090000`: índice parcial só para `confirmed`
+  (+ legados); quem cuida das vivas é o trigger. Teste:
+  `supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql`.
+- ⚠️ **Treinamento: o appointment é da TRAINER.** `teacher_training_invite` cria o
+  `appointments` com `teacher_id = trainer` (Débora), e `protect_training_class_log` recusa
+  lançamento nesse appointment por quem não é a trainer. O professor que RECEBE o treinamento
+  lança num appointment PRÓPRIO (`type='training'`, `teacher_id` = ele, sem sessão vinculada)
+  → `v_payable_class_logs` paga R$ 8 (não é `is_trainer`). Foi assim que o treinamento da
+  Bruna (16/09 15:50) entrou.
+- **Cobertura confirmada não aparece na Agenda nem no "Aulas de hoje" do substituto** —
+  `TeacherAvailabilityEditor` lê só `bookings` + experimental, `TeacherDashboard` lê
+  `list_teacher_lesson_booking_occurrences` (só bookings próprios) + reposições + trials.
+  Ela só aparece em `Lançar Aula`, depois do horário do slot. Reposição atribuída
+  (`reschedules.teacher_id`) aparece no "Aulas de hoje" e em Reposições. Lacuna conhecida.
+- **Horário combinado ≠ slot:** a cobertura fica amarrada ao slot do booking (16:30) mesmo que
+  a aula seja às 18:00 — o combinado vai no motivo/notes (mesma regra do Theo/Débora). O
+  `class_log` nasce com o horário do slot.
+
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 
 O modelo `class_coverages` é **um convite para um professor** e o trigger proíbe dois
