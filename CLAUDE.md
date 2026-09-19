@@ -1217,6 +1217,32 @@ marcada/aceita/sem professor, pós-experimental, follow-up), `professores` (disp
   transferência, troca de horário, treinamento, reposições (pedido de dinheiro ou pergunta
   de gestão ganha "isso é no grupo da Direção" — o retrato financeiro não sai lá);
   **Comercial** = só avisos (comando vira um ponteiro).
+- **Canal `financeiro` (19/09/2026, migration `20260919100000`):** a direção criou DIREÇÃO,
+  FINANCEIRO, COORDENAÇÃO e AULAS E COMERCIAL — dinheiro ganhou grupo próprio. `financeiro`
+  recebe rateio (`payment-split-notify`), DRE, folha (`management-payroll-report`) e caixinha
+  (`monthly-reserve-notify`); sem grupo configurado cai na **Direção**, depois na Gestão. No bot,
+  o grupo Financeiro executa `conta_pagar`, `ajuste_repasse`, `folha_professores`,
+  `mudanca_plano` e responde pergunta de gestão; agenda ganha "isso é na Coordenação".
+  ⚠️ **As cercas do outbox de aviso de pagamento** (`begin_/authorize_management_payment_
+  notification_submission`) comparavam o destino esperado com `dre_report_settings.destino` —
+  com canal apontando para outro grupo, TODO rateio seria suprimido
+  (`management_destination_changed_before_send`). Agora comparam com
+  `tenant_notice_destination(tenant, 'financeiro')`. Ao rotear um aviso que passa por outbox,
+  procure a cerca correspondente.
+- **Folha do mês EM ABERTO é prévia, não zero.** `gestao_payroll_summary` lia só
+  `teacher_closings` (nasce no dia 1º): em setembro a Bruna saía como "0 aulas · R$ 0,00" com
+  oito "↪ cobriu …: +R$ 8,00" embaixo — lia-se "as coberturas não entraram na contabilidade
+  dela", quando o Financeiro dela já dizia R$ 120. Hoje `private.payroll_month_rows` devolve,
+  para quem não tem fechamento, `status = 'PREVIA'` com a MESMA conta do Financeiro do
+  professor (`v_payable_class_logs` + `closing_adjustments`), cobertura confirmada sem aula
+  lançada sinalizada (`received.pending`, item `logged=false` → "ainda não lançada", nunca
+  "+R$ 0,00"). "Repasse a Profs" mostra a prévia por professor (`payroll_month_preview`,
+  `data-tour="payroll-preview"`) em vez de ficar em branco até o dia 1º.
+- **Wise Wolf em 19/09:** `dre_report_settings.destino` passou a ser o grupo DIREÇÃO (o
+  antigo "Gestão" ficou sem função — nada mais cai nele); `directors_group_id` → AULAS E
+  COMERCIAL (era "EXPERIMENTAL CONFIRMADAS"). ⚠️ `teachers_group_id` aponta para "LEADS WISE
+  WOLF" (4 pessoas, nenhuma professora) — o broadcast de vaga é individual por padrão, então
+  não dói, mas o "Grupo de Oportunidades" está errado até a direção escolher o grupo certo.
 
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 

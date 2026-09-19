@@ -182,11 +182,12 @@ async function resolveManagementRoute(
     { requireDeliveryReceipts: true },
   );
   if (!route) return null;
-  // Dinheiro vai ao canal de direção; sem grupo próprio, é o destino do DRE.
+  // Dinheiro vai ao canal financeiro (sem grupo próprio: direção, depois o
+  // destino do DRE). A cerca do outbox compara com o MESMO canal.
   const canal = await loadTenantNoticeDestination(
     supabase,
     tenantId,
-    "direcao",
+    "financeiro",
   );
   const destination = resolveTenantConfiguredWhatsAppDestination(
     route,

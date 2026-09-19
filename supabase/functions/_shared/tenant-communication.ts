@@ -102,17 +102,20 @@ export function resolveTenantConfiguredWhatsAppDestination(
 
 export type TenantNoticeChannel =
   | "direcao"
+  | "financeiro"
   | "coordenacao"
   | "comercial"
   | "professores";
 
 /**
- * Grupo de um CANAL de aviso (18/09/2026): dinheiro em `direcao`, agenda em
- * `coordenacao`, funil em `comercial`, disparos em `professores`. Resolvido no
- * banco (`notice_channel_destination` → `private.tenant_notice_destination`):
- * canal configurado em `tenant_notice_channels`, senão o grupo que já cumpria
- * esse papel (professores → `teachers_group_id`; comercial →
- * `directors_group_id`), senão o grupo da Gestão. Devolve null só quando a
+ * Grupo de um CANAL de aviso (18/09/2026): dinheiro em `financeiro` (rateio,
+ * DRE, folha, caixinha — desde 19/09; sem grupo próprio cai em `direcao`),
+ * decisões e assistente em `direcao`, agenda em `coordenacao`, funil em
+ * `comercial`, disparos em `professores`. Resolvido no banco
+ * (`notice_channel_destination` → `private.tenant_notice_destination`): canal
+ * configurado em `tenant_notice_channels`, senão o grupo que já cumpria esse
+ * papel (professores → `teachers_group_id`; comercial → `directors_group_id`;
+ * financeiro → direção), senão o grupo da Gestão. Devolve null só quando a
  * escola não tem grupo nenhum — aí o chamador decide (normalmente, não manda).
  *
  * O valor vem da configuração da própria escola, chaveado por tenant no

@@ -105,11 +105,11 @@ serve(async (req) => {
         result.failures.push(`${tenantId}: canal institucional indisponível`);
         continue;
       }
-      // Folha é dinheiro: canal de direção (sem grupo próprio, o destino do DRE).
+      // Folha é dinheiro: canal financeiro (sem grupo próprio, direção → DRE).
       const canal = await loadTenantNoticeDestination(
         supabase,
         tenantId,
-        "direcao",
+        "financeiro",
       );
       const destino = resolveTenantConfiguredWhatsAppDestination(
         route,

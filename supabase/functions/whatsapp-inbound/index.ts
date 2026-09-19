@@ -3202,7 +3202,11 @@ function renewalBotDeps(
   };
 }
 
-type ManagementChannel = "direcao" | "coordenacao" | "comercial";
+type ManagementChannel =
+  | "direcao"
+  | "financeiro"
+  | "coordenacao"
+  | "comercial";
 
 /** Comandos que o grupo de COORDENAÇÃO pode pedir — agenda, não dinheiro. */
 const COORDENACAO_TIPOS = new Set([
@@ -3213,6 +3217,14 @@ const COORDENACAO_TIPOS = new Set([
   "alterar_horario_aluno",
   "agendar_treinamento",
   "reposicoes",
+]);
+
+/** Comandos do grupo FINANCEIRO — dinheiro e plano; agenda é na Coordenação. */
+const FINANCEIRO_TIPOS = new Set([
+  "conta_pagar",
+  "ajuste_repasse",
+  "folha_professores",
+  "mudanca_plano",
 ]);
 
 /**
@@ -3232,6 +3244,8 @@ async function managementChannelForGroup(
   >;
   const same = (value: unknown) => String(value || "").trim() === groupJid;
   if (same(jids.gestao) || same(jids.direcao)) return "direcao";
+  // Financeiro sem grupo próprio herda o JID da direção — já tratado acima.
+  if (same(jids.financeiro)) return "financeiro";
   if (same(jids.coordenacao)) return "coordenacao";
   if (same(jids.comercial)) return "comercial";
   return null;
@@ -3240,7 +3254,9 @@ async function managementChannelForGroup(
 /**
  * O que responder quando o pedido não cabe neste grupo. Null = segue o fluxo.
  * Comercial não executa nada; Coordenação não mexe em dinheiro nem responde
- * pergunta financeira (o retrato da escola tem faturamento e margem).
+ * pergunta financeira (o retrato da escola tem faturamento e margem);
+ * Financeiro responde pergunta de gestão e executa despesa, ajuste de repasse,
+ * folha e mudança de plano — agenda vai para a Coordenação.
  */
 function managementChannelScopeReply(
   channel: ManagementChannel,
@@ -3249,13 +3265,17 @@ function managementChannelScopeReply(
   if (channel === "direcao") return null;
   const tipo = String(acao?.tipo || "").trim();
   if (channel === "comercial") {
-    return "Este grupo é só de avisos comerciais (leads, experimentais, pós-experimental). Comandos de agenda ficam no grupo da Coordenação e dinheiro/planos no da Direção.";
+    return "Este grupo é só de avisos comerciais (leads, experimentais, pós-experimental). Comandos de agenda ficam no grupo da Coordenação; despesa, folha e planos no Financeiro; o resto na Direção.";
+  }
+  if (channel === "financeiro") {
+    if (!tipo || FINANCEIRO_TIPOS.has(tipo)) return null;
+    return "Isso é agenda — peça no grupo da Coordenação (cobertura, cobertura do dia, transferência, troca de horário, treinamento, reposições). Aqui eu cuido de despesa, ajuste de repasse, folha, mudança de plano e das perguntas de gestão.";
   }
   if (!tipo) {
-    return 'Aqui eu cuido de agenda: cobertura ("a Bruna cobriu a aula do Theo hoje 10:30"), cobertura do dia ("cobertura do dia hoje do Flávio"), transferência de aluno, troca de horário, treinamento e "reposições". Perguntas de gestão e dinheiro são no grupo da Direção.';
+    return 'Aqui eu cuido de agenda: cobertura ("a Bruna cobriu a aula do Theo hoje 10:30"), cobertura do dia ("cobertura do dia hoje do Flávio"), transferência de aluno, troca de horário, treinamento e "reposições". Despesa, folha e planos são no grupo Financeiro; perguntas de gestão, no da Direção.';
   }
   if (!COORDENACAO_TIPOS.has(tipo)) {
-    return "Isso é dinheiro/plano — peça no grupo da Direção. Aqui eu cuido de cobertura, cobertura do dia, transferência, troca de horário, treinamento e reposições.";
+    return "Isso é dinheiro/plano — peça no grupo Financeiro (ou na Direção). Aqui eu cuido de cobertura, cobertura do dia, transferência, troca de horário, treinamento e reposições.";
   }
   return null;
 }
@@ -3281,8 +3301,8 @@ async function handleGestao(
       tenantId,
     ).maybeSingle();
   if (!conf?.is_active) return;
-  // Qual grupo é este? Gestão/Direção ouvem tudo; Coordenação só agenda;
-  // Comercial só recebe avisos (18/09/2026 — um grupo por assunto).
+  // Qual grupo é este? Gestão/Direção ouvem tudo; Financeiro só dinheiro;
+  // Coordenação só agenda; Comercial só recebe avisos (um grupo por assunto).
   const channel = await managementChannelForGroup(sb, tenantId, groupJid);
   if (!channel) return;
 
@@ -7607,7 +7627,7 @@ async function persistEventMessagesForInbox(
     parseEvolutionMessage(item)?.remoteJid.endsWith("@g.us")
   );
   // Grupos que entram na inbox e falam com o bot: o da Gestão e os canais de
-  // aviso configurados (coordenação, comercial, direção).
+  // aviso configurados (direção, financeiro, coordenação, comercial).
   let managementGroupJid: string[] = [];
   if (hasGroupMessage) {
     const { data: groupConfig } = await sb.from("dre_report_settings")

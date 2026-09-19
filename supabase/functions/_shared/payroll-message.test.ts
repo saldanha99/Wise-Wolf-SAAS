@@ -104,6 +104,72 @@ Deno.test("mês sem fechamento diz isso em vez de mandar lista vazia", () => {
     total_amount: 0,
     total_lessons: 0,
   });
-  assertStringIncludes(txt, "Nenhum fechamento de professor neste mês ainda.");
+  assertStringIncludes(
+    txt,
+    "Nenhuma aula lançada nem fechamento de professor neste mês ainda.",
+  );
   assertEquals(monthLabel("2026-10"), "outubro/2026");
+});
+
+// O caso da Bruna (19/09/2026): mês em aberto mostrava 0 aulas · R$ 0,00 e oito
+// "↪ cobriu …: +R$ 8,00" embaixo — como se as coberturas não contassem.
+Deno.test("mês em aberto vira prévia: aulas lançadas + ajuste, e cobertura sem lançamento não vira +R$ 0,00", () => {
+  const txt = montarMensagemFolha("Wise Wolf", {
+    month: "2026-09",
+    previa: true,
+    total_amount: 120,
+    total_lessons: 14,
+    teachers: [
+      {
+        name: "Bruna Barros Feitosa",
+        lessons: 14,
+        amount: 120,
+        status: "PREVIA",
+        previa: true,
+        adjustments: 8,
+        projected: 64,
+        received: {
+          count: 2,
+          amount: 8,
+          items: [
+            {
+              date: "2026-09-16",
+              time: "16:30",
+              student: "Victor Hugo",
+              from: "Flávio Henrique",
+              amount: 8,
+              logged: true,
+            },
+            {
+              date: "2026-09-16",
+              time: "17:00",
+              student: "Victor Hugo",
+              from: "Flávio Henrique",
+              amount: null,
+              logged: false,
+            },
+          ],
+        },
+        ceded: { count: 0, items: [] },
+      },
+    ],
+  });
+  assertStringIncludes(
+    txt,
+    "Folha de setembro/2026 — Wise Wolf* · mês em aberto (prévia)",
+  );
+  assertStringIncludes(
+    txt,
+    "*Bruna* — 14 aulas · *R$ 120,00* (prévia · mês em aberto) · inclui R$ 8,00 de ajuste · previsto pela agenda R$ 64,00, +R$ 56,00",
+  );
+  assertStringIncludes(
+    txt,
+    "↪ cobriu Victor Hugo de Flávio em 16/09 16:30: +R$ 8,00",
+  );
+  assertStringIncludes(
+    txt,
+    "↪ cobriu Victor Hugo de Flávio em 16/09 17:00: ainda não lançada",
+  );
+  assertEquals(txt.includes("+R$ 0,00"), false);
+  assertStringIncludes(txt, "o fechamento oficial sai no dia 1º");
 });

@@ -144,6 +144,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-19-canal-financeiro-e-previa-da-folha',
+    title: 'Grupo Financeiro e prévia da folha',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'notice-channel-financeiro',
+        view: 'automation',
+        title: 'Dinheiro tem grupo próprio 💸',
+        text: 'Rateio de cada pagamento, DRE, folha do mês e caixinha vão para o grupo Financeiro — e o assistente lança despesa, ajuste de repasse e responde "folha de setembro" lá. Sem grupo escolhido, cai na Direção. Agenda (cobertura, reposição, troca de horário) continua na Coordenação.',
+      },
+      {
+        target: 'payroll-preview',
+        view: 'payments',
+        title: 'O mês em aberto já aparece aqui 📊',
+        text: 'Antes o mês corrente ficava em branco até o dia 1º. Agora cada professor sem fechamento mostra a prévia: aulas já lançadas (a mesma conta do Financeiro dele) + ajustes. Cobertura conta para quem deu a aula — e a que ainda não foi lançada fica sinalizada. O fechamento oficial continua nascendo no dia 1º.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

@@ -16,6 +16,8 @@ export interface PayrollCoverageItem {
   from?: string;
   to?: string;
   amount?: number | string | null;
+  /** false = cobertura confirmada cuja aula ainda não foi lançada (não paga ainda). */
+  logged?: boolean;
 }
 
 export interface PayrollTeacherRow {
@@ -23,6 +25,9 @@ export interface PayrollTeacherRow {
   lessons: number;
   amount: number | string;
   status: string;
+  /** Mês sem fechamento: valor lido das aulas já lançadas + ajustes. */
+  previa?: boolean;
+  adjustments?: number | string | null;
   projected?: number | string;
   received?: {
     count: number;
@@ -38,6 +43,8 @@ export interface PayrollSummary {
   teachers: PayrollTeacherRow[];
   total_amount: number | string;
   total_lessons: number;
+  /** Algum professor sem fechamento no mês (prévia em vez de folha oficial). */
+  previa?: boolean;
 }
 
 const MESES = [
@@ -74,15 +81,23 @@ function statusLabel(status: string): string {
   if (s === "PAGO") return "pago";
   if (s === "PENDENTE") return "a pagar";
   if (s === "SEM_FECHAMENTO") return "sem fechamento";
+  if (s === "PREVIA") return "prévia · mês em aberto";
   return s.toLowerCase();
 }
 
 export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
   const linhas: string[] = [];
-  linhas.push(`📊 *Folha de ${monthLabel(s.month)} — ${brand}*`);
+  const previa = s.previa === true || s.teachers.some((t) => t.previa === true);
+  linhas.push(
+    `📊 *Folha de ${monthLabel(s.month)} — ${brand}*${
+      previa ? " · mês em aberto (prévia)" : ""
+    }`,
+  );
   linhas.push("");
   if (!s.teachers.length) {
-    linhas.push("Nenhum fechamento de professor neste mês ainda.");
+    linhas.push(
+      "Nenhuma aula lançada nem fechamento de professor neste mês ainda.",
+    );
     return linhas.join("\n");
   }
   for (const t of s.teachers) {
@@ -93,6 +108,10 @@ export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
     let cabecalho = `*${firstName(t.name)}* — ${t.lessons} aula${
       t.lessons === 1 ? "" : "s"
     } · *${money(amount)}* (${statusLabel(t.status)})`;
+    const ajustes = Number(t.adjustments ?? 0);
+    if (t.previa && ajustes) {
+      cabecalho += ` · inclui ${money(ajustes)} de ajuste`;
+    }
     if (rec || ced) {
       const delta = amount - projected;
       cabecalho += ` · previsto pela agenda ${money(projected)}, ${
@@ -101,10 +120,15 @@ export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
     }
     linhas.push(cabecalho);
     for (const it of t.received?.items || []) {
+      // Cobertura confirmada mas sem aula lançada ainda não paga ninguém —
+      // dizer "+R$ 0,00" leria como aula de graça.
+      const valor = it.logged === false
+        ? "ainda não lançada"
+        : `+${money(it.amount)}`;
       linhas.push(
         `   ↪ cobriu ${it.student || "aluno"} de ${firstName(it.from)} em ${
           shortDate(it.date)
-        } ${it.time || ""}: +${money(it.amount)}`,
+        } ${it.time || ""}: ${valor}`,
       );
     }
     for (const it of t.ceded?.items || []) {
@@ -120,7 +144,9 @@ export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
     `Total da folha: *${money(s.total_amount)}* em ${s.total_lessons} aulas.`,
   );
   linhas.push(
-    "Os valores são os do fechamento oficial de cada professor; cobertura muda o dono da aula, não a tarifa de quem a deu.",
+    previa
+      ? "Prévia = aulas já lançadas (a mesma conta do Financeiro de cada professor) + ajustes combinados; o fechamento oficial sai no dia 1º. Cobertura muda o dono da aula, não a tarifa de quem a deu."
+      : "Os valores são os do fechamento oficial de cada professor; cobertura muda o dono da aula, não a tarifa de quem a deu.",
   );
   return linhas.join("\n");
 }

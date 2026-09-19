@@ -318,16 +318,25 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                         <div data-tour="notice-channels" className="rounded-2xl border border-brand-border bg-brand-surface-2/30 p-4 space-y-1">
                                             <p className="text-xs font-black uppercase tracking-widest text-brand-text">Canais de aviso da gestão</p>
                                             <p className="text-xs text-brand-muted">
-                                                Cada assunto tem um grupo: dinheiro em <strong>Direção</strong>, agenda (cobertura, ausência, reposição, troca de horário) em <strong>Coordenação</strong>, funil (lead, experimental, pós-experimental) em <strong>Comercial</strong>. O grupo dos professores continua sendo o de oportunidades acima. Canal sem grupo usa o grupo da Gestão.
+                                                Cada assunto tem um grupo: dinheiro (rateio, DRE, folha, caixinha, despesa) em <strong>Financeiro</strong>, decisões e o assistente em <strong>Direção</strong>, agenda (cobertura, ausência, reposição, troca de horário) em <strong>Coordenação</strong>, funil (lead, experimental, pós-experimental) em <strong>Comercial</strong>. O grupo dos professores continua sendo o de oportunidades acima. Canal sem grupo usa o grupo da Gestão (Financeiro usa o da Direção).
                                             </p>
                                         </div>
                                         <GroupSelector
                                             user={user}
                                             instanceName={instance.instance_name}
-                                            label="Direção · Financeiro"
-                                            description="Rateio, DRE, folha, cobrança, planos e leads de professor. Perguntas de gestão ao assistente."
+                                            label="Direção"
+                                            description="Decisões, planos, renovação, leads de professor e o assistente de gestão. É também o destino de tudo que não tem canal próprio."
                                             channel="direcao"
                                         />
+                                        <div data-tour="notice-channel-financeiro">
+                                            <GroupSelector
+                                                user={user}
+                                                instanceName={instance.instance_name}
+                                                label="Financeiro"
+                                                description="Rateio de cada pagamento, DRE, folha do mês (com prévia do mês em aberto), caixinha, despesas e ajustes de repasse pelo assistente."
+                                                channel="financeiro"
+                                            />
+                                        </div>
                                         <GroupSelector
                                             user={user}
                                             instanceName={instance.instance_name}

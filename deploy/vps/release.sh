@@ -1370,6 +1370,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260918090000_cobertura_cancelada_nao_bloqueia_a_proxima.sql"
   "supabase/migrations/20260918100000_reposicao_com_trilha_e_canais_de_aviso.sql"
   "supabase/migrations/20260918110000_reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
+  "supabase/migrations/20260919100000_canal_financeiro_e_folha_previa_do_mes.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1504,6 +1505,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
   "supabase/tests/reposicao_com_trilha_e_canais_de_aviso.sql"
   "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
+  "supabase/tests/canal_financeiro_e_folha_previa_do_mes.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

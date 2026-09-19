@@ -54,11 +54,11 @@ serve(async (req) => {
           { requireDeliveryReceipts: true },
         );
         if (!route) return null;
-        // Caixinha é dinheiro: canal de direção (sem grupo próprio, o do DRE).
+        // Caixinha é dinheiro: canal financeiro (sem grupo próprio, direção → DRE).
         const canal = await loadTenantNoticeDestination(
           client,
           tenantId,
-          "direcao",
+          "financeiro",
         );
         const destination = resolveTenantConfiguredWhatsAppDestination(
           route,

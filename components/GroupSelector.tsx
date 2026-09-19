@@ -4,7 +4,15 @@ import { supabase } from '../lib/supabase';
 import { whatsappService } from '../services/whatsappService';
 import { Users, Save, Loader } from 'lucide-react';
 
-export type NoticeChannel = 'direcao' | 'coordenacao' | 'comercial';
+export type NoticeChannel = 'direcao' | 'financeiro' | 'coordenacao' | 'comercial';
+
+// Para onde o canal cai enquanto não tem grupo próprio (get_notice_channels.fallback).
+const FALLBACK_NOTE: Record<string, string> = {
+    gestao: 'Sem grupo escolhido: os avisos deste canal caem no grupo da Gestão.',
+    direcao: 'Sem grupo escolhido: os avisos deste canal caem no grupo da Direção.',
+    grupo_de_avisos: 'Sem grupo escolhido: os avisos deste canal caem no Grupo de Avisos (Leads / Aceites).',
+    grupo_dos_professores: 'Sem grupo escolhido: usa o Grupo de Oportunidades.',
+};
 
 interface GroupSelectorProps {
     user: any;
@@ -55,7 +63,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
                 setFallbackNote('');
             } else {
                 setSelectedGroup('');
-                setFallbackNote('Sem grupo escolhido: os avisos deste canal caem no grupo da Gestão.');
+                setFallbackNote(FALLBACK_NOTE[String(row?.fallback || 'gestao')] || FALLBACK_NOTE.gestao);
             }
             return;
         }
@@ -97,7 +105,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
             if (channel) {
                 const { error } = await supabase.rpc('save_notice_channel', { p_channel: channel, p_group_jid: selectedGroup || null });
                 if (error) throw error;
-                setFallbackNote(selectedGroup ? '' : 'Sem grupo escolhido: os avisos deste canal caem no grupo da Gestão.');
+                setFallbackNote(selectedGroup ? '' : (channel === 'financeiro' ? FALLBACK_NOTE.direcao : FALLBACK_NOTE.gestao));
                 setFeedback("✅ Canal salvo!");
                 setTimeout(() => setFeedback(''), 3000);
                 return;
@@ -138,7 +146,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
                         disabled={loading}
                         className="w-full bg-brand-surface border border-brand-border dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none truncate pr-8"
                     >
-                        <option value="">{loading ? "Carregando..." : channel ? "Usar o grupo da Gestão" : "Selecione..."}</option>
+                        <option value="">{loading ? "Carregando..." : channel === 'financeiro' ? "Usar o grupo da Direção" : channel ? "Usar o grupo da Gestão" : "Selecione..."}</option>
                         {groups.map((g) => (
                             <option key={g.id} value={g.id}>
                                 {g.subject.substring(0, 30)}

@@ -202,11 +202,11 @@ serve(async (req) => {
         );
         continue;
       }
-      // Canal de direção (dinheiro); sem grupo próprio, o destino do DRE.
+      // Canal financeiro (dinheiro); sem grupo próprio, direção → destino do DRE.
       const canal = await loadTenantNoticeDestination(
         supabase,
         tenantId,
-        "direcao",
+        "financeiro",
       );
       const destino = resolveTenantConfiguredWhatsAppDestination(
         route,
