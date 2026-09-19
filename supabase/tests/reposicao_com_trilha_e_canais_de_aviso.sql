@@ -82,9 +82,10 @@ select pg_temp.assert_true(
   'save_notice_channel não gravou o grupo de coordenação'
 );
 select pg_temp.assert_true(
-  (select jsonb_array_length(public.get_notice_channels())) = 4
+  -- 5 canais desde 19/09/2026 (financeiro entrou entre direção e coordenação).
+  (select jsonb_array_length(public.get_notice_channels())) = 5
   and (select c ->> 'fallback' from jsonb_array_elements(public.get_notice_channels()) c where c ->> 'channel' = 'coordenacao') = 'configurado',
-  'get_notice_channels não lista os 4 canais com o de coordenação configurado'
+  'get_notice_channels não lista os 5 canais com o de coordenação configurado'
 );
 reset role;
 
