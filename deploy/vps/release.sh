@@ -1397,6 +1397,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923150000_encerrar_reposicao_e_reatribuir_falta_do_professor.sql"
   "supabase/migrations/20260923170000_experimental_historico_status_e_link.sql"
   "supabase/migrations/20260923190000_professor_avisa_no_show_da_experimental.sql"
+  "supabase/migrations/20260923194310_notify_enrollment_completion_and_persist_terms.sql"
   "supabase/migrations/20260923200000_allow_enrollment_before_trial_feedback.sql"
 )
 DATABASE_TEST_RELATIVES=(
