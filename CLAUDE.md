@@ -731,6 +731,37 @@ menciona tenant.
 
 ---
 
+## ⚠️ NÃO registre as migrations legadas em `MIGRATION_RELATIVES` ✅
+
+> Medido em 23/09/2026. Escrito aqui porque "faltam 115 migrations na lista" parece
+> pendência e **não é** — registrá-las é que seria o estrago.
+
+O release **não reaplica a lista inteira**: ele guarda marker
+`<versão>-<sha256>.sha256` em `/opt/wisewolf/releases/.migration-checksums` e só roda as
+**pendentes** (duas vezes, em transação, com rollback, antes de valer). Migration já
+aplicada com **outro checksum** é recusada na hora.
+
+- **115 migrations do repo estão fora da lista** — legado de jan–jul/2026. Como não têm
+  marker, registrá-las faria o release **executá-las**. E **39 delas têm `DELETE`,
+  `DROP`, `TRUNCATE` ou `UPDATE` de dado sem a trava `schema_one_shots`**, incluindo
+  `20260127080000_delete_admins.sql`, `20260131140000_delete_veronica.sql`,
+  `20260127021500_fix_password_hash.sql` e `20260127030000_copy_valid_hash.sql`. O
+  próximo deploy apagaria administradores e reescreveria hash de senha.
+- **Registre só migration nova**, escrita para rodar de novo. Ao registrar uma antiga
+  (raro), leia o arquivo inteiro antes.
+- ⚠️ **Ordem de aplicação é o glob `migrations/*.sql` ordenado por NOME**, não a ordem da
+  lista. Conserto de função sempre em arquivo com data posterior ao que a define.
+- **Auditar em 30 s:** extrair `MIGRATION_RELATIVES` do `release.sh`, comparar com
+  `ls supabase/migrations`, cruzar o sha256 local com os markers da VPS → três respostas:
+  conflito de checksum (recusa), pendente (vai rodar), fora da lista (nunca roda).
+- ⚠️ **Rodar os 128 testes SQL na mão? Use o CÓDIGO DE SAÍDA do psql**, não
+  `grep '^ERROR:'` — vários provocam erro de propósito. O grep acusou 7 falhas onde
+  havia 4.
+- ⚠️ `npm run deploy:vps | tail` **esconde a falha**: o `exit code` passa a ser o do
+  `tail`. Redirecione para arquivo e leia `$?`.
+
+---
+
 ## ⚠️ Janela de tempo em regra de acesso: `NULL >= data` não é falso, é NULL ✅
 
 > Migration `20260923050000_open_reschedule_keeps_student_access.sql`.

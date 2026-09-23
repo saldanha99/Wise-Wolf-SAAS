@@ -70,7 +70,11 @@ serve(async (req) => {
     const tenantId = auth.context.tenantId;
     const now = new Date();
     const today = dateInSaoPaulo(now);
-    const scheduledAt = now.toISOString();
+    // O cron prepara os avisos às 08h, mas contatos iniciados pela escola só
+    // podem sair a partir das 09h de São Paulo. A fila respeita scheduled_for.
+    const businessOpen = Date.parse(`${today}T09:00:00-03:00`);
+    const scheduledAt = new Date(Math.max(now.getTime(), businessOpen))
+      .toISOString();
 
     const metaCache: Record<string, { name: string }> = {};
     async function meta(tenantId: string) {
