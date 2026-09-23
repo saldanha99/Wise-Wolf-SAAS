@@ -251,7 +251,7 @@ Deno.test("briefing do professor traz aluno, telefone, horário, objetivo e o qu
     teacherName: "Bruna Barros Feitosa",
     whenText: "18/09 às 10:00",
     leadName: "Janaina",
-    leadPhone: "5511996007505",
+    leadPhone: "5511900000123",
     goal: "Inglês para trabalho",
     level: "intermediário (B1)",
     notes:
@@ -261,7 +261,7 @@ Deno.test("briefing do professor traz aluno, telefone, horário, objetivo e o qu
     meetingLink: null,
   });
   assert(msg.startsWith("🎯 *Experimental 18/09 às 10:00* — Janaina"), msg);
-  assert(msg.includes("(11) 99600-7505"), msg);
+  assert(msg.includes("(11) 90000-0123"), msg);
   assert(
     msg.includes("Objetivo: Inglês para trabalho · Nível: intermediário (B1)"),
     msg,

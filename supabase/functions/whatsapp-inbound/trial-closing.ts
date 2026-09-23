@@ -397,7 +397,7 @@ export function teacherTrialBriefing(input: {
   return lines.join("\n\n");
 }
 
-/** "5571987168313" → "(71) 98716-8313"; número fora do padrão sai como veio. */
+/** "5571900000456" → "(71) 90000-0456"; número fora do padrão sai como veio. */
 export function formatPhoneBr(raw: string | null | undefined): string {
   const digits = String(raw || "").replace(/\D/g, "").replace(/^55/, "");
   if (digits.length === 11) {
