@@ -670,7 +670,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.ts \
@@ -737,6 +740,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
@@ -1392,6 +1396,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923130000_revert_open_reschedule_access.sql"
   "supabase/migrations/20260923150000_encerrar_reposicao_e_reatribuir_falta_do_professor.sql"
   "supabase/migrations/20260923170000_experimental_historico_status_e_link.sql"
+  "supabase/migrations/20260923190000_professor_avisa_no_show_da_experimental.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

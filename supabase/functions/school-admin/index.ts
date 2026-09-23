@@ -2604,7 +2604,15 @@ async function requestTrialReschedule(
     `➡️ Pedido: ${brtLabel(requestedStartTime)}\n\n` +
     `*A agenda ainda NÃO foi alterada.*\n` +
     `Responda *SIM #${replyCode}* se consegue atender ou *NÃO #${replyCode}* se não consegue.`;
-  const { error: queueError } = await admin.from("notification_queue").upsert({
+  // INSERT simples, não upsert. `idx_notif_queue_idemp` é PARCIAL
+  // (`where source_id is not null`), e o `on conflict` do supabase-js não
+  // repete o predicado — o Postgres então recusa com "no unique or exclusion
+  // constraint matching the ON CONFLICT specification" e a função devolvia 503
+  // em TODA chamada. Medido em 23/09/2026: "Pedir confirmação ao professor
+  // atual" nunca funcionou, e cada tentativa deixava o pedido como SUPERSEDED.
+  // Conflito aqui é impossível: `source_id` é o request_id que a RPC acabou de
+  // criar, uuid novo a cada chamada.
+  const { error: queueError } = await admin.from("notification_queue").insert({
     tenant_id: tenantId,
     teacher_id: null,
     student_id: null,
@@ -2618,9 +2626,6 @@ async function requestTrialReschedule(
     source_type: "trial_reschedule",
     class_date: brtDate(requestedStartTime),
     notification_kind: "TRIAL_RESCHEDULE_CONFIRMATION",
-  }, {
-    onConflict: "source_id,source_type,class_date,notification_kind",
-    ignoreDuplicates: true,
   });
   if (queueError) {
     await admin.from("trial_reschedule_requests")

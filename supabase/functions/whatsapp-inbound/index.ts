@@ -84,6 +84,11 @@ import {
   detectTeacherAbsenceIntent,
 } from "./teacher-absence.ts";
 import {
+  mentionsTrialNoShow,
+  trialNoShowChannelMessage,
+  trialNoShowLeadMessage,
+} from "./trial-no-show.ts";
+import {
   montarMensagemFolha,
   type PayrollSummary,
 } from "../_shared/payroll-message.ts";
@@ -1848,6 +1853,129 @@ async function handleTeacherRescheduleMessage(
  * link, e o pacote do aluno sai pela fila. Vários convites pendentes: ele
  * escolhe pelo horário ou responde "todas". Devolve true quando tratou.
  */
+/**
+ * "O aluno não compareceu" dito pela professora ao número da escola vira falta
+ * registrada + convite de remarcação para o lead.
+ *
+ * Antes isso morria na conversa: alguém tinha de abrir a plataforma, marcar a
+ * falta e chamar o lead de volta — e normalmente ninguém chamava.
+ *
+ * Quem registra a falta continua sendo a direção: a RPC age como ela
+ * (trial_closing_act_as) e chama `update_trial_outcome_secure`, a mesma porta da
+ * tela. A professora AVISA; a plataforma não inventou uma segunda via para o
+ * mesmo fato.
+ */
+async function handleTeacherTrialNoShow(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  teacher: { id?: string | null; full_name?: string | null },
+  phone: string,
+  text: string,
+): Promise<boolean> {
+  if (!teacher?.id || !mentionsTrialNoShow(text)) return false;
+
+  const { data: candidatas, error: buscaErro } = await sb.rpc(
+    "teacher_open_trial_for_no_show",
+    { p_tenant: tenantId, p_teacher: teacher.id },
+  );
+  if (buscaErro) {
+    console.error("[trial] falha ao procurar experimental para no-show", {
+      teacherId: teacher.id,
+      error: buscaErro.message,
+    });
+    return false;
+  }
+  const lista = (candidatas || []) as Array<Record<string, unknown>>;
+  // Nenhuma aula elegível: a professora está falando de outra coisa. Sair em
+  // silêncio é melhor que responder sobre uma aula que não existe.
+  if (lista.length === 0) return false;
+  // Mais de uma experimental na janela: registrar a errada custa o pagamento
+  // dela. Escala para gente em vez de adivinhar.
+  if (lista.length > 1) {
+    await sendWhats(
+      instance,
+      phone,
+      "Você tem mais de uma experimental nas últimas horas. Me diz o nome do aluno que não compareceu que eu registro.",
+    );
+    return true;
+  }
+
+  const alvo = lista[0];
+  const { data: registro, error: registroErro } = await sb.rpc(
+    "teacher_report_trial_no_show",
+    {
+      p_tenant: tenantId,
+      p_teacher: teacher.id,
+      p_opportunity_id: alvo.opportunity_id,
+      p_note: text.slice(0, 300),
+    },
+  );
+  if (registroErro || !registro?.ok) {
+    console.error("[trial] falha ao registrar no-show", {
+      teacherId: teacher.id,
+      error: registroErro?.message || registro?.error,
+    });
+    return false;
+  }
+
+  const quando = registro.start_time
+    ? new Date(String(registro.start_time)).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : null;
+
+  await sendWhats(
+    instance,
+    phone,
+    `Registrado: ${
+      String(registro.lead_name || "o lead").trim()
+    } não compareceu na experimental${
+      quando ? ` de ${quando}` : ""
+    }. Essa aula não conta como realizada, e já chamei a pessoa para remarcar. Obrigado por avisar!`,
+  );
+
+  // O convite ao lead é o ponto do pedido: quem some por uma hora costuma
+  // voltar se a porta ficar aberta. Falha no envio não desfaz o registro.
+  const leadPhone = String(registro.lead_phone || "").replace(/\D/g, "");
+  if (leadPhone) {
+    try {
+      await sendWhats(
+        instance,
+        leadPhone,
+        trialNoShowLeadMessage({
+          leadName: registro.lead_name,
+          teacherName: teacher.full_name,
+          whenText: quando,
+        }),
+      );
+    } catch (erro) {
+      console.error("[trial] convite de remarcação ao lead falhou", {
+        error: (erro as Error).message,
+      });
+    }
+  }
+
+  const canal = await loadTenantNoticeDestination(sb, tenantId, "comercial");
+  if (canal) {
+    await sendWhats(
+      instance,
+      canal,
+      trialNoShowChannelMessage({
+        leadName: registro.lead_name,
+        leadPhone: registro.lead_phone,
+        teacherName: teacher.full_name,
+        whenText: quando,
+      }),
+    );
+  }
+  return true;
+}
+
 async function handleTeacherCoverageReply(
   sb: any,
   instance: string,
@@ -8825,6 +8953,22 @@ serve(async (req) => {
         // Convite de cobertura pendente: "consigo sim" / "não consigo" pelo
         // número da escola vale como o clique no link — e o pacote do aluno
         // (contato + últimas aulas) sai em seguida.
+        // Falta do lead na experimental: antes da cobertura, porque "não
+        // compareceu" não é resposta a convite nenhum.
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherTrialNoShow(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+          )
+        ) {
+          continue;
+        }
         if (
           String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
           !rateLimited && !isMedia && String(text || "").trim() &&
