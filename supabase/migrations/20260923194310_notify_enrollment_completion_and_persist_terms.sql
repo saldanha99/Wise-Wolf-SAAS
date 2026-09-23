@@ -237,12 +237,51 @@ set search_path = ''
 as $function$
 declare
   v_result jsonb;
+  v_opportunity_id uuid;
+  v_tenant_id text;
 begin
   v_result := public.complete_enrollment_offer_pre_completion_notifications_impl(
     p_offer_id,
     p_user_id
   );
   if coalesce((v_result ->> 'success')::boolean, false) is true then
+    -- Preserve the public completion boundary as the explicit CRM authority,
+    -- even though the reviewed implementation below already performs the same
+    -- transition. The guarded update is normally a no-op after delegation.
+    select opportunity.id, opportunity.tenant_id
+      into v_opportunity_id, v_tenant_id
+      from public.offers as offer
+      join public.opportunities as opportunity
+        on opportunity.id = offer.opportunity_id
+       and opportunity.tenant_id = offer.tenant_id
+     where offer.id = p_offer_id
+       and offer.kind = 'ENROLLMENT'
+       and opportunity.kind = 'TRIAL'
+       and opportunity.conversion_status = 'WON'
+       and opportunity.student_id = p_user_id;
+    if found then
+      perform pg_catalog.set_config(
+        'app.crm_trial_outcome_opportunity',
+        v_opportunity_id::text,
+        true
+      );
+      update public.crm_leads as lead
+         set status = 'WON',
+             student_id = p_user_id,
+             last_status_change = pg_catalog.clock_timestamp()
+       where lead.opportunity_id = v_opportunity_id
+         and lead.tenant_id = v_tenant_id
+         and (
+           lead.status is distinct from 'WON'
+           or lead.student_id is distinct from p_user_id
+         );
+      perform pg_catalog.set_config(
+        'app.crm_trial_outcome_opportunity',
+        '',
+        true
+      );
+    end if;
+
     begin
       perform private.enqueue_enrollment_completion_notifications(
         p_offer_id,
