@@ -731,6 +731,34 @@ menciona tenant.
 
 ---
 
+## ⚠️ Janela de tempo em regra de acesso: `NULL >= data` não é falso, é NULL ✅
+
+> Migration `20260923050000_open_reschedule_keeps_student_access.sql`.
+
+`_teacher_can_access_student` ganhou em 22/09/2026 uma janela de 7 dias para que
+"registro histórico não dê acesso para sempre". Para **booking** o autor tolerou data
+nula (`booking.date is null or booking.date >= hoje - 7`); para **reposição**, não — o
+`case` devolve `null` quando a data não casa o formato, e **`null >= data` é NULL, não
+falso**, então a linha nunca entra.
+
+- ⚠️ **Reposição sem data é o estado NORMAL aqui** (medido em 23/09: 196 abertas
+  atribuídas a professor, **4 com data, 1 na janela**) — e não é registro histórico: é
+  aula que o professor DEVE ao aluno, com `used_at is null`. O ramo virou letra morta e
+  **três professores perderam alunos de vista**: Beatrís enxergava **zero**.
+- **Regra que ficou:** reposição aberta sem data utilizável continua abrindo o aluno; a
+  janela vale para a que TEM data passada. Medido por pessoa antes/depois — Flávio 6→9,
+  Beatrís 0→2, Mateus 11→13, os outros 5 inalterados, **0 perdas**.
+- ⚠️ **Mesma família, ainda aberta:** o `return query` de `trial_closing_teacher_asks`
+  filtra `opportunity.trial_status not in (...)` **sem `coalesce`**, enquanto o `insert`
+  da mesma função usa `coalesce(...,'')`. Hoje não atinge ninguém (nenhuma experimental
+  real tem o campo nulo), mas um nulo faria a pergunta pós-experimental sumir calada.
+- **Ao pôr janela de tempo em regra de autorização**, decida explicitamente o que
+  acontece com a data ausente, e **meça por pessoa real antes e depois** — o teste
+  `substituto_enxerga_o_aluno_que_cobre.sql` existe exatamente para isso e foi ele que
+  pegou esta.
+
+---
+
 ## ⚠️ Policy que chama função `private` derruba a escrita de TODO bucket ✅
 
 > **Leia antes de usar `private.*` dentro de qualquer policy para `authenticated`/`anon`.**
