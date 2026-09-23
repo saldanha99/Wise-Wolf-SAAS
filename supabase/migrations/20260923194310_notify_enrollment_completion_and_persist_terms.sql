@@ -2,7 +2,7 @@ begin;
 
 -- A oferta assinada é a fonte autoritativa do prazo. O perfil é mantido em
 -- sincronia para que a segunda via do contrato nunca caia no prazo-padrão.
--- A conclusão também cria dois avisos duráveis: Gestão e professor(es), com
+-- A conclusão também cria avisos duráveis para aluno, Gestão e professor(es), com
 -- dedupe por oferta/destinatário. Fixtures continuam completamente suprimidas.
 create or replace function private.enqueue_enrollment_completion_notifications(
   p_offer_id uuid,
@@ -96,6 +96,28 @@ begin
      and booking.enrollment_offer_id = v_offer.id
      and upper(coalesce(booking.status, '')) = 'SCHEDULED';
   v_schedule := coalesce(nullif(v_schedule, ''), 'agenda a confirmar');
+
+  if v_student.phone is not null and pg_catalog.btrim(v_student.phone) <> '' then
+    insert into public.notification_queue (
+      tenant_id, student_id, student_name, student_phone, message_body,
+      scheduled_for, status, source_id, source_type, notification_kind,
+      idempotency_key
+    ) values (
+      v_offer.tenant_id, v_student.id, v_student.full_name, v_student.phone,
+      format(
+        E'Olá, %s! 🎉 Sua matrícula está confirmada.\n\n📅 Início: *%s*\n🗓️ Aulas: *%s*\n📋 Plano: *%s meses*\n\nSeja muito bem-vinda à Wise Wolf! 🐺',
+        split_part(btrim(v_student.full_name), ' ', 1),
+        coalesce(to_char(v_start_date, 'DD/MM/YYYY'), 'a confirmar'),
+        v_schedule,
+        v_duration
+      ),
+      pg_catalog.now(), 'pending', v_offer.id, 'ENROLLMENT_COMPLETION',
+      'ENROLLMENT_STUDENT_CONFIRMED',
+      format('enrollment:%s:student', v_offer.id)
+    )
+    on conflict (tenant_id, idempotency_key)
+      where idempotency_key is not null do nothing;
+  end if;
 
   select settings.destino into v_group_destination
     from public.dre_report_settings as settings
