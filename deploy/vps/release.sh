@@ -1386,6 +1386,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260922201500_no_post_trial_sales_after_teacher_no_show.sql"
   "supabase/migrations/20260922213500_hold_cleice_trial_after_student_denial.sql"
   "supabase/migrations/20260923013220_fix_teacher_change_notice_null_role.sql"
+  "supabase/migrations/20260923030000_storage_write_guards_use_my_role.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

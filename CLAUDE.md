@@ -731,6 +731,42 @@ menciona tenant.
 
 ---
 
+## ⚠️ Policy que chama função `private` derruba a escrita de TODO bucket ✅
+
+> **Leia antes de usar `private.*` dentro de qualquer policy para `authenticated`/`anon`.**
+> Migration `20260923030000_storage_write_guards_use_my_role.sql`.
+
+O diretor não conseguia subir o PDF do treinamento: *"permission denied for function
+active_tenant_role"*, num INSERT que o diretor nem escreveu. As barreiras de `invoices`
+(`invoices_authenticated_update_guard` / `_delete_guard`, **RESTRICTIVE**, e as
+`invoices_closing_scoped_update` / `_delete`) chamavam `private.active_tenant_role(...)`
+direto — e `authenticated` **não tem EXECUTE** nela, de propósito: ela aceita um uuid
+qualquer e diria o papel de qualquer pessoa.
+
+- ⚠️ **O `bucket_id <> 'invoices'` NÃO salva.** O Postgres cobra o EXECUTE na
+  **inicialização da expressão**, antes de qualquer curto-circuito do `OR`. Barreira
+  RESTRICTIVE vale para todo bucket ⇒ **todo upsert, update e delete de arquivo morria**,
+  em qualquer bucket, para qualquer usuário logado. `SELECT` e `INSERT` simples passavam —
+  por isso a biblioteca "funcionava" e só o upload com `upsert: true` (`TrainingAdmin`) e
+  as remoções (`PedagogicalConfig`) quebravam.
+- **Conserto:** usar **`public._my_role()`** — que é exatamente
+  `private.active_tenant_role((select auth.uid()))` embrulhado num SECURITY DEFINER do
+  `postgres` com EXECUTE para `authenticated`. Conferido perfil a perfil (95 pessoas,
+  **0 divergências**); a função interna continua fechada.
+- ❌ **Não conserte dando `grant execute` na função `private`** — ela recebe uuid
+  arbitrário; liberar entregaria o papel de qualquer usuário a qualquer logado.
+- **Trava contra reincidência** dentro da própria migration: policy de `storage.objects`
+  para `anon`/`authenticated` que cite função `private` sem EXECUTE **derruba a migration**,
+  e não a tela do diretor às 23h.
+- **Como auditar** (vale para qualquer tabela, não só storage): cruze `pg_policy` com
+  `pg_proc` do schema `private` e `has_function_privilege('authenticated', oid, 'EXECUTE')`.
+- ⚠️ `storage.objects` tem trigger `protect_objects_delete`: **DELETE direto por SQL é
+  recusado** ("Use the Storage API instead"). Teste de remoção tem de ir pela API HTTP —
+  `/storage/v1/object/<bucket>/<path>` com JWT do usuário, rodado **dentro da VPS** para a
+  chave não entrar no contexto.
+
+---
+
 ## ⚠️ Campo que não é coluna DERRUBA O UPDATE INTEIRO ✅
 
 > **Leia antes de mexer em qualquer tela que salva perfil.** É a classe de bug mais
