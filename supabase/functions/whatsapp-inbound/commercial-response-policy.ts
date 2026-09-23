@@ -346,7 +346,8 @@ function applyConsultativePolicy(
   // pode receber o preço de "3x" como se a duração também estivesse coberta.
   if (flags.asksPrice && asksLongerClass(message)) {
     return {
-      reply: "A tabela que tenho é para aulas de 30 minutos. Para 1 hora, preciso confirmar o formato e o valor correto com a coordenação; não quero te passar o preço de 30 minutos como se fosse de 1 hora.",
+      reply:
+        "A tabela que tenho é para aulas de 30 minutos. Para 1 hora, preciso confirmar o formato e o valor correto com a coordenação; não quero te passar o preço de 30 minutos como se fosse de 1 hora.",
       policy: "custom_duration_quote_required",
     };
   }

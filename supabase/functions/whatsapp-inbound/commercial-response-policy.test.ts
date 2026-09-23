@@ -62,7 +62,8 @@ Deno.test("Raoni: preço de 30 minutos não responde pedido de 1 hora", () => {
   const { reply, policy } = applyCommercialReplyPolicy({
     ...base,
     currentMessage: "Qual valor para 1H 3X na semana sem fidelidade?",
-    modelReply: "Para aulas de 1 hora, 3 vezes por semana, o valor é R$290/mês.",
+    modelReply:
+      "Para aulas de 1 hora, 3 vezes por semana, o valor é R$290/mês.",
     consultativeLead: { goal: "kids", level: "beginner" },
   });
   assertEquals(policy, "custom_duration_quote_required");

@@ -6812,10 +6812,14 @@ async function handleSDR(
     const acceptedTrial = await findActiveTrial(sb, tenantId, phone);
     if (acceptedTrial) {
       const slot = brtSlotFromIso(acceptedTrial.startIso);
-      const reply = `Sua experimental está confirmada com a Teacher ${acceptedTrial.teacherName} em ${formatSlot(slot)}. Até lá!`;
+      const reply =
+        `Sua experimental está confirmada com a Teacher ${acceptedTrial.teacherName} em ${
+          formatSlot(slot)
+        }. Até lá!`;
       const alreadyConfirmed = hist.some((message) =>
         message.role === "assistant" &&
-        /experimental.{0,30}confirmad|aula experimental j[aá] est[aá] marcada/i.test(message.content) &&
+        /experimental.{0,30}confirmad|aula experimental j[aá] est[aá] marcada/i
+          .test(message.content) &&
         message.content.includes(acceptedTrial.teacherName)
       );
       if (!alreadyConfirmed && await beginEffects()) {

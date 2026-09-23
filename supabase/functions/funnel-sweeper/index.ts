@@ -854,19 +854,24 @@ serve(async (req) => {
         if (!route?.studentInstance || !opp.winner_teacher_id) continue;
         const phone = cleanPhone(opp.student_phone || "");
         if (phone.length < 12) continue;
-        const [appointmentResult, teacherResult, leadResult] = await Promise.all([
-          sb.from("appointments").select("id,start_time,status,created_at,teacher_id")
-            .eq("tenant_id", opp.tenant_id).eq("id", opp.trial_appointment_id)
-            .maybeSingle(),
-          sb.from("profiles").select("full_name,lifecycle_status")
-            .eq("tenant_id", opp.tenant_id).eq("id", opp.winner_teacher_id)
-            .maybeSingle(),
-          sb.from("crm_leads").select("id,phone,ai_handoff,ai_handoff_at")
-            .eq("tenant_id", opp.tenant_id).order("created_at", {
-              ascending: false,
-            }).limit(100),
-        ]);
-        if (appointmentResult.error || teacherResult.error || leadResult.error) {
+        const [appointmentResult, teacherResult, leadResult] = await Promise
+          .all([
+            sb.from("appointments").select(
+              "id,start_time,status,created_at,teacher_id",
+            )
+              .eq("tenant_id", opp.tenant_id).eq("id", opp.trial_appointment_id)
+              .maybeSingle(),
+            sb.from("profiles").select("full_name,lifecycle_status")
+              .eq("tenant_id", opp.tenant_id).eq("id", opp.winner_teacher_id)
+              .maybeSingle(),
+            sb.from("crm_leads").select("id,phone,ai_handoff,ai_handoff_at")
+              .eq("tenant_id", opp.tenant_id).order("created_at", {
+                ascending: false,
+              }).limit(100),
+          ]);
+        if (
+          appointmentResult.error || teacherResult.error || leadResult.error
+        ) {
           result.failures.push(`trial_confirmation_lookup ${opp.id}`);
           continue;
         }
@@ -881,7 +886,8 @@ serve(async (req) => {
           appointment.teacher_id !== opp.winner_teacher_id ||
           teacher.lifecycle_status !== "active" ||
           Date.parse(appointment.start_time) <= Date.now() ||
-          Date.parse(appointment.created_at) < Date.parse("2026-09-22T23:00:00Z")
+          Date.parse(appointment.created_at) <
+            Date.parse("2026-09-22T23:00:00Z")
         ) continue;
         const { data: recentReplies, error: replyError } = await sb.from(
           "ai_wa_messages",
@@ -896,12 +902,14 @@ serve(async (req) => {
           result.failures.push(`trial_confirmation_history ${opp.id}`);
           continue;
         }
-        if ((recentReplies || []).some((row: any) =>
-          row.meta?.entregue !== false &&
-          (/experimental.{0,35}confirmad|aula experimental j[aá] est[aá] marcada/i
-            .test(String(row.content || "")) ||
-            row.meta?.kind === "trial_accepted_acknowledgement")
-        )) continue;
+        if (
+          (recentReplies || []).some((row: any) =>
+            row.meta?.entregue !== false &&
+            (/experimental.{0,35}confirmad|aula experimental j[aá] est[aá] marcada/i
+              .test(String(row.content || "")) ||
+              row.meta?.kind === "trial_accepted_acknowledgement")
+          )
+        ) continue;
         const mark = await claim(
           sb,
           "TRIAL_STUDENT_CONFIRMED",
@@ -911,9 +919,13 @@ serve(async (req) => {
         if (!mark.ok) continue;
         const local = new Date(Date.parse(appointment.start_time) - 3 * 3600000)
           .toISOString();
-        const when = `${local.slice(8, 10)}/${local.slice(5, 7)} às ${local.slice(11, 16)}`;
+        const when = `${local.slice(8, 10)}/${local.slice(5, 7)} às ${
+          local.slice(11, 16)
+        }`;
         const first = greetName(opp.student_name);
-        const msg = `Oi${first ? `, ${first}` : ""}! Sua aula experimental de ${when} está confirmada com a Teacher ${teacher.full_name}. Até lá! 😊`;
+        const msg = `Oi${
+          first ? `, ${first}` : ""
+        }! Sua aula experimental de ${when} está confirmada com a Teacher ${teacher.full_name}. Até lá! 😊`;
         const delivery = await sendWhatsTextDetailed({
           base: EVOLUTION_API_URL,
           keys: EVOLUTION_KEYS,

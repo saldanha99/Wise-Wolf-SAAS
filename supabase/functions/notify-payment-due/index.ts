@@ -466,12 +466,12 @@ async function reguaVencidas(
         }*, ainda consta *em aberto* em nosso sistema. ` +
         `Pedimos que regularize o pagamento para evitar que a pendência continue em atraso.`;
       if (c.invoice_url) {
-        text +=
-          `\n\nVocê pode pagar pela própria fatura: ${c.invoice_url}`;
+        text += `\n\nVocê pode pagar pela própria fatura: ${c.invoice_url}`;
       } else {
         text += `\n\nResponda esta mensagem para receber o link da fatura.`;
       }
-      text += `\n\nSe já pagou, por favor nos envie o comprovante para conferirmos a baixa. Se precisar de ajuda, é só responder.`;
+      text +=
+        `\n\nSe já pagou, por favor nos envie o comprovante para conferirmos a baixa. Se precisar de ajuda, é só responder.`;
 
       const delivery = await deliverPaymentNotification(supabase, {
         tenantId: c.tenant_id,
