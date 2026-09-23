@@ -2,7 +2,10 @@
 // lido pelo Deno e apaga `deno.ns` quando este arquivo roda sozinho. Sem ela,
 // `deno test` deste arquivo isolado falha no type-check.
 /// <reference lib="deno.ns" />
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   type ActiveTrial,
   brtSlotFromIso,
@@ -11,7 +14,9 @@ import {
   decideTrialAction,
   isTrialAppointmentActive,
   isTrialOutcomeOpen,
+  mentionsRescheduleWithoutSlot,
   minutesApart,
+  rescheduleRequestHasSlot,
   selectTeacherRescheduleRequest,
   trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
@@ -230,4 +235,43 @@ Deno.test("recusa sem código preserva a agenda e pode fechar pedido único", ()
     ),
     null,
   );
+});
+
+Deno.test("pedido de remarcação sem horário é reconhecido", () => {
+  const sim = [
+    "Bom dia, vou precisar remarcar a aula experimental", // caso real, Ana Carolina 23/09
+    "Preciso reagendar minha aula",
+    "Não vou conseguir hoje",
+    "nao vou poder fazer a aula",
+    "Podemos mudar o horário?",
+    "Quero remarcar minha aula experimental",
+    "surgiu um imprevisto, da pra adiar?",
+    "tem como transferir a aula?",
+    "não consigo nesse horário",
+  ];
+  for (const t of sim) {
+    assert(mentionsRescheduleWithoutSlot(t), `deveria reconhecer: ${t}`);
+  }
+});
+
+Deno.test("o que NÃO é pedido de remarcação", () => {
+  const nao = [
+    "Quero cancelar a aula", // cancelamento sai do funil, não vira agenda nova
+    "não tenho mais interesse",
+    "desisti",
+    "Qual o valor dos planos?",
+    "Bom dia!",
+    "Quero marcar uma aula experimental", // ainda não tem dono: é leilão
+    "",
+  ];
+  for (const t of nao) {
+    assert(!mentionsRescheduleWithoutSlot(t), `não deveria reconhecer: ${t}`);
+  }
+});
+
+Deno.test("horário já proposto segue pelo caminho que move a aula", () => {
+  assert(rescheduleRequestHasSlot({ date: "2026-09-24", time: "18:30" }));
+  assert(!rescheduleRequestHasSlot({ date: "2026-09-24", time: null }));
+  assert(!rescheduleRequestHasSlot({ date: "amanhã", time: "18:30" }));
+  assert(!rescheduleRequestHasSlot(null));
 });

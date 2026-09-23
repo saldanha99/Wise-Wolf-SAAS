@@ -792,6 +792,8 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             case 'SCHEDULED': return { label: '📅 Agendada', color: 'bg-blue-50 text-blue-600 border border-blue-200' };
             case 'NO_SHOW_STUDENT': return { label: '🔴 Aluno Faltou', color: 'bg-red-50 text-red-600 border border-red-200' };
             case 'NO_SHOW_TEACHER': return { label: '🟠 Prof. Faltou', color: 'bg-orange-50 text-orange-600 border border-orange-200' };
+            case 'RESCHEDULED': return { label: '🔄 Em remarcação', color: 'bg-amber-50 text-amber-700 border border-amber-200' };
+            case 'CANCELLED': return { label: '⚫ Cancelada', color: 'bg-slate-100 text-slate-500 border border-slate-200' };
             default: return { label: '⏳ Pendente', color: 'bg-brand-surface-2 text-brand-muted border border-brand-border' };
         }
     };
@@ -1066,8 +1068,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                             : 'Gerar Link Matrícula'}
                                                 </button>
                                             )}
-                                            {/* Reagendar: aparece quando houve falta (aluno ou professor) */}
-                                            {(opp.trial_status === 'NO_SHOW_STUDENT' || opp.trial_status === 'NO_SHOW_TEACHER') && (
+                                            {/* Reagendar: o lead remarca ANTES da aula — era o caso que a
+                                                escola resolvia na mão, porque o botão só existia depois de
+                                                uma falta. Agora vale em qualquer estado aberto. */}
+                                            {opp.trial_status !== 'DONE' && (
                                                 <button
                                                     onClick={() => openReschedule(opp)}
                                                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:shadow-amber-300 active:scale-95"

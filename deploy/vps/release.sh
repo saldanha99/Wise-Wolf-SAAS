@@ -1391,6 +1391,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923060000_null_trial_status_keeps_post_trial_question.sql"
   "supabase/migrations/20260923130000_revert_open_reschedule_access.sql"
   "supabase/migrations/20260923150000_encerrar_reposicao_e_reatribuir_falta_do_professor.sql"
+  "supabase/migrations/20260923170000_experimental_historico_status_e_link.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1510,6 +1511,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/fechamento_automatico_da_experimental.sql"
   "supabase/tests/pos_experimental_com_trial_status_nulo.sql"
   "supabase/tests/encerrar_reposicao.sql"
+  "supabase/tests/experimental_historico_e_remarcacao.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.

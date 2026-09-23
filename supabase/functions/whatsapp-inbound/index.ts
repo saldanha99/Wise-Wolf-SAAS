@@ -138,6 +138,8 @@ import {
   decideTrialAction,
   isTrialAppointmentActive,
   isTrialOutcomeOpen,
+  mentionsRescheduleWithoutSlot,
+  rescheduleRequestHasSlot,
   selectTeacherRescheduleRequest,
   type Slot,
   trialRescheduleReplyCode,
@@ -569,6 +571,66 @@ async function sendWhats(
     text,
     delayMs: opts?.simulateTyping ? typingDelayMs(text) : undefined,
   });
+}
+
+/**
+ * A professora e a coordenação precisam saber, na hora, que uma aula
+ * experimental não vai acontecer no horário marcado.
+ *
+ * Sem isso o pedido do lead ficava só na conversa: em 23/09/2026 a Ana Carolina
+ * avisou às 11:52 e a aula seguiu na agenda da Teacher Bruna para as 18:30.
+ *
+ * Falha no envio NÃO desfaz o registro — o estado já mudou no banco, e é ele que
+ * manda. Mesmo princípio do resto do projeto ("falha no aviso nunca derruba o
+ * lançamento").
+ */
+async function avisarRemarcacaoPedida(
+  sb: any,
+  tenantId: string,
+  instance: string,
+  aberto: {
+    teacher_id?: string | null;
+    teacher_name?: string | null;
+    lead_name?: string | null;
+    lead_phone?: string | null;
+    start_time?: string | null;
+  },
+): Promise<void> {
+  const quando = aberto.start_time
+    ? new Date(aberto.start_time).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : "horário não identificado";
+  const lead = String(aberto.lead_name || "o lead").trim();
+
+  if (aberto.teacher_id) {
+    const { data: teacher } = await sb.from("profiles")
+      .select("phone").eq("id", aberto.teacher_id).maybeSingle();
+    if (teacher?.phone) {
+      await sendWhats(
+        instance,
+        String(teacher.phone),
+        `📅 *Experimental em remarcação*\n\n${lead} avisou que não vai conseguir na aula de ${quando}.\n\nNão precisa entrar na sala nesse horário. Assim que ele disser o novo dia, a plataforma te pergunta antes de mexer na sua agenda.`,
+      );
+    }
+  }
+
+  const canal = await loadTenantNoticeDestination(sb, tenantId, "coordenacao");
+  if (canal) {
+    await sendWhats(
+      instance,
+      canal,
+      `📅 *Experimental em remarcação*\n\n👤 ${lead}${
+        aberto.lead_phone ? ` — wa.me/${String(aberto.lead_phone)}` : ""
+      }\n👩‍🏫 ${
+        aberto.teacher_name || "professor(a)"
+      }\n🕐 era ${quando}\n\nO lead pediu para remarcar e ainda não disse quando. A aula está sinalizada na plataforma.`,
+    );
+  }
 }
 
 async function sendWhatsDetailed(
@@ -7191,6 +7253,48 @@ async function handleSDR(
       console.warn("[sdr] resposta ofereceu horário fora da lista; vetada", {
         leadId: lead.id,
       });
+    }
+  }
+  // ── PEDIDO DE REMARCAÇÃO SEM HORÁRIO ──
+  // Medido em 23/09/2026: a remarcação só era avaliada dentro do portão de
+  // data+hora abaixo. "Preciso remarcar" sozinho não chegava lá — o bot pedia o
+  // horário novo (certo) e o sistema não registrava nada, então a aula seguia de
+  // pé na agenda da professora. Aqui o pedido vira ESTADO: a experimental fica
+  // marcada como em remarcação e o histórico começa. O horário novo continua
+  // entrando pelo caminho de sempre, que é quem move a agenda.
+  if (
+    activeTrial && !isMedia && !rescheduleRequestHasSlot(st) &&
+    mentionsRescheduleWithoutSlot(text)
+  ) {
+    const { data: aberto, error: aberturaErro } = await sb.rpc(
+      "open_trial_reschedule_request",
+      {
+        p_opportunity_id: activeTrial.opportunityId,
+        p_reason: text.slice(0, 300),
+        p_source: "whatsapp_lead",
+      },
+    );
+    if (aberturaErro) {
+      console.error("[sdr] falha ao abrir remarcação", {
+        opportunityId: activeTrial.opportunityId,
+        error: aberturaErro.message,
+      });
+    } else if (aberto?.ok && !aberto?.already) {
+      dispatchMeta = {
+        action: "reschedule_requested",
+        opportunity_id: activeTrial.opportunityId,
+      };
+      // A professora precisa saber HOJE que a aula dela não vai acontecer —
+      // é o que evita ela entrar na sala e esperar. Falha no aviso não desfaz
+      // o registro, como no resto do projeto.
+      try {
+        await avisarRemarcacaoPedida(sb, tenantId, instance, aberto);
+      } catch (erro) {
+        console.error("[sdr] aviso de remarcação falhou", {
+          opportunityId: activeTrial.opportunityId,
+          error: (erro as Error).message,
+        });
+      }
     }
   }
   if (

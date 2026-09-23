@@ -47,8 +47,18 @@ Deno.test("payment reminder scope is exact and test accounts are suppressed", ()
   assert(source.includes("resolvePaymentRecipient(student)"));
   assert(source.includes('notificationKind: "PAYMENT_DUE_REMINDER"'));
   assert(source.includes("notificationKind: kind"));
-  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 2);
+  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 3);
   assert(source.includes("ACTIVE_STUDENT_WINDOW_DAYS = 30"));
+});
+
+Deno.test("second overdue wave is service-triggered, provider-confirmed and idempotent", () => {
+  assert(source.includes('input.mode === "SECOND_WAVE"'));
+  assert(source.includes("input.campaign_date === todayISO"));
+  assert(source.includes('"payment.read"'));
+  assert(source.includes('provider.status !== "OVERDUE"'));
+  assert(source.includes("PAYMENT_OVERDUE_WAVE2_"));
+  assert(source.includes("SECOND_WAVE_MIN_INTERVAL_MS"));
+  assert(source.includes("recent_collection_message"));
 });
 
 Deno.test("legacy markers are repaired only after durable SENT", () => {

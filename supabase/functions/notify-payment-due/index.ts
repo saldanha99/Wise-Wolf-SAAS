@@ -19,6 +19,8 @@ import {
   type TenantCentralWhatsAppContext,
 } from "../_shared/tenant-communication.ts";
 import {
+  resolveAsaasIntegration,
+  type ResolvedAsaasIntegration,
   type ResolvedEvolutionIntegration,
   resolveEvolutionIntegration,
 } from "../_shared/tenant-integration-broker.ts";
@@ -41,6 +43,7 @@ const corsHeaders = {
 };
 const DAYS_AHEAD = 3; // avisa 3 dias antes
 const ACTIVE_STUDENT_WINDOW_DAYS = 30;
+const SECOND_WAVE_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // Régua de vencidas: dias APÓS o vencimento em que o aluno é lembrado de novo.
 //
@@ -71,6 +74,21 @@ serve(async (req) => {
     const limit = new Date(today.getTime() + DAYS_AHEAD * 86400_000);
     const todayISO = today.toISOString().split("T")[0];
     const limitISO = limit.toISOString().split("T")[0];
+
+    const body = await req.json().catch(() => ({}));
+    if (isSecondWaveRequest(body, todayISO)) {
+      const result = await segundaOnda(supabase, todayISO);
+      return new Response(JSON.stringify(result), {
+        status: result.failures > 0 ? 207 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (body && typeof body === "object" && Object.keys(body).length > 0) {
+      return new Response(JSON.stringify({ error: "invalid_request" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Cobranças pendentes que vencem nos próximos DAYS_AHEAD dias e ainda não foram avisadas
     const { data: charges, error } = await supabase
@@ -184,6 +202,217 @@ serve(async (req) => {
     });
   }
 });
+
+function isSecondWaveRequest(
+  body: unknown,
+  todayISO: string,
+): body is { mode: "SECOND_WAVE"; campaign_date: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const input = body as Record<string, unknown>;
+  return Object.keys(input).length === 2 && input.mode === "SECOND_WAVE" &&
+    input.campaign_date === todayISO;
+}
+
+type SecondWavePayment = {
+  id: string;
+  student_id: string;
+  tenant_id: string;
+  asaas_payment_id: string | null;
+  value: number;
+  due_date: string;
+  invoice_url: string | null;
+};
+
+type ProviderPayment = {
+  id: string;
+  status: string;
+  dueDate: string;
+  value: number;
+  invoiceUrl: string | null;
+};
+
+async function segundaOnda(supabase: any, campaignDate: string) {
+  const result = {
+    campaign_date: campaignDate,
+    considered: 0,
+    sent: 0,
+    skipped: 0,
+    failures: 0,
+    reasons: [] as string[],
+  };
+  const { data, error } = await supabase.from("student_payments")
+    .select(
+      "id,student_id,tenant_id,asaas_payment_id,value,due_date,invoice_url",
+    )
+    .in("status", ["OVERDUE", "PENDING", "DUNNING_REQUESTED"])
+    .lt("due_date", campaignDate)
+    .order("due_date", { ascending: false })
+    .limit(200);
+  if (error) throw new Error("second_wave_candidates_unavailable");
+
+  const instanceCache: Record<string, TenantCentralWhatsAppContext | null> = {};
+  const evolutionCache: Record<string, ResolvedEvolutionIntegration> = {};
+  const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
+  const notificationKind = `PAYMENT_OVERDUE_WAVE2_${
+    campaignDate.replaceAll("-", "")
+  }`;
+
+  for (const raw of data || []) {
+    const payment = raw as SecondWavePayment;
+    result.considered++;
+    try {
+      if (!payment.asaas_payment_id) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: asaas_payment_id_missing`);
+        continue;
+      }
+      if (
+        !(await aindaEstuda(supabase, payment.tenant_id, payment.student_id))
+      ) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: student_not_current`);
+        continue;
+      }
+      const provider = await readProviderPayment(
+        supabase,
+        payment,
+        asaasCache,
+      );
+      if (
+        provider.status !== "OVERDUE" || provider.dueDate >= campaignDate
+      ) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: provider_not_overdue`);
+        continue;
+      }
+      if (await sentWithinSecondWaveInterval(supabase, payment.id)) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: recent_collection_message`);
+        continue;
+      }
+      const recipient = await resolveRecipient(
+        supabase,
+        payment,
+        instanceCache,
+      );
+      if (!recipient.ok) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: ${recipient.motivo}`);
+        continue;
+      }
+      const integration = await resolveTenantEvolutionIntegration(
+        supabase,
+        payment.tenant_id,
+        evolutionCache,
+      );
+      let text = `Oi ${recipient.nome}, aqui é a ${recipient.brandName}.\n\n` +
+        `Este é um segundo lembrete: a mensalidade de *${
+          brl(provider.value)
+        }*, ` +
+        `vencida em *${
+          dataBR(provider.dueDate)
+        }*, continua *em aberto* no Asaas. ` +
+        `Pedimos que regularize o pagamento assim que possível.`;
+      const invoiceUrl = provider.invoiceUrl || payment.invoice_url;
+      if (invoiceUrl) text += `\n\nLink para pagamento: ${invoiceUrl}`;
+      text +=
+        `\n\nSe já pagou, envie o comprovante para conferirmos a baixa. Se precisar negociar ou tiver alguma dúvida, responda esta mensagem.`;
+
+      const delivery = await deliverPaymentNotification(supabase, {
+        tenantId: payment.tenant_id,
+        studentId: payment.student_id,
+        paymentId: payment.id,
+        notificationKind,
+        integration,
+        instance: recipient.instance,
+        phone: recipient.phone,
+        text,
+      });
+      if (delivery.status === "SENT") {
+        if (delivery.sentNow) result.sent++;
+        else result.skipped++;
+      } else if (delivery.status === "SKIPPED") {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: ${delivery.reason}`);
+      } else {
+        result.failures++;
+        result.reasons.push(`${payment.id}: ${delivery.reason}`);
+      }
+    } catch (error) {
+      result.failures++;
+      result.reasons.push(
+        `${payment.id}: ${
+          error instanceof Error ? error.message : "second_wave_failed"
+        }`,
+      );
+    }
+  }
+  result.reasons = result.reasons.slice(0, 30);
+  return result;
+}
+
+async function sentWithinSecondWaveInterval(supabase: any, paymentId: string) {
+  const cutoff = new Date(Date.now() - SECOND_WAVE_MIN_INTERVAL_MS)
+    .toISOString();
+  const { count, error } = await supabase.from(
+    "asaas_outbound_message_attempts",
+  )
+    .select("id", { count: "exact", head: true })
+    .eq("provider_entity_id", paymentId)
+    .eq("status", "SENT")
+    .gte("updated_at", cutoff);
+  if (error) throw new Error("recent_collection_lookup_failed");
+  return (count ?? 0) > 0;
+}
+
+async function readProviderPayment(
+  supabase: any,
+  payment: SecondWavePayment,
+  cache: Record<string, ResolvedAsaasIntegration>,
+): Promise<ProviderPayment> {
+  if (!cache[payment.tenant_id]) {
+    cache[payment.tenant_id] = await resolveAsaasIntegration(
+      supabase,
+      payment.tenant_id,
+      "payment.read",
+    );
+  }
+  const integration = cache[payment.tenant_id];
+  const response = await fetch(
+    `${integration.baseUrl}/payments/${
+      encodeURIComponent(payment.asaas_payment_id || "")
+    }`,
+    { headers: { access_token: integration.apiKey } },
+  );
+  if (!response.ok) throw new Error("provider_payment_read_failed");
+  const raw = await response.json().catch(() => null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("provider_payment_invalid");
+  }
+  const provider = raw as Record<string, unknown>;
+  const id = typeof provider.id === "string" ? provider.id : "";
+  const status = typeof provider.status === "string"
+    ? provider.status.toUpperCase()
+    : "";
+  const dueDate = typeof provider.dueDate === "string" ? provider.dueDate : "";
+  const value = Number(provider.value);
+  if (
+    id !== payment.asaas_payment_id ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+    !Number.isFinite(value) || value <= 0
+  ) {
+    throw new Error("provider_payment_invalid");
+  }
+  return {
+    id,
+    status,
+    dueDate,
+    value,
+    invoiceUrl: typeof provider.invoiceUrl === "string"
+      ? provider.invoiceUrl
+      : null,
+  };
+}
 
 async function markDueReminder(
   supabase: any,
