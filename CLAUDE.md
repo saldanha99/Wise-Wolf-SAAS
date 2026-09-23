@@ -762,31 +762,56 @@ aplicada com **outro checksum** é recusada na hora.
 
 ---
 
-## ⚠️ Janela de tempo em regra de acesso: `NULL >= data` não é falso, é NULL ✅
+## ⚠️ Reposição parada NÃO abre o aluno — e por que eu quase "consertei" isso ✅
 
-> Migration `20260923050000_open_reschedule_keeps_student_access.sql`.
+> Migration `20260923130000_revert_open_reschedule_access.sql`. Leia antes de mexer em
+> `_teacher_can_access_student`.
 
-`_teacher_can_access_student` ganhou em 22/09/2026 uma janela de 7 dias para que
-"registro histórico não dê acesso para sempre". Para **booking** o autor tolerou data
-nula (`booking.date is null or booking.date >= hoje - 7`); para **reposição**, não — o
-`case` devolve `null` quando a data não casa o formato, e **`null >= data` é NULL, não
-falso**, então a linha nunca entra.
+`_teacher_can_access_student` só deixa o professor enxergar o aluno por reposição quando
+ela tem **data utilizável dentro da janela de 7 dias** (`20260922040028`, intenção
+declarada: *"historical coverage and reschedule records must not grant access forever"*).
+Reposição parada em `'Pendente'` **não abre nada**, e isso está certo.
 
-- ⚠️ **Reposição sem data é o estado NORMAL aqui** (medido em 23/09: 196 abertas
-  atribuídas a professor, **4 com data, 1 na janela**) — e não é registro histórico: é
-  aula que o professor DEVE ao aluno, com `used_at is null`. O ramo virou letra morta e
-  **três professores perderam alunos de vista**: Beatrís enxergava **zero**.
-- **Regra que ficou:** reposição aberta sem data utilizável continua abrindo o aluno; a
-  janela vale para a que TEM data passada. Medido por pessoa antes/depois — Flávio 6→9,
-  Beatrís 0→2, Mateus 11→13, os outros 5 inalterados, **0 perdas**.
-- ⚠️ **Mesma família, ainda aberta:** o `return query` de `trial_closing_teacher_asks`
-  filtra `opportunity.trial_status not in (...)` **sem `coalesce`**, enquanto o `insert`
-  da mesma função usa `coalesce(...,'')`. Hoje não atinge ninguém (nenhuma experimental
-  real tem o campo nulo), mas um nulo faria a pergunta pós-experimental sumir calada.
-- **Ao pôr janela de tempo em regra de autorização**, decida explicitamente o que
-  acontece com a data ausente, e **meça por pessoa real antes e depois** — o teste
-  `substituto_enxerga_o_aluno_que_cobre.sql` existe exatamente para isso e foi ele que
-  pegou esta.
+**O erro que eu cometi em 23/09/2026 e a direção pegou:** vi que 195 das 196 reposições
+abertas não abriam mais o aluno e que a Beatrís enxergava **zero**, tratei como regressão
+e afrouxei a regra. O que ela abria eram **fantasmas** — 26 pares, todos de aluno que hoje
+é de OUTRO professor: Beatrís via Paulo Eduardo (titular Mateus) e Ana Clara (titular
+Flávio) por reposições de 09/06, 106 dias paradas; Flávio via Anderson (titular Lais) por
+8 reposições de junho/julho; Mateus via Bruno Luis, **inativo**, por reposição de março.
+A Beatrís enxergar zero estava certo: **ela não tem aluno**.
+
+- ⚠️ **Contagem de acesso não é sinal de defeito.** Medi a saída da regra (quantos alunos
+  cada professor vê, antes e depois) e nunca conferi a **verdade do terreno**: aquele
+  professor dá aula para aquele aluno HOJE? A tabela que decide isso é `bookings`
+  SCHEDULED, `profiles.professor_id/2` e cobertura confirmada — não `reschedules`.
+- **Antes de mexer em regra de acesso, liste caso a caso**: professor, aluno, titular
+  atual do aluno, idade do registro que está concedendo o acesso. Se o titular é outro e
+  o registro tem 100 dias, o acesso é que estava errado.
+- **O caso legítimo continua coberto:** substituto que VAI dar a aula tem reposição **com
+  data**, e cobertura confirmada tem ramo próprio. `substituto_enxerga_o_aluno_que_cobre.sql`
+  afirma os três lados — reposição marcada abre, reposição em `'Pendente'` não abre,
+  reposição de 30 dias atrás não abre.
+- **O passivo por trás disso é real e é outro problema:** 196 reposições abertas
+  atribuídas a professor, 4 com data. Isso é higiene de dado (ver *Reposição parada é
+  passivo*), não regra de acesso.
+
+## ⚠️ `NULL not in (...)` é NULL, não verdadeiro ✅
+
+> Migration `20260923060000_null_trial_status_keeps_post_trial_question.sql`.
+
+O retorno de `trial_closing_teacher_asks` filtrava `opportunity.trial_status not in (...)`
+**sem `coalesce`**, enquanto o `insert` da MESMA função usava `coalesce(trial_status,'')`.
+Com o campo nulo a oportunidade entrava na fila e **nunca aparecia no retorno**: a
+professora não era perguntada e o fechamento da experimental não começava, sem erro nenhum.
+
+Não atingia ninguém (90 dias: 34 DONE, 15 SCHEDULED, 3+2 no-show, **zero nulos**), então o
+conserto é no-op sobre os dados de hoje. Provado com fixture: nulo vai de 0 para 1, e
+`NO_SHOW_TEACHER`/`CANCELLED` continuam em 0. Guardado por
+`pos_experimental_com_trial_status_nulo.sql`, que reprova contra a função antiga.
+
+⚠️ **Ao filtrar por `not in` / `<>` / `>=` numa coluna que aceita nulo, decida o nulo
+explicitamente.** Mas decidir não é sempre "deixar passar" — na reposição acima, o nulo
+**tem** de barrar. Qual dos dois é o certo se decide olhando o dado, não a simetria.
 
 ---
 

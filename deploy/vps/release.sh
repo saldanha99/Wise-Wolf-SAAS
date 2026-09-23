@@ -1389,6 +1389,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923030000_storage_write_guards_use_my_role.sql"
   "supabase/migrations/20260923050000_open_reschedule_keeps_student_access.sql"
   "supabase/migrations/20260923060000_null_trial_status_keeps_post_trial_question.sql"
+  "supabase/migrations/20260923130000_revert_open_reschedule_access.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

@@ -66,9 +66,13 @@ select t, 'substituto-ve-school', (select dow from cd), '19:00', null
 insert into public.bookings (tenant_id, teacher_id, student_id, day_of_week, time_slot, date, start_date, status) values
   ('substituto-ve-school', '00000000-0000-4000-8000-00000000ce11', '00000000-0000-4000-8000-00000000ce21', (select dia_nome from cd), '19:00', null, '2026-01-05', 'SCHEDULED');
 
--- Reposição de um aluno de OUTRO professor, atribuída ao Livre B.
+-- Reposição de um aluno de OUTRO professor, atribuída ao Livre B, JÁ MARCADA.
+-- A data importa: desde 20260922040028 só reposição com data dentro da janela
+-- de 7 dias abre o aluno. Reposição parada em "Pendente" há meses é registro
+-- histórico e NÃO pode abrir — ver a asserção do fantasma mais abaixo.
 insert into public.reschedules (tenant_id, teacher_id, student_id, date, time, fault_type)
-values ('substituto-ve-school', '00000000-0000-4000-8000-00000000ce13', '00000000-0000-4000-8000-00000000ce22', 'Pendente', 'Pendente', 'TEACHER');
+values ('substituto-ve-school', '00000000-0000-4000-8000-00000000ce13', '00000000-0000-4000-8000-00000000ce22',
+        to_char(current_date, 'YYYY-MM-DD'), '19:00', 'TEACHER');
 
 -- Antes da cobertura: nenhum dos dois livres enxerga o Aluno Coberto.
 create or replace function pg_temp.ve(p_teacher uuid, p_student uuid) returns boolean
@@ -91,6 +95,25 @@ select pg_temp.assert_true(
   pg_temp.ve('00000000-0000-4000-8000-00000000ce13', '00000000-0000-4000-8000-00000000ce22')
   and not pg_temp.ve('00000000-0000-4000-8000-00000000ce12', '00000000-0000-4000-8000-00000000ce22'),
   'reposição atribuída não abriu o aluno para o professor dela (ou abriu para outro)'
+);
+
+-- Reposição FANTASMA: a mesma linha, parada sem data. Medido em 23/09/2026, era
+-- assim que Beatrís (sem aluno nenhum) enxergava dois alunos de outros
+-- professores por reposições de 09/06 — e o Flávio via o Anderson, que hoje é
+-- da Lais. Registro velho não dá acesso.
+update public.reschedules set date = 'Pendente', time = 'Pendente'
+ where tenant_id = 'substituto-ve-school'
+   and teacher_id = '00000000-0000-4000-8000-00000000ce13';
+select pg_temp.assert_true(
+  not pg_temp.ve('00000000-0000-4000-8000-00000000ce13', '00000000-0000-4000-8000-00000000ce22'),
+  'reposição parada sem data abriu o aluno — é registro histórico, não pode'
+);
+update public.reschedules set date = to_char(current_date - 30, 'YYYY-MM-DD'), time = '19:00'
+ where tenant_id = 'substituto-ve-school'
+   and teacher_id = '00000000-0000-4000-8000-00000000ce13';
+select pg_temp.assert_true(
+  not pg_temp.ve('00000000-0000-4000-8000-00000000ce13', '00000000-0000-4000-8000-00000000ce22'),
+  'reposição de 30 dias atrás abriu o aluno — está fora da janela de 7 dias'
 );
 
 grant select on cd to service_role;
