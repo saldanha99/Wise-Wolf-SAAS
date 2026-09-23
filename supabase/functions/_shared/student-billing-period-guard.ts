@@ -208,3 +208,28 @@ export async function finishOutboundMessage(
     throw new Error("outbound_message_finish_failed");
   }
 }
+
+export async function deferOutboundMessageClaim(
+  admin: PaymentAdminClient,
+  claim: OutboundMessageClaim,
+  input: { retryAfterSeconds: number; reason: string },
+): Promise<void> {
+  if (!claim.attempt_id || !claim.claim_token) {
+    throw new Error("outbound_message_claim_token_missing");
+  }
+  const { data, error } = await admin.rpc(
+    "defer_asaas_outbound_message_claim",
+    {
+      p_attempt_id: claim.attempt_id,
+      p_claim_token: claim.claim_token,
+      p_retry_after_seconds: Math.max(
+        60,
+        Math.min(Math.ceil(input.retryAfterSeconds), 86400),
+      ),
+      p_reason: input.reason.slice(0, 200),
+    },
+  );
+  if (error || data?.ok !== true) {
+    throw new Error("outbound_message_defer_failed");
+  }
+}

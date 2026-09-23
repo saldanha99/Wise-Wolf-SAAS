@@ -249,6 +249,19 @@ serve(async (req) => {
         status: 403,
       });
     }
+    // Este cron só inicia contatos (pós-aula e lembretes de matrícula).
+    // Respostas a mensagens recebidas continuam no whatsapp-inbound, sem espera.
+    const hourBRT = Number(new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date()));
+    if (hourBRT < 9 || hourBRT >= 20) {
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "outside_business_hours" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
     const sb = createClient(url, serviceKey);
 
     const result = {

@@ -142,27 +142,6 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
         }
     };
 
-    const handleStatusToggle = async () => {
-        const isInactive = currentStatus === 'Inativo' || currentStatus === 'suspended';
-        const targetStatus = isInactive ? 'Ativo' : 'Inativo';
-        if (!window.confirm(isInactive ? `Reativar o aluno ${student.name}?` : `Pausar temporariamente o aluno ${student.name}?`)) return;
-        setSavingAcademic(true);
-        try {
-            const { error } = await supabase.rpc('set_student_academic_status', {
-                p_student_id: student.id,
-                p_status: targetStatus,
-                p_reason: isInactive ? 'Reativado na Gestão Pedagógica' : 'Pausado na Gestão Pedagógica',
-            });
-            if (error) throw error;
-            setCurrentStatus(targetStatus);
-            alert(`Status do aluno alterado para ${targetStatus}.`);
-        } catch (err: any) {
-            alert('Erro ao alterar status: ' + (err.message || 'Falha de permissão'));
-        } finally {
-            setSavingAcademic(false);
-        }
-    };
-
     const handleAssign = async (materialId: string) => {
         try {
             const assignerId = (await supabase.auth.getUser()).data.user?.id;
@@ -260,15 +239,12 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                     <option value="C2">C2</option>
                                 </select>
                             </div>
-                            <button
-                                type="button"
-                                disabled={savingAcademic}
-                                onClick={handleStatusToggle}
+                            <span
                                 className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg border transition-colors ${currentStatus === 'Ativo' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300'}`}
-                                title="Clique para alternar o status do aluno"
+                                title="Status definido pela gestão"
                             >
                                 {currentStatus === 'Ativo' ? '✓ Ativo' : '⏸ Pausado'}
-                            </button>
+                            </span>
                         </div>
                     </div>
                     <button type="button" aria-label="Fechar gestão pedagógica" onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors shrink-0">

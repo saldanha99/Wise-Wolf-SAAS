@@ -5,6 +5,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   applyCommercialReplyPolicy,
+  applyPostTrialAnswerPolicy,
   type CommercialPolicy,
 } from "./commercial-response-policy.ts";
 import { formatPriceList } from "./lead-pricing.ts";
@@ -55,6 +56,18 @@ Deno.test("sem pergunta de preço, a resposta do modelo passa intacta", () => {
   });
   assertEquals(reply, original);
   assertEquals(policy, null);
+});
+
+Deno.test("Raoni: preço de 30 minutos não responde pedido de 1 hora", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...base,
+    currentMessage: "Qual valor para 1H 3X na semana sem fidelidade?",
+    modelReply: "Para aulas de 1 hora, 3 vezes por semana, o valor é R$290/mês.",
+    consultativeLead: { goal: "kids", level: "beginner" },
+  });
+  assertEquals(policy, "custom_duration_quote_required");
+  assert(!reply.includes("R$290"), reply);
+  assert(reply.includes("coordenação"), reply);
 });
 
 Deno.test("sem política configurada, não inventa valor", () => {
@@ -218,4 +231,74 @@ Deno.test("modelo escreveu a tabela inteira com números certos: não anexa outr
   });
   assertEquals(policy, "frequency_price_answer_model");
   assert(!reply.includes("🔹"), reply);
+});
+
+// ── Pós-experimental: pergunta respondida antes de empurrar preço ───────────
+
+const feedbackMarcelo = {
+  recommendedLevel: "B1",
+  recommendedPlan: "intensivo",
+  interestScore: 4,
+  notes: "Registrado pela professora no WhatsApp.",
+};
+
+Deno.test("nível da experimental vem do feedback estruturado, não da tabela", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual nível fui encaixado?",
+    modelReply: "Segue novamente a tabela completa de preços.",
+    feedback: feedbackMarcelo,
+  });
+  assertEquals(result.policy, "post_trial_feedback_answer");
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(result.reply.includes("plano *intensivo*"), result.reply);
+  assert(!result.reply.includes("tabela"), result.reply);
+});
+
+Deno.test("cobrança recupera pergunta de nível que recebeu resposta errada", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [
+      { role: "user", content: "Qual nível fui encaixado?" },
+      { role: "assistant", content: "Segue a tabela dos planos." },
+    ],
+    currentMessage: "Conseguiu esta informação?",
+    modelReply: "Qual informação?",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.startsWith("Você foi classificado no nível *B1*"));
+});
+
+Deno.test("feedback genérico não inventa elogio da professora", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual foi o feedback da teacher?",
+    modelReply: "Ela adorou e disse que você tem muito potencial.",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(!result.reply.includes("adorou"), result.reply);
+  assert(!result.reply.includes("Registrado pela professora"), result.reply);
+});
+
+Deno.test("pergunta de nível e preço preserva as duas respostas", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual meu nível e quanto fica 5x por semana?",
+    modelReply: "5x fica R$377/mês em 6 meses ou R$339/mês em 12 meses.",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(result.reply.includes("R$377"), result.reply);
+});
+
+Deno.test("mensagem sem pergunta de feedback passa intacta", () => {
+  const original = "Que bom! Quantas vezes por semana você quer fazer?";
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Gostei muito da aula.",
+    modelReply: original,
+    feedback: feedbackMarcelo,
+  });
+  assertEquals(result.reply, original);
+  assertEquals(result.policy, null);
 });

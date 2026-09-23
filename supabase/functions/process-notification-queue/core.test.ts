@@ -43,6 +43,10 @@ Deno.test("aceite familiar usa exclusivamente a central e audiência aluno", () 
     audience: "student",
     centralOnly: true,
   });
+  assertEquals(queueAudience("TEACHER_CHANGE_GROUP"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
 });
 
 Deno.test("notificações do funil experimental usam a rota e classificação corretas", () => {

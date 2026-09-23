@@ -20,14 +20,21 @@ Deno.test("payment reminders fence every irreversible send in durable order", ()
   );
   const claim = helper.indexOf("claimOutboundMessage(");
   const mark = helper.indexOf("markOutboundMessageSubmittingDecision(");
-  const send = helper.indexOf("sendWhatsTextDetailed(");
+  const permit = helper.indexOf("requestOutboundPermit(");
+  const send = helper.indexOf("sendWhatsTextToResolvedDestinationDetailed(");
   const finish = helper.indexOf("finishOutboundMessage(");
 
   assert(helperStart >= 0, "durable delivery helper is required");
   assert(claim >= 0 && claim < mark, "claim must precede mark");
+  assert(claim < permit, "durable claim must precede throttle reservation");
+  assert(permit < mark, "throttle reservation must precede SUBMITTING");
   assert(mark < send, "SUBMITTING must be durable before provider POST");
   assert(send < finish, "provider outcome must be durably finished");
-  assertEquals((helper.match(/sendWhatsTextDetailed\(/g) || []).length, 1);
+  assertEquals(
+    (helper.match(/sendWhatsTextToResolvedDestinationDetailed\(/g) || [])
+      .length,
+    1,
+  );
 });
 
 Deno.test("payment reminder scope is exact and test accounts are suppressed", () => {
@@ -40,6 +47,8 @@ Deno.test("payment reminder scope is exact and test accounts are suppressed", ()
   assert(source.includes("resolvePaymentRecipient(student)"));
   assert(source.includes('notificationKind: "PAYMENT_DUE_REMINDER"'));
   assert(source.includes("notificationKind: kind"));
+  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 2);
+  assert(source.includes("ACTIVE_STUDENT_WINDOW_DAYS = 30"));
 });
 
 Deno.test("legacy markers are repaired only after durable SENT", () => {

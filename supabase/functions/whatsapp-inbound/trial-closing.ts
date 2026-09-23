@@ -257,11 +257,11 @@ export function studentSlotsUnavailableMessage(
   freeSlots: RenewalSlot[],
 ): string {
   if (freeSlots.length === 0) {
-    return `Esses horários não estão livres com a professora. Me manda outras opções de dia e horário que eu confiro na hora. 😊`;
+    return `Não consegui confirmar esses horários automaticamente no calendário da professora. Posso pedir uma confirmação direta à coordenação ou você pode me mandar outras opções de dia e horário. 😊`;
   }
-  return `Esses horários já estão ocupados com a professora. Estes estão livres:\n\n${
+  return `Não consegui confirmar automaticamente os horários pedidos. Estes aparecem livres no calendário da professora:\n\n${
     freeSlots.map((slot) => `• ${slot.day} às ${slot.time}`).join("\n")
-  }\n\nQuais deles ficam bons para você?`;
+  }\n\nQuais deles ficam bons para você? Se preferir manter o pedido original, eu encaminho para confirmação direta.`;
 }
 
 export function studentNoShowMessage(input: {
@@ -323,9 +323,15 @@ export function studentDenialAck(): string {
 export function studentPostTrialOpener(input: {
   leadName: string | null;
   teacherName: string | null;
+  classLogged?: boolean;
 }): string {
   const lead = firstName(input.leadName);
   const teacher = firstName(input.teacherName);
+  if (!input.classLogged) {
+    return `Oi${lead ? ", " + lead : ""}! A experimental com ${
+      teacher ? "a teacher " + teacher : "a professora"
+    } estava prevista para hoje. Vocês conseguiram fazer a aula? Se sim, me conta como foi; se não, eu ajudo a reagendar. 😊`;
+  }
   return `Oi${lead ? ", " + lead : ""}! Como foi a aula experimental${
     teacher ? " com a teacher " + teacher : ""
   }? 😊\n\nMe conta o que você achou — da aula e da professora.`;

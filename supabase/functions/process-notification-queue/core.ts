@@ -238,6 +238,7 @@ export function queueAudience(kind: unknown): {
     return { audience: "student", centralOnly: true };
   }
   if (
+    normalized === "TEACHER_CHANGE_GROUP" ||
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||
     normalized === "TEACHER_AGENDA" ||

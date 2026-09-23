@@ -19,6 +19,17 @@ export const CLASS_DURATION_MINUTES = 30;
 export const MINIMUM_PLAN_PRICE_BRL = 169;
 
 type HistoryMessage = { role: string; content: string };
+export interface TrialFeedbackFacts {
+  recommendedLevel?: string | null;
+  recommendedPlan?: string | null;
+  interestScore?: number | null;
+  notes?: string | null;
+}
+
+export interface PostTrialAnswerPolicyResult {
+  reply: string;
+  policy: "post_trial_feedback_answer" | null;
+}
 export interface CommercialPolicy {
   classDurationMinutes: number;
   minimumPlanPriceBrl: number;
@@ -56,6 +67,10 @@ const hasWrongDuration = (reply: string, expectedMinutes: number): boolean => {
     .some((match) => Number(match[1]) !== expectedMinutes);
 };
 
+const asksLongerClass = (text: string): boolean =>
+  /\b(?:1\s*h(?:ora)?|uma\s+hora|60\s*(?:min|minutos?)|duas\s+aulas\s+(?:seguidas|consecutivas))\b/i
+    .test(text || "");
+
 export const isPriceRequest = (text: string): boolean =>
   PRICE_REQUEST.test(text || "");
 
@@ -67,6 +82,104 @@ export const countPriceRequests = (
     message.role === "user" && isPriceRequest(message.content)
   ).length +
   (isPriceRequest(currentMessage) ? 1 : 0);
+
+const foldQuestion = (text: string): string =>
+  String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const asksAssessedLevel = (text: string): boolean => {
+  const source = foldQuestion(text);
+  return /\b(?:qual|que)\s+(?:(?:o|meu|seu)\s+)?nivel\b/.test(source) ||
+    /\bnivel\b[^.!?\n]{0,50}\b(?:encaix|avali|classific|resultado|fiquei|estou)\w*/
+      .test(source) ||
+    /\b(?:encaix|avali|classific)\w*[^.!?\n]{0,50}\bnivel\b/.test(source);
+};
+
+const asksTeacherFeedback = (text: string): boolean => {
+  const source = foldQuestion(text);
+  return /\b(?:feedback|retorno|avaliacao|resultado)\b/.test(source) &&
+    /\b(?:aula|experimental|teacher|professor|professora|teve|qual|meu|minha)\b/
+      .test(source);
+};
+
+const isInformationNudge = (text: string): boolean =>
+  /\b(?:conseguiu|teve|tem|achou|viu|retorno|informacao|resposta)\b/.test(
+    foldQuestion(text),
+  );
+
+function pendingFeedbackQuestion(
+  history: HistoryMessage[],
+  currentMessage: string,
+): "level" | "feedback" | null {
+  if (asksAssessedLevel(currentMessage)) return "level";
+  if (asksTeacherFeedback(currentMessage)) return "feedback";
+  if (!isInformationNudge(currentMessage)) return null;
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message.role !== "user") continue;
+    if (asksAssessedLevel(message.content)) return "level";
+    if (asksTeacherFeedback(message.content)) return "feedback";
+    // A cobrança só recupera a pergunta imediatamente pendente. Não se
+    // ressuscita uma dúvida antiga depois que o lead mudou de assunto.
+    if (!isInformationNudge(message.content)) return null;
+  }
+  return null;
+}
+
+function usefulFeedbackNote(raw: string | null | undefined): string {
+  const note = String(raw || "").trim();
+  if (!note || /registrad[oa].*whatsapp/i.test(note)) return "";
+  return note.slice(0, 280);
+}
+
+/**
+ * Direct post-trial questions are answered from trial_feedback, never from the
+ * model's imagination. It also recovers "Conseguiu esta informação?" when
+ * the immediately previous level/feedback question received an unrelated
+ * answer. If the same message asks about price or contract, the validated
+ * commercial reply is kept after the factual assessment.
+ */
+export function applyPostTrialAnswerPolicy(input: {
+  history: HistoryMessage[];
+  currentMessage: string;
+  modelReply: string;
+  feedback: TrialFeedbackFacts | null;
+}): PostTrialAnswerPolicyResult {
+  const intent = pendingFeedbackQuestion(input.history, input.currentMessage);
+  if (!intent) return { reply: input.modelReply, policy: null };
+
+  const level = String(input.feedback?.recommendedLevel || "").trim()
+    .toUpperCase();
+  const plan = String(input.feedback?.recommendedPlan || "").trim();
+  if (!level) {
+    return {
+      reply:
+        "Ainda não recebi o nível registrado pela professora. Vou confirmar com a coordenação e te retorno com essa informação, sem chutar.",
+      policy: "post_trial_feedback_answer",
+    };
+  }
+
+  const planText = plan === "intensivo"
+    ? " A recomendação da experimental foi um plano *intensivo*."
+    : plan
+    ? ` A recomendação registrada foi *${plan.replace(/_/g, " ")}*.`
+    : "";
+  const note = usefulFeedbackNote(input.feedback?.notes);
+  const fact = intent === "level"
+    ? `Você foi classificado no nível *${level}*.${planText}`
+    : `O retorno registrado pela professora foi: nível *${level}*.${planText}${
+      note ? ` Observação: ${note}` : ""
+    }`;
+
+  const asksAnotherCommercialQuestion = isPriceRequest(input.currentMessage) ||
+    /\b(?:cancelamento|cancelar|multa|fidelidade|horario|dias?|quantas?\s+vezes|professor\s+fixo|duracao|minutos?)\b/i
+      .test(foldQuestion(input.currentMessage));
+  const reply = asksAnotherCommercialQuestion && input.modelReply.trim()
+    ? `${fact}\n\n${input.modelReply.trim()}`
+    : fact;
+  return { reply, policy: "post_trial_feedback_answer" };
+}
 
 export function resolveAtendenteTraining(config: unknown): string {
   if (!config || typeof config !== "object") return "";
@@ -228,6 +341,15 @@ function applyConsultativePolicy(
   const allowed = allowedPrices(catalog, minimum);
   const message = opts.currentMessage || "";
   const modelReply = String(opts.modelReply || "");
+
+  // O catálogo precifica encontros de 30 minutos. Um pedido de 1 hora não
+  // pode receber o preço de "3x" como se a duração também estivesse coberta.
+  if (flags.asksPrice && asksLongerClass(message)) {
+    return {
+      reply: "A tabela que tenho é para aulas de 30 minutos. Para 1 hora, preciso confirmar o formato e o valor correto com a coordenação; não quero te passar o preço de 30 minutos como se fosse de 1 hora.",
+      policy: "custom_duration_quote_required",
+    };
+  }
 
   const frequency = detectFrequencyRequest(message);
   const wantsList = asksFullPriceList(message);

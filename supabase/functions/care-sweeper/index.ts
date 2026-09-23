@@ -13,7 +13,7 @@
 // 20260917180000) — aqui só se manda e registra. A conversa que vem depois é do
 // `whatsapp-inbound` (agente `care`).
 //
-// Regras de silêncio: aluno entre 8h e 21h; professor em horário comercial;
+// Regras de silêncio: contatos proativos a aluno e professor em horário comercial;
 // nada em domingo; semanal só sexta à tarde. A marca (`care_touchpoints`) é
 // gravada ANTES do envio e apagada se o envio falha — como em `automation_sent`.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -88,7 +88,7 @@ serve(async (req) => {
     const now = nowBRT();
     const hour = now.getUTCHours();
     const dow = now.getUTCDay();
-    const studentHours = dow !== 0 && hour >= 8 && hour < 21;
+    const studentHours = dow !== 0 && hour >= 9 && hour < 20;
     const teacherHours = dow !== 0 && hour >= 9 && hour < 20;
     // Sexta entre 15h e 19h: "como foi a semana?" — depois da última aula da
     // maioria, antes do fim de semana.

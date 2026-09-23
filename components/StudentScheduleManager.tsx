@@ -3,6 +3,7 @@ import { Trash2, Plus, Calendar, User as UserIcon, Save, RefreshCw, ArrowRightLe
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
+import DirectTeacherTransferModal from './DirectTeacherTransferModal';
 
 interface StudentScheduleManagerProps {
     studentId: string;
@@ -32,6 +33,8 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [showTransfer, setShowTransfer] = useState(false);
+    const [showDirectTransfer, setShowDirectTransfer] = useState(false);
+    const [currentTeacherId, setCurrentTeacherId] = useState(student?.professor_id || '');
 
     // New Slot State
     const [newSlot, setNewSlot] = useState({
@@ -46,6 +49,10 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     useEffect(() => {
         fetchBookings();
     }, [studentId, tenantId]);
+
+    useEffect(() => {
+        setCurrentTeacherId(student?.professor_id || '');
+    }, [student?.professor_id, studentId]);
 
     const fetchBookings = async () => {
         setLoading(true);
@@ -166,10 +173,19 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                     {student && (
                         <button
                             type="button"
+                            onClick={() => setShowDirectTransfer(true)}
+                            className="text-[10px] font-bold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                        >
+                            <ArrowRightLeft size={12} /> Transferir definitivamente
+                        </button>
+                    )}
+                    {student && (
+                        <button
+                            type="button"
                             onClick={() => setShowTransfer(true)}
                             className="text-[10px] font-bold uppercase tracking-wide text-indigo-500 hover:bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-indigo-500/20"
                         >
-                            <ArrowRightLeft size={12} /> Transferir com aceite
+                            <ArrowRightLeft size={12} /> Transferir com aceite futuro
                         </button>
                     )}
                     <button
@@ -306,8 +322,21 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             {showTransfer && student && (
                 <TeacherTransferGenerator
                     tenantId={tenantId}
-                    student={student}
+                    student={{ ...student, professor_id: currentTeacherId || student.professor_id }}
                     onClose={() => setShowTransfer(false)}
+                />
+            )}
+            {showDirectTransfer && student && (
+                <DirectTeacherTransferModal
+                    student={{ ...student, professor_id: currentTeacherId || student.professor_id }}
+                    teachers={teachers}
+                    currentSchedules={bookings.map(booking => ({ day_of_week: booking.day_of_week, time_slot: booking.time_slot }))}
+                    onClose={() => setShowDirectTransfer(false)}
+                    onTransferred={async teacherId => {
+                        setCurrentTeacherId(teacherId);
+                        await fetchBookings();
+                        onUpdate?.();
+                    }}
                 />
             )}
         </div>

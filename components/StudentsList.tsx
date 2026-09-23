@@ -524,7 +524,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       const placementChanged = requestedModule !== '' && requestedModule !== previousModule;
 
       if (!isDirector) {
-        // Professor responsável: atualiza apenas campos pedagógicos e acadêmicos autorizados
+        // Professor responsável: atualiza somente campos pedagógicos. Status e
+        // ciclo da matrícula pertencem exclusivamente à gestão.
         const { error: updateErr } = await supabase.rpc('update_student_pedagogical_profile', {
           p_student_id: editingStudent.id,
           p_data: {
@@ -534,7 +535,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             private_notes: formData.private_notes,
             fixed_schedule: formData.fixed_schedule,
             is_kids: formData.is_kids,
-            status: formData.status,
             module: requestedModule,
           }
         });
@@ -1143,7 +1143,11 @@ ${parsed.details}` : ''));
               const ov = overviewMap[student.id];
               const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
               const isTeacher = user?.role === UserRole.TEACHER;
-              const isMyStudent = isTeacher && (student.professor_id === user?.id || (student.assignedTeacherIds || []).includes(user?.id));
+              const activeTeacherIds = student.assignedTeacherIds || [];
+              const isMyStudent = isTeacher && !!user?.id && (
+                activeTeacherIds.includes(user.id)
+                || (activeTeacherIds.length === 0 && student.professor_id === user.id)
+              );
               const canEdit = isDirector || isMyStudent;
               const inactive = isInactive(student);
               const lifecycleStatus = String(student.lifecycle_status || '').trim().toLowerCase();
@@ -1328,7 +1332,7 @@ ${parsed.details}` : ''));
                   >
                     <Eye size={14} /> Ver Ficha 360°
                   </button>
-                  {canEdit && !isOffboarded && (
+                  {isDirector && !isOffboarded && (
                     <button
                       className={`${isDirector ? '' : 'col-span-2 '}min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border text-[11px] font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/20'}`}
                       onClick={() => handleToggleStatus(student)}

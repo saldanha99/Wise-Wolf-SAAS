@@ -17,6 +17,7 @@ Deno.test("aguardo e agradecimento não são novo pedido de horário", () => {
       "Fico no aguardo",
       "Ok, fico no aguardo!",
       "Obrigado",
+      "Sim",
       "🆗",
       "Combinado 👍",
     ]

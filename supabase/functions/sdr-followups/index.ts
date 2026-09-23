@@ -264,9 +264,35 @@ serve(async (req) => {
           ].includes(String(o.trial_status || "").toUpperCase())
         );
         if (ongoing) continue;
-        const trial = matchingTrials.find((o: any) =>
+        // O mesmo telefone pode ter uma oportunidade expirada criada depois
+        // da experimental concluida (Clessio, 22/09). Nunca deixe esse registro
+        // mais novo rebaixar a conversa para qualificacao e vender outra aula.
+        const completedTrial = matchingTrials.find((o: any) =>
+          ["DONE", "COMPLETED"].includes(
+            String(o.trial_status || "").toUpperCase(),
+          )
+        );
+        const linkedTrial = matchingTrials.find((o: any) =>
           o.id === lead.opportunity_id
-        ) || matchingTrials[0];
+        );
+        const trial = completedTrial || linkedTrial || matchingTrials[0];
+        // O fluxo dedicado de fechamento ja conversa com quem concluiu a
+        // experimental. O SDR generico nao deve abrir uma segunda cadencia.
+        if (completedTrial) {
+          const closing = await sb.rpc("trial_closing_student_context", {
+            p_tenant: lead.tenant_id,
+            p_phone: phone,
+          });
+          if (closing.error) {
+            throw new Error("trial_closing_context_unavailable");
+          }
+          if (
+            closing.data &&
+            ["ASK_TEACHER", "ASK_STUDENT", "OFFER_SENT"].includes(
+              String(closing.data.stage || "").toUpperCase(),
+            )
+          ) continue;
+        }
         // Refresh financial truth within the lease, never reuse an earlier tenant snapshot.
         const facts = await loadCommercialContactFacts(sb, lead.tenant_id);
         const suppression = evaluateCommercialSuppression({
@@ -284,7 +310,7 @@ serve(async (req) => {
           continue;
         }
         const stage = followupStage(
-          lead.status,
+          completedTrial ? "TRIAL_DONE" : lead.status,
           trial?.trial_status || null,
           enrollmentPending,
         );
@@ -298,7 +324,9 @@ serve(async (req) => {
           stage === "after_trial" &&
           (!lead.last_status_change || lead.last_status_change >= cutoff)
         ) continue;
-        const scope = `${lead.tenant_id}:${lead.id}:${stage}:${
+        // Idempotencia por destinatario, nao por linha de CRM: cadastros
+        // duplicados do mesmo telefone nao podem multiplicar os lembretes.
+        const scope = `${lead.tenant_id}:phone:${phone}:${stage}:${
           stage === "qualification" ? "initial" : trial?.id || "enrollment"
         }`;
         const { data: marks, error: marksError } = await sb.from(

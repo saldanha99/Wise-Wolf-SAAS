@@ -5,7 +5,7 @@ export function isWaitingAcknowledgement(text: string): boolean {
       /\s+/g,
       " ",
     );
-  return /^(?:(?:ok|okay|certo|ta bom|tudo bem|combinado|beleza|obrigad[oa]|perfeito)\s*)?(?:(?:eu )?(?:fico|ficarei|estou|to|vou ficar) (?:no aguardo|aguardando)|no aguardo|aguardo)?(?:\s*(?:ok|obrigad[oa]))?$/
+  return /^(?:(?:ok|okay|sim|certo|ta bom|tudo bem|combinado|beleza|obrigad[oa]|perfeito)\s*)?(?:(?:eu )?(?:fico|ficarei|estou|to|vou ficar) (?:no aguardo|aguardando)|no aguardo|aguardo)?(?:\s*(?:ok|sim|obrigad[oa]))?$/
     .test(normalized) &&
     (normalized.length > 0 || /[👍🙏✅🆗]/u.test(text));
 }

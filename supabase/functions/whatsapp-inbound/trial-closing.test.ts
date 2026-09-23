@@ -179,7 +179,9 @@ Deno.test("horário ocupado oferece os livres, e sem livres pede outros", () => 
     { day: "Terça", time: "18:00" },
   ]);
   assert(comLivres.includes("• Terça às 18:00"));
-  assert(studentSlotsUnavailableMessage([]).includes("Me manda outras opções"));
+  assert(
+    studentSlotsUnavailableMessage([]).includes("confirmação direta"),
+  );
 });
 
 Deno.test("aluno desmentindo a aula é lido como contestação", () => {
@@ -224,12 +226,24 @@ Deno.test("a abertura do pós-aula pergunta como foi, sem tabela nem formulário
   const msg = studentPostTrialOpener({
     leadName: "Janaina Dias",
     teacherName: "Bruna Barros Feitosa",
+    classLogged: true,
   });
   assertEquals(
     msg,
     "Oi, Janaina! Como foi a aula experimental com a teacher Bruna? 😊\n\nMe conta o que você achou — da aula e da professora.",
   );
   assert(!msg.includes("R$"));
+});
+
+Deno.test("sem aula lançada, a abertura confirma se aconteceu antes de vender", () => {
+  const msg = studentPostTrialOpener({
+    leadName: "Cleice Brito",
+    teacherName: "Lais Sampaio Conde",
+    classLogged: false,
+  });
+  assert(msg.includes("Vocês conseguiram fazer a aula?"));
+  assert(msg.includes("ajudo a reagendar"));
+  assert(!msg.includes("Como foi a aula experimental"));
 });
 
 Deno.test("briefing do professor traz aluno, telefone, horário, objetivo e o que fazer antes", () => {

@@ -1,9 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
-import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
+import {
+  requestOutboundPermit,
+  resolveWhatsAppDestination,
+  sendWhatsTextToResolvedDestinationDetailed,
+  settleOutboundPermit,
+  THROTTLE_MAX_INLINE_WAIT_MS,
+} from "../_shared/evolution-send.ts";
 import {
   claimOutboundMessage,
+  deferOutboundMessageClaim,
   finishOutboundMessage,
   markOutboundMessageSubmittingDecision,
 } from "../_shared/student-billing-period-guard.ts";
@@ -33,6 +40,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 const DAYS_AHEAD = 3; // avisa 3 dias antes
+const ACTIVE_STUDENT_WINDOW_DAYS = 30;
 
 // Régua de vencidas: dias APÓS o vencimento em que o aluno é lembrado de novo.
 //
@@ -104,6 +112,12 @@ serve(async (req) => {
           suprimidas++;
           registrarSupressao(c.id, bloqueio);
           failures.push(`${c.id}: cobrança suprimida (${bloqueio})`);
+          continue;
+        }
+        if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
+          failures.push(
+            `${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`,
+          );
           continue;
         }
         const dest = await resolveRecipient(supabase, c, instCache);
@@ -313,10 +327,10 @@ async function resolveRecipient(
 }
 
 /**
- * O aluno ainda estuda? (agenda ativa OU aula lançada nos últimos 90 dias)
+ * O aluno ainda estuda? (agenda ativa OU aula lançada nos últimos 30 dias)
  *
- * ⚠️ Trava DELIBERADA da régua de vencidas, e só dela — o aviso de "vai vencer"
- * continua indo para todo mundo.
+ * A mesma trava protege o aviso pré-vencimento e a régua de vencidas. Um perfil
+ * legado ainda marcado como ativo não basta para autorizar cobrança automática.
  *
  * Motivo: na simulação contra a produção, 2 dos 3 alvos eram alunos que já
  * tinham parado (0 aula em 90 dias) e cuja cobrança segue aberta só porque
@@ -339,7 +353,8 @@ async function aindaEstuda(
   if ((agenda ?? 0) > 0) return true;
 
   const limite =
-    new Date(Date.now() - 90 * 86400_000).toISOString().split("T")[0];
+    new Date(Date.now() - ACTIVE_STUDENT_WINDOW_DAYS * 86400_000).toISOString()
+      .split("T")[0];
   const { count: aulas } = await supabase.from("class_logs")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
@@ -430,7 +445,7 @@ async function reguaVencidas(
       if (jaEnviado) continue;
 
       if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
-        motivos.push(`${c.id}: aluno sem agenda/aula 90d (decisão do diretor)`);
+        motivos.push(`${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`);
         continue;
       }
 
@@ -445,17 +460,18 @@ async function reguaVencidas(
         integrationCache,
       );
 
-      let text = `Oi ${dest.nome}! Aqui é a ${dest.brandName}.\n\n` +
-        `Sua mensalidade de *${brl(c.value)}*, com vencimento em *${
+      let text = `Oi ${dest.nome}, aqui é a ${dest.brandName}.\n\n` +
+        `Identificamos que a mensalidade de *${brl(c.value)}*, vencida em *${
           dataBR(c.due_date)
-        }*, ` +
-        `consta como *em aberto* por aqui.`;
+        }*, ainda consta *em aberto* em nosso sistema. ` +
+        `Pedimos que regularize o pagamento para evitar que a pendência continue em atraso.`;
       if (c.invoice_url) {
         text +=
-          `\n\nSe já pagou, pode ignorar. Se ainda não, o link está aqui: ${c.invoice_url}`;
-      } else {text +=
-          `\n\nSe já pagou, pode ignorar. Se ainda não, é só chamar que a gente te ajuda.`;}
-      text += `\n\nQualquer dúvida, estamos por aqui. 💜`;
+          `\n\nVocê pode pagar pela própria fatura: ${c.invoice_url}`;
+      } else {
+        text += `\n\nResponda esta mensagem para receber o link da fatura.`;
+      }
+      text += `\n\nSe já pagou, por favor nos envie o comprovante para conferirmos a baixa. Se precisar de ajuda, é só responder.`;
 
       const delivery = await deliverPaymentNotification(supabase, {
         tenantId: c.tenant_id,
@@ -574,8 +590,42 @@ async function deliverPaymentNotification(
     };
   }
 
+  const resolvedDestination = await resolveWhatsAppDestination({
+    base: input.integration.baseUrl,
+    keys: [input.integration.apiKey],
+    instance: input.instance,
+    to: input.phone,
+  });
+  const permit = await requestOutboundPermit(
+    input.instance,
+    resolvedDestination,
+  );
+  if (permit?.allowed === false) {
+    const retryAfterSeconds = Math.max(
+      60,
+      Math.ceil(Number(permit.wait_ms || 60_000) / 1000),
+    );
+    await deferOutboundMessageClaim(supabase, claim, {
+      retryAfterSeconds,
+      reason: `throttled_${permit.kind || "outbound"}`,
+    });
+    return {
+      status: "SKIPPED",
+      sentNow: false,
+      reason: `throttled_${permit.kind || "outbound"}`,
+    };
+  }
+  if (permit?.allowed) {
+    const waitMs = Math.min(
+      Math.max(0, Number(permit.wait_ms || 0)),
+      THROTTLE_MAX_INLINE_WAIT_MS,
+    );
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
   const mark = await markOutboundMessageSubmittingDecision(supabase, claim);
   if (mark.ok !== true || mark.status !== "SUBMITTING") {
+    await settleOutboundPermit(permit?.ledger_id, false);
     return {
       status: mark.status === "SUPPRESSED" ? "SUPPRESSED" : "SKIPPED",
       sentNow: false,
@@ -583,14 +633,19 @@ async function deliverPaymentNotification(
     };
   }
 
-  const providerResult = await sendWhatsTextDetailed({
+  const providerResult = await sendWhatsTextToResolvedDestinationDetailed({
     base: input.integration.baseUrl,
     keys: [input.integration.apiKey],
     instance: input.instance,
-    to: input.phone,
+    to: resolvedDestination,
     text: input.text,
     delayMs: 800,
+    throttle: "skip",
   });
+  await settleOutboundPermit(
+    permit?.ledger_id,
+    providerResult.outcome === "accepted",
+  );
   const finish = paymentNotificationFinish(providerResult);
   try {
     await finishOutboundMessage(supabase, claim, finish);

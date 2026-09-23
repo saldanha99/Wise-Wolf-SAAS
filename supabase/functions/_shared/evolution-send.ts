@@ -146,6 +146,17 @@ async function settlePermit(
   }
 }
 
+/**
+ * Conclui uma reserva obtida por `requestOutboundPermit` quando o chamador
+ * precisa separar a autorização do POST externo por uma trava durável.
+ */
+export async function settleOutboundPermit(
+  ledgerId: string | null | undefined,
+  delivered: boolean,
+): Promise<void> {
+  await settlePermit(ledgerId, delivered);
+}
+
 /** Pede licença ao teto. Devolve null quando não há régua configurada. */
 export async function requestOutboundPermit(
   instance: string,

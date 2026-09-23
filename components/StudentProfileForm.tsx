@@ -370,8 +370,8 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 </div>
                             )}
 
-                            {/* Status do Aluno - Diretor e Professor */}
-                            <div className="space-y-2">
+                            {/* Status da matrícula é uma decisão exclusiva da gestão. */}
+                            {isDirector && <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <UserCheck size={12} /> Status do Aluno
                                 </label>
@@ -384,7 +384,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <option value="Inativo">Pausado / Inativo</option>
                                     <option value="Trancado">Trancado</option>
                                 </select>
-                            </div>
+                            </div>}
 
                             {/* Nível (Badge) - Diretor e Professor */}
                             <div className="space-y-2">

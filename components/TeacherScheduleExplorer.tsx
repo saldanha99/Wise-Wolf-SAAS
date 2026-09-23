@@ -562,7 +562,6 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             private_notes: profileData.private_notes,
             fixed_schedule: profileData.fixed_schedule,
             is_kids: profileData.is_kids,
-            status: profileData.status,
             module: requestedModule,
           }
         });

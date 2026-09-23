@@ -260,10 +260,10 @@ serve(async (req) => {
 
     const hourBRT = nowBRT().getUTCHours();
     const businessHours = hourBRT >= 9 && hourBRT < 20;
-    // Quem acabou de sair da experimental das 20:00 espera o "como foi?" às
-    // 20:40, não às 9h do dia seguinte. A abertura do pós-aula respeita só o
-    // sono: nada entre 22h e 8h.
-    const postTrialHours = hourBRT >= 8 && hourBRT < 22;
+    // Disparos automáticos de pós-experimental seguem o mesmo horário
+    // comercial dos demais contatos proativos (09:00-19:59 em São Paulo).
+    // Uma aula noturna fica pendente para a próxima janela, sem contato à noite.
+    const postTrialHours = businessHours;
 
     const result = {
       first_touch: 0,
@@ -276,6 +276,7 @@ serve(async (req) => {
       interview_followups: 0,
       expired: 0,
       orphan_leads: 0,
+      trial_confirmations: 0,
       reschedule_timeouts: 0,
       teacher_reminders: 0,
       orphan_skipped: 0,
@@ -829,6 +830,124 @@ serve(async (req) => {
       }
     }
 
+    // ============ C1) ACEITE DA EXPERIMENTAL — fechar a promessa ao lead ============
+    // Só vale para aceites posteriores à ativação deste fluxo; não dispara
+    // mensagens retroativas a famílias cujo atendimento humano já prosseguiu.
+    // A trava por appointment evita confirmação duplicada em cada varredura.
+    if (postTrialHours) {
+      const { data: accepted, error: acceptedError } = await sb.from(
+        "opportunities",
+      ).select(
+        "id,tenant_id,student_name,student_phone,trial_appointment_id,winner_teacher_id,status,trial_status",
+      ).eq("kind", "TRIAL").eq("status", "CLAIMED").eq(
+        "trial_status",
+        "SCHEDULED",
+      ).not("trial_appointment_id", "is", null).gte(
+        "created_at",
+        "2026-09-22T23:00:00Z",
+      ).order("created_at", {
+        ascending: false,
+      }).limit(100);
+      if (acceptedError) throw new Error("trial_confirmation_lookup_failed");
+      for (const opp of accepted || []) {
+        const route = byTenant[opp.tenant_id];
+        if (!route?.studentInstance || !opp.winner_teacher_id) continue;
+        const phone = cleanPhone(opp.student_phone || "");
+        if (phone.length < 12) continue;
+        const [appointmentResult, teacherResult, leadResult] = await Promise.all([
+          sb.from("appointments").select("id,start_time,status,created_at,teacher_id")
+            .eq("tenant_id", opp.tenant_id).eq("id", opp.trial_appointment_id)
+            .maybeSingle(),
+          sb.from("profiles").select("full_name,lifecycle_status")
+            .eq("tenant_id", opp.tenant_id).eq("id", opp.winner_teacher_id)
+            .maybeSingle(),
+          sb.from("crm_leads").select("id,phone,ai_handoff,ai_handoff_at")
+            .eq("tenant_id", opp.tenant_id).order("created_at", {
+              ascending: false,
+            }).limit(100),
+        ]);
+        if (appointmentResult.error || teacherResult.error || leadResult.error) {
+          result.failures.push(`trial_confirmation_lookup ${opp.id}`);
+          continue;
+        }
+        const appointment = appointmentResult.data;
+        const teacher = teacherResult.data;
+        const lead = (leadResult.data || []).find((row: any) =>
+          phonesMatch(String(row.phone || ""), phone)
+        );
+        if (
+          !appointment || !teacher || !lead || handoffAtivo(lead) ||
+          appointment.status !== "scheduled" ||
+          appointment.teacher_id !== opp.winner_teacher_id ||
+          teacher.lifecycle_status !== "active" ||
+          Date.parse(appointment.start_time) <= Date.now() ||
+          Date.parse(appointment.created_at) < Date.parse("2026-09-22T23:00:00Z")
+        ) continue;
+        const { data: recentReplies, error: replyError } = await sb.from(
+          "ai_wa_messages",
+        ).select("content,meta").eq("tenant_id", opp.tenant_id).eq(
+          "phone",
+          phone,
+        ).eq("direction", "out").gte(
+          "created_at",
+          appointment.created_at,
+        ).order("created_at", { ascending: false }).limit(20);
+        if (replyError) {
+          result.failures.push(`trial_confirmation_history ${opp.id}`);
+          continue;
+        }
+        if ((recentReplies || []).some((row: any) =>
+          row.meta?.entregue !== false &&
+          (/experimental.{0,35}confirmad|aula experimental j[aá] est[aá] marcada/i
+            .test(String(row.content || "")) ||
+            row.meta?.kind === "trial_accepted_acknowledgement")
+        )) continue;
+        const mark = await claim(
+          sb,
+          "TRIAL_STUDENT_CONFIRMED",
+          String(appointment.id),
+          "1970-01-01",
+        );
+        if (!mark.ok) continue;
+        const local = new Date(Date.parse(appointment.start_time) - 3 * 3600000)
+          .toISOString();
+        const when = `${local.slice(8, 10)}/${local.slice(5, 7)} às ${local.slice(11, 16)}`;
+        const first = greetName(opp.student_name);
+        const msg = `Oi${first ? `, ${first}` : ""}! Sua aula experimental de ${when} está confirmada com a Teacher ${teacher.full_name}. Até lá! 😊`;
+        const delivery = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: route.studentInstance,
+          to: phone,
+          text: msg,
+        });
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: opp.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
+          content: msg,
+          meta: {
+            lead_id: lead.id,
+            opportunity_id: opp.id,
+            appointment_id: appointment.id,
+            kind: "trial_student_confirmed",
+            delivery_outcome: delivery.outcome,
+            entregue: delivery.outcome === "accepted",
+          },
+        });
+        if (delivery.outcome === "rejected") {
+          await mark.undo();
+          result.failures.push(`trial_confirmation ${opp.id}`);
+        } else if (delivery.outcome === "accepted") {
+          result.trial_confirmations++;
+          await sb.from("crm_leads").update({
+            last_outbound_at: new Date().toISOString(),
+          }).eq("id", lead.id);
+        }
+      }
+    }
+
     // ============ C2) LEAD ÓRFÃO — a experimental expirou sem professor ============
     //
     // Medido em 13/08/2026: de 125 experimentais da história, **69 expiraram sem
@@ -1195,6 +1314,7 @@ serve(async (req) => {
           const msg = studentPostTrialOpener({
             leadName: ask.lead_name,
             teacherName: ask.teacher_name,
+            classLogged: ask.class_logged === true,
           });
           const delivered = await sendWhats(t.studentInstance, phone, msg);
           // O registro não depende do envio: é o histórico que a atendente lê.
