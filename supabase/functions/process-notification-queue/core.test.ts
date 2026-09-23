@@ -91,10 +91,12 @@ Deno.test("avisos de ciclo de vida distinguem aluno, professor e destino", () =>
 });
 
 Deno.test("avisos de matrícula fechada saem exclusivamente pela central", () => {
-  for (const kind of [
-    "ENROLLMENT_MANAGEMENT_CLOSED",
-    "ENROLLMENT_TEACHER_CLOSED",
-  ]) {
+  for (
+    const kind of [
+      "ENROLLMENT_MANAGEMENT_CLOSED",
+      "ENROLLMENT_TEACHER_CLOSED",
+    ]
+  ) {
     assertEquals(queueAudience(kind), {
       audience: "teacher",
       centralOnly: true,
