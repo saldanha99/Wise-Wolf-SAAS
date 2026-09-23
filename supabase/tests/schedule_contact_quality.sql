@@ -17,6 +17,12 @@ begin
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
  monday:=today+21+((8-extract(dow from today+21)::integer)%7);
  insert into public.tenants(id,name) values('quality-contact-fixture','Quality Contact Fixture'),('quality-other-fixture','Quality Other Fixture');
+ -- Mudança feita por professor avisa o grupo de Coordenação desde a migration
+ -- 20260922024045; sem canal configurado a gravação é recusada. As escolas do
+ -- teste precisam de um grupo, como uma real.
+ insert into public.tenant_notice_channels(tenant_id,channel,group_jid)
+ values('quality-contact-fixture','coordenacao','120363000000000002@g.us'),
+       ('quality-other-fixture','coordenacao','120363000000000003@g.us');
  insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
  (teacher_id,'qc-teacher@example.invalid','{"provider":"email","providers":["email"]}','{"test_fixture":true}'),
  (student_id,'qc-student@example.invalid','{"provider":"email","providers":["email"]}','{"test_fixture":true}'),

@@ -49,6 +49,11 @@ begin
   insert into public.tenants(id, name, saas_status)
   values (v_tenant_id, 'Student status transaction fixture', 'active');
 
+  -- Mudança feita por professor avisa o grupo de Coordenação desde a migration
+  -- 20260922024045; sem canal configurado a gravação é recusada.
+  insert into public.tenant_notice_channels(tenant_id, channel, group_jid)
+  values (v_tenant_id, 'coordenacao', '120363000000000004@g.us');
+
   -- The placement RPC selects the first published milestone; a schema-only
   -- database intentionally has no catalogue seeds. Existing publication data
   -- is not changed, and both fixture rows disappear with the rollback.
@@ -119,13 +124,24 @@ begin
   perform pg_temp.assert_equals(v_status, 'Inativo', 'status atualizado pelo diretor');
   perform pg_temp.assert_equals(v_lifecycle, 'suspended', 'lifecycle atualizado pelo diretor');
 
-  -- 2. Professor responsável altera nível para A2 e status de volta para Ativo
+  -- 1b. Só a direção reativa o aluno. Professor não enxerga aluno inativo desde
+  -- a migration 20260922040818, então o passo 2 precisa de um aluno ativo —
+  -- como na escola real, onde quem inativa e reativa é a direção.
+  v_res := public.update_student_pedagogical_profile(
+    v_student,
+    jsonb_build_object('status', 'Ativo')
+  );
+  perform pg_temp.assert_true((v_res ->> 'success')::boolean, 'diretor reativa o aluno');
+
+  -- 2. Professor responsável altera o nível para A2 e TENTA mexer no status.
+  -- Desde a migration 20260922032314 o status é administração da direção: o
+  -- campo é descartado em silêncio e o nível é aplicado.
   perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', v_teacher::text)::text, true);
   v_res := public.update_student_pedagogical_profile(
     v_student,
     jsonb_build_object(
       'module', 'A2',
-      'status', 'Ativo'
+      'status', 'Inativo'
     )
   );
   perform pg_temp.assert_true((v_res ->> 'success')::boolean, 'professor update deve ter sucesso');
@@ -137,8 +153,8 @@ begin
 
   perform pg_temp.assert_equals(v_mod, 'A2', 'modulo atualizado pelo professor');
   perform pg_temp.assert_equals(v_part, 'A2-1', 'book part atualizado pelo professor');
-  perform pg_temp.assert_equals(v_status, 'Ativo', 'status atualizado pelo professor');
-  perform pg_temp.assert_equals(v_lifecycle, 'active', 'lifecycle atualizado pelo professor');
+  perform pg_temp.assert_equals(v_status, 'Ativo', 'professor nao muda status do aluno');
+  perform pg_temp.assert_equals(v_lifecycle, 'active', 'professor nao muda lifecycle do aluno');
 
   -- 3. Professor tentando alterar dado sensível (CPF ou Preço) DEVE SER BLOQUEADO
   begin

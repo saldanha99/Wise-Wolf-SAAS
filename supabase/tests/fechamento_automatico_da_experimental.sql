@@ -85,10 +85,14 @@ select v, 'trial-closing-qa', '7e190000-0000-4000-8000-000000000052',
   '5511900000191', now() - interval '2 hours', 'scheduled', 'experimental'
 from fx where k = 'appointment';
 
+-- trial_status nasce 'SCHEDULED' no fluxo real (medido em 23/09/2026: nenhuma
+-- experimental CLAIMED dos ultimos 90 dias tem o campo nulo). O retorno de
+-- trial_closing_teacher_asks filtra por `trial_status not in (...)` sem
+-- coalesce, entao um fixture com nulo some do resultado por NULL-logic.
 insert into public.opportunities(id, tenant_id, kind, status, conversion_status, winner_teacher_id,
-  trial_appointment_id, student_name, student_phone, feedback_required, slots_proposed)
+  trial_appointment_id, student_name, student_phone, feedback_required, slots_proposed, trial_status)
 select o.v, 'trial-closing-qa', 'TRIAL', 'CLAIMED', 'OPEN', '7e190000-0000-4000-8000-000000000052',
-  a.v, 'Aluno Sintetico Fechamento', '5511900000191', true, '[]'::jsonb
+  a.v, 'Aluno Sintetico Fechamento', '5511900000191', true, '[]'::jsonb, 'SCHEDULED'
 from (select v from fx where k = 'opportunity') o, (select v from fx where k = 'appointment') a;
 
 -- [1] a experimental terminada vira pergunta à professora
