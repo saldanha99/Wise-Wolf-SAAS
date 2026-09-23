@@ -267,7 +267,11 @@ serve(async (req) => {
     const isSelfStudent = !authorization.isService &&
       authorization.callerId === targetUserId &&
       authorization.callerProfile?.role === "STUDENT";
-    const offer = isSelfStudent
+    // A rotina operacional pode concluir, com service_role, a mesma cobrança
+    // vinculada que o aluno criaria ao retomar o link. Sem carregar a oferta
+    // aqui, a chamada interna cairia no fluxo legado por perfil e perderia a
+    // referência idempotente `enrollment:<offer>:fee`.
+    const offer = isSelfStudent || authorization.isService
       ? await loadClaimedEnrollmentOffer(
         authorization.admin,
         targetUserId,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
 import { SUPABASE_URL } from '../lib/supabase-config';
 
@@ -121,5 +121,26 @@ describe('remuneração por aula no contrato', () => {
   });
   it('mantém o valor integral na consulta de um novo contrato assinado', () => {
     expect(render(8, { acceptedAt: '2026-09-09T19:00:00Z', rateUnit: 'PER_LESSON' })).toContain('R$ 8,00 por aula de 30');
+  });
+});
+
+describe('termos comerciais do contrato do aluno', () => {
+  const render = (extra: Record<string, unknown> = {}) => renderToStaticMarkup(React.createElement(ContractDocument, {
+    studentName: 'Aluna de teste', studentCPF: '52998224725', studentAddress: 'Endereço de teste',
+    studentEmail: 'aluna@example.test', studentPhone: '5511999999999', planName: 'Plano Semestral',
+    planValue: '261,00', totalValue: '1.566,00', planDuration: 6, startDate: '23/09/2026',
+    endDate: '23/03/2027', dueDay: 10, classFrequency: 2, school: completeSchool(),
+    showPrintButton: false, ...extra,
+  }));
+
+  it('preserva os seis meses escolhidos e quatro reposições por mês', () => {
+    const html = render();
+    expect(html).toContain('6 (seis) meses');
+    expect(html).toContain('4 (quatro) aulas por mês');
+    expect(html).not.toContain('4 (uma) aula por mês');
+  });
+
+  it('flexiona corretamente uma reposição quando houver exceção explícita', () => {
+    expect(render({ repositionLimit: 1 })).toContain('1 (uma) aula por mês');
   });
 });

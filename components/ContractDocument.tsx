@@ -51,7 +51,7 @@ export interface PlanInfo {
     classFrequency: number | string;   // Ex: 2 ou "2 vezes por semana"
     classDuration?: number;     // Minutos por aula (padrão: 30)
     cancellationFee?: number;   // % multa rescisória (padrão: 30)
-    repositionLimit?: number;   // Reposições por mês (padrão: 1)
+    repositionLimit?: number;   // Reposições por mês (padrão: 4)
 }
 
 /** Props principais do componente. */
@@ -228,7 +228,7 @@ export function ContractDocument({
     proRataValue = 0,
     classDuration = 30,
     cancellationFee = 30,
-    repositionLimit = 1,
+    repositionLimit = 4,
     acceptedAt,
     userIp,
     subscriptionId,
@@ -501,7 +501,7 @@ export function ContractDocument({
                             Cláusula 4 — Das Obrigações do Contratante
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O CONTRATANTE se compromete a: <strong>(a)</strong> dispor de equipamento (computador, tablet ou smartphone) com microfone, câmera e conexão de internet compatíveis com videoconferência; <strong>(b)</strong> efetuar os pagamentos nas datas acordadas; <strong>(c)</strong> comunicar ausências com antecedência mínima de <strong>24 (vinte e quatro) horas</strong>, sendo assegurada a reposição de até <strong>{repositionLimit} (uma) aula por mês</strong> mediante disponibilidade da agenda; <strong>(d)</strong> respeitar os direitos de propriedade intelectual dos materiais fornecidos; <strong>(e)</strong> auditar e confirmar, a cada aula, se ela efetivamente ocorreu, por meio do link de confirmação/auditoria enviado pela CONTRATADA — sendo esta a forma oficial de comprovação da aula realizada. É obrigação do CONTRATANTE realizar essa auditoria; na ausência de confirmação pelo CONTRATANTE, a aula será considerada realizada mediante registro de presença pelo professor (veredito do professor), para todos os fins, inclusive de apuração e cobrança.
+                            O CONTRATANTE se compromete a: <strong>(a)</strong> dispor de equipamento (computador, tablet ou smartphone) com microfone, câmera e conexão de internet compatíveis com videoconferência; <strong>(b)</strong> efetuar os pagamentos nas datas acordadas; <strong>(c)</strong> comunicar ausências com antecedência mínima de <strong>24 (vinte e quatro) horas</strong>, sendo assegurada a reposição de até <strong>{repositionLimit} ({['uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez'][repositionLimit - 1] || repositionLimit}) {repositionLimit === 1 ? 'aula' : 'aulas'} por mês</strong> mediante disponibilidade da agenda; <strong>(d)</strong> respeitar os direitos de propriedade intelectual dos materiais fornecidos; <strong>(e)</strong> auditar e confirmar, a cada aula, se ela efetivamente ocorreu, por meio do link de confirmação/auditoria enviado pela CONTRATADA — sendo esta a forma oficial de comprovação da aula realizada. É obrigação do CONTRATANTE realizar essa auditoria; na ausência de confirmação pelo CONTRATANTE, a aula será considerada realizada mediante registro de presença pelo professor (veredito do professor), para todos os fins, inclusive de apuração e cobrança.
                         </p>
                     </div>
 

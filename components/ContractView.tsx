@@ -195,10 +195,12 @@ const ContractView: React.FC<ContractViewProps> = ({
     }
 
     // — Template digital gerado —
-    let duration = 12;
-    let planName = 'Plano Recorrente';
-    if (profile.module?.includes('Semestral') || profile.fidelity_plan === 'SEMESTER') { duration = 6; planName = 'Plano Semestral'; }
-    else if (profile.module?.includes('Anual') || profile.fidelity_plan === 'ANNUAL') { duration = 12; planName = 'Plano Anual'; }
+    const fidelity = String(profile.fidelity_plan || '').trim().toUpperCase();
+    let duration = 1;
+    let planName = 'Plano Mensal';
+    if (['SEMESTER', 'SEMESTRAL', '6', '6 MESES'].includes(fidelity)) { duration = 6; planName = 'Plano Semestral'; }
+    else if (['ANNUAL', 'ANUAL', '12', '12 MESES'].includes(fidelity)) { duration = 12; planName = 'Plano Anual'; }
+    else if (['ONE_TIME', 'AVULSO', '0'].includes(fidelity)) { duration = 0; planName = 'Plano Avulso'; }
 
     const enrollmentDate = contractReferenceDate(profile.created_at);
     const dueDay = profile.due_day || 1;

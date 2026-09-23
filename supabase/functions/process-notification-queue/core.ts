@@ -253,7 +253,9 @@ export function queueAudience(kind: unknown): {
     normalized === "TRIAL_TEACHER_REQUESTED" ||
     normalized === "TRIAL_MANAGEMENT_ACCEPTED" ||
     normalized === "TEACHER_STUDENT_SUSPENDED" ||
-    normalized === "TEACHER_STUDENT_OFFBOARDED"
+    normalized === "TEACHER_STUDENT_OFFBOARDED" ||
+    normalized === "ENROLLMENT_MANAGEMENT_CLOSED" ||
+    normalized === "ENROLLMENT_TEACHER_CLOSED"
   ) return { audience: "teacher", centralOnly: true };
   return { audience: "student", centralOnly: false };
 }

@@ -658,6 +658,14 @@ serve(async (req) => {
       profileUpdate.class_frequency = `${
         numberValue(offerPayload.classesPerWeek) || 1
       }x`;
+      const durationMonths = numberValue(offerPayload.planDuration);
+      profileUpdate.fidelity_plan = durationMonths === 12
+        ? "ANNUAL"
+        : durationMonths === 6
+        ? "SEMESTER"
+        : durationMonths === 0
+        ? "ONE_TIME"
+        : "RECURRENT";
       profileUpdate.professor_id = text(offerPayload.professorId) || null;
       profileUpdate.professor_id2 = text(offerPayload.professorId2) || null;
       profileUpdate.enrollment_fee = Number(offer.enrollment_fee || 0);

@@ -93,6 +93,9 @@ Deno.test({
       ),
       Deno.readTextFile(new URL("./index.ts", import.meta.url)),
     ]);
+    const enrollmentPix = await Deno.readTextFile(
+      new URL("../create-enrollment-pix/index.ts", import.meta.url),
+    );
     assert(
       creator.includes('"AWAITING_PAYMENT"') &&
         creator.includes("A subscription object is not proof") &&
@@ -105,6 +108,11 @@ Deno.test({
         webhook.includes("financialPhone") &&
         webhook.includes("guardian_phone"),
       "webhook lost atomic offer binding or financial guardian routing",
+    );
+    assert(
+      enrollmentPix.includes("isSelfStudent || authorization.isService") &&
+        enrollmentPix.includes("enrollment:${offer.id}:fee"),
+      "service operation can no longer create the exact offer-bound enrollment fee",
     );
   },
 });

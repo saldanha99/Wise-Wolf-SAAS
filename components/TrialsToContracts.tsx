@@ -220,6 +220,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [classSchedule, setClassSchedule] = useState<ScheduleSlot[]>([]);
 
     // Pro-rata & start date
+    const [enrollmentStartDate, setEnrollmentStartDate] = useState(dateInSaoPaulo);
     const [enableProRata, setEnableProRata] = useState(false);
     const [billingStartMonth, setBillingStartMonth] = useState(defaultBillingStartMonthInSaoPaulo);
     const proRataEnabled = normalizeEnrollmentProRataTerms({
@@ -270,7 +271,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     }, [
         wizardOpp?.id, duration, frequency, dueDay, monthlyFee,
         chargeEnrollmentFee, enrollmentFee, selectedProfessor,
-        classSchedule, proRataEnabled, billingStartMonth,
+        classSchedule, enrollmentStartDate, proRataEnabled, billingStartMonth,
     ]);
 
     // Auto-resize schedule slots based on frequency
@@ -290,7 +291,6 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         });
     }, [frequency]);
 
-    const enrollmentStartDate = dateInSaoPaulo();
     const proRataPreview = useMemo(() => calculateEnrollmentProRataPreview({
         enabled: proRataEnabled,
         monthlyFee,
@@ -588,6 +588,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setEnableProRata(false);
         setChargeEnrollmentFee(false);
         setEnrollmentFee(49);
+        setEnrollmentStartDate(dateInSaoPaulo());
         setBillingStartMonth(defaultBillingStartMonthInSaoPaulo());
 
         const recLevel = fb?.recommended_level?.trim()?.toUpperCase() || '';
@@ -625,6 +626,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const handleGenerateLink = async () => {
         if (!wizardOpp || !tenantId) return;
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(enrollmentStartDate) || enrollmentStartDate < dateInSaoPaulo()) {
+            return alert('Escolha uma data válida para o início das aulas.');
+        }
+        if (chargeEnrollmentFee && (!Number.isFinite(enrollmentFee) || enrollmentFee <= 0)) {
+            return alert('Informe um valor válido para a taxa de matrícula.');
+        }
 
         setWizardSaving(true);
 
@@ -1326,9 +1333,20 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             {/* SECTION: PRO-RATA & BILLING START */}
                             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100">
                                 <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest flex items-center gap-2 mb-3">
-                                    <Calendar size={14} /> Início de Cobrança
+                                    <Calendar size={14} /> Início das Aulas e da Cobrança
                                 </h3>
                                 <div className="space-y-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Início das aulas</label>
+                                        <input
+                                            type="date"
+                                            value={enrollmentStartDate}
+                                            min={dateInSaoPaulo()}
+                                            onChange={(e) => setEnrollmentStartDate(e.target.value)}
+                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+                                        />
+                                        <p className="text-[9px] text-slate-400 mt-1">Essa data define o início da agenda fixa e a vigência do contrato.</p>
+                                    </div>
                                     <div>
                                         <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de início da mensalidade</label>
                                         <input
@@ -1390,6 +1408,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 type="number"
                                                 value={enrollmentFee}
                                                 onChange={(e) => setEnrollmentFee(Number(e.target.value))}
+                                                min="0.01"
+                                                step="0.01"
+                                                inputMode="decimal"
                                                 className="w-14 bg-transparent border-none p-0 text-sm font-black text-blue-700 outline-none focus:ring-0"
                                             />
                                         </div>
