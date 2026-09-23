@@ -393,7 +393,7 @@ serve(async (req) => {
     const doneTrialsResult = await sb
       .from("opportunities")
       .select(
-        "id, tenant_id, student_name, student_phone, created_at, trial_appointment_id, winner_teacher_id, professor_id, conversion_status, feedback_required",
+        "id, tenant_id, student_name, student_phone, created_at, trial_appointment_id, conversion_status",
       )
       .eq("kind", "TRIAL")
       .eq("status", "CLAIMED")
@@ -441,30 +441,6 @@ serve(async (req) => {
       }
       if (!log?.created_at) continue; // aula ainda não aconteceu/lançada
       if (log.created_at > oneHourAgo) continue; // dá 1h de folga antes de cutucar
-
-      if (opp.feedback_required === true) {
-        const { data: feedback, error: feedbackError } = await sb
-          .from("trial_feedback")
-          .select("id,booking_id,teacher_id")
-          .eq("opportunity_id", opp.id)
-          .eq("tenant_id", opp.tenant_id)
-          .limit(1)
-          .maybeSingle();
-        if (feedbackError) {
-          result.failures.push(`trial_feedback_unavailable ${opp.id}`);
-          continue;
-        }
-        const responsibleTeacherId = opp.winner_teacher_id || opp.professor_id;
-        if (
-          !feedback?.id ||
-          !responsibleTeacherId ||
-          feedback.booking_id !== opp.trial_appointment_id ||
-          feedback.teacher_id !== responsibleTeacherId
-        ) {
-          result.awaiting_feedback++;
-          continue;
-        }
-      }
 
       // Uma proposta só conta se o link e a oferta correspondente continuarem
       // utilizáveis ou se a matrícula já tiver começado/concluído. Link PENDING

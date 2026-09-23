@@ -158,9 +158,6 @@ const enrollmentCreationErrorMessage = (error: unknown): string => {
             ? JSON.stringify(error)
             : String(error || '');
     const normalized = raw.toLowerCase();
-    if (normalized.includes('trial_feedback_required')) {
-        return 'O feedback da aula experimental é obrigatório antes de gerar a matrícula. Peça ao professor para concluir a avaliação e tente novamente.';
-    }
     if (normalized.includes('enrollment_in_progress')) {
         return 'Já existe uma matrícula em andamento para esta oportunidade. Aguarde a conclusão ou revise o link atual antes de gerar outro.';
     }
@@ -583,10 +580,6 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // OPEN ENROLLMENT LINK WIZARD
     // =============================================================
     const openWizard = (opp: Opportunity) => {
-        if (opp.feedback_required === true && !isCompleteTrialFeedback(opp, feedbacks[opp.id])) {
-            alert('O feedback da aula experimental precisa ser preenchido pelo professor antes de gerar a matrícula.');
-            return;
-        }
         const fb = feedbacks[opp.id];
         setWizardOpp(opp);
         setGeneratedLink('');
@@ -632,13 +625,6 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const handleGenerateLink = async () => {
         if (!wizardOpp || !tenantId) return;
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
-        if (
-            wizardOpp.feedback_required === true
-            && !isCompleteTrialFeedback(wizardOpp, feedbacks[wizardOpp.id])
-        ) {
-            alert('O feedback da aula experimental ainda está pendente. Atualize a tela após o professor concluir a avaliação.');
-            return;
-        }
 
         setWizardSaving(true);
 
@@ -984,7 +970,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         {feedbackPending && opp.trial_status === 'DONE' && (
                                             <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                                                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                                                <span>Feedback obrigatório pendente. O professor precisa concluir a avaliação antes da matrícula.</span>
+                                                <span>Feedback do professor pendente. A matrícula já está liberada.</span>
                                             </div>
                                         )}
 
@@ -1056,16 +1042,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             {opp.trial_status === 'DONE' && (
                                                 <button
                                                     onClick={() => openWizard(opp)}
-                                                    disabled={feedbackPending}
-                                                    title={feedbackPending ? 'Aguardando o feedback obrigatório do professor' : undefined}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-400 disabled:shadow-none"
+                                                    title={feedbackPending ? 'Feedback pendente — a matrícula continua liberada' : undefined}
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95"
                                                 >
-                                                    {feedbackPending ? <AlertCircle size={16} /> : <LinkIcon size={16} />}
-                                                    {feedbackPending
-                                                        ? 'Aguardando feedback'
-                                                        : enrollmentLinks[opp.id]
-                                                            ? 'Reenviar Link'
-                                                            : 'Gerar Link Matrícula'}
+                                                    <LinkIcon size={16} />
+                                                    {enrollmentLinks[opp.id]
+                                                        ? 'Reenviar Link'
+                                                        : 'Gerar Link Matrícula'}
                                                 </button>
                                             )}
                                             {/* Reagendar: o lead remarca ANTES da aula — era o caso que a

@@ -2205,7 +2205,7 @@ async function createEnrollmentOffer(
       .maybeSingle(),
     admin.from("opportunities")
       .select(
-        "id,tenant_id,student_id,student_name,student_phone,status,kind,conversion_status,trial_status,feedback_required,winner_teacher_id,professor_id,trial_appointment_id",
+        "id,tenant_id,student_id,student_name,student_phone,status,kind,conversion_status,trial_status,winner_teacher_id,professor_id,trial_appointment_id",
       )
       .eq("tenant_id", tenantId)
       .eq("id", opportunityId)
@@ -2271,35 +2271,6 @@ async function createEnrollmentOffer(
       "The trial lifecycle is not eligible for enrollment",
     );
   }
-  if (opportunityResult.data.feedback_required) {
-    const { data: feedback, error: feedbackError } = await admin
-      .from("trial_feedback")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("opportunity_id", opportunityId)
-      .eq("booking_id", opportunityResult.data.trial_appointment_id)
-      .eq(
-        "teacher_id",
-        opportunityResult.data.winner_teacher_id ||
-          opportunityResult.data.professor_id,
-      )
-      .maybeSingle();
-    if (feedbackError) {
-      throw new ApiError(
-        503,
-        "DATA_UNAVAILABLE",
-        "Could not validate trial feedback",
-      );
-    }
-    if (!feedback) {
-      throw new ApiError(
-        409,
-        "TRIAL_FEEDBACK_REQUIRED",
-        "The trial feedback must be completed before enrollment",
-      );
-    }
-  }
-
   let normalizedPlan: ReturnType<typeof normalizeEnrollmentPlan>;
   try {
     normalizedPlan = normalizeEnrollmentPlan(planResult.data);
