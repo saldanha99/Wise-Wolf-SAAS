@@ -37,7 +37,7 @@ export default function MeetSummaryBudgetCard({ aiEnabled, model }: { aiEnabled:
   const percent = budget ? budgetPercent(Number(budget.spent_usd), Number(budget.cap_usd)) : 0;
   return <section data-tour="meet-summary-budget" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
     <div className="flex items-center gap-2"><Sparkles size={18} className="text-indigo-600"/><h3 className="font-bold text-brand-text">Resumo automático por IA</h3></div>
-    <p className="text-sm text-brand-muted">Depois de cada aula documentada, a IA ({model || 'modelo configurado'}, pelo OpenRouter, num fornecedor que não usa o conteúdo para treinar) escreve o rascunho: objetivo, o que foi praticado, dificuldades e próximo passo, com trechos da transcrição. O professor revisa e aprova; só o aprovado vai para a memória do aluno. A cobrança é por uso, separada da assinatura Google.</p>
+    <p className="text-sm text-brand-muted">Depois de cada aula documentada, a IA ({model || 'modelo configurado'}, pelo OpenRouter, num fornecedor que não usa o conteúdo para treinar) escreve o rascunho: objetivo, o que foi praticado, dificuldades e próximo passo, com trechos da transcrição. O professor revisa e aprova; só o aprovado vai para a memória do aluno. Depois da aprovação, a IA também sugere itens para o cartão do aluno, dentro deste mesmo teto. A cobrança é por uso, separada da assinatura Google.</p>
     {!aiEnabled && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-300">O resumo por IA ainda está desligado nesta instalação. Enquanto isso, as notas do Gemini continuam chegando como rascunho.</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {message && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
@@ -52,6 +52,7 @@ export default function MeetSummaryBudgetCard({ aiEnabled, model }: { aiEnabled:
           <div className={`h-full ${budget.cap_reached ? 'bg-amber-500' : 'bg-indigo-600'}`} style={{ width: `${percent}%` }}/>
         </div>
       </div>
+      {Number(budget.card_suggestion_count) > 0 && <p className="text-xs text-brand-muted" data-testid="summary-card-suggestions">Inclui {formatUsd(Number(budget.card_suggestion_spent_usd ?? 0))} de {budget.card_suggestion_count} leitura(s) de aula aprovada para sugerir o cartão do aluno — o mesmo teto vale para as duas.</p>}
       {budget.cap_reached && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="summary-cap-reached">Teto do mês atingido: o rascunho automático parou até o mês virar ou você aumentar o teto. Na aula, o botão de gerar pela IA continua, com o aviso de custo.</p>}
       {budget.paused_until && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Rascunho automático pausado: {pauseReasonText(budget.pause_reason)}. Nova verificação às {new Date(budget.paused_until).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}.</p>}
       <div className="flex flex-wrap items-end gap-3">

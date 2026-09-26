@@ -409,6 +409,34 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // Sugestões da IA para o cartão (migration 20260928130000). O painel só
+    // existe com o dossiê aberto: o primeiro passo aponta o botão do dossiê e o
+    // segundo se sustenta sem alvo; o terceiro é pulado se o dossiê estiver fechado.
+    id: '2026-09-28-sugestoes-do-cartao',
+    title: 'Sugestões da IA no cartão do aluno',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'lesson-session-handover',
+        view: 'lesson-sessions',
+        title: 'A IA sugere, você decide ✍️',
+        text: 'Depois que você aprova o resumo de uma aula, a IA lê a aula e sugere itens para o cartão do aluno: objetivo real, temas que engajam, como ele prefere ser corrigido e o que evitar. Abra o "Dossiê do aluno": as sugestões ficam logo abaixo do cartão, cada uma com a frase da aula que a sustenta.',
+      },
+      {
+        target: null,
+        view: 'lesson-sessions',
+        title: 'Nada entra no cartão sem você',
+        text: '"Aceitar" grava no cartão (objetivo e estilo de correção substituem; temas e "o que evitar" entram na lista) e "Descartar" tira a sugestão de vez. A IA não sugere saúde, religião, política, família, dinheiro nem dados de outras pessoas — o que escapar é descartado antes de chegar a você. Aluno menor de idade, com responsável cadastrado ou sem idade comprovada ganha só sugestões de objetivo e temas. E só vale para aula em que o aluno (ou o responsável) e o professor aceitaram o termo versão 3.',
+      },
+      {
+        target: 'learning-card-suggestions',
+        view: 'lesson-sessions',
+        title: 'Aqui ficam as sugestões',
+        text: 'Se não houver nenhuma, o botão pede à IA que leia a aula aprovada mais recente do aluno — dentro do teto mensal de IA da escola. A frase da aula fica guardada no máximo 90 dias depois da aula.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
