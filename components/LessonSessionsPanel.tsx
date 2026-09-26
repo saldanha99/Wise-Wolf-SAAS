@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { googleMeetErrorMessage } from '../lib/googleMeet';
 import LessonPedagogicalSummary from './LessonPedagogicalSummary';
 import StudentHandover from './StudentHandover';
 import LessonRecordingTeacherCard from './LessonRecordingTeacherCard';
 
 export type QualitySession = { id: string; student_id: string; student_name: string; teacher_name: string; scheduled_start_at: string; scheduled_end_at: string; class_date: string; status: string; documentation_consent: boolean };
-export default function LessonSessionsPanel({ tenantId, studentId, manager = false }: { tenantId?: string; studentId?: string; manager?: boolean }) {
+// canMarkDocumentation: só a direção registra ou retira a autorização de
+// documentação de uma aula (set_lesson_documentation_consent confere no banco).
+export default function LessonSessionsPanel({ tenantId, studentId, manager = false, canMarkDocumentation = false }: { tenantId?: string; studentId?: string; manager?: boolean; canMarkDocumentation?: boolean }) {
   const [sessions, setSessions] = useState<QualitySession[]>([]);
   const [selected, setSelected] = useState<QualitySession | null>(null);
   const [handover, setHandover] = useState<string | null>(null);
@@ -20,11 +23,15 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
   }, [studentId, tenantId]);
   useEffect(() => { setSelected(null); void load(); }, [load]);
   async function consent(session: QualitySession) {
-    const reason = window.prompt('Registre a autorização do aluno/responsável e onde está o comprovante. Não informe documentos sensíveis.');
-    if (!reason) return;
+    const turningOn = !session.documentation_consent;
+    const reason = window.prompt(turningOn
+      ? 'Motivo (obrigatório): registre a autorização do aluno/responsável e onde está o comprovante. Não informe documentos sensíveis. Se o aluno, o responsável ou o professor recusou ou revogou o termo, a documentação não é ligada.'
+      : 'Motivo (obrigatório) para retirar a autorização desta aula. A transcrição da sala da escola é desligada no Google.');
+    if (reason === null) return;
+    if (reason.trim().length < 10) { setError(googleMeetErrorMessage('registre_a_base_e_o_comprovante_da_autorizacao')); return; }
     setBusy(true); setError('');
-    const result = await supabase.rpc('set_lesson_documentation_consent', { p_session_id: session.id, p_allowed: !session.documentation_consent, p_reason: reason });
-    if (result.error || result.data?.ok !== true) setError('Não foi possível registrar a autorização. Descreva a base e o comprovante (mínimo 10 caracteres).');
+    const result = await supabase.rpc('set_lesson_documentation_consent', { p_session_id: session.id, p_allowed: turningOn, p_reason: reason.trim() });
+    if (result.error || result.data?.ok !== true) setError(googleMeetErrorMessage(result.error?.message, 'Não foi possível registrar a autorização. Descreva a base e o comprovante (mínimo 10 caracteres).'));
     else { setSelected(null); await load(); }
     setBusy(false);
   }
@@ -61,7 +68,7 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <button className="font-semibold text-blue-600" onClick={() => { setSelected(session); setHandover(null); }}>Sala e resumo</button>
           <button className="text-blue-600" onClick={() => { setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
-          {manager && <button disabled={busy} onClick={() => void consent(session)} className="text-slate-600">{session.documentation_consent ? 'Revogar autorização' : 'Registrar autorização'}</button>}
+          {canMarkDocumentation && <button disabled={busy} onClick={() => void consent(session)} className="text-slate-600">{session.documentation_consent ? 'Revogar autorização' : 'Registrar autorização'}</button>}
           {manager && <button disabled={busy} onClick={() => void report(session)} className="text-slate-600">Registrar ocorrência</button>}
           {manager && new Date(session.scheduled_start_at).getTime() > Date.now() && <button disabled={busy} onClick={() => void replan(session)} className="text-slate-600">Replanejar sessão futura</button>}
         </div>

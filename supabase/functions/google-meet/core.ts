@@ -16,6 +16,9 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/meetings.space.created",
   "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
+// Login Google do PROFESSOR, só para confirmar qual conta é dele (decisão da
+// direção, 26/09/2026): nenhum acesso a Meet ou Drive, nenhum token guardado.
+export const TEACHER_IDENTITY_SCOPES = ["openid", "email"] as const;
 export const SUMMARY_PROMPT_VERSION = "meet-pedagogical-v1";
 
 // O worker do edge-runtime morre em 150 s. O lote começa trabalho novo até
@@ -286,6 +289,119 @@ export function authorizationUrl(
   }).toString();
   return url.toString();
 }
+/**
+ * Login do professor para confirmar a conta Google (openid + email). Mesmo
+ * cliente e mesmo endereço de retorno da conta central: o fluxo é distinguido
+ * pelo registro do nonce no banco (flow = 'teacher_identity'), nunca pela URL.
+ * Sem acesso offline — o servidor só lê o e-mail verificado e descarta o token.
+ */
+export function identityAuthorizationUrl(
+  config: { clientId: string; redirectUri: string },
+  state: string,
+  challenge: string,
+): string {
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.search = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
+    response_type: "code",
+    access_type: "online",
+    // O professor escolhe a conta: o navegador pode estar logado em outra.
+    prompt: "select_account",
+    scope: TEACHER_IDENTITY_SCOPES.join(" "),
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  }).toString();
+  return url.toString();
+}
+
+export type OAuthFlow = "organizer" | "teacher_identity";
+
+const escapeHtml = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        char
+      ]!,
+  );
+
+// Motivos que a pessoa consegue resolver sozinha, ditos na página de retorno.
+const CALLBACK_REASONS: Record<string, string> = {
+  google_organizer_change_requires_confirmation:
+    "Esta não é a conta central que criou as salas da escola. Para trocar de conta mesmo assim, use “Trocar para outra conta” na plataforma.",
+  google_identity_in_use:
+    "Esta conta Google já está confirmada para outro professor da escola. Entre com a sua própria conta.",
+  google_identity_unverified:
+    "O Google não confirmou o e-mail desta conta. Use uma conta com e-mail verificado.",
+  oauth_cancelled: "A autorização foi cancelada no Google.",
+  oauth_state_invalid:
+    "O link de autorização venceu ou já foi usado. Volte à plataforma e gere outro.",
+};
+
+/** Página HTML do retorno do OAuth (conta central ou conta do professor). */
+export function oauthResultPage(input: {
+  flow: OAuthFlow | null;
+  ok: boolean;
+  code: string;
+  email?: string | null;
+}): { status: number; html: string } {
+  const teacher = input.flow === "teacher_identity";
+  const title = input.ok
+    ? teacher ? "Conta Google confirmada" : "Conta Google conectada"
+    : "Conexão não concluída";
+  const body = input.ok
+    ? teacher
+      ? `A conta ${
+        escapeHtml(input.email || "")
+      } entra como coanfitriã das suas aulas na sala da escola. Volte à plataforma e atualize a tela.`
+      : "Volte à plataforma e atualize o status da integração."
+    : `${
+      escapeHtml(
+        CALLBACK_REASONS[input.code] ||
+          "Volte à plataforma e tente novamente.",
+      )
+    } Código: ${escapeHtml(input.code)}`;
+  return {
+    status: input.ok ? 200 : 400,
+    html:
+      `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${
+        teacher ? "Conta Google do professor" : "Conexão Google Meet"
+      }</title><body><main><h1>${title}</h1><p>${body}</p></main></body></html>`,
+  };
+}
+
+export type ArtifactToggle = "DISABLE_ARTIFACTS" | "ENABLE_ARTIFACTS";
+
+/**
+ * Documentação da sala acompanha o aceite (fila DISABLE/ENABLE_ARTIFACTS). A
+ * decisão final é tomada aqui, com o estado relido na hora: o aceite pode ter
+ * mudado de novo entre a fila e a execução. Religar só antes do início da aula
+ * (decisão da direção): aceite que volta com a aula em andamento vale da
+ * próxima em diante.
+ */
+export function artifactToggleAction(input: {
+  operation: ArtifactToggle;
+  consent: boolean;
+  artifactsState: string | null | undefined;
+  roomState: string | null | undefined;
+  hasSpace: boolean;
+  scheduledStartMs: number;
+  nowMs: number;
+}): "PATCH" | "NO_ROOM" | "ALREADY" | "CONSENT_CHANGED" | "CLASS_STARTED" {
+  if (
+    !input.hasSpace ||
+    !["READY", "COHOST_PENDING"].includes(String(input.roomState))
+  ) return "NO_ROOM";
+  const enable = input.operation === "ENABLE_ARTIFACTS";
+  if (input.consent !== enable) return "CONSENT_CHANGED";
+  const current = input.artifactsState === "DISABLED" ? "DISABLED" : "ENABLED";
+  if ((current === "ENABLED") === enable) return "ALREADY";
+  if (enable && !(input.scheduledStartMs > input.nowMs)) return "CLASS_STARTED";
+  return "PATCH";
+}
+
 export function grantedRequiredScopes(value: unknown): boolean {
   const scopes = new Set(text(value, 4000).split(/\s+/));
   return GOOGLE_SCOPES.filter((scope) => scope.startsWith("https:")).every((

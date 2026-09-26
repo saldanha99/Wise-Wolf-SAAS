@@ -1,5 +1,6 @@
 /// <reference lib="deno.ns" />
 import {
+  artifactToggleAction,
   authorizationUrl,
   decryptSecret,
   documentationSyncOutcome,
@@ -7,8 +8,10 @@ import {
   formatTranscriptEntries,
   GOOGLE_SCOPES,
   grantedRequiredScopes,
+  identityAuthorizationUrl,
   nativeNotesDraft,
   normalizeSummary,
+  oauthResultPage,
   pkceChallenge,
   runDocumentationTick,
   safeResource,
@@ -555,5 +558,161 @@ Deno.test("importação conclui só com tudo importado (ou vazio) e presença av
       deferred: true,
     })
       .complete,
+  );
+});
+
+// ===== Parte 2: identidade do professor, página de retorno, documentação da sala
+
+Deno.test("login do professor pede só openid e email, sem acesso offline, e deixa escolher a conta", () => {
+  const url = new URL(
+    identityAuthorizationUrl(
+      {
+        clientId: "test-client",
+        redirectUri: "https://school.example/functions/v1/google-meet",
+      },
+      "state-fixture",
+      "challenge-fixture",
+    ),
+  );
+  assert(url.hostname === "accounts.google.com", "host do OAuth");
+  assert(
+    url.searchParams.get("scope") === "openid email",
+    "escopo além de openid/email",
+  );
+  assert(
+    url.searchParams.get("access_type") === "online",
+    "pediu acesso offline",
+  );
+  assert(
+    url.searchParams.get("prompt") === "select_account",
+    "não deixa escolher a conta",
+  );
+  assert(
+    url.searchParams.get("redirect_uri") ===
+      "https://school.example/functions/v1/google-meet",
+    "retorno diferente do da conta central",
+  );
+  assert(
+    url.searchParams.get("code_challenge_method") === "S256" &&
+      url.searchParams.get("code_challenge") === "challenge-fixture" &&
+      url.searchParams.get("state") === "state-fixture",
+    "PKCE/state ausentes",
+  );
+  assert(
+    !url.searchParams.get("scope")!.includes("drive"),
+    "vazou escopo do Drive",
+  );
+});
+
+Deno.test("página de retorno: professor confirmado, e-mail escapado; erro com motivo legível", () => {
+  const ok = oauthResultPage({
+    flow: "teacher_identity",
+    ok: true,
+    code: "teacher_identity_verified",
+    email: 'prof"<b>@example.com',
+  });
+  assert(ok.status === 200, "status do sucesso");
+  assert(ok.html.includes("Conta Google confirmada"), "título do professor");
+  assert(
+    ok.html.includes("prof&quot;&lt;b&gt;@example.com") &&
+      !ok.html.includes("<b>"),
+    "e-mail não escapado",
+  );
+  const refused = oauthResultPage({
+    flow: "organizer",
+    ok: false,
+    code: "google_organizer_change_requires_confirmation",
+  });
+  assert(refused.status === 400, "status da recusa");
+  assert(
+    refused.html.includes("Trocar para outra conta") &&
+      refused.html.includes("google_organizer_change_requires_confirmation"),
+    "recusa da troca de conta sem explicação",
+  );
+  const central = oauthResultPage({
+    flow: "organizer",
+    ok: true,
+    code: "connected",
+  });
+  assert(
+    central.html.includes("Conta Google conectada"),
+    "título da conta central",
+  );
+  const unknown = oauthResultPage({ flow: null, ok: false, code: "<script>" });
+  assert(!unknown.html.includes("<script>"), "código de erro sem escape");
+});
+
+Deno.test("documentação da sala segue o aceite relido na hora", () => {
+  const base = {
+    consent: false,
+    artifactsState: "ENABLED",
+    roomState: "READY",
+    hasSpace: true,
+    scheduledStartMs: 10_000,
+    nowMs: 1_000,
+  };
+  // Revogou: desliga a sala que estava ligada.
+  assert(
+    artifactToggleAction({ ...base, operation: "DISABLE_ARTIFACTS" }) ===
+      "PATCH",
+    "revogação não desligou",
+  );
+  // Configuração da sala ainda pendente também desliga (o link pode ter saído).
+  assert(
+    artifactToggleAction({
+      ...base,
+      roomState: "COHOST_PENDING",
+      operation: "DISABLE_ARTIFACTS",
+    }) === "PATCH",
+    "sala com coanfitrião pendente ficou ligada",
+  );
+  // Já desligada: nada a fazer.
+  assert(
+    artifactToggleAction({
+      ...base,
+      artifactsState: "DISABLED",
+      operation: "DISABLE_ARTIFACTS",
+    }) === "ALREADY",
+    "desligou duas vezes",
+  );
+  // O aceite voltou entre a fila e a execução: não desliga.
+  assert(
+    artifactToggleAction({
+      ...base,
+      consent: true,
+      operation: "DISABLE_ARTIFACTS",
+    }) === "CONSENT_CHANGED",
+    "desligou com aceite vigente",
+  );
+  // Aceite de volta antes da aula: religa.
+  assert(
+    artifactToggleAction({
+      ...base,
+      consent: true,
+      artifactsState: "DISABLED",
+      operation: "ENABLE_ARTIFACTS",
+    }) === "PATCH",
+    "aceite de volta não religou",
+  );
+  // Aceite de volta com a aula já começada: vale da próxima em diante.
+  assert(
+    artifactToggleAction({
+      ...base,
+      consent: true,
+      artifactsState: "DISABLED",
+      nowMs: 10_000,
+      operation: "ENABLE_ARTIFACTS",
+    }) === "CLASS_STARTED",
+    "religou com a aula em andamento",
+  );
+  // Sala sem link ou que falhou: não há o que alterar.
+  assert(
+    artifactToggleAction({
+      ...base,
+      hasSpace: false,
+      roomState: "FAILED",
+      operation: "DISABLE_ARTIFACTS",
+    }) === "NO_ROOM",
+    "tentou alterar sala inexistente",
   );
 });

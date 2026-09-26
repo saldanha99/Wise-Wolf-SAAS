@@ -111,8 +111,7 @@ Deno.test("lê a planilha e separa professor, aluno e organizador", () => {
   assertEquals(parsed.rows.length, 3);
   assertEquals(parsed.rows[1].email, null);
   const summary = summarizeAttendance(parsed.rows, {
-    teacherEmail: "Prof.Fixture@example.com",
-    teacherName: "Professora Fixture",
+    teacherEmails: ["Prof.Fixture@example.com"],
     organizerEmail: "escola@example.com",
   });
   assertEquals(summary.participants.map((p) => p.role), [
@@ -126,22 +125,37 @@ Deno.test("lê a planilha e separa professor, aluno e organizador", () => {
   assertEquals(summary.studentSeconds, 1500);
 });
 
-Deno.test("professor sem e-mail no relatório é reconhecido pelo nome", () => {
-  const summary = summarizeAttendance(
-    [{
+Deno.test("professor só é reconhecido pela conta Google confirmada, nunca pelo nome", () => {
+  const rows = [
+    {
+      // Convidado sem conta Google que digitou o nome da professora.
       name: "Professora Maria Fixture",
       email: null,
       joinedAt: START,
       leftAt: null,
       durationSeconds: 1800,
-    }],
-    {
-      teacherEmail: "outra@example.com",
-      teacherName: "Professora Fixture",
-      organizerEmail: null,
     },
-  );
-  assertEquals(summary.participants[0].role, "TEACHER");
+    {
+      // A conta pessoal que ela confirmou por login (coanfitriã da sala).
+      name: "Maria F.",
+      email: "maria.pessoal@example.com",
+      joinedAt: START,
+      leftAt: null,
+      durationSeconds: 1500,
+    },
+  ];
+  const summary = summarizeAttendance(rows, {
+    teacherEmails: ["Maria.Pessoal@example.com", "maria.pessoal@example.com"],
+    organizerEmail: null,
+  });
+  assertEquals(summary.participants.map((p) => p.role), ["STUDENT", "TEACHER"]);
+  assertEquals(summary.teacherSeconds, 1500);
+  // Sem conta confirmada, ninguém vira professor por semelhança de nome.
+  const semIdentidade = summarizeAttendance(rows, {
+    teacherEmails: [],
+    organizerEmail: null,
+  });
+  assertEquals(semIdentidade.teacherSeconds, 0);
 });
 
 Deno.test("duração ausente sai de entrada × saída; planilha sem cabeçalho é erro", () => {
@@ -179,6 +193,18 @@ Deno.test("escolhe a planilha da sala certa entre aulas simultâneas", () => {
     "2",
   );
   assertEquals(pickAttendanceReport(noCode, null, null), null);
+  // A conta confirmada e a coanfitriã gravada na sala valem as duas.
+  assertEquals(
+    pickAttendanceReport(noCode, null, ["", "prof.b@example.com"])?.id,
+    "2",
+  );
+  assertEquals(
+    pickAttendanceReport(noCode, null, [
+      "prof.a@example.com",
+      "prof.b@example.com",
+    ]),
+    null,
+  );
   assertEquals(
     meetingCodeFromUri("https://meet.google.com/abc-defg-hij"),
     "abc-defg-hij",
@@ -262,8 +288,7 @@ Deno.test("junta as linhas da mesma pessoa: primeira entrada, última saída e s
   assertEquals(merged[1].durationSeconds, 25 * 60);
   assertEquals(merged[1].joinedAt, "2026-09-26T13:04:00.000Z");
   const summary = summarizeAttendance(merged, {
-    teacherEmail: "prof.fixture@example.com",
-    teacherName: null,
+    teacherEmails: ["prof.fixture@example.com"],
     organizerEmail: null,
   });
   assertEquals(summary.teacherSeconds, 27 * 60);

@@ -11,13 +11,28 @@ export default function GoogleMeetSettings({ tenantId }: { tenantId?: string }) 
     catch (err) { setError((err as Error).message); } finally { setBusy(''); }
   },[tenantId]);
   useEffect(()=>{setAuthorizationUrl('');void load();},[load]);
-  const run = async (action: string) => {
+  const run = async (action: string, extra: Record<string,unknown> = {}) => {
     setBusy(action);setError('');setMessage('');
     try {
-      const result:any = await googleMeetAction(action,{tenantId});
+      const result:any = await googleMeetAction(action,{tenantId,...extra});
       if (action==='connect') setAuthorizationUrl(result.authorization_url);
       else { setAuthorizationUrl('');setMessage(result.message || 'Sincronização concluída.');await load(); }
     } catch(err) {setError((err as Error).message);} finally {setBusy('');}
+  };
+  const connected = status?.connection?.status==='CONNECTED';
+  const roomsCount = Number(status?.rooms_count || 0);
+  const organizer = status?.connection?.organizer_email || 'a conta atual';
+  // Reconectar: com salas criadas pela conta atual, a pessoa confirma que vai
+  // entrar com a MESMA conta — outra conta Google é recusada no retorno (as
+  // salas já criadas ficariam sem leitura e sem como desligar a transcrição).
+  const reconnect = () => {
+    if (status?.connection && roomsCount>0 && !window.confirm(`Reconectar ${organizer}?\n\nEntre no Google com essa MESMA conta: ela criou ${roomsCount} sala(s) da escola. Se você escolher outra conta, a reconexão será recusada para não perder os documentos dessas aulas. Para trocar de conta de propósito, use "Trocar para outra conta".`)) return;
+    void run('connect');
+  };
+  // Troca de propósito: a direção confirma o que perde.
+  const replace = () => {
+    if (!window.confirm(`Trocar a conta central?\n\nAs ${roomsCount} sala(s) já criadas pertencem a ${organizer}. Com outra conta, a transcrição, as anotações e a presença dessas aulas deixam de ser importadas, e a revogação de um aluno não consegue mais desligar a transcrição delas. As próximas salas nascem na conta nova.`)) return;
+    void run('connect',{allow_replace:true});
   };
   return <div className="max-w-4xl space-y-5 p-4 sm:p-6">
     <div className="flex items-start justify-between gap-4"><div><h2 className="flex items-center gap-2 text-xl font-bold text-brand-text"><Video size={22}/>Google Meet da escola</h2><p className="mt-2 text-sm text-brand-muted">Uma conta organizadora central, professores com seus próprios Gmails e documentos de aula vinculados ao histórico de cada aluno.</p></div><button type="button" onClick={()=>void load()} disabled={!!busy} aria-label="Atualizar conexão" className="rounded-xl border border-brand-border p-2 text-brand-text">{busy==='load'?<Loader2 className="animate-spin" size={18}/>:<RefreshCw size={18}/>}</button></div>
@@ -26,12 +41,13 @@ export default function GoogleMeetSettings({ tenantId }: { tenantId?: string }) 
     {status&&<>
       <div className="rounded-2xl border border-brand-border bg-brand-surface p-5 space-y-3">
         <p className="text-sm font-bold text-brand-text">{status.connection?.status==='CONNECTED'?'Conta conectada':status.configured?'Aguardando conexão da conta central':'Configuração pendente'}</p>
-        {status.connection?.organizer_email&&<p className="text-sm text-brand-muted">Organizadora: {status.connection.organizer_email}</p>}
+        {status.connection?.organizer_email&&<p className="text-sm text-brand-muted">Organizadora: {status.connection.organizer_email}{roomsCount>0&&` · ${roomsCount} sala(s) criada(s) por ela`}</p>}
         <p className="text-sm text-brand-muted">{status.enabled?'Documentação pedagógica ativada. A disponibilidade de transcrição, notas e coanfitrião depende dos recursos liberados pelo Google na conta conectada.':'A documentação permanece desativada até a configuração e a validação da conta da escola.'}</p>
         {status.connection?.status==='CONNECTED'&&status.scopes_outdated&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">A conta foi conectada com a permissão antiga do Drive. As salas funcionam, mas transcrição, anotações e presença só são lidas depois de <strong>Reconectar conta central</strong>.</p>}
         {status.connection?.last_error_code&&<p className="text-sm text-amber-700">A conexão precisa de atenção. Reconecte a conta e confira as permissões.</p>}
         {status.can_manage&&<div className="flex flex-wrap gap-3">
-          <button type="button" disabled={!!busy||!status.configured} onClick={()=>void run('connect')} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy==='connect'?'Preparando…':status.connection?.status==='CONNECTED'?'Reconectar conta central':'Conectar conta central'}</button>
+          <button type="button" disabled={!!busy||!status.configured} onClick={reconnect} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy==='connect'?'Preparando…':connected?'Reconectar conta central':'Conectar conta central'}</button>
+          {status.connection&&roomsCount>0&&<button type="button" disabled={!!busy||!status.configured} onClick={replace} className="rounded-xl border border-amber-300 px-4 py-2.5 text-sm font-bold text-amber-900">Trocar para outra conta</button>}
           {status.connection?.status==='CONNECTED'&&<button type="button" disabled={!!busy} onClick={()=>{if(window.confirm('Desconectar a conta organizadora? Novas salas e importações ficarão indisponíveis; o histórico já revisado será preservado.'))void run('disconnect');}} className="rounded-xl border border-brand-border px-4 py-2.5 text-sm font-bold text-brand-text">Desconectar</button>}
           {status.connection?.status==='CONNECTED'&&status.enabled&&<button type="button" disabled={!!busy} onClick={()=>void run('sync_due')} className="rounded-xl border border-brand-border px-4 py-2.5 text-sm font-bold text-brand-text">Importar documentos pendentes</button>}
         </div>}

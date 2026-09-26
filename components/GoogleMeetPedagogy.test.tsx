@@ -70,3 +70,59 @@ describe('Situação de cada documento e sala que o Google não criou',()=>{
     expect((screen.getByRole('button',{name:'Tentar criar a sala de novo'}) as HTMLButtonElement).disabled).toBe(false);
   });
 });
+describe('Parte 2: troca de conta central, transcrição bruta e documentação desligada',()=>{
+  const statusWith=(rooms:number)=>({configured:true,enabled:true,can_manage:true,rooms_count:rooms,
+    connection:{status:'CONNECTED',organizer_email:'escola@example.com'},missing_configuration:[],summary_ai_enabled:false});
+  it('reconectar com salas pede confirmação e não autoriza troca; trocar de conta é pedido à parte',async()=>{
+    invoke.mockImplementation((action)=>Promise.resolve(action==='status'?statusWith(3):{authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?x=1'}));
+    const confirm=vi.spyOn(window,'confirm');
+    render(<GoogleMeetSettings tenantId="fixture"/>);
+    await screen.findByText(/3 sala\(s\) criada\(s\) por ela/);
+    confirm.mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button',{name:'Reconectar conta central'}));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(String(confirm.mock.calls[0][0])).toMatch(/MESMA conta/);
+    expect(invoke.mock.calls.map(([action])=>action)).toEqual(['status']);
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button',{name:'Reconectar conta central'}));
+    await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connect',{tenantId:'fixture'}));
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button',{name:'Trocar para outra conta'}));
+    await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connect',{tenantId:'fixture',allow_replace:true}));
+    expect(String(confirm.mock.calls[2][0])).toMatch(/deixam de ser importadas/);
+    confirm.mockRestore();
+  });
+  it('sem salas criadas, reconectar não pergunta nada e não há troca de conta',async()=>{
+    invoke.mockImplementation((action)=>Promise.resolve(action==='status'?statusWith(0):{authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?x=1'}));
+    const confirm=vi.spyOn(window,'confirm');
+    render(<GoogleMeetSettings tenantId="fixture"/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Reconectar conta central'}));
+    await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connect',{tenantId:'fixture'}));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button',{name:'Trocar para outra conta'})).toBeNull();
+    confirm.mockRestore();
+  });
+  it('quem não vê a fonte recebe só o resumo aprovado, sem fontes nem botões de revisão',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:false,artifacts:[],attendance:null,summaries:[{id:'ok-id',version:2,status:'VERIFIED',origin:'HUMAN_REVIEW',
+      content:{narrative:'Praticou pedidos no restaurante.',lesson_objective:'Pedir comida',recommended_next_step:'Reservar mesa por telefone',content_practiced:['Pedidos'],recurring_errors:[],strengths_observed:[],homework_assigned:'',uncertainties:[],evidence:[]}}]});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('approved-summary');
+    expect(screen.getByText(/Reservar mesa por telefone/)).toBeTruthy();
+    expect(screen.getByText(/ficam só com o professor da aula, a coordenação e a direção/)).toBeTruthy();
+    expect(screen.queryByText(/Fontes importadas/)).toBeNull();
+    expect(screen.queryByRole('button',{name:'Aprovar e atualizar memória do aluno'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Importar transcrição e notas'})).toBeNull();
+  });
+  it('professor da aula vê a presença do relatório e a sala com transcrição desligada',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      session:{documentation_consent:false},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'DISABLED',artifacts_changed_at:'2026-09-26T15:00:00Z'},
+      attendance:{teacher_first_join_at:'2026-09-26T13:04:00Z',teacher_seconds:1680,student_first_join_at:'2026-09-26T13:06:00Z',student_seconds:1500,parse_error:null,
+        participants:[{role:'TEACHER',name:'Professora',joinedAt:'2026-09-26T13:04:00Z',leftAt:'2026-09-26T13:32:00Z',durationSeconds:1680}]}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText('Presença pelo relatório do Google');
+    expect(screen.getByText(/Professor: entrou 10:04 · 28 min/)).toBeTruthy();
+    expect(screen.getByTestId('artifacts-disabled').textContent).toMatch(/Transcrição e anotações desligadas nesta sala/);
+    expect(screen.getByText(/autorização de registro desta aula foi retirada/)).toBeTruthy();
+  });
+});

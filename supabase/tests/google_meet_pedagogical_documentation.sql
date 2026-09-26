@@ -23,6 +23,9 @@ begin
   update public.profiles set tenant_id='meet-other-fixture',lifecycle_status='active',is_test_account=true,
     role=case when id=outsider_id then 'SCHOOL_ADMIN' else 'STUDENT' end where id in(outsider_id,other_student);
   update public.profiles set professor_id=teacher_id where id=student_id;
+  -- Conta Google confirmada pelo professor (20260926180000): é ela o coanfitrião.
+  insert into private.teacher_google_identities(teacher_id,tenant_id,google_sub,google_email,email_verified)
+    values(teacher_id,'meet-docs-fixture','docs-teacher-sub','teacher@example.invalid',true);
   insert into public.tenant_memberships(tenant_id,user_id,role,status)
     select tenant_id,id,role,'ACTIVE' from public.profiles where id in(admin_id,teacher_id,student_id,outsider_id,other_student)
     on conflict(tenant_id,user_id) do update set role=excluded.role,status='ACTIVE';

@@ -372,38 +372,40 @@ export function combineAttendanceReports(
   };
 }
 
-const sameName = (a: string, b: string) => {
-  const x = fold(a).replace(/[^a-z ]/g, "").split(" ").filter(Boolean);
-  const y = fold(b).replace(/[^a-z ]/g, "").split(" ").filter(Boolean);
-  return x.length > 0 && y.length > 0 && x[0] === y[0] &&
-    x[x.length - 1] === y[y.length - 1];
-};
+/** E-mails da identidade do professor, normalizados (vazio e repetido saem). */
+const emailList = (value: string | string[] | null | undefined): string[] => [
+  ...new Set(
+    (Array.isArray(value) ? value : value ? [value] : [])
+      .map((email) => String(email || "").trim().toLowerCase())
+      .filter(Boolean),
+  ),
+];
 
 /**
  * Quem é quem numa sala exclusiva da aula: o organizador é a conta da escola,
- * o professor é o coanfitrião (e-mail do cadastro dele; nome como reserva), e
- * qualquer outra pessoa é o aluno (ou o responsável, na aula de criança).
+ * o professor é a conta Google que ELE confirmou por login (a coanfitriã da
+ * sala; o e-mail do cadastro não conta), e qualquer outra pessoa é o aluno (ou
+ * o responsável, na aula de criança). Participante sem e-mail nunca é o
+ * professor: antes o nome servia de reserva, e qualquer convidado que digitasse
+ * o nome do professor "estava" na aula por ele.
  */
 export function summarizeAttendance(
   rows: AttendanceRow[],
   identity: {
-    teacherEmail: string | null;
-    teacherName: string | null;
+    teacherEmails: string[];
     organizerEmail: string | null;
   },
 ): AttendanceSummary {
-  const teacherEmail = identity.teacherEmail?.toLowerCase() || null;
+  const teacherEmails = new Set(emailList(identity.teacherEmails));
   const organizerEmail = identity.organizerEmail?.toLowerCase() || null;
   const participants = rows.map((row) => {
     let role: ParticipantRole = "STUDENT";
-    if (row.email && organizerEmail && row.email === organizerEmail) {
+    const email = row.email?.toLowerCase() || null;
+    if (email && organizerEmail && email === organizerEmail) {
       role = "ORGANIZER";
-    } else if (row.email && teacherEmail && row.email === teacherEmail) {
+    } else if (email && teacherEmails.has(email)) {
       role = "TEACHER";
-    } else if (
-      !row.email && identity.teacherName &&
-      sameName(row.name, identity.teacherName)
-    ) role = "TEACHER";
+    }
     return { ...row, role };
   });
   const earliest = (list: typeof participants) =>
@@ -437,11 +439,14 @@ export const namesOtherMeeting = (
     found.toLowerCase() !== (meetingCode || "").toLowerCase()
   );
 
-/** Planilha da reunião certa: nome com o código da sala; senão, a que cita o professor. */
+/**
+ * Planilha da reunião certa: nome com o código da sala; senão, a que cita a
+ * conta Google confirmada do professor.
+ */
 export function pickAttendanceReport<T extends { name: string; csv?: string }>(
   candidates: T[],
   meetingCode: string | null,
-  teacherEmail: string | null,
+  teacherEmails: string | string[] | null,
 ): T | null {
   const code = meetingCode?.toLowerCase() || "";
   if (code) {
@@ -452,11 +457,12 @@ export function pickAttendanceReport<T extends { name: string; csv?: string }>(
     // Plano B nunca escolhe planilha com código de outra sala.
     candidates = candidates.filter((c) => !namesOtherMeeting(c.name, code));
   }
-  if (teacherEmail) {
-    const email = teacherEmail.toLowerCase();
-    const byTeacher = candidates.filter((c) =>
-      (c.csv || "").toLowerCase().includes(email)
-    );
+  const emails = emailList(teacherEmails);
+  if (emails.length) {
+    const byTeacher = candidates.filter((c) => {
+      const csv = (c.csv || "").toLowerCase();
+      return emails.some((email) => csv.includes(email));
+    });
     if (byTeacher.length === 1) return byTeacher[0];
   }
   return null;
@@ -472,7 +478,7 @@ export function pickAttendanceReports<
 >(
   candidates: T[],
   meetingCode: string | null,
-  teacherEmail: string | null,
+  teacherEmails: string | string[] | null,
 ): T[] {
   const code = meetingCode?.toLowerCase() || "";
   if (code) {
@@ -481,7 +487,7 @@ export function pickAttendanceReports<
     );
     if (byName.length) return byName;
   }
-  const single = pickAttendanceReport(candidates, meetingCode, teacherEmail);
+  const single = pickAttendanceReport(candidates, meetingCode, teacherEmails);
   return single ? [single] : [];
 }
 

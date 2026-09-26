@@ -8,16 +8,20 @@ import { authorizeRequest, hasTenantAccess } from "../_shared/request-auth.ts";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   type ArtifactImportStatus,
+  type ArtifactToggle,
+  artifactToggleAction,
   authorizationUrl,
   decryptSecret,
   documentationSyncOutcome,
   encryptSecret,
-  googleEmail,
   grantedRequiredScopes,
+  identityAuthorizationUrl,
   isRecord,
   JOB_DEADLINE_MS,
   nativeNotesDraft,
   normalizeSummary,
+  type OAuthFlow,
+  oauthResultPage,
   pkceChallenge,
   randomToken,
   runDocumentationTick,
@@ -30,6 +34,7 @@ import {
   uuid,
 } from "./core.ts";
 import {
+  applyRoomArtifacts,
   exchangeToken,
   geminiSummary,
   googleIdentity,
@@ -71,11 +76,15 @@ type RoomRow = {
   organizer_sub: string;
   cohost_email: string;
   claim_id?: string | null;
+  // Transcrição e anotações ligadas no Google (a revogação desliga).
+  artifacts_state?: "ENABLED" | "DISABLED";
 };
 type ImportRow = {
   provider_name: string;
   status: ArtifactImportStatus;
 };
+// session_state: o que a edge precisa para a fila, sem texto bruto. A tela usa
+// session_detail, que aplica quem pode ver a transcrição.
 type SessionDetailData = {
   session: {
     teacher_id: string;
@@ -89,12 +98,18 @@ type SessionDetailData = {
   summaries: { origin: string; source_artifact_ids: string[] }[];
   imports?: ImportRow[];
   attendance_saved_reports?: number;
+  // Conta Google confirmada pelo professor da aula (login Google).
+  teacher_google_email?: string | null;
 };
 type PendingJob = {
   tenant_id: string;
   actor_id: string;
   lesson_session_id: string;
-  operation: "PREPARE_ROOM" | "SYNC_ARTIFACTS";
+  operation:
+    | "PREPARE_ROOM"
+    | "SYNC_ARTIFACTS"
+    | "DISABLE_ARTIFACTS"
+    | "ENABLE_ARTIFACTS";
 };
 // claim_id é a reserva interna da criação; não vai para o navegador.
 const publicRoom = (room: RoomRow | null) => {
@@ -277,26 +292,21 @@ async function issueToken(
 }
 async function callback(req: Request, cfg: Config): Promise<Response> {
   const url = new URL(req.url), state = url.searchParams.get("state") || "";
-  const html = (ok: boolean, code: string) =>
-    new Response(
-      `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Conexão Google Meet</title><body><main><h1>${
-        ok ? "Conta Google conectada" : "Conexão não concluída"
-      }</h1><p>${
-        ok
-          ? "Volte à plataforma e atualize o status da integração."
-          : "Volte à plataforma e tente conectar novamente. Código: " + code
-      }</p></main></body></html>`,
-      {
-        status: ok ? 200 : 400,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "Content-Security-Policy":
-            "default-src 'none'; frame-ancestors 'none'",
-          "Referrer-Policy": "no-referrer",
-        },
+  // O fluxo (conta central ou conta do professor) vem do nonce gravado no banco,
+  // nunca da URL de retorno — é o mesmo endereço para os dois.
+  let flow: OAuthFlow | null = null;
+  const page = (ok: boolean, code: string, email: string | null = null) => {
+    const result = oauthResultPage({ flow, ok, code, email });
+    return new Response(result.html, {
+      status: result.status,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+        "Referrer-Policy": "no-referrer",
       },
-    );
+    });
+  };
   try {
     if (cfg.missing.length || !/^[a-zA-Z0-9_-]{43}$/.test(state)) {
       throw new Error("oauth_configuration_or_state_invalid");
@@ -309,9 +319,48 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
     const nonce = await storage(db, "nonce_consume", null, null, null, {
       state_hash: await sha256(state),
     });
+    flow = nonce.flow === "teacher_identity" ? "teacher_identity" : "organizer";
     if (url.searchParams.has("error")) throw new Error("oauth_cancelled");
     const code = text(url.searchParams.get("code"), 6000);
     if (!code) throw new Error("oauth_code_missing");
+
+    if (flow === "teacher_identity") {
+      // Professor confirmando a própria conta Google: só o e-mail verificado
+      // importa. O token (openid + email) não é guardado.
+      const verifier = await decryptSecret(
+        nonce.verifier_ciphertext,
+        cfg.key,
+        `identity:${nonce.tenant_id}:${nonce.actor_id}`,
+      );
+      const token = await exchangeToken({
+        client_id: cfg.clientId,
+        client_secret: cfg.clientSecret,
+        redirect_uri: cfg.redirectUri,
+        grant_type: "authorization_code",
+        code,
+        code_verifier: verifier,
+      });
+      const identity = await googleIdentity(text(token.access_token, 8000));
+      // O banco confere de novo que o dono do nonce é professor ativo da escola.
+      const saved = await storage(
+        db,
+        "identity_save",
+        nonce.tenant_id,
+        nonce.actor_id,
+        null,
+        {
+          google_sub: identity.sub,
+          google_email: identity.email,
+          email_verified: true,
+        },
+      );
+      return page(
+        true,
+        "teacher_identity_verified",
+        text(saved?.email, 254) || identity.email,
+      );
+    }
+
     // Revalidate the originating administrator before exchanging a token.
     await storage(db, "status", nonce.tenant_id, nonce.actor_id);
     const verifier = await decryptSecret(
@@ -334,6 +383,9 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
       throw new Error("google_offline_access_required");
     }
     const identity = await googleIdentity(text(token.access_token, 8000));
+    // Outra conta Google com salas criadas pela atual: o banco recusa
+    // (google_organizer_change_requires_confirmation), a menos que a direção
+    // tenha pedido a troca ao gerar o link (allow_replace no nonce).
     await storage(
       db,
       "connection_save",
@@ -349,14 +401,15 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
           `refresh:${nonce.tenant_id}`,
         ),
         granted_scopes: text(token.scope, 4000).split(/\s+/),
+        allow_replace: nonce.allow_replace === true,
       },
     );
-    return html(true, "connected");
+    return page(true, "connected");
   } catch (error) {
     const code = error instanceof Error && /^[a-z_]+$/.test(error.message)
       ? error.message
       : "oauth_failed";
-    return html(false, code);
+    return page(false, code);
   }
 }
 
@@ -380,7 +433,7 @@ async function syncSession(
   const deadline = options.deadline ?? Date.now() + JOB_DEADLINE_MS;
   const detail: SessionDetailData = await storage(
     db,
-    "session_detail",
+    "session_state",
     tenantId,
     actorId,
     sessionId,
@@ -625,6 +678,10 @@ async function syncAttendance(
   conferences: MeetConference[],
 ): Promise<Record<string, unknown>> {
   const room = detail.room!;
+  // O professor é a conta Google que ele confirmou por login (e a coanfitriã
+  // gravada na sala, que nasce dela). O nome nunca identifica o professor.
+  const teacherEmails = [detail.teacher_google_email || "", room.cohost_email]
+    .filter(Boolean);
   let reportFound = false;
   // Conferência ainda aberta: o relatório dela não existe; o que estiver no Drive
   // é de outra aula. Espera o próximo ciclo (a avaliação só abre caso sem
@@ -673,21 +730,17 @@ async function syncAttendance(
             csv: await provider.spreadsheetCsv(candidate.id),
           });
         }
-        sources = pickAttendanceReports(withCsv, code, room.cohost_email);
+        sources = pickAttendanceReports(withCsv, code, teacherEmails);
       }
       if (sources.length) {
         const combined = combineAttendanceReports(sources, first);
         if (combined.sourceCsv.length > 200000) {
           throw new GoogleProviderError("google_document_too_large", 422);
         }
-        const { data: teacher } = await db.from("profiles").select("full_name")
-          .eq("id", detail.session.teacher_id).eq("tenant_id", tenantId)
-          .maybeSingle();
         const summary = combined.parseError
           ? null
           : summarizeAttendance(combined.rows, {
-            teacherEmail: room.cohost_email || null,
-            teacherName: teacher?.full_name || null,
+            teacherEmails,
             organizerEmail: connection.organizer_email || null,
           });
         await attendanceStorage(db, "attendance_save", tenantId, sessionId, {
@@ -738,7 +791,7 @@ async function createSessionRoom(
   }
   const detail: SessionDetailData = await storage(
     db,
-    "session_detail",
+    "session_state",
     tenantId,
     actorId,
     sessionId,
@@ -749,11 +802,12 @@ async function createSessionRoom(
   if (detail.session.status === "SUPERSEDED") {
     throw new Error("lesson_session_superseded");
   }
-  const { data: teacher, error } = await db.from("profiles").select("email")
-    .eq("id", detail.session.teacher_id).eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (error || !teacher) throw new Error("session_teacher_not_found");
-  const cohostEmail = googleEmail(teacher.email);
+  // Coanfitrião = conta Google que o professor confirmou por login. O e-mail
+  // do cadastro não prova de quem é a conta (decisão da direção, 26/09/2026).
+  // O banco confere de novo e grava o e-mail confirmado na sala.
+  if (!detail.teacher_google_email && !detail.room?.space_name) {
+    throw new Error("google_teacher_identity_required");
+  }
   const { token, connection } = await tokenFor(
     db,
     cfg,
@@ -769,7 +823,6 @@ async function createSessionRoom(
     sessionId,
     {
       organizer_sub: connection.organizer_sub,
-      cohost_email: cohostEmail,
       automatic: !!options.automatic,
     },
   );
@@ -845,6 +898,83 @@ async function createSessionRoom(
   return { ok: true, room: publicRoom(room) };
 }
 
+/**
+ * A documentação da sala JÁ criada acompanha o aceite: revogou → transcrição e
+ * anotações OFF no Google (spaces.patch); o aceite voltou antes da aula → ON.
+ * Decide com o estado relido agora (artifactToggleAction) e grava o que ficou
+ * no Google (room_artifacts_save), inclusive a falha, para a fila tentar de novo.
+ */
+async function setRoomArtifacts(
+  db: SupabaseClient,
+  cfg: Config,
+  tenantId: string,
+  actorId: string,
+  sessionId: string,
+  operation: ArtifactToggle,
+  options: { tokens?: TokenCache } = {},
+): Promise<Record<string, unknown>> {
+  if (!cfg.enabled || cfg.missing.length) {
+    throw new Error("google_pedagogy_disabled");
+  }
+  const detail: SessionDetailData = await storage(
+    db,
+    "session_state",
+    tenantId,
+    actorId,
+    sessionId,
+  );
+  const room = detail.room;
+  const decision = artifactToggleAction({
+    operation,
+    consent: detail.session.documentation_consent,
+    artifactsState: room?.artifacts_state,
+    roomState: room?.state,
+    hasSpace: !!room?.space_name,
+    scheduledStartMs: Date.parse(detail.session.scheduled_start_at),
+    nowMs: Date.now(),
+  });
+  if (decision !== "PATCH" || !room?.space_name) {
+    return { ok: true, skipped: decision };
+  }
+  const { token, connection } = await tokenFor(
+    db,
+    cfg,
+    tenantId,
+    actorId,
+    options.tokens,
+  );
+  if (connection.organizer_sub !== room.organizer_sub) {
+    // Só a conta que criou a sala consegue alterá-la.
+    await storage(db, "room_artifacts_save", tenantId, actorId, sessionId, {
+      result: "FAILED",
+      error_code: "google_organizer_changed",
+    });
+    throw new Error("google_organizer_changed");
+  }
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider(token),
+    room.space_name,
+    operation === "ENABLE_ARTIFACTS",
+  );
+  const saved: RoomRow = await storage(
+    db,
+    "room_artifacts_save",
+    tenantId,
+    actorId,
+    sessionId,
+    { result: outcome.result, error_code: outcome.errorCode },
+  );
+  if (outcome.result === "FAILED") {
+    console.error("[google-meet] documentação da sala", {
+      sessionId,
+      operation,
+      code: outcome.errorCode,
+    });
+    throw new Error(outcome.errorCode || "google_room_update_failed");
+  }
+  return { ok: true, artifacts_state: saved.artifacts_state };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const cfg = config();
@@ -880,26 +1010,45 @@ serve(async (req: Request) => {
         },
         async (job, deadline) => {
           try {
+            let result: Record<string, unknown>;
+            if (job.operation === "PREPARE_ROOM") {
+              result = await createSessionRoom(
+                db,
+                cfg,
+                job.tenant_id,
+                job.actor_id,
+                job.lesson_session_id,
+                { automatic: true, tokens },
+              );
+            } else if (job.operation === "SYNC_ARTIFACTS") {
+              result = await syncSession(
+                db,
+                cfg,
+                job.tenant_id,
+                job.actor_id,
+                job.lesson_session_id,
+                { deadline, tokens },
+              );
+            } else if (
+              job.operation === "DISABLE_ARTIFACTS" ||
+              job.operation === "ENABLE_ARTIFACTS"
+            ) {
+              result = await setRoomArtifacts(
+                db,
+                cfg,
+                job.tenant_id,
+                job.actor_id,
+                job.lesson_session_id,
+                job.operation,
+                { tokens },
+              );
+            } else {
+              throw new Error("unknown_google_meet_operation");
+            }
             return {
               session_id: job.lesson_session_id,
               operation: job.operation,
-              ...(job.operation === "PREPARE_ROOM"
-                ? await createSessionRoom(
-                  db,
-                  cfg,
-                  job.tenant_id,
-                  job.actor_id,
-                  job.lesson_session_id,
-                  { automatic: true, tokens },
-                )
-                : await syncSession(
-                  db,
-                  cfg,
-                  job.tenant_id,
-                  job.actor_id,
-                  job.lesson_session_id,
-                  { deadline, tokens },
-                )),
+              ...result,
             };
           } catch (error) {
             return {
@@ -1006,6 +1155,29 @@ serve(async (req: Request) => {
         missing_configuration: cfg.missing,
       }, 503);
     }
+    if (action === "teacher_identity_connect") {
+      // O professor confirma a PRÓPRIA conta Google (openid + email). É ela que
+      // vira coanfitriã das salas e que o relatório de presença reconhece.
+      if (auth.isService || auth.profile?.role !== "TEACHER") {
+        return json({ error: "google_meet_teacher_required" }, 403);
+      }
+      const state = randomToken(), verifier = randomToken();
+      await storage(db, "identity_nonce_create", tenantId, actorId, null, {
+        state_hash: await sha256(state),
+        verifier_ciphertext: await encryptSecret(
+          verifier,
+          cfg.key,
+          `identity:${tenantId}:${actorId}`,
+        ),
+      });
+      return json({
+        authorization_url: identityAuthorizationUrl(
+          cfg,
+          state,
+          await pkceChallenge(verifier),
+        ),
+      });
+    }
     if (action === "connect") {
       const state = randomToken(), verifier = randomToken();
       await storage(db, "nonce_create", tenantId, actorId, null, {
@@ -1015,6 +1187,9 @@ serve(async (req: Request) => {
           cfg.key,
           `oauth:${tenantId}:${actorId}`,
         ),
+        // Pedido explícito de TROCAR a conta central (confirmado na tela). Sem
+        // ele, o retorno recusa outra conta Google quando já há salas criadas.
+        allow_replace: body.allow_replace === true,
       });
       return json({
         authorization_url: authorizationUrl(

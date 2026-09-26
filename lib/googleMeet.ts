@@ -28,7 +28,33 @@ const MESSAGES: Record<string,string> = {
   google_meet_admin_required: 'Somente a direção pode conectar ou desconectar a conta organizadora.',
   google_resource_unavailable: 'O recurso não está disponível nesta conta Google. Confira a configuração com a administração.',
   google_cohost_setup_failed: 'A sala foi criada, mas o papel de coanfitrião ainda precisa ser configurado. Tente concluir a configuração.',
+  // Parte 2 (migration 20260926180000): identidade do professor, troca de conta,
+  // transcrição bruta e marcação manual.
+  google_teacher_identity_required: 'O professor desta aula ainda não confirmou a conta Google dele (em "Salas e continuidade"). Sem isso a sala da escola não é criada e a aula usa o link de sempre.',
+  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
+  google_meet_teacher_required: 'Só o próprio professor confirma a conta Google dele.',
+  google_identity_in_use: 'Esta conta Google já está confirmada para outro professor da escola.',
+  google_identity_unverified: 'O Google não confirmou o e-mail desta conta. Use uma conta com e-mail verificado.',
+  google_organizer_change_requires_confirmation: 'Esta não é a conta que criou as salas da escola. Para trocar de conta mesmo assim, use "Trocar para outra conta".',
+  google_meet_raw_access_required: 'A transcrição e os rascunhos desta aula ficam só com o professor da aula, a coordenação e a direção.',
+  google_room_update_unconfirmed: 'O Google não confirmou a mudança na sala. Uma nova tentativa acontece sozinha.',
+  somente_a_direcao: 'Só a direção registra ou retira a autorização de documentação de uma aula.',
+  registre_a_base_e_o_comprovante_da_autorizacao: 'Informe o motivo e onde está o comprovante (pelo menos 10 caracteres).',
+  termo_recusado_ou_revogado_pelo_aluno: 'O aluno (ou o responsável) recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
+  termo_recusado_ou_revogado_pelo_professor: 'O professor recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
+  sem_permissao: 'Você não tem permissão para esta ação.',
 };
+
+/**
+ * Texto para um erro do servidor (edge google-meet ou RPC do banco). A RPC
+ * devolve o código dentro da mensagem; código desconhecido vira texto genérico.
+ */
+export function googleMeetErrorMessage(raw: string | null | undefined, fallback = 'Não foi possível concluir a operação com o Google Meet. Tente novamente ou consulte a administração.'): string {
+  const textValue = String(raw || '');
+  if (MESSAGES[textValue]) return MESSAGES[textValue];
+  const code = Object.keys(MESSAGES).sort((a, b) => b.length - a.length).find(key => textValue.includes(key));
+  return code ? MESSAGES[code] : fallback;
+}
 export async function googleMeetAction<T = any>(action: string, body: Record<string,unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('google-meet', { body: { ...body, action } });
   let payload = data;
@@ -37,7 +63,7 @@ export async function googleMeetAction<T = any>(action: string, body: Record<str
   }
   if (error || payload?.error) {
     const code = typeof payload?.error === 'string' ? payload.error : '';
-    throw new Error(MESSAGES[code] || 'Não foi possível concluir a operação com o Google Meet. Tente novamente ou consulte a administração.');
+    throw new Error(googleMeetErrorMessage(code));
   }
   return payload as T;
 }

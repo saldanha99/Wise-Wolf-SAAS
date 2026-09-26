@@ -1379,7 +1379,7 @@ const App: React.FC = () => {
       'lesson-quality': <LessonQualityCenter />,
       'schedule-requests': <ScheduleChangeRequests tenantId={currentTenant?.id} />,
       'quality-contacts': <ContactQualityManager manager />,
-      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} />,
+      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} />,
       'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
       'recording-consents': <LessonRecordingConsentsPanel schoolName={currentTenant?.name} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,

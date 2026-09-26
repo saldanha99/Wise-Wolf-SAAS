@@ -22,6 +22,12 @@ export type MeetArtifact = {
   document: string | null;
   conference: MeetConference;
 };
+// Campos que a revogação desliga na sala já criada (spaces.patch). Mesmo formato
+// do guia do Meet (updateMask=config.accessType), um caminho por campo.
+export const ARTIFACT_UPDATE_MASK = [
+  "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration",
+  "config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration",
+].join(",");
 export class GoogleProviderError extends Error {
   constructor(
     public code: string,
@@ -144,6 +150,45 @@ export class GoogleMeetProvider {
         },
       }),
     });
+  }
+  /**
+   * Liga ou desliga a transcrição e as anotações automáticas de uma sala JÁ
+   * criada (spaces.patch). É o que a revogação do termo faz na sala da aula:
+   * quem entrar depois não é mais transcrito. O updateMask lista só os dois
+   * campos (FieldMask em JSON: caminhos camelCase separados por vírgula), então
+   * acesso, moderação e relatório de presença ficam como estão. A resposta é o
+   * Space atualizado: valor diferente do pedido não conta como feito.
+   */
+  async setArtifactGeneration(space: string, enabled: boolean): Promise<void> {
+    const name = safeResource(space, "space"), value = enabled ? "ON" : "OFF";
+    const url = new URL(`https://meet.googleapis.com/v2/${name}`);
+    url.searchParams.set("updateMask", ARTIFACT_UPDATE_MASK);
+    const result = await this.json(url.toString(), {
+      method: "PATCH",
+      body: JSON.stringify({
+        config: {
+          artifactConfig: {
+            transcriptionConfig: { autoTranscriptionGeneration: value },
+            smartNotesConfig: { autoSmartNotesGeneration: value },
+          },
+        },
+      }),
+    });
+    const artifact = isRecord(result.config) &&
+        isRecord(result.config.artifactConfig)
+      ? result.config.artifactConfig
+      : {};
+    const returned = [
+      isRecord(artifact.transcriptionConfig)
+        ? text(artifact.transcriptionConfig.autoTranscriptionGeneration, 40)
+        : "",
+      isRecord(artifact.smartNotesConfig)
+        ? text(artifact.smartNotesConfig.autoSmartNotesGeneration, 40)
+        : "",
+    ];
+    if (returned.some((found) => found && found !== value)) {
+      throw new GoogleProviderError("google_room_update_unconfirmed", 502);
+    }
   }
   async ensureCohost(space: string, email: string): Promise<void> {
     const name = safeResource(space, "space"), identity = googleEmail(email);
@@ -598,6 +643,31 @@ export async function importArtifacts(
     }
   }
   return { statuses, deferred };
+}
+
+/**
+ * Resultado de ligar/desligar a documentação da sala, no formato que o banco
+ * grava (room_artifacts_save). Sala que não existe mais no Google (404) não
+ * transcreve ninguém: para DESLIGAR, isso já é o estado pedido. Qualquer outra
+ * falha fica registrada e a fila tenta de novo (15 min, dobrando até 2 h).
+ */
+export async function applyRoomArtifacts(
+  provider: GoogleMeetProvider,
+  space: string,
+  enable: boolean,
+): Promise<
+  { result: "ENABLED" | "DISABLED" | "FAILED"; errorCode: string | null }
+> {
+  try {
+    await provider.setArtifactGeneration(space, enable);
+    return { result: enable ? "ENABLED" : "DISABLED", errorCode: null };
+  } catch (error) {
+    const code = providerErrorCode(error, "google_room_update_failed");
+    if (!enable && code === "google_resource_unavailable") {
+      return { result: "DISABLED", errorCode: code };
+    }
+    return { result: "FAILED", errorCode: code };
+  }
 }
 
 /**

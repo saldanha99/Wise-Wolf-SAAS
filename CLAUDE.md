@@ -291,6 +291,27 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   planilhas de presença de queda e reentrada juntadas, e só token revogado (`invalid_grant`)
   desconecta a conta. ⚠️ `google_meet_backend` foi recriada inteira: migration posterior que mexer
   nela parte desta definição.
+- **Parte 2** (migration `20260926180000`, teste `supabase/tests/identidade_do_professor_e_revogacao_no_meet.sql`):
+  - **Coanfitrião = conta Google que o professor confirmou por login** (`teacher_identity_connect` na edge,
+    só `openid email`, mesmo cliente e mesmo retorno; o fluxo vem de `google_meet_oauth_states.flow`, nunca da
+    URL). Grava `private.teacher_google_identities`; a tela lê `get_my_google_identity()`. Sem identidade: sem
+    sala (`google_teacher_identity_required`), fora da fila, link de sempre no app, e o professor não autoriza o
+    termo (`teacher_google_identity_required`). O e-mail do cadastro não vale; no relatório de presença o
+    professor é SÓ a conta confirmada — convidado com o nome do professor não conta mais como ele.
+  - **Revogação desliga a sala já criada**: sem `documentation_consent`, sala `READY`/`COHOST_PENDING` vira
+    `DISABLE_ARTIFACTS` na fila (grupo 0) → `spaces.patch` com transcrição e anotações `OFF`
+    (`google_meet_rooms.artifacts_state`); aceite de volta antes da aula → `ENABLE_ARTIFACTS`. Falha tenta de
+    novo (15 min dobrando até 2 h). `get_my_lesson_rooms` passou a exigir `documentation_consent` (como o
+    lembrete do WhatsApp): sala de quem revogou não é mais entregue.
+  - **Transcrição bruta só para o professor da aula, coordenação e direção da escola** (`session_detail` →
+    `raw_access`); outros professores do aluno e o `SUPER_ADMIN` veem só o resumo aprovado. A edge usa
+    `session_state` (interno, sem texto bruto) na fila.
+  - **Troca de conta central**: `status.rooms_count`; com salas, o retorno recusa outra conta
+    (`google_organizer_change_requires_confirmation`) a menos que a direção tenha pedido "Trocar para outra
+    conta" (`allow_replace` no nonce).
+  - **Marcação manual só `SCHOOL_ADMIN`**, com motivo, e não liga por cima de recusa/revogação do aluno ou do
+    professor; revogação posterior desmarca a sessão marcada à mão (`apply_standing_lesson_recording_consent`).
+  - ⚠️ Teste SQL que cria sala precisa de linha em `private.teacher_google_identities` para o professor.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

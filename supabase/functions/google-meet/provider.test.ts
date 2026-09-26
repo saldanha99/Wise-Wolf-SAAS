@@ -1,5 +1,7 @@
 /// <reference lib="deno.ns" />
 import {
+  applyRoomArtifacts,
+  ARTIFACT_UPDATE_MASK,
   exchangeToken,
   googleErrorInfo,
   GoogleMeetProvider,
@@ -491,4 +493,144 @@ Deno.test("passado o prazo da rodada, o resto fica para a próxima (sem chamar o
   );
   assertEquals(run, { statuses: ["PENDING", "PENDING"], deferred: true });
   assertEquals(google.urls.length, 0);
+});
+
+// ===== Revogação desliga a documentação da sala já criada (spaces.patch) =====
+
+function fakePatch(responses: Response[]) {
+  const calls: { method: string; url: URL; body: Record<string, unknown> }[] =
+    [];
+  const request = (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({
+      method: String(init?.method || "GET"),
+      url: new URL(String(url)),
+      body: JSON.parse(String(init?.body || "{}")),
+    });
+    const next = responses.shift();
+    if (!next) throw new Error("chamada inesperada");
+    return Promise.resolve(next);
+  };
+  return { calls, request: request as typeof fetch };
+}
+const spaceWith = (value: string) => ({
+  name: "spaces/nLYkAE855egB",
+  config: {
+    artifactConfig: {
+      transcriptionConfig: { autoTranscriptionGeneration: value },
+      smartNotesConfig: { autoSmartNotesGeneration: value },
+      recordingConfig: { autoRecordingGeneration: "OFF" },
+    },
+  },
+});
+
+Deno.test("desligar: PATCH na sala com updateMask só dos dois campos e valor OFF", async () => {
+  assertEquals(
+    ARTIFACT_UPDATE_MASK,
+    "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration,config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration",
+  );
+  const google = fakePatch([json(spaceWith("OFF"))]);
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider("t", google.request),
+    "spaces/nLYkAE855egB",
+    false,
+  );
+  assertEquals(outcome, { result: "DISABLED", errorCode: null });
+  assertEquals(google.calls.length, 1);
+  const call = google.calls[0];
+  assertEquals(call.method, "PATCH");
+  assertEquals(
+    call.url.origin + call.url.pathname,
+    "https://meet.googleapis.com/v2/spaces/nLYkAE855egB",
+  );
+  assertEquals(call.url.searchParams.get("updateMask"), ARTIFACT_UPDATE_MASK);
+  assertEquals(call.body, {
+    config: {
+      artifactConfig: {
+        transcriptionConfig: { autoTranscriptionGeneration: "OFF" },
+        smartNotesConfig: { autoSmartNotesGeneration: "OFF" },
+      },
+    },
+  });
+});
+
+Deno.test("religar: mesmo PATCH com ON", async () => {
+  const google = fakePatch([json(spaceWith("ON"))]);
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider("t", google.request),
+    "spaces/nLYkAE855egB",
+    true,
+  );
+  assertEquals(outcome, { result: "ENABLED", errorCode: null });
+  assertEquals(google.calls[0].body, {
+    config: {
+      artifactConfig: {
+        transcriptionConfig: { autoTranscriptionGeneration: "ON" },
+        smartNotesConfig: { autoSmartNotesGeneration: "ON" },
+      },
+    },
+  });
+});
+
+Deno.test("Google devolve a sala ainda ligada: não conta como desligada", async () => {
+  const google = fakePatch([json(spaceWith("ON"))]);
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", google.request),
+      "spaces/nLYkAE855egB",
+      false,
+    ),
+    { result: "FAILED", errorCode: "google_room_update_unconfirmed" },
+  );
+});
+
+Deno.test("sala que não existe mais no Google já está desligada; religar nela é falha", async () => {
+  const gone = () => json({ error: { code: 404 } }, 404);
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", fakePatch([gone()]).request),
+      "spaces/nLYkAE855egB",
+      false,
+    ),
+    { result: "DISABLED", errorCode: "google_resource_unavailable" },
+  );
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", fakePatch([gone()]).request),
+      "spaces/nLYkAE855egB",
+      true,
+    ),
+    { result: "FAILED", errorCode: "google_resource_unavailable" },
+  );
+});
+
+Deno.test("recusa ou rede fora: falha registrada (a fila tenta de novo), sem exceção", async () => {
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider(
+        "t",
+        fakePatch([json({ error: { code: 403 } }, 403)]).request,
+      ),
+      "spaces/nLYkAE855egB",
+      false,
+    ),
+    { result: "FAILED", errorCode: "google_permission_or_edition_required" },
+  );
+  const offline = (() => Promise.reject(new TypeError("rede"))) as typeof fetch;
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", offline),
+      "spaces/nLYkAE855egB",
+      false,
+    ),
+    { result: "FAILED", errorCode: "google_request_uncertain" },
+  );
+  // Nome de sala fora do formato nem chega ao Google.
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", fakePatch([]).request),
+      "spaces/../x",
+      false,
+    ),
+    { result: "FAILED", errorCode: "google_resource_invalid" },
+  );
 });

@@ -185,7 +185,10 @@ begin
   v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true);
   perform pg_temp.rec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do responsável não registrado');
 
-  -- Professor no app.
+  -- Professor no app. Autorizar exige a conta Google confirmada por login
+  -- (20260926180000); a identidade vem pela edge, aqui direto na tabela.
+  insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+  values (v_teacher, 'rec-consent-fixture', 'rec-teacher-sub', 'rec-teacher@example.com', true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
   perform pg_temp.rec_assert(public.get_my_lesson_recording_consent() ->> 'decision' = 'NONE', 'professor começou com decisão');
   perform pg_temp.rec_assert(public.set_my_lesson_recording_consent(true) ->> 'decision' = 'ACCEPTED', 'aceite do professor falhou');

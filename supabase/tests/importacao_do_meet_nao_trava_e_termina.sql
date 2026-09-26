@@ -74,6 +74,9 @@ begin
   insert into public.tenant_memberships (tenant_id, user_id, role, status)
     select tenant_id, id, role, 'ACTIVE' from public.profiles where id in (v_admin, v_teacher, v_student)
   on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
+  -- Conta Google confirmada pelo professor (20260926180000): sem ela não há sala.
+  insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+  values (v_teacher, 'meet-fila-fixture', 'fila-teacher-sub', 'prof@example.invalid', true);
 
   insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
     scheduled_start_at, scheduled_end_at, source_key, documentation_consent) values
