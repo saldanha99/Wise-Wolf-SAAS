@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { googleMeetErrorMessage } from '../lib/googleMeet';
 import LessonPedagogicalSummary from './LessonPedagogicalSummary';
@@ -9,12 +9,29 @@ import LessonReviewQueue from './LessonReviewQueue';
 export type QualitySession = { id: string; student_id: string; student_name: string; teacher_name: string; scheduled_start_at: string; scheduled_end_at: string; class_date: string; status: string; documentation_consent: boolean };
 // canMarkDocumentation: só a direção registra ou retira a autorização de
 // documentação de uma aula (set_lesson_documentation_consent confere no banco).
-export default function LessonSessionsPanel({ tenantId, studentId, manager = false, canMarkDocumentation = false }: { tenantId?: string; studentId?: string; manager?: boolean; canMarkDocumentation?: boolean }) {
+// focusStudentId: o dossiê a abrir de cara — vem do link com login que o
+// substituto e o novo titular recebem no WhatsApp (lib/studentDossierLink.ts).
+// É só destino: quem decide se a pessoa lê é o servidor (get_student_handover).
+export default function LessonSessionsPanel({ tenantId, studentId, manager = false, canMarkDocumentation = false, focusStudentId = null, onFocusConsumed }: { tenantId?: string; studentId?: string; manager?: boolean; canMarkDocumentation?: boolean; focusStudentId?: string | null; onFocusConsumed?: () => void }) {
   const [sessions, setSessions] = useState<QualitySession[]>([]);
   const [selected, setSelected] = useState<QualitySession | null>(null);
   const [handover, setHandover] = useState<string | null>(null);
+  const [handoverFromLink, setHandoverFromLink] = useState(false);
+  const handoverRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const onFocusConsumedRef = useRef(onFocusConsumed);
+  onFocusConsumedRef.current = onFocusConsumed;
+  useEffect(() => {
+    if (!focusStudentId) return;
+    setSelected(null);
+    setHandover(focusStudentId);
+    setHandoverFromLink(true);
+    onFocusConsumedRef.current?.();
+  }, [focusStudentId]);
+  useEffect(() => {
+    if (handover && handoverFromLink) handoverRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [handover, handoverFromLink]);
   const load = useCallback(async () => {
     setBusy(true); setError('');
     const { data, error: rpcError } = await supabase.rpc('get_lesson_sessions', { p_student_id: studentId || null });
@@ -70,7 +87,7 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
         <p className="mt-2 text-xs">{session.status === 'LOGGED' ? 'Com lançamento' : 'Prevista'} · Documentação {session.documentation_consent ? 'autorizada' : 'sem autorização registrada'}</p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <button className="font-semibold text-blue-600" onClick={() => { setSelected(session); setHandover(null); }}>Sala e resumo</button>
-          <button data-tour="lesson-session-handover" className="text-blue-600" onClick={() => { setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
+          <button data-tour="lesson-session-handover" className="text-blue-600" onClick={() => { setHandover(session.student_id); setHandoverFromLink(false); setSelected(null); }}>Dossiê do aluno</button>
           {canMarkDocumentation && <button disabled={busy} onClick={() => void consent(session)} className="text-slate-600">{session.documentation_consent ? 'Revogar autorização' : 'Registrar autorização'}</button>}
           {manager && <button disabled={busy} onClick={() => void report(session)} className="text-slate-600">Registrar ocorrência</button>}
           {manager && new Date(session.scheduled_start_at).getTime() > Date.now() && <button disabled={busy} onClick={() => void replan(session)} className="text-slate-600">Replanejar sessão futura</button>}
@@ -78,6 +95,10 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
       </article>)}
     </div>
     {selected && <div className="rounded-xl border p-4"><button className="mb-3 text-sm underline" onClick={() => setSelected(null)}>Fechar detalhes</button><LessonPedagogicalSummary sessionId={selected.id} tenantId={tenantId} /></div>}
-    {handover && <div className="rounded-xl border p-4"><button className="mb-3 text-sm underline" onClick={() => setHandover(null)}>Fechar dossiê</button><StudentHandover studentId={handover} /></div>}
+    {handover && <div ref={handoverRef} className="rounded-xl border p-4">
+      <button className="mb-3 text-sm underline" onClick={() => { setHandover(null); setHandoverFromLink(false); }}>Fechar dossiê</button>
+      {handoverFromLink && <p role="note" className="mb-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">Dossiê aberto pelo link do WhatsApp. Para quem cobre uma aula ou dá uma reposição marcada, o acesso vale do dia anterior ao dia seguinte da aula; para o novo professor de uma transferência, a partir do aceite.</p>}
+      <StudentHandover studentId={handover} viaLink={handoverFromLink} />
+    </div>}
   </section>;
 }

@@ -409,6 +409,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-28-dossie-do-substituto',
+    title: 'Dossiê na cobertura e na transferência',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'lesson-session-handover',
+        view: 'lesson-sessions',
+        title: 'Vai cobrir uma aula? O dossiê chega por link 🗂️',
+        text: 'Ao aceitar uma cobertura, o WhatsApp da escola manda o contato do aluno, o próximo passo, os erros recorrentes e a lição da última aula aprovada, a sala da escola no Meet quando a aula tiver uma, e o link do dossiê. Abra com o seu login: ele vale do dia anterior ao dia seguinte da aula (também numa reposição marcada com você) e mostra o histórico, o resumo aprovado e o cartão do aluno. A transcrição completa fica só com quem deu cada aula.',
+      },
+      {
+        target: null,
+        view: 'lesson-sessions',
+        title: 'Aluno novo por transferência',
+        text: 'Quando a escola passa um aluno para você de vez, o link do dossiê dele chega pelo WhatsApp da escola — leia antes da primeira aula. Na transferência o cartão do aluno passa a ser seu também; quem só cobre uma aula lê o cartão, mas não o reescreve. Nada pessoal do aluno vai em texto no WhatsApp: fica tudo atrás do login.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

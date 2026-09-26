@@ -494,6 +494,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   direção usa "Apagar registros das aulas deste aluno" na ficha (`erase_student_lesson_records`, acima); a tela
   do aluno lista o que aquela RPC apaga e o que fica. ⚠️ Não apague "à mão" só `student_learning_memories`:
   `get_my_lesson_records` lê `lesson_summary_versions`, e o resumo continuaria na tela dele.
+- **Substituto e novo titular recebem o dossiê por link com login** (migration `20260928100000`, runbook
+  seção própria, teste `supabase/tests/substituto_e_novo_titular_recebem_o_dossie.sql`): cobertura
+  **confirmada** e reposição **com data** abrem o dossiê, a lista de sessões, a RLS de `lesson_sessions` e o
+  resumo aprovado (`session_detail`, só essa ação) do dia anterior ao seguinte da aula
+  (`private.pedagogy_temporary_access`, a janela do Planner); `'Pendente'` e encerrada não abrem. A regra do
+  dossiê é uma só, `private.student_pedagogy_access(escola, aluno, com_janela)`: `can_read_student_pedagogy`
+  com a janela, `student_learning_card_can_edit` sem (o substituto lê o cartão, não reescreve). O pacote da
+  cobertura leva a última aula APROVADA (próximo passo, erros, lição), a sala oficial de quem dá a aula e
+  `<portal>/dossie-do-aluno?aluno=<id>` — e deixou de levar o objetivo livre do cadastro e o nome do
+  responsável. Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
+  `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
+  desde 22/09 (o gatilho `bookings_sync_student_primary_teacher` já trocava o `professor_id` antes da trava
+  da função) — remendada por âncora aqui.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 
@@ -1811,6 +1824,12 @@ a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
   ele; função com dono `postgres` que a chama precisa do `grant execute … to postgres` (feito
   nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
   booking — continua manual.
+- **Desde `20260928100000`** o pacote leva também a última aula com resumo APROVADO (próximo passo,
+  erros recorrentes, lição), a sala oficial quando vale para quem dá a aula e o link com login do dossiê
+  (válido do dia anterior ao seguinte da aula); o objetivo livre do cadastro e o nome do responsável
+  saíram do texto (ficam no dossiê). O modo **force** do `coverage-admin` também manda o pacote
+  (`coverage-admin/briefing.ts`). ⚠️ Não volte a pôr cartão, preferência ou objetivo do aluno em texto
+  no WhatsApp do substituto — decisão da direção: dado pessoal só atrás do login.
 
 ### 🚦 Teto e aquecimento do WhatsApp — todo envio automático pede licença ao banco ✅
 

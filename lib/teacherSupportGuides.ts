@@ -55,7 +55,7 @@ export const TEACHER_SUPPORT_GUIDES: TeacherSupportGuide[] = [
     summary: 'O convite chega por WhatsApp; aceitou, a aula entra no seu Lançar Aula e conta para você.',
     steps: [
       'Você recebe um link no WhatsApp quando um colega não pode dar uma aula no seu horário livre. Abra e aceite — o primeiro que aceita fica com a aula. Responder "consigo sim" ao número da escola vale como o clique.',
-      'Ao aceitar, chega o pacote do aluno: contato (wa.me), nível, objetivo e as últimas 3 aulas com o "próximo passo". Combine o link da aula direto com a família.',
+      'Ao aceitar, chega o pacote do aluno: contato (wa.me), nível, o próximo passo, os erros recorrentes e a lição da última aula aprovada, as últimas 3 aulas lançadas e o link do dossiê (objetivo, cartão e histórico), que abre com o seu login do dia anterior ao dia seguinte da aula. Se a aula tiver sala da escola no Meet, o link dela vem junto — entre por ela; se não tiver, combine o link direto com a família.',
       'A cobertura aparece no seu Início (Aulas de Hoje) e na Agenda com a data; no dia, em Lançar Aula. Lance normalmente: ela entra no seu pagamento, na sua tarifa.',
       'Cobriu uma aula combinada na hora (sem convite)? A coordenação registra pelo grupo e a aula aparece para você lançar.',
     ],

@@ -41,6 +41,8 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<number | null>(null);
+  // Avisos por cobertura criada (ex.: substituto sem WhatsApp — o pacote não saiu).
+  const [doneWarnings, setDoneWarnings] = useState<string[]>([]);
 
   const getFunctionErrorMessage = (error: unknown, data: any) => {
     if (data?.error && typeof data.error === 'string') return data.error;
@@ -213,7 +215,9 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
         body: { action: 'requestCoverage', absenceId, mode, items },
       });
       if (error || !data?.ok) throw new Error(getFunctionErrorMessage(error, data) || 'falha');
-      setDone((data.results || []).filter((r: any) => r.coverage).length);
+      const created = ((data.results || []) as Array<{ coverage?: unknown; warning?: unknown }>).filter(r => r.coverage);
+      setDoneWarnings(Array.from(new Set(created.map(r => r.warning).filter((w): w is string => typeof w === 'string' && w.length > 0))));
+      setDone(created.length);
     } catch (e: any) {
       setError('Erro ao enviar coberturas: ' + (e.message || 'tente novamente.'));
     } finally {
@@ -244,9 +248,10 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
               <h3 className="font-black text-lg text-brand-text dark:text-slate-100">{done} cobertura(s) {mode === 'force' ? 'aplicada(s)' : 'enviada(s)'}</h3>
               <p className="text-sm text-brand-muted mt-1">
                 {mode === 'force'
-                  ? 'Os substitutos foram escalados. As aulas já aparecem na agenda deles.'
+                  ? 'Os substitutos foram escalados e recebem no WhatsApp o pacote da aula (contato do aluno, última aula aprovada e link do dossiê). As aulas já aparecem na agenda deles.'
                   : 'Os substitutos receberam o link de confirmação por WhatsApp. A aula só muda quando aceitarem.'}
               </p>
+              {doneWarnings.map(warning => <p key={warning} role="alert" className="text-xs font-bold text-amber-600 mt-2">⚠️ {warning}</p>)}
               <button onClick={onClose} className="mt-6 px-6 py-3 rounded-2xl bg-tenant-primary text-white text-xs font-black uppercase">Fechar</button>
             </div>
           ) : (

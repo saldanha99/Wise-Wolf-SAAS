@@ -25,6 +25,7 @@ import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
+import { studentDossierDestination } from './lib/studentDossierLink';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -286,6 +287,21 @@ const App: React.FC = () => {
   useEffect(() => {
     const destination = studentBillingDestination(window.location, user);
     if (destination) setActiveTab(destination);
+  }, [user?.id, user?.role]);
+  // Link com login do dossiê (substituto e novo titular, pelo WhatsApp): também
+  // só destino. Quem decide se a pessoa lê é o servidor (get_student_handover).
+  // Consumido uma vez: a URL volta para "/" e o dossiê abre só nesta visita.
+  const [dossierStudentId, setDossierStudentId] = useState<string | null>(null);
+  useEffect(() => {
+    const destination = studentDossierDestination(window.location, user);
+    if (!destination) return;
+    setActiveTab(destination.tab);
+    setDossierStudentId(destination.studentId);
+    try {
+      window.history.replaceState(window.history.state, '', '/');
+    } catch {
+      // Sem history (navegador restrito): o dossiê abre do mesmo jeito.
+    }
   }, [user?.id, user?.role]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
@@ -1383,7 +1399,7 @@ const App: React.FC = () => {
       'lesson-quality': <LessonQualityCenter />,
       'schedule-requests': <ScheduleChangeRequests tenantId={currentTenant?.id} />,
       'quality-contacts': <ContactQualityManager manager />,
-      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} />,
+      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} focusStudentId={dossierStudentId} onFocusConsumed={() => setDossierStudentId(null)} />,
       'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
       'recording-consents': <LessonRecordingConsentsPanel schoolName={currentTenant?.name} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,

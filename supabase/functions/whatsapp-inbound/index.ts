@@ -2076,7 +2076,7 @@ async function handleTeacherCoverageReply(
     }
     lines.push(
       accept
-        ? `✅ ${label}: cobertura registrada. Já te mando o contato do aluno e o conteúdo das últimas aulas.`
+        ? `✅ ${label}: cobertura registrada. Já te mando o contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login).`
         : `❌ ${label}: recusa registrada, a coordenação vai procurar outro professor.`,
     );
   }
@@ -2836,7 +2836,7 @@ async function createCoverageInviteDirect(
   const message =
     `Olá ${coverFirstName}! 🐺\n\nA coordenação precisa de uma *cobertura pontual*:\n\n📅 ${formattedDate} às *${
       String(result.class_time || action.class_time || "").slice(0, 5)
-    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar — ou responda *sim* / *não* por aqui:\n${link}\n\nAo aceitar, te mando o contato do aluno e o conteúdo das últimas aulas.`;
+    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar — ou responda *sim* / *não* por aqui:\n${link}\n\nAo aceitar, te mando o contato do aluno, o que ficou da última aula e o link do dossiê.`;
   const notified = await sendWhats(instance, phone, message);
   if (notified && result.coverage_id) {
     await sb.from("class_coverages").update({

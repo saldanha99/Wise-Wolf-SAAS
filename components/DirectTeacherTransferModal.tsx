@@ -69,7 +69,9 @@ const DirectTeacherTransferModal: React.FC<DirectTeacherTransferModalProps> = ({
       return;
     }
 
-    setSuccess(`${student.full_name} agora é aluno(a) de ${data?.to_teacher_name || targetName}.`);
+    // O aviso ao novo titular sai por gatilho em teacher_transfers (20260928100000),
+    // pela fila da instância central — só com WhatsApp no cadastro dele.
+    setSuccess(`${student.full_name} agora é aluno(a) de ${data?.to_teacher_name || targetName}. O link do dossiê do aluno vai pelo WhatsApp da escola para o novo professor (se ele tiver WhatsApp no cadastro).`);
     await onTransferred(toTeacher);
   };
 
