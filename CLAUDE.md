@@ -274,6 +274,12 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `appNotAuthorizedToFile`, medido 2×) — por isso o escopo é `drive.readonly`, e o código só abre o id
   que a Meet API aponta e planilhas da própria conta com o código da sala no nome. Mudou escopo →
   **reconectar a conta central** (a tela avisa com `scopes_outdated`).
+- ⚠️ **`get_my_lesson_rooms` só devolve sessão com sala da escola OU aceite de documentação**
+  (migration `20260926160000`). Antes ela devolvia toda `lesson_session` (a agenda vira sessão a cada
+  15 min) com link nulo, e `lib/lessonRooms.ts` — que corretamente não abre sala pessoal em aula com
+  aceite — deixava o **botão "entrar na aula" do app vazio em todas as aulas de 13/09 a 26/09** (medido:
+  4 de 4 aulas de um professor em 25/09). Ninguém reclamou porque o lembrete do WhatsApp usa
+  `profiles.meeting_link`. Conserto no servidor vale até para PWA antigo em cache.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

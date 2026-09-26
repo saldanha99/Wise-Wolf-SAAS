@@ -86,7 +86,17 @@ begin
     values(future_session,'meet-docs-fixture',student_id,teacher_id,today+1,now()+interval '2 hours',now()+interval '3 hours','meet-future-fixture',false);
   result:=public.get_pending_google_meet_sync_sessions();
   perform pg_temp.meet_assert(not exists(select 1 from jsonb_array_elements(result) job where job->>'lesson_session_id'=future_session::text),'future room scheduled without documentation permission');
+  -- Sem aceite e sem sala a sessão não volta: o app usa o link de sempre (o botão
+  -- ficou vazio de 13/09 a 26/09/2026 porque toda sessão voltava com link nulo).
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',student_id,'role','authenticated')::text,true);
+  perform pg_temp.meet_assert(public.get_my_lesson_rooms(today+1,today+1)='[]'::jsonb,'session without consent or room hides the usual lesson link');
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
   update public.lesson_sessions set documentation_consent=true where id=future_session;
+  -- Com aceite a sala da escola é esperada: volta sem link (não abre sala pessoal).
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',student_id,'role','authenticated')::text,true);
+  result:=public.get_my_lesson_rooms(today+1,today+1);
+  perform pg_temp.meet_assert(jsonb_array_length(result)=1 and result->0->>'meeting_uri' is null,'authorized session without ready room opens a personal room');
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
   result:=public.get_pending_google_meet_sync_sessions();
   perform pg_temp.meet_assert(exists(select 1 from jsonb_array_elements(result) job where job->>'lesson_session_id'=future_session::text and job->>'operation'='PREPARE_ROOM'),'authorized upcoming room not queued');
   perform pg_temp.meet_assert(result->0->>'lesson_session_id'=future_session::text,'past document backlog takes priority over upcoming room preparation');

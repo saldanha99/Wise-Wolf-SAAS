@@ -1421,6 +1421,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260926130000_isencao_da_taxa_gravada_na_oferta.sql"
   "supabase/migrations/20260926140000_presenca_pelo_relatorio_do_meet.sql"
   "supabase/migrations/20260926150000_termo_de_registro_v2.sql"
+  "supabase/migrations/20260926160000_link_da_aula_nao_some_sem_sala.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
