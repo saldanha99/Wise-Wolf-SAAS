@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Save, Loader2, Check, Bell, BellOff, Eye, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { DEFAULT_REMINDER_TEMPLATE, REMINDER_TEMPLATE_VARIABLES } from '../services/whatsappService';
+import { DEFAULT_REMINDER_TEMPLATE, REMINDER_TEMPLATE_VARIABLES, reminderTemplateToStore } from '../services/whatsappService';
 
 interface Props {
     user: { id: string };
@@ -54,7 +54,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
             const { error } = await supabase
                 .from('profiles')
                 .update({
-                    lesson_reminder_template: template.trim() || null,
+                    // Igual ao padrão vira null: antes, só ligar a automação gravava o
+                    // padrão da época como modelo próprio, e ele nunca mais mudava.
+                    lesson_reminder_template: reminderTemplateToStore(template),
                     date_automation_enabled: automationEnabled,
                 })
                 .eq('id', user.id);
@@ -110,7 +112,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
                         <div className="min-w-0">
                             <h3 className="font-black text-slate-800 dark:text-white text-sm">Lembrete de Aula via WhatsApp</h3>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Disparado automaticamente 60 minutos antes de cada aula</p>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Disparado automaticamente 30 minutos antes de cada aula</p>
                         </div>
                     </div>
                 </div>
@@ -126,7 +128,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                                 </p>
                                 <p className="text-xs text-slate-500">
                                     {automationEnabled
-                                        ? 'Seus alunos receberão um lembrete automático 1h antes de cada aula.'
+                                        ? 'Seus alunos receberão um lembrete automático 30 minutos antes de cada aula.'
                                         : 'Ative para começar a enviar lembretes automáticos.'}
                                 </p>
                             </div>
@@ -201,6 +203,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         <p className="text-[10px] text-slate-400 mt-3">
                             Exemplo simulando uma aula da Maria às 19:00 com o prof. João da escola Wise Wolf São Paulo.
                         </p>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            Aula com registro (termo aceito) é na sala da escola no Google Meet: o link dela entra no {'{class_link}'} ou, se o seu modelo não tiver o marcador, numa linha no fim da mensagem. Nas outras aulas não vai link.
+                        </p>
                     </div>
                 </div>
 
@@ -212,7 +217,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
                     ) : (
                         <p className="min-w-0 text-xs text-slate-500">
-                            Variáveis vazias (ex.: link da aula sem cadastro) virão como string vazia.
+                            Variáveis vazias (ex.: {'{class_link}'} em aula sem sala da escola) somem da mensagem.
                         </p>
                     )}
                     <button

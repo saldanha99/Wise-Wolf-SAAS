@@ -278,8 +278,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (migration `20260926160000`). Antes ela devolvia toda `lesson_session` (a agenda vira sessão a cada
   15 min) com link nulo, e `lib/lessonRooms.ts` — que corretamente não abre sala pessoal em aula com
   aceite — deixava o **botão "entrar na aula" do app vazio em todas as aulas de 13/09 a 26/09** (medido:
-  4 de 4 aulas de um professor em 25/09). Ninguém reclamou porque o lembrete do WhatsApp usa
-  `profiles.meeting_link`. Conserto no servidor vale até para PWA antigo em cache.
+  4 de 4 aulas de um professor em 25/09). Conserto no servidor vale até para PWA antigo em cache.
+  ⚠️ O lembrete do WhatsApp **não** carregava link nenhum desde 16/09 (0 de 81 enviados de 16 a
+  25/09 têm URL): a direção tirou o link pessoal do lembrete, e o aluno usa o link que já conhece.
+- **Lembrete do WhatsApp leva a sala oficial** (migration `20260926190000`): aula com sala da escola
+  `READY`, sessão viva e **aceite vigente** (`documentation_consent`) → o lembrete de 30 min, o botão
+  "Disparar" e o aviso de reposição mandam o `meeting_uri` dela — no `{class_link}` do modelo ou numa
+  linha própria no fim ("Esta aula é na sala da escola no Google Meet. Entre por este link:"). Sem sala,
+  nada muda. Regra única em `public.official_lesson_link(tenant, tipo, id, data, hora, aluno)` (só
+  `service_role`; agendamento, reposição e antecipação — antecipação é `booking` na data nova).
+  ⚠️ Exige o aceite, e não só "sala existe" como o `get_my_lesson_rooms`: a sala transcreve sozinha, e
+  quem revogou não pode ser mandado para lá. ⚠️ Duas salas vivas para a mesma aula sem horário que
+  desempate → nenhuma (mandar a errada é pior). ⚠️ Consulta da sala falhou → o lembrete **espera**
+  (não cai no link de sempre numa aula que pode ter aceite).
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 
@@ -512,6 +523,21 @@ onClick texto → sendMessage() → unlockAudio()
 - `prepare-daily-reminders` (cron 5min): enfileira lembrete para aulas começando em 25-35 min (≈30 min antes). Professor com `date_automation_enabled = false` é pulado (modo manual).
 - `TeacherDashboard`: seção "Aulas de Hoje" com botão **Disparar** por aluno (envia pela instância do professor, template personalizado via `send-class-notification`) + badge AUTO/MANUAL.
 - `AutomacaoSmart`: toggle Automático (30min) vs Manual + QR de conexão.
+- ✅ **O texto do lembrete tem UMA fonte: `public.render_lesson_reminder_message`** (migration
+  `20260926190000`). O worker (`process-notification-queue`), a prévia da fila
+  (`prepare-daily-reminders`) e o "Disparar" chamam essa RPC (`canonicalLessonReminder` em
+  `send-class-notification/core.ts`), e a cerca `begin_notification_delivery_submission` confere com
+  ela. **Não volte a renderizar lembrete no TypeScript**: o worker achatava o modelo
+  (`safeCommunicationText` troca `_`/`*` por espaço e junta as linhas) e punha o link pessoal no
+  `{class_link}`; a cerca, que preserva a formatação e apaga o link, recusou **todo** lembrete da
+  Débora de 16/09 a 25/09 (45 `lesson_authorized_snapshot_changed`, 0 enviados). Testes:
+  `supabase/tests/lembrete_leva_a_sala_oficial.sql` e `process-notification-queue/safety.test.ts`.
+- ⚠️ **Link pessoal:** o automático não manda (decisão de 16/09); o "Disparar" continua pondo o
+  `profiles.meeting_link` no `{class_link}` quando a aula não tem sala da escola (0 usos em 90 dias).
+- ⚠️ A tela "Mensagens" abria com o padrão ANTIGO ("começa em 1 hora" + `{class_link}`) e gravava
+  esse texto como modelo próprio quando o professor só ligava a automação — os 3 modelos de produção
+  eram ele. Hoje o padrão do front é o do servidor e modelo igual ao padrão é salvo como `null`
+  (`reminderTemplateToStore`); a migration `20260926190100` (one-shot) devolveu os 3 ao padrão.
 
 ---
 

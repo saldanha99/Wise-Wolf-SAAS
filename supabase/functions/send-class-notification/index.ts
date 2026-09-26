@@ -7,10 +7,12 @@ import {
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
+  canonicalLessonReminder,
   canonicalScheduleVersion,
   dateInSaoPaulo,
-  DEFAULT_CLASS_REMINDER_TEMPLATE,
   hasAnyManualReminderIdentityField,
+  type LessonReminderRpc,
+  loadOfficialLessonLink,
   type ManualClassSourceType,
   type ManualReminderIdentity,
   manualReminderReceipt,
@@ -19,8 +21,8 @@ import {
   parseManualReminderIdentity,
   providerReceiptDecision,
   recurringBookingMatchesDate,
-  renderReminderTemplate,
   rescheduleNotificationReceipt,
+  rescheduleScheduledMessage,
   SCHEDULE_CONFIRMATION_REF_DATE,
   scheduleVersionHash,
   timeInSaoPaulo,
@@ -57,6 +59,8 @@ interface ValidatedOccurrence {
   classDate: string;
   teacherId: string;
   teacherName: string;
+  /** Aluno da agenda (null em experimental sem perfil): escolhe a sala oficial. */
+  studentId: string | null;
   studentName: string;
   studentPhone: string;
   classTime: string;
@@ -66,6 +70,7 @@ interface ValidatedOccurrence {
 
 interface TeacherDetails {
   name: string;
+  /** Modelo cru: quem limpa e renderiza é o banco (render_lesson_reminder_message). */
   template: string | null;
   meetingLink: string;
   automationEnabled: boolean | null;
@@ -185,8 +190,12 @@ async function loadTeacher(
   if (!name) throw new ApiError(409, "teacher_name_unavailable");
   return {
     name,
-    template: safeCommunicationText(data.lesson_reminder_template, 4096) ||
-      null,
+    // Cru de propósito: safeCommunicationText trocava _ e * por espaço e juntava
+    // as linhas do modelo. O banco limpa preservando quebra de linha e negrito.
+    template: typeof data.lesson_reminder_template === "string" &&
+        data.lesson_reminder_template.trim()
+      ? data.lesson_reminder_template
+      : null,
     meetingLink: safeCommunicationText(data.meeting_link, 300),
     automationEnabled: typeof data.date_automation_enabled === "boolean"
       ? data.date_automation_enabled
@@ -239,6 +248,7 @@ async function loadBookingOccurrence(
     sourceType: identity.sourceType,
     classDate: identity.classDate,
     teacherId,
+    studentId,
     studentName: student.name,
     studentPhone: student.phone,
     classTime: validTime(data.time_slot),
@@ -281,6 +291,7 @@ async function loadRescheduleOccurrence(
     sourceType: identity.sourceType,
     classDate: identity.classDate,
     teacherId,
+    studentId,
     studentName: student.name,
     studentPhone: student.phone,
     classTime: validTime(data.time),
@@ -326,6 +337,7 @@ async function loadAppointmentOccurrence(
     sourceType: identity.sourceType,
     classDate: identity.classDate,
     teacherId,
+    studentId: null,
     studentName,
     studentPhone,
     classTime: timeInSaoPaulo(String(data.start_time || "")) || "",
@@ -575,21 +587,44 @@ async function prepareNotification(
   const { data: tenant, error: tenantError } = await admin.from("tenants")
     .select("name").eq("id", tenantId).maybeSingle();
   if (tenantError) throw new ApiError(503, "tenant_validation_unavailable");
-  const message = action === "CLASS_REMINDER"
-    ? renderReminderTemplate(
-      teacher.template || DEFAULT_CLASS_REMINDER_TEMPLATE,
-      {
-        student_name: firstName,
-        class_time: occurrence.classTime,
-        class_link: occurrence.meetingLink,
-        teacher_name: teacher.name,
-        tenant_name: safeCommunicationText(tenant?.name, 160),
-      },
-    )
-    : `Oi ${firstName}, aqui é o ${teacher.name}! Reposição agendada para ${
-      identity.classDate.split("-").reverse().join("/")
-    } às ${occurrence.classTime}.` +
-      (occurrence.meetingLink ? `\n\n${occurrence.meetingLink}` : "");
+  const rpc: LessonReminderRpc = (fn, args) => admin.rpc(fn, args);
+  const lessonIdentity = {
+    tenantId,
+    sourceType: identity.sourceType,
+    sourceId: identity.sourceId,
+    classDate: identity.classDate,
+    classTime: occurrence.classTime,
+    studentId: occurrence.studentId,
+  };
+  let message: string;
+  if (action === "CLASS_REMINDER") {
+    // Aula com sala oficial da escola pronta leva o link dela; sem sala, o
+    // botão continua pondo o link de sempre no {class_link}. O texto sai do
+    // mesmo renderizador do lembrete automático.
+    const reminder = await canonicalLessonReminder(rpc, {
+      ...lessonIdentity,
+      template: teacher.template,
+      studentName: firstName,
+      teacherName: teacher.name,
+      tenantName: safeCommunicationText(tenant?.name, 160),
+      personalLink: occurrence.meetingLink || null,
+    });
+    if (reminder.ok === false) throw new ApiError(503, reminder.reason);
+    message = reminder.message;
+  } else {
+    // Sem saber se há sala oficial, não manda o link de sempre: numa aula com
+    // aceite ele levaria o aluno para fora da sala que registra a aula.
+    const room = await loadOfficialLessonLink(rpc, lessonIdentity);
+    if (room.ok === false) throw new ApiError(503, room.reason);
+    message = rescheduleScheduledMessage({
+      firstName,
+      teacherName: teacher.name,
+      classDate: identity.classDate,
+      classTime: occurrence.classTime,
+      officialLink: room.link,
+      personalLink: occurrence.meetingLink || null,
+    });
+  }
   return {
     studentPhone: occurrence.studentPhone,
     message,

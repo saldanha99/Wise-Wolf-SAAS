@@ -52,6 +52,15 @@ O callback público autentica pelo nonce/PKCE. POSTs autenticam dentro da funç�
 
 A sala só é criada e documentada para sessão com `documentation_consent`. Desde a migration `20260926120000`, isso vem de um termo aceito **uma vez**: o aluno maior de idade ou o **responsável** (menor: `is_kids` ou nascimento há menos de 18 anos) responde pelo link `/registro-das-aulas?token=…` (gerado em Qualidade das aulas → "Autorizações de registro", 30 dias, um vivo por aluno), e o **professor** responde no app ("Salas e continuidade"). A cada 15 minutos, o job marca as sessões das próximas 24 h em que os dois aceitaram (evento de consentimento citando o termo) e desmarca as que o próprio termo marcou quando alguém revoga. Decisão manual da escola na sessão prevalece. Só age com a conta Google conectada. O texto do termo (v1, em `private.lesson_recording_terms`) menciona transcrição, anotações e controle de presença; mudar o texto é versão nova, nunca update.
 
+## Lembrete do WhatsApp leva a sala oficial
+
+Desde a migration `20260926190000`, a aula com sala da escola **READY**, sessão viva e aceite vigente (`documentation_consent`) recebe o link da sala em todo aviso ao aluno: o lembrete automático de 30 minutos, o botão "Disparar" do professor e o aviso de reposição marcada. O link entra no `{class_link}` do modelo do professor ou, se o modelo não tem o marcador, numa linha própria no fim: "Esta aula é na sala da escola no Google Meet. Entre por este link:". Aula sem sala segue exatamente como antes (sem link no automático).
+
+- Quem decide é `public.official_lesson_link(tenant, tipo, id, data, hora, aluno)` (só `service_role`), pela ocorrência da agenda (`lesson_occurrences` → `lesson_sessions` → `private.google_meet_rooms`). Agendamento, reposição e antecipação (booking na data nova) valem.
+- Sala criada para uma aula cujo aceite foi revogado **não** é mandada (a sala transcreve sozinha). Sala em `COHOST_PENDING`/`CREATING`/`NEEDS_RECONCILIATION` também não.
+- O texto sai de `public.render_lesson_reminder_message`, o mesmo que a cerca do envio usa para conferir o lembrete. Se a sala ficar pronta entre a preparação e o envio (segundos), a cerca recusa e o lembrete daquela aula não sai — raro, e o aluno ainda vê a sala no app.
+- Enquanto 0 salas existirem (estado de 26/09), nenhum aviso muda.
+
 ## Presença pelo relatório nativo do Google (Business Plus)
 
 Com `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED=true`, a sala nasce com `attendanceReportGenerationType = GENERATE_REPORT`. No sync, a edge lista as conferências da sala (só nome e horário), procura no Drive da conta central as planilhas criadas pelo Meet até 3 h depois do fim, escolhe a da sala pelo código da reunião no nome (ou, se não houver, pela que cita o e-mail do professor), exporta em CSV e resume professor × aluno × organizador (`attendance.ts`, colunas em português ou inglês). O banco guarda em `private.meeting_attendance_reports` (retenção igual às cópias brutas) e `private.meet_attendance_evaluate` compara com o lançamento:
