@@ -1411,6 +1411,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923200000_allow_enrollment_before_trial_feedback.sql"
   "supabase/migrations/20260924194214_affiliate_coupon_commission_settlement.sql"
   "supabase/migrations/20260925022856_gamma_school_book_generator.sql"
+  "supabase/migrations/20260926050000_travas_do_release_sobre_o_fechamento_da_experimental.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
