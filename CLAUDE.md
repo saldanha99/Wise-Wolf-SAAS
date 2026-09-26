@@ -274,12 +274,17 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   seção própria no runbook): a direção confirma na tela quantas mensagens e quando saem; fila
   `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a cada 3 min, seg–sáb 9h–20h — **também na hora de
   mandar** (o processador adia sem gastar tentativa; 5 por 15 min; pedido com 2 dias na fila é cancelado).
-  Quem responde é a regra de `20260926200000`; telefone do responsável só vale verificado pela escola ou
-  não gravado pelo próprio aluno (trilha `audit_logs`) e diferente do número dele. O link guarda os
-  telefones: mensagem e código vão ao mesmo número. Um link vivo por aluno; reenvio 3 dias depois (na hora
+  Quem responde E em que número é a regra de `20260926200000`, **sem régua própria**: o telefone do
+  responsável é o ATESTADO (`private.lesson_recording_guardian_phone`, o mesmo que o trigger congela no
+  link); **mesmo número do aluno não bloqueia**, só pede conferência no painel. `lesson_recording_enqueue_request`
+  confere depois do insert que o telefone congelado é o da mensagem (`destino_diferente_do_link`) —
+  mensagem e código vão ao mesmo número. ⚠️ A régua paralela do lote (`lesson_recording_trusted_guardian_phone`,
+  trilha `audit_logs`) saiu na integração da onda 1 antes de publicar: com ela a mensagem podia ir a um
+  número e o código a outro. Um link vivo por aluno; reenvio 3 dias depois (na hora
   se o número mudou); link no portal da escola (`lesson_recording_portal_url`, sem portal = recusa).
   ⚠️ `get_lesson_recording_consent_public` é remendada **por âncora** (registro de abertura + VOLATILE) —
-  não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada.
+  não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada, sem o
+  `|| private.lesson_recording_public_link_fields(v_link.id)` e sem o caso `blocked`.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
@@ -355,7 +360,9 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
     professor; revogação posterior desmarca a sessão marcada à mão (`apply_standing_lesson_recording_consent`).
   - ⚠️ Teste SQL que cria sala precisa de linha em `private.teacher_google_identities` para o professor.
 - **Lembrete do WhatsApp leva a sala oficial** (migration `20260926190000`): aula com sala da escola
-  `READY`, sessão viva e **aceite vigente** (`documentation_consent`) → o lembrete de 30 min, o botão
+  `READY`, sessão viva e **aceite vigente** (`documentation_consent` e sem recusa/revogação antes do fim da
+  aula — `private.lesson_session_documentation_blocked`, a régua de `get_my_lesson_rooms`; acerto da
+  integração da onda 1) → o lembrete de 30 min, o botão
   "Disparar" e o aviso de reposição mandam o `meeting_uri` dela — no `{class_link}` do modelo ou numa
   linha própria no fim ("Esta aula é na sala da escola no Google Meet. Entre por este link:"). Sem sala,
   nada muda. Regra única em `public.official_lesson_link(tenant, tipo, id, data, professor, hora,
@@ -771,6 +778,14 @@ onClick texto → sendMessage() → unlockAudio()
 - **Validação de 26/09/2026:** os 134 testes SQL do release rodados um a um numa cópia
   só-estrutura, sem e com as migrations novas — **zero regressões** (as ~35 falhas nas duas
   rodadas dependem de dado real que a cópia não tem).
+- **Clone COM dados (onda 1, 26/09):** `createdb` + `pg_dump postgres | psql` (~150 MB, log enorme só
+  de `cron.job_run_details`, que não restaura) e um segundo clone por `createdb -T` do primeiro — os dois
+  saem do mesmo dump. `pg_cron` só existe no banco `postgres`: 6 testes do release falham no clone por
+  `cron.job` ausente. Um `cron` de mentira (tabelas `job`/`job_run_details` com as linhas copiadas da
+  produção só-leitura e `schedule`/`unschedule` mexendo só nelas) faz 5 deles rodarem;
+  `whatsapp_delivery_pipeline.sql` ainda exige `pg_extension` = `pg_cron` na pré-condição. O
+  `pg_net` do clone não envia nada (`pg_net.database_name = postgres`). Reproduza também a forma do
+  release (migrations + todos os testes em savepoint, UMA transação, `now()` único), não só um a um.
 - 0 afiliados e 0 comissões em 26/09. O bot do WhatsApp **não** reconhece cupom na conversa —
   o caminho é a escola (link manual) ou o aluno (página de matrícula).
 
