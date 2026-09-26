@@ -512,9 +512,9 @@ serve(async (req) => {
         if (
           internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12
         ) {
-          const msg = `🎓 *Experimental dada, falta a proposta!*\n\n*${
+          const msg = `🎓 *Experimental concluída, fechamento em andamento*\n\n*${
             opp.student_name || "-"
-          }* fez a aula experimental e ainda não tem link de matrícula gerado.\n\nGere a proposta em Experimental → Gerar Contrato enquanto o interesse está quente. 🔥`;
+          }* fez a aula experimental e ainda não tem link de matrícula. Confira a conversa e confirme plano, grade com o aluno e a professora, início e vencimento antes de gerar a proposta. Não repita perguntas já respondidas.`;
           await deliverClaimed({
             kind: alertKind,
             subjectId: opp.id,
@@ -538,9 +538,9 @@ serve(async (req) => {
         if (
           internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12
         ) {
-          const msg = `⚠️ *Proposta ainda não gerada há +24h*\n\n*${
+          const msg = `⚠️ *Fechamento pendente há +24h*\n\n*${
             opp.student_name || "-"
-          }* fez a experimental ontem e continua sem link de matrícula. O interesse esfria rápido — vale gerar a proposta ou ligar pro aluno.`;
+          }* fez a experimental e continua sem link de matrícula. Confira o histórico e o que falta confirmar com aluno e professora; gere a proposta apenas quando os termos estiverem completos.`;
           await deliverClaimed({
             kind: escalateKind,
             subjectId: opp.id,

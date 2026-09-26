@@ -143,4 +143,24 @@ describe('termos comerciais do contrato do aluno', () => {
   it('flexiona corretamente uma reposição quando houver exceção explícita', () => {
     expect(render({ repositionLimit: 1 })).toContain('1 (uma) aula por mês');
   });
+
+  it('mantém os termos anuais da oferta 4x sem herdar o semestral nem uma reposição', () => {
+    const html = render({
+      studentName: 'Aluno de teste', planName: 'Plano Anual',
+      planValue: '299,00', totalValue: '3.637,90', planDuration: 12,
+      startDate: '05/10/2026', endDate: '05/10/2027', dueDay: 5,
+      classFrequency: 4, enrollmentFee: 49.90,
+    });
+    expect(html).toContain('Plano Anual');
+    expect(html).toContain('12 (doze) meses');
+    expect(html).toContain('12 (doze) parcelas mensais');
+    expect(html).toContain('4 (quatro) vezes por semana');
+    expect(html).toContain('4 (quatro) aulas por mês');
+    expect(html).toContain('Dia 5 de cada mês');
+    expect(html).toContain('05/10/2026 a 05/10/2027');
+    expect(html).toContain('R$ 3.637,90');
+    expect(html).not.toContain('Plano Semestral');
+    expect(html).not.toContain('6 (seis) meses');
+    expect(html).not.toContain('1 (uma) aula por mês');
+  });
 });

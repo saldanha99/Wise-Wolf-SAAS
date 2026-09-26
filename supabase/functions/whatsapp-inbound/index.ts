@@ -13,19 +13,33 @@ import {
 } from "../_shared/tenant-communication.ts";
 import {
   type CatalogPrice,
+  adjacentFourDayAlternative,
+  asksToReadContract,
+  classifyTeacherSlotsReply,
+  contractReadingAnswer,
+  mergeTeacherCounterproposal,
   parseEnrollmentDuration,
+  parseEnrollmentDueDay,
   parseEnrollmentSlots,
+  parseEnrollmentSlotsFromMessages,
+  parseEnrollmentStartDate,
+  parseCounterproposalDecision,
+  parseTeacherOptionChoice,
   parseTrialDenial,
   parseTrialOutcomeReply,
   studentDenialAck,
   studentNeedMessage,
   studentNoShowMessage,
   studentOfferMessage,
+  studentCounterproposalBlocks,
   studentPlanQuestion,
   studentSlotsUnavailableMessage,
   studentWaitingFeedbackMessage,
+  slotsText,
   teacherDoneConfirmation,
   teacherFeedbackAsk,
+  teacherAlternativeQuestion,
+  trialClosingMayResumeAfterHandoff,
   teacherNoShowConfirmation,
 } from "./trial-closing.ts";
 import {
@@ -5899,6 +5913,249 @@ async function handleTrialClosingTeacherReply(
   return true;
 }
 
+async function handleTrialClosingTeacherSlotsReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  if (tenantId !== "school-wise-wolf") return false;
+  const teachers = await activeMemberProfiles(sb, tenantId, ["TEACHER"]);
+  const teacher = (teachers || []).find((profile: any) => phonesMatch(profile.phone, phone));
+  if (!teacher) return false;
+  // Only the latest school question can own a bare "sim". A different
+  // outgoing message (including a human question about another student)
+  // makes the answer ambiguous, so never confirm a slot from it.
+  const { data: loggedQuestions, error: questionError } = await sb.from("ai_wa_messages")
+    .select("phone,content,meta,created_at")
+    .eq("tenant_id", tenantId)
+    .contains("meta", { kind: "trial_closing_teacher_slots_question" })
+    .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+    .order("created_at", { ascending: false }).limit(100);
+  if (questionError) throw new Error("trial_closing_teacher_question_lookup_failed");
+  // O provedor às vezes registra o mesmo celular com ou sem o nono dígito.
+  const question = (loggedQuestions || []).find((row: any) =>
+    phonesMatch(row.phone, phone)
+  );
+  if (!question?.meta?.flow_id || question.meta.entregue !== true) return false;
+  const { data: conversations, error: conversationError } = await sb.from("whatsapp_conversations")
+    .select("id,remote_jid,phone")
+    .eq("tenant_id", tenantId).eq("instance_name", instance);
+  if (conversationError) throw new Error("trial_closing_teacher_conversation_lookup_failed");
+  const ids = (conversations || []).filter((conversation: any) =>
+    phonesMatch(conversation.phone || conversation.remote_jid, phone)
+  ).map((conversation: any) => conversation.id);
+  if (ids.length === 0) return false;
+  const { data: outbounds, error: outboundError } = await sb.from("whatsapp_messages")
+    .select("body,occurred_at")
+    .eq("tenant_id", tenantId).in("conversation_id", ids).eq("direction", "out")
+    .order("occurred_at", { ascending: false }).limit(1);
+  if (outboundError) throw new Error("trial_closing_teacher_latest_outbound_lookup_failed");
+  const { data: alternativeQuestions, error: alternativeQuestionError } = await sb.from("ai_wa_messages")
+    .select("phone,content,meta,created_at").eq("tenant_id", tenantId)
+    .contains("meta", { kind: "trial_closing_teacher_alternative_question" })
+    .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+    .order("created_at", { ascending: false }).limit(100);
+  if (alternativeQuestionError) throw new Error("trial_closing_teacher_alternative_lookup_failed");
+  const alternativeQuestion = (alternativeQuestions || []).find((row: any) =>
+    phonesMatch(row.phone, phone) && row.meta?.entregue === true
+  );
+  if (alternativeQuestion && outbounds?.[0]?.body === alternativeQuestion.content) {
+    const alternativeDecision = classifyTeacherSlotsReply(
+      text, (alternativeQuestion.meta?.slots || []) as RenewalSlot[],
+    );
+    if (alternativeDecision !== "confirmed" && alternativeDecision !== "declined") return false;
+    const { data: resolved, error: resolvedError } = await sb.rpc(
+      "trial_closing_teacher_alternative_reply", {
+        p_tenant: tenantId, p_teacher: teacher.id,
+        p_flow: alternativeQuestion.meta.flow_id,
+        p_confirmed: alternativeDecision === "confirmed",
+      },
+    );
+    if (resolvedError) throw new Error("trial_closing_teacher_alternative_reply_failed");
+    if (!resolved?.handled) return false;
+    await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+      msg_id: msgId, kind: "trial_closing_teacher_alternative_reply",
+      flow_id: resolved.flow_id,
+    });
+    const ack = "Obrigado! Vou apresentar ao aluno somente os horários que você confirmou.";
+    const ackSent = await sendWhats(instance, phone, ack);
+    await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
+      kind: "trial_closing_teacher_alternative_ack", flow_id: resolved.flow_id,
+      entregue: ackSent,
+    });
+    // O sweeper entrega uma única mensagem dentro da janela, respeitando handoff.
+    return true;
+  }
+  if (outbounds?.[0]?.body !== question.content) return false;
+  const expected = parseEnrollmentSlots(question.content);
+  const decision = classifyTeacherSlotsReply(text, expected);
+  if (decision === "unknown") return false;
+  if (decision === "counterproposal") {
+    const proposed = mergeTeacherCounterproposal(expected, text);
+    if (proposed.length !== expected.length) return false;
+    const { data: proposal, error: proposalError } = await sb.rpc(
+      "trial_closing_teacher_counterproposal_for_flow", {
+        p_tenant: tenantId, p_teacher: teacher.id,
+        p_flow: question.meta.flow_id, p_slots: proposed,
+      },
+    );
+    if (proposalError) throw new Error("trial_closing_teacher_counterproposal_unavailable");
+    if (!proposal?.handled) return false;
+    await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+      msg_id: msgId, kind: "trial_closing_teacher_counterproposal",
+      flow_id: proposal.flow_id,
+    });
+    const ack = "Obrigado! Vou confirmar esses novos horários com o aluno antes de preparar a matrícula.";
+    const ackSent = await sendWhats(instance, phone, ack);
+    await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
+      kind: "trial_closing_teacher_counterproposal_ack",
+      flow_id: proposal.flow_id, entregue: ackSent,
+    });
+    const leadPhone = String(proposal.lead_phone || "");
+    if (!leadPhone) return true;
+    const alternative = adjacentFourDayAlternative(proposed);
+    const hour = nowBRT().getUTCHours();
+    if (alternative.length && hour >= 9 && hour < 20 &&
+        !await inboxConversationHasActiveHandoff(sb, tenantId, instance, `${phone}@s.whatsapp.net`)) {
+      const { data: prepared, error: prepareError } = await sb.rpc(
+        "trial_closing_prepare_teacher_alternative", {
+          p_flow: proposal.flow_id, p_slots: alternative,
+        },
+      );
+      if (prepareError) throw new Error("trial_closing_teacher_alternative_prepare_failed");
+      if (prepared?.handled) {
+        const questionText = teacherAlternativeQuestion({
+          teacherName: teacher.full_name || null,
+          leadName: proposal.lead_name || null, slots: alternative,
+        });
+        const delivered = await sendWhats(instance, phone, questionText);
+        await logMsg(sb, tenantId, phone, "trial_closing", "out", questionText, {
+          kind: "trial_closing_teacher_alternative_question",
+          flow_id: proposal.flow_id, slots: alternative, entregue: delivered,
+        });
+        if (delivered) return true;
+        await sb.rpc("trial_closing_teacher_alternative_reply", {
+          p_tenant: tenantId, p_teacher: teacher.id,
+          p_flow: proposal.flow_id, p_confirmed: false,
+        });
+      }
+    }
+    const studentInstance = await trialClosingStudentInstance(sb, tenantId, instance);
+    if (await inboxConversationHasActiveHandoff(
+      sb, tenantId, studentInstance, `${leadPhone}@s.whatsapp.net`,
+    )) return true;
+    if (hour < 9 || hour >= 20) return true;
+    const { data: claimed, error: claimError } = await sb.rpc(
+      "trial_closing_claim_teacher_counterproposal_student", {
+        p_flow: proposal.flow_id,
+      },
+    );
+    if (claimError) throw new Error("trial_closing_teacher_counterproposal_claim_failed");
+    if (!claimed?.claimed) return true;
+    const blocks = studentCounterproposalBlocks({
+      leadName: proposal.lead_name || null,
+      teacherName: teacher.full_name || null,
+      requested: expected,
+      proposed,
+      hourBRT: hour,
+    });
+    for (const [blockIndex, reply] of blocks.entries()) {
+      const delivered = await sendWhats(studentInstance, leadPhone, reply);
+      await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
+        kind: "trial_closing_teacher_counterproposal_to_student",
+        flow_id: proposal.flow_id, block_index: blockIndex, entregue: delivered,
+      });
+      if (!delivered) break;
+    }
+    return true;
+  }
+  const yes = decision === "confirmed";
+  const { data, error } = await sb.rpc("trial_closing_teacher_slots_reply_for_flow", {
+    p_tenant: tenantId,
+    p_teacher: teacher.id,
+    p_flow: question.meta.flow_id,
+    p_confirmed: yes,
+    p_origin: null,
+  });
+  if (error) throw new Error("trial_closing_teacher_slots_unavailable");
+  if (!data?.handled) return false;
+  await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+    msg_id: msgId, kind: "trial_closing_teacher_slots_reply", flow_id: data.flow_id,
+  });
+  const teacherAck = yes
+    ? "Obrigado! Registrei sua confirmação desses horários. A grade definitiva só será feita após a matrícula."
+    : "Entendi. Não vou oferecer esses horários como confirmados; vou pedir outras opções ao aluno.";
+  const ackSent = await sendWhats(instance, phone, teacherAck);
+  await logMsg(sb, tenantId, phone, "trial_closing", "out", teacherAck, {
+    kind: "trial_closing_teacher_slots_ack", flow_id: data.flow_id, entregue: ackSent,
+  });
+  const leadPhone = String(data.lead_phone || "");
+  if (!leadPhone) return true;
+  const studentInstance = await trialClosingStudentInstance(sb, tenantId, instance);
+  let reply = "";
+  if (!yes) {
+    reply = `A teacher ${String(teacher.full_name || "professora").split(" ")[0]} não consegue manter os horários que você sugeriu. Pode me mandar outras opções de dias e horários? Eu confirmo com ela antes da matrícula.`;
+  } else if (data.offer?.ok) {
+    reply = studentOfferMessage({
+      leadName: data.lead_name,
+      teacherName: teacher.full_name,
+      url: String(data.offer.url),
+      value: Number(data.offer.value),
+      frequency: Number(data.offer.frequency),
+      duration: Number(data.offer.duration),
+      slots: (data.offer.slots || []) as RenewalSlot[],
+      startDate: String(data.offer.start_date || ""),
+      dueDay: Number(data.offer.due_day || 10),
+      enrollmentFee: Number(data.offer.enrollment_fee || 0),
+    });
+  } else if (data.offer?.error) {
+    reply = studentSlotsUnavailableMessage((data.offer.free_slots || []) as RenewalSlot[]);
+  }
+  if (reply) {
+    if (await inboxConversationHasActiveHandoff(
+      sb, tenantId, studentInstance, `${leadPhone}@s.whatsapp.net`,
+    )) return true;
+    const delivered = await sendWhats(studentInstance, leadPhone, reply);
+    await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
+      kind: "trial_closing_teacher_slots_result", flow_id: data.flow_id,
+      offer_id: data.offer?.ok ? data.offer.offer_id : null,
+      entregue: delivered,
+    });
+  }
+  return true;
+}
+
+async function recentStudentScheduleMessages(
+  sb: any, tenantId: string, instance: string, phone: string, current: string,
+): Promise<string[]> {
+  const { data: conversations, error: conversationError } = await sb.from("whatsapp_conversations")
+    .select("id,phone,remote_jid").eq("tenant_id", tenantId)
+    .eq("instance_name", instance);
+  if (conversationError) throw new Error("trial_closing_schedule_conversation_lookup_failed");
+  const ids = (conversations || []).filter((row: any) =>
+    phonesMatch(row.phone || row.remote_jid, phone)
+  ).map((row: any) => row.id);
+  if (!ids.length) return [current];
+  const { data: history, error: historyError } = await sb.from("whatsapp_messages")
+    .select("direction,sender_kind,message_type,body,occurred_at")
+    .eq("tenant_id", tenantId).in("conversation_id", ids)
+    .gte("occurred_at", new Date(Date.now() - 20 * 60_000).toISOString())
+    .order("occurred_at", { ascending: false }).limit(30);
+  if (historyError) throw new Error("trial_closing_schedule_history_lookup_failed");
+  const ordered = (history || []).reverse();
+  const lastHuman = ordered.findLastIndex((row: any) =>
+    row.direction === "out" && row.sender_kind === "human"
+  );
+  const texts = ordered.slice(lastHuman + 1).filter((row: any) =>
+    row.direction === "in" && row.message_type === "text" && row.body
+  ).map((row: any) => String(row.body));
+  if (texts.at(-1) !== current) texts.push(current);
+  return texts.slice(-8);
+}
+
 /**
  * A escolha do aluno depois da experimental: frequência, dias e horários e o
  * plano. Com tudo respondido, o banco gera a oferta com o preço da tabela e o
@@ -5945,19 +6202,125 @@ async function handleTrialClosingStudent(
     }
   }
 
-  const slots = parseEnrollmentSlots(text);
+  const closingContext = tenantId === "school-wise-wolf"
+    ? await loadTrialClosingContext(sb, tenantId, phone)
+    : null;
+  const recentMessages = closingContext
+    ? await recentStudentScheduleMessages(sb, tenantId, instance, phone, text)
+    : [text];
   const duration = parseEnrollmentDuration(text);
   const frequency = parseRenewalFrequency(text);
-  if (slots.length === 0 && duration === null && frequency === null) {
-    return false;
+  const expectedFrequency = frequency || Number(closingContext?.plan?.frequency || 0) || null;
+  const parsedSchedule = parseEnrollmentSlotsFromMessages(
+    recentMessages, expectedFrequency,
+  );
+  const slots = closingContext ? parsedSchedule.complete : parseEnrollmentSlots(text);
+  const startDate = parseEnrollmentStartDate(text);
+  const dueDay = parseEnrollmentDueDay(text);
+  const contractQuestion = asksToReadContract(text);
+  const proposalDecision = parseCounterproposalDecision(text);
+  const optionChoice = parseTeacherOptionChoice(text);
+  if ((proposalDecision !== null || optionChoice !== null) && tenantId === "school-wise-wolf") {
+    const closing = await loadTrialClosingContext(sb, tenantId, phone);
+    if (closing?.plan?.teacher_counterproposal_slots?.length) {
+      const twoOptions = Array.isArray(closing.plan.teacher_alternative_confirmed_slots);
+      if (twoOptions && optionChoice === null) return false;
+      if (!twoOptions && proposalDecision === null) return false;
+      const { data: sentQuestions, error: sentError } = await sb.from("ai_wa_messages")
+        .select("content,meta,created_at,phone")
+        .eq("tenant_id", tenantId)
+        .contains("meta", { kind: "trial_closing_teacher_counterproposal_to_student", flow_id: closing.flow_id })
+        .order("created_at", { ascending: false }).limit(10);
+      if (sentError) throw new Error("trial_closing_student_counterproposal_lookup_failed");
+      const sentQuestion = (sentQuestions || []).find((row: any) =>
+        phonesMatch(row.phone, phone) && row.meta?.entregue === true
+      );
+      if (sentQuestion) {
+        const { data: conversations } = await sb.from("whatsapp_conversations")
+          .select("id,remote_jid,phone").eq("tenant_id", tenantId)
+          .eq("instance_name", instance);
+        const ids = (conversations || []).filter((row: any) =>
+          phonesMatch(row.phone || row.remote_jid, phone)
+        ).map((row: any) => row.id);
+        if (ids.length) {
+          const { data: outbounds, error: outboundError } = await sb.from("whatsapp_messages")
+            .select("body").eq("tenant_id", tenantId).in("conversation_id", ids)
+            .eq("direction", "out").order("occurred_at", { ascending: false }).limit(1);
+          if (outboundError) throw new Error("trial_closing_student_latest_outbound_lookup_failed");
+          if (outbounds?.[0]?.body === sentQuestion.content) {
+            const { data, error } = twoOptions
+              ? await sb.rpc("trial_closing_student_select_teacher_option", {
+                p_tenant: tenantId, p_phone: phone,
+                p_flow: closing.flow_id, p_choice: optionChoice,
+              })
+              : await sb.rpc("trial_closing_student_counterproposal_decision", {
+                p_tenant: tenantId, p_phone: phone,
+                p_flow: closing.flow_id, p_accept: proposalDecision,
+              });
+            if (error) throw new Error("trial_closing_student_counterproposal_unavailable");
+            if (data?.handled) {
+              await logMsg(sb, tenantId, phone, "sdr", "in", text, {
+                msg_id: msgId, kind: "trial_closing_student_counterproposal_decision",
+                flow_id: closing.flow_id,
+              });
+              const reply = (twoOptions || proposalDecision)
+                ? data.offer?.ok
+                  ? studentOfferMessage({
+                    leadName: data.lead_name, teacherName: null,
+                    url: String(data.offer.url), value: Number(data.offer.value),
+                    frequency: Number(data.offer.frequency), duration: Number(data.offer.duration),
+                    slots: (data.offer.slots || []) as RenewalSlot[],
+                    startDate: String(data.offer.start_date || ""),
+                    dueDay: Number(data.offer.due_day || 10),
+                    enrollmentFee: Number(data.offer.enrollment_fee || 0),
+                  })
+                  : data.offer?.error
+                  ? "Anotei sua escolha, mas ainda não consegui liberar o link. Vou conferir os dados da matrícula com a escola."
+                  : studentNeedMessage({
+                    need: (data.need || []) as string[], frequency: data.frequency ?? null,
+                    prices: (data.prices || []) as CatalogPrice[],
+                  })
+                : "Sem problema. Quais outros dias e horários ficam melhores para você? Confirmo com a Bruna antes da matrícula.";
+              const delivered = await sendWhats(instance, phone, reply, { simulateTyping: true });
+              await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+                kind: "trial_closing_student_counterproposal_result",
+                flow_id: closing.flow_id, entregue: delivered,
+                offer_id: data.offer?.ok ? data.offer.offer_id : null,
+              });
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (slots.length === 0 && duration === null && frequency === null &&
+      startDate === null && dueDay === null) {
+    if (!contractQuestion || tenantId !== "school-wise-wolf") return false;
+    const closing = await loadTrialClosingContext(sb, tenantId, phone);
+    if (!closing || closing.offer_sent) return false;
+    const reply = contractReadingAnswer();
+    const delivered = await sendWhats(instance, phone, reply, { simulateTyping: true });
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      kind: "trial_closing_contract_reading", flow_id: closing.flow_id,
+      msg_id: msgId, entregue: delivered,
+    });
+    return true;
   }
 
-  const { data, error } = await sb.rpc("trial_closing_student_plan", {
+  const autonomousClosing = tenantId === "school-wise-wolf";
+  if (!autonomousClosing && slots.length === 0 && duration === null && frequency === null) {
+    return false;
+  }
+  const { data, error } = await sb.rpc(autonomousClosing
+    ? "trial_closing_student_terms"
+    : "trial_closing_student_plan", {
     p_tenant: tenantId,
     p_phone: phone,
     p_frequency: frequency,
     p_duration: duration,
     p_slots: slots.length > 0 ? slots : null,
+    ...(autonomousClosing ? { p_start_date: startDate, p_due_day: dueDay } : {}),
     p_origin: null,
   });
   if (error) throw new Error("trial_closing_student_state_unavailable");
@@ -5978,6 +6341,10 @@ async function handleTrialClosingStudent(
         { frequency: number; duration: number; value: number }
       >,
     });
+    if (data.need.includes("horarios") && parsedSchedule.partial.length > 0 &&
+        expectedFrequency && parsedSchedule.partial.length < expectedFrequency) {
+      reply = `Anotei ${slotsText(parsedSchedule.partial)}. Quais são os outros ${expectedFrequency - parsedSchedule.partial.length} dias e horários?`;
+    }
   } else if (data.waiting === "feedback") {
     reply = studentWaitingFeedbackMessage();
   } else if (data.offer?.ok) {
@@ -5990,6 +6357,8 @@ async function handleTrialClosingStudent(
       duration: Number(data.offer.duration),
       slots: (data.offer.slots || []) as RenewalSlot[],
       startDate: String(data.offer.start_date || ""),
+      dueDay: Number(data.offer.due_day || 10),
+      enrollmentFee: Number(data.offer.enrollment_fee || 0),
     });
   } else if (data.offer?.error) {
     const slotProblem = [
@@ -6012,12 +6381,15 @@ async function handleTrialClosingStudent(
     return false;
   }
 
+  if (contractQuestion) reply = `${contractReadingAnswer()}\n\n${reply}`;
+
   const delivered = await sendWhats(instance, phone, reply, {
     simulateTyping: true,
   });
   await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
     kind: "trial_closing",
     flow_id: data.flow_id || null,
+    offer_id: data.offer?.ok ? data.offer.offer_id : null,
     msg_id: msgId,
     entregue: delivered,
   });
@@ -6446,7 +6818,7 @@ type TrialClosingContext = {
   student_asked_at: string | null;
   teacher_answered_at: string | null;
   offer_sent: boolean;
-  plan: { frequency?: number; duration?: number; slots?: RenewalSlot[] };
+  plan: { frequency?: number; duration?: number; slots?: RenewalSlot[]; start_date?: string; due_day?: number; teacher_counterproposal_slots?: RenewalSlot[]; teacher_alternative_confirmed_slots?: RenewalSlot[]; ai_resumption_authorized_at?: string };
   feedback: {
     recommended_level?: string | null;
     recommended_plan?: string | null;
@@ -6490,6 +6862,58 @@ async function loadTrialClosingContext(
   };
 }
 
+// Retomada após handoff exige autorização explícita posterior à última fala
+// humana da inbox, não apenas posterior ao carimbo do CRM (que pode estar velho).
+async function mayResumePostTrialConversation(
+  sb: any,
+  tenantId: string,
+  instanceName: string,
+  phone: string,
+): Promise<boolean> {
+  const closing = await loadTrialClosingContext(sb, tenantId, phone);
+  if (!closing || closing.offer_sent || closing.stage === "NO_SHOW") {
+    return false;
+  }
+  const authorizedAt = typeof closing.plan?.ai_resumption_authorized_at === "string"
+    ? closing.plan.ai_resumption_authorized_at
+    : null;
+  if (!authorizedAt) return false;
+  const { data: conversation, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  ).select("id").eq("tenant_id", tenantId).eq(
+    "instance_name",
+    instanceName,
+  ).eq("remote_jid", `${phone}@s.whatsapp.net`).maybeSingle();
+  if (conversationError || !conversation?.id) return false;
+  const { data: lastHuman, error: lastHumanError } = await sb.from(
+    "whatsapp_messages",
+  ).select("occurred_at").eq("tenant_id", tenantId).eq(
+    "conversation_id",
+    conversation.id,
+  ).eq("direction", "out").eq("sender_kind", "human").order(
+    "occurred_at",
+    { ascending: false },
+  ).limit(1);
+  if (lastHumanError) return false;
+  const { data: leads, error } = await sb.from("crm_leads")
+    .select("phone,ai_handoff_at")
+    .eq("tenant_id", tenantId)
+    .not("phone", "is", null);
+  if (error) throw new Error("post_trial_handoff_lookup_failed");
+  const lead = (leads || []).find((row: any) =>
+    phonesMatch(row.phone, phone)
+  );
+  const lastHumanAt = String(lastHuman?.[0]?.occurred_at || "");
+  const latestHandoff = Math.max(
+    Date.parse(String(lead?.ai_handoff_at || "")) || 0,
+    Date.parse(lastHumanAt) || 0,
+  );
+  return trialClosingMayResumeAfterHandoff(
+    latestHandoff > 0 ? new Date(latestHandoff).toISOString() : null,
+    authorizedAt,
+  );
+}
+
 /**
  * O que a atendente precisa para fechar como gente, uma coisa por vez. O
  * sistema é quem gera o link (`handleTrialClosingStudent` lê frequência, plano
@@ -6516,7 +6940,8 @@ function trialClosingStageInstructions(
     feedback.recommended_plan
       ? `plano recomendado=${feedback.recommended_plan}`
       : "plano recomendado=?",
-    Number.isFinite(Number(feedback.interest_score))
+    feedback.interest_score != null &&
+        Number.isFinite(Number(feedback.interest_score))
       ? `interesse=${Number(feedback.interest_score)}/5`
       : "",
   ].filter(Boolean).join(", ");
@@ -6524,7 +6949,7 @@ function trialClosingStageInstructions(
     `ETAPA ATUAL: PÓS-EXPERIMENTAL — FECHAMENTO. A aula experimental com ${teacher} foi ${closing.when_text}.`,
     closing.class_logged
       ? `A professora já confirmou que a aula aconteceu.`
-      : `A professora ainda não confirmou a aula; o link de matrícula só sai depois disso (o sistema cuida — não prometa link imediato).`,
+      : `A professora ainda não confirmou a aula; não prometa link ou matrícula antes da confirmação da realização.`,
     closing.student_asked_at
       ? `Você já perguntou como foi a aula — não repita a pergunta; reaja ao que ele disser.`
       : `Comece perguntando como foi a aula e o que ele achou da professora.`,
@@ -6533,14 +6958,15 @@ function trialClosingStageInstructions(
       : "",
     `Já definido pelo aluno: frequência=${plan.frequency || "?"}, plano=${
       plan.duration ? plan.duration + " meses" : "?"
-    }, horários=${slots}.`,
+    }, horários=${slots}, início=${plan.start_date || "?"}, vencimento mensal=dia ${plan.due_day || "?"}.`,
     `Horários livres de ${teacher}: ${
       free || "nenhum livre agora — diga que a coordenação encaixa"
     }.`,
     `FEEDBACK ESTRUTURADO DA EXPERIMENTAL: ${feedbackFacts}. Use somente estes dados; nunca invente elogio, opinião ou fala da professora. Se perguntarem o nível ou o feedback, responda isso primeiro, antes de qualquer pergunta comercial.`,
-    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte quantas vezes por semana quer fazer (2 a 6) e, quando ele disser, dê os valores DAQUELA frequência nos planos de 6 e 12 meses da TABELA DE PLANOS; (3) pergunte os dias e horários, oferecendo no máximo dois dos livres por vez; (4) com frequência, plano e horários definidos, diga que vai gerar o link — o sistema gera e envia. Nunca invente valor, desconto ou link.`,
+    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte frequência e apresente os valores daquela frequência nos planos mensal, 6 e 12 meses da tabela; (3) pergunte dias e horários; (4) pergunte data de início explícita (DD/MM/AAAA) e dia de vencimento mensal (1 a 31). A professora confirma os horários; só depois o sistema pode gerar o link. A taxa única é R$ 49,90 quando a assinatura ocorre mais de 7 dias antes do início, e é dispensada quando faltam até 7 dias. Nunca invente valor, desconto, horário confirmado ou link.`,
     `PERGUNTAS PENDENTES: responda todas as perguntas diretas da mensagem antes de conduzir para a próxima etapa. Se a pessoa cobrar "conseguiu a informação?", releia a última pergunta dela e responda objetivamente. Nunca substitua uma resposta sobre nível, feedback, contrato ou horário por uma tabela de preços.`,
-    `HORÁRIO FORA DA LISTA: a lista acima é a disponibilidade cadastrada, não uma prova de que a professora recusou. Nunca diga que "nenhum professor atende" ou que o horário é impossível sem consulta. Para grade recorrente fora da lista, diga que vai confirmar diretamente com a professora e marque handoff=true para a coordenação negociar.`,
+    `HORÁRIO FORA DA LISTA: a lista acima é a disponibilidade cadastrada, não uma prova de que a professora recusou. Nunca diga que "nenhum professor atende" ou que o horário é impossível sem consulta. Para grade recorrente fora da lista, diga que vai confirmar diretamente com a professora. Não marque handoff só por essa razão; a confirmação de horário é tratada pelo fluxo automático.`,
+    `NEGOCIAÇÃO DA GRADE: se a professora confirmar apenas uma mudança de horário, explique ao aluno exatamente qual pedido não atende. Quando couber trocar um dia por outro mantendo a frequência, consulte a professora sobre os dias e horários exatos antes de oferecer a alternativa. Disponibilidade da professora não é escolha do aluno. Fale em blocos curtos, com saudação pelo nome e "tudo bem?" uma única vez; nunca repita opções já enviadas nem envie em paralelo a um humano. Se o aluno disser "dia 05/10 para começar e vencimento", ambos se referem ao dia 5; não pergunte de novo o vencimento.`,
     `Não ofereça outra experimental; schedule_trial=null sempre. Se ele disser que a aula não aconteceu, o sistema registra — só acolha. Se quiser pensar, combine quando você pode retornar e não insista.`,
     catalogFacts
       ? `TABELA DE PLANOS (mensalidade; aulas de 30 minutos):\n${catalogFacts}`
@@ -6873,6 +7299,7 @@ async function handleSDR(
   isMedia: boolean,
   msgId: string,
   beginEffects: () => Promise<boolean>,
+  postTrialHandoffOverride = false,
 ) {
   const { data: allLeads } = await sb.from("crm_leads").select(
     "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count",
@@ -6960,10 +7387,10 @@ async function handleSDR(
     last_inbound_at: new Date().toISOString(),
     ai_handled: true,
   }).eq("id", lead.id);
-  if (handoffAtivo(lead)) return;
+  if (handoffAtivo(lead) && !postTrialHandoffOverride) return;
   // Handoff vencido: a IA reassume e o registro fica limpo, senão a linha
   // continuaria marcada como "humano atendendo" e confundiria a leitura no CRM.
-  if (lead.ai_handoff === true) {
+  if (lead.ai_handoff === true && !postTrialHandoffOverride) {
     await sb.from("crm_leads").update({
       ai_handoff: false,
       ai_handoff_at: null,
@@ -7274,7 +7701,13 @@ async function handleSDR(
       "id",
       lead.id,
     ).maybeSingle();
-  if (currentLeadError || !currentLead || handoffAtivo(currentLead)) return;
+  if (currentLeadError || !currentLead) return;
+  if (handoffAtivo(currentLead)) {
+    if (!postTrialHandoffOverride) return;
+    // O modelo pode levar alguns segundos. Se uma pessoa assumiu nesse meio
+    // tempo, a nova intervenção vence e nenhuma resposta da IA é enviada.
+    if (!(await mayResumePostTrialConversation(sb, tenantId, instance, phone))) return;
+  }
   if (!(await beginEffects())) return;
   if (!ai || !ai.reply) {
     console.error("SDR AI falhou:", JSON.stringify(diag));
@@ -8107,15 +8540,16 @@ async function drainSdrConversation(
         if (!tenant || (tenant.aiTeamConfig as any)?.sdr?.enabled === false) {
           return;
         }
-        if (
-          tenant.inboxEnabled &&
+        const hasHandoff = tenant.inboxEnabled &&
           await inboxConversationHasActiveHandoff(
             sb,
             tenantId,
             input.instance,
             `${phone}@s.whatsapp.net`,
-          )
-        ) return;
+          );
+        const postTrialHandoffOverride = hasHandoff &&
+          await mayResumePostTrialConversation(sb, tenantId, input.instance, phone);
+        if (hasHandoff && !postTrialHandoffOverride) return;
         // Aluno que acabou de fazer a experimental e está escolhendo plano e
         // horário: resposta determinística, com o preço da tabela. Quem não
         // está nesse ponto passa direto para a atendente.
@@ -8141,6 +8575,7 @@ async function drainSdrConversation(
           input.isMedia,
           input.msgId,
           beginEffects,
+          postTrialHandoffOverride,
         );
       },
     );
@@ -8579,15 +9014,22 @@ serve(async (req) => {
         }
         continue;
       }
-      if (
-        inboundTenant.inboxEnabled &&
+      const inboxHasHandoff = inboundTenant.inboxEnabled &&
         await inboxConversationHasActiveHandoff(
           sb,
           tenantId,
           instance,
           canonicalInboxJid,
-        )
-      ) {
+        );
+      const postTrialHandoffOverride = inboxHasHandoff &&
+        remoteJid.endsWith("@s.whatsapp.net") &&
+        await mayResumePostTrialConversation(
+          sb,
+          tenantId,
+          instance,
+          remoteJid.split("@")[0].replace(/\D/g, ""),
+        );
+      if (inboxHasHandoff && !postTrialHandoffOverride) {
         // A mensagem já está na inbox canônica. O atendimento humano ativo só
         // impede que os agentes respondam ou executem ações em paralelo.
         continue;
@@ -8776,6 +9218,14 @@ serve(async (req) => {
 
       // Fechamento da experimental: vem depois da remarcação (que tem código e
       // prazo) e só entra quando existe pergunta aberta para esta professora.
+      if (
+        !isMedia && !rateLimited &&
+        await handleTrialClosingTeacherSlotsReply(
+          sb, instance, tenantId, phone, text, msgId,
+        )
+      ) {
+        continue;
+      }
       if (
         !isMedia && !rateLimited &&
         await handleTrialClosingTeacherReply(
