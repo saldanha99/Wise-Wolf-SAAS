@@ -33,6 +33,7 @@ import {
   GoogleProviderError,
 } from "./provider.ts";
 import {
+  looksLikeAttendanceReport,
   meetingCodeFromUri,
   parseAttendanceReport,
   pickAttendanceReport,
@@ -463,7 +464,11 @@ async function syncAttendance(
       picked = { ...picked, csv: await provider.spreadsheetCsv(picked.id) };
     } else if (candidates.length) {
       const withCsv = [];
-      for (const candidate of candidates) {
+      for (
+        const candidate of candidates.filter((c) =>
+          looksLikeAttendanceReport(c.name)
+        )
+      ) {
         withCsv.push({
           ...candidate,
           csv: await provider.spreadsheetCsv(candidate.id),
@@ -664,8 +669,19 @@ serve(async (req: Request) => {
 
     if (action === "status") {
       const status = await storage(db, "status", tenantId, actorId);
+      // Conexão feita antes da troca de escopo: salas funcionam, mas transcrição,
+      // anotações e presença não são lidas até reconectar.
+      const connection = status.connection
+        ? await storage(db, "connection_get", tenantId, actorId)
+        : null;
       return json({
         ...status,
+        scopes_outdated: !!connection?.tenant_id &&
+          !grantedRequiredScopes(
+            (Array.isArray(connection.granted_scopes)
+              ? connection.granted_scopes
+              : []).join(" "),
+          ),
         configured: cfg.missing.length === 0,
         missing_configuration: cfg.missing,
         enabled: cfg.enabled,

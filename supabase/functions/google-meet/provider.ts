@@ -8,9 +8,34 @@ import {
 } from "./core.ts";
 export type Fetcher = typeof fetch;
 export class GoogleProviderError extends Error {
-  constructor(public code: string, public status: number) {
+  constructor(
+    public code: string,
+    public status: number,
+    // Motivo e recurso que o Google devolve no corpo do erro (ErrorInfo), quando
+    // houver. Não carrega texto livre do provedor.
+    public reason = "",
+    public feature = "",
+  ) {
     super(code);
   }
+}
+/** Extrai reason/feature_name do ErrorInfo de um corpo de erro do Google. */
+export function googleErrorInfo(
+  body: unknown,
+): { reason: string; feature: string } {
+  const details = isRecord(body) && isRecord(body.error) &&
+      Array.isArray(body.error.details)
+    ? body.error.details
+    : [];
+  for (const detail of details) {
+    if (!isRecord(detail) || !text(detail.reason, 120)) continue;
+    const metadata = isRecord(detail.metadata) ? detail.metadata : {};
+    return {
+      reason: text(detail.reason, 120),
+      feature: text(metadata.feature_name, 120),
+    };
+  }
+  return { reason: "", feature: "" };
 }
 export class GoogleMeetProvider {
   constructor(private token: string, private request: Fetcher = fetch) {}
@@ -32,6 +57,10 @@ export class GoogleMeetProvider {
       throw new GoogleProviderError("google_request_uncertain", 503);
     }
     if (!response.ok) {
+      let info = { reason: "", feature: "" };
+      try {
+        info = googleErrorInfo(await response.json());
+      } catch { /* corpo não-JSON: segue só com o status */ }
       throw new GoogleProviderError(
         response.status === 401
           ? "google_reconnect_required"
@@ -43,6 +72,8 @@ export class GoogleMeetProvider {
           ? "google_rate_limited"
           : "google_provider_error",
         response.status,
+        info.reason,
+        info.feature,
       );
     }
     const result = await response.json();
@@ -54,11 +85,36 @@ export class GoogleMeetProvider {
   async createSpace(
     options: { attendanceReport?: boolean } = {},
   ): Promise<{ space_name: string; meeting_uri: string }> {
-    const result = await this.json("https://meet.googleapis.com/v2/spaces", {
+    let result: Record<string, unknown>;
+    try {
+      result = await this.postSpace("RESTRICTED", options);
+    } catch (error) {
+      // Workspace sobre Gmail (sem domínio): o Google recusa escolher o tipo de
+      // acesso (403 FEATURE_UNAVAILABLE_TO_USER, updateAccessType), medido em
+      // 26/09/2026. Nada foi criado; repete com TRUSTED, que ali equivale ao
+      // restrito: a conta da escola não tem colegas de domínio, o professor
+      // entra direto como membro convidado e o aluno pede para entrar.
+      if (
+        !(error instanceof GoogleProviderError) ||
+        error.reason !== "FEATURE_UNAVAILABLE_TO_USER" ||
+        error.feature !== "updateAccessType"
+      ) throw error;
+      result = await this.postSpace("TRUSTED", options);
+    }
+    return {
+      space_name: safeResource(result.name, "space"),
+      meeting_uri: safeMeetingUri(result.meetingUri),
+    };
+  }
+  private postSpace(
+    accessType: "RESTRICTED" | "TRUSTED",
+    options: { attendanceReport?: boolean },
+  ): Promise<Record<string, unknown>> {
+    return this.json("https://meet.googleapis.com/v2/spaces", {
       method: "POST",
       body: JSON.stringify({
         config: {
-          accessType: "RESTRICTED",
+          accessType,
           moderation: "ON",
           // Relatório de presença nativo do Google (Business Plus): planilha no
           // Drive da conta da escola. Só com a flag de presença ligada.
@@ -73,10 +129,6 @@ export class GoogleMeetProvider {
         },
       }),
     });
-    return {
-      space_name: safeResource(result.name, "space"),
-      meeting_uri: safeMeetingUri(result.meetingUri),
-    };
   }
   async ensureCohost(space: string, email: string): Promise<void> {
     const name = safeResource(space, "space"), identity = googleEmail(email);
@@ -176,8 +228,10 @@ export class GoogleMeetProvider {
     return artifacts;
   }
   /**
-   * Planilhas criadas pelo Meet no Drive da conta da escola dentro da janela
-   * (o escopo drive.meet.readonly só enxerga arquivos criados pelo Meet).
+   * Planilhas da PRÓPRIA conta da escola criadas na janela da aula. Com
+   * drive.readonly a busca enxergaria também planilhas compartilhadas por
+   * terceiros; 'me' in owners mantém só as que o Meet gerou para a organizadora.
+   * Quem escolhe a planilha certa é pickAttendanceReport (código da sala no nome).
    */
   async attendanceReportCandidates(
     from: string,
@@ -190,7 +244,7 @@ export class GoogleMeetProvider {
     const url = new URL("https://www.googleapis.com/drive/v3/files");
     url.searchParams.set(
       "q",
-      `mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and createdTime >= '${
+      `mimeType = 'application/vnd.google-apps.spreadsheet' and 'me' in owners and trashed = false and createdTime >= '${
         new Date(start).toISOString()
       }' and createdTime <= '${new Date(end).toISOString()}'`,
     );

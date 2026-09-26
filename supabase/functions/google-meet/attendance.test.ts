@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 import {
   findHeader,
+  looksLikeAttendanceReport,
   meetingCodeFromUri,
   parseAttendanceReport,
   parseCsv,
@@ -179,4 +180,21 @@ Deno.test("escolhe a planilha da sala certa entre aulas simultâneas", () => {
     "abc-defg-hij",
   );
   assertEquals(meetingCodeFromUri(null), null);
+});
+
+Deno.test("plano B só abre planilha com nome de relatório de presença", () => {
+  // Nome real medido em 26/09/2026 na conta central.
+  assertEquals(
+    looksLikeAttendanceReport(
+      "Relatório de participação em fxj-hykv-jev (2026-09-26 14:41)",
+    ),
+    true,
+  );
+  assertEquals(looksLikeAttendanceReport("Attendance report - abc"), true);
+  assertEquals(looksLikeAttendanceReport("Lista de presença"), true);
+  assertEquals(
+    looksLikeAttendanceReport("Controle financeiro setembro"),
+    false,
+  );
+  assertEquals(looksLikeAttendanceReport("Folha dos professores"), false);
 });

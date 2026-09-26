@@ -71,13 +71,23 @@ Deno.test("OAuth uses scoped offline consent, state and RFC7636 PKCE", async () 
       url.searchParams.get("access_type") === "offline",
   );
   assert(url.searchParams.get("scope") === GOOGLE_SCOPES.join(" "));
+  // Leitura do Drive, nunca escrita; nada de Gmail ou agenda.
   assert(
-    !url.search.includes("drive.readonly") &&
-      !url.search.includes("meetings.space.readonly"),
+    url.searchParams.get("scope")!.includes(
+      "https://www.googleapis.com/auth/drive.readonly",
+    ) &&
+      !/auth\/drive(\s|$)|drive\.file|gmail|calendar|meetings\.space\.readonly/
+        .test(url.searchParams.get("scope")!),
   );
   assert(
     !grantedRequiredScopes(
       "openid email https://www.googleapis.com/auth/meetings.space.created",
+    ),
+  );
+  // Conexão antiga (só drive.meet.readonly) não basta: o export dá 403.
+  assert(
+    !grantedRequiredScopes(
+      "openid email https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/drive.meet.readonly",
     ),
   );
   assert(grantedRequiredScopes(GOOGLE_SCOPES.join(" ")));

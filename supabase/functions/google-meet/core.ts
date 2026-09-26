@@ -2,11 +2,17 @@
 // destinada a acompanhamento de desempenho). Presença vem só do relatório
 // nativo do Google (attendance.ts) e vira caso para análise humana, nunca
 // desconto ou decisão automática de pagamento.
+// drive.readonly e não drive.meet.readonly: medido em 26/09/2026 com a conta
+// central (Business Plus sobre Gmail), a drive.meet.readonly lista e lê os
+// metadados das anotações do Gemini e do relatório de presença, mas o export do
+// conteúdo dá 403 appNotAuthorizedToFile — nada da aula seria importado. O
+// servidor só abre arquivos com id vindo da Meet API (docsDestination) ou a
+// planilha de presença da própria conta localizada pelo código da sala.
 export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/meetings.space.created",
-  "https://www.googleapis.com/auth/drive.meet.readonly",
+  "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
 export const SUMMARY_PROMPT_VERSION = "meet-pedagogical-v1";
 export async function runDocumentationTick<T>(

@@ -352,6 +352,16 @@ export function pickAttendanceReport<T extends { name: string; csv?: string }>(
   return null;
 }
 
+/**
+ * Nome de relatório de presença do Meet ("Relatório de participação em
+ * abc-defg-hij (...)", medido em 26/09/2026; em inglês "attendance"/"participant").
+ * O plano B (procurar o e-mail do professor dentro da planilha) só abre planilhas
+ * com esse nome — com drive.readonly, qualquer planilha da escola criada na
+ * janela da aula seria candidata.
+ */
+export const looksLikeAttendanceReport = (name: string): boolean =>
+  /particip|attendance|presen[cç]a/i.test(name);
+
 export const meetingCodeFromUri = (
   uri: string | null | undefined,
 ): string | null => {

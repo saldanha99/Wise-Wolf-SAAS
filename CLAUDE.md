@@ -263,7 +263,17 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   ausente, atraso 10+ min, aula fora da sala) **só abre caso** na Central de Qualidade
   (`MEET_ATTENDANCE`, `LATE_START`, `OUTSIDE_ROOM`). Decisão da direção: nada disso altera pagamento.
 - ⚠️ **Formato do relatório não é documentado pelo Google.** `attendance.ts` aceita colunas pt/en e
-  horários em vários formatos; conferir no primeiro relatório real e ajustar.
+  horários em vários formatos; conferir no primeiro relatório real e ajustar. Nome real (26/09):
+  "Relatório de participação em fxj-hykv-jev (2026-09-26 14:41)".
+- ✅ **Sem computador ligado** (teste real 26/09): sala criada pelo servidor, só o professor (Gmail
+  pessoal, COHOST) entrou e a conta da escola nunca — transcrição, anotações do Gemini e relatório de
+  presença saíram assim mesmo. Aulas simultâneas = salas independentes da mesma conta.
+- ⚠️ **`accessType: RESTRICTED` é recusado** na conta sobre Gmail (403 `updateAccessType`). O provider
+  repete com `TRUSTED` só nesse erro exato (`provider.test.ts`). Antes do conserto, nenhuma sala nascia.
+- ⚠️ **`drive.meet.readonly` NÃO exporta** as anotações do Gemini nem o relatório de presença (403
+  `appNotAuthorizedToFile`, medido 2×) — por isso o escopo é `drive.readonly`, e o código só abre o id
+  que a Meet API aponta e planilhas da própria conta com o código da sala no nome. Mudou escopo →
+  **reconectar a conta central** (a tela avisa com `scopes_outdated`).
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

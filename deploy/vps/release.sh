@@ -459,6 +459,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/google-meet/attendance.ts \
   supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.ts \
+  supabase/functions/google-meet/provider.test.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
@@ -719,6 +720,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/google-meet/attendance.test.ts \
+  supabase/functions/google-meet/provider.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
