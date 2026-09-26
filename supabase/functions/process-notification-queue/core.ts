@@ -229,12 +229,65 @@ export function renderStudentLifecycleNotification(input: {
   return `Oi, ${studentFirstName}! Registramos o encerramento da sua matr\u00edcula na ${tenantName}, conforme alinhado com a equipe, a partir de ${effectiveDate}. Agradecemos por ter feito parte da nossa escola. Seus hor\u00e1rios fixos foram liberados e, se quiser voltar no futuro, ser\u00e1 um prazer receber voc\u00ea novamente. Conte com a gente.`;
 }
 
+/** Pedido do termo de registro das aulas (migration 20260926210000). */
+export const LESSON_RECORDING_CONSENT_KIND = "LESSON_RECORDING_CONSENT_REQUEST";
+
+export type LessonRecordingConsentDelivery =
+  | { ok: true; destination: string; message: string }
+  | { ok: false; retryable: boolean; reason: string };
+
+const CONSENT_LINK_PATTERN =
+  /https:\/\/system\.wisewolflanguage\.com\.br\/registro-das-aulas\?token=[a-f0-9]{64}(?![a-f0-9])/;
+
+/**
+ * Lê a revalidação do banco (`get_lesson_recording_consent_request_snapshot`).
+ * Só autoriza o envio com destino de pessoa (nunca grupo), mensagem dentro do
+ * limite e o link do termo nela. Qualquer outra resposta cancela a mensagem:
+ * quem respondeu, revogou, trocou de contato ou teve o link substituído não
+ * recebe o pedido.
+ */
+export function lessonRecordingConsentDelivery(
+  snapshot: unknown,
+): LessonRecordingConsentDelivery {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return {
+      ok: false,
+      retryable: true,
+      reason: "lesson_recording_consent_snapshot_unavailable",
+    };
+  }
+  const record = snapshot as Record<string, unknown>;
+  if (record.ok !== true) {
+    const reason = typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim().slice(0, 120)
+      : "lesson_recording_consent_no_longer_valid";
+    return { ok: false, retryable: record.retryable === true, reason };
+  }
+  const destination = normalizeQueueDestination(record.destination);
+  const message = typeof record.message === "string" ? record.message : "";
+  if (
+    !destination || destination.endsWith("@g.us") || !message.trim() ||
+    message !== message.trim() || message.length > 4096 ||
+    !CONSENT_LINK_PATTERN.test(message)
+  ) {
+    return {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_payload_invalid",
+    };
+  }
+  return { ok: true, destination, message };
+}
+
 export function queueAudience(kind: unknown): {
   audience: "student" | "teacher";
   centralOnly: boolean;
 } {
   const normalized = normalizeNotificationKind(kind);
-  if (normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+  if (
+    normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE" ||
+    normalized === LESSON_RECORDING_CONSENT_KIND
+  ) {
     return { audience: "student", centralOnly: true };
   }
   if (

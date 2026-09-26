@@ -28,6 +28,8 @@ import {
 import {
   isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
+  LESSON_RECORDING_CONSENT_KIND,
+  lessonRecordingConsentDelivery,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -1192,6 +1194,26 @@ serve(async (req) => {
             invalid("invalid_schedule_acceptance_payload");
           }
           prepared = { teacherId: null, destination, message };
+        } else if (notificationKind === LESSON_RECORDING_CONSENT_KIND) {
+          // Termo de registro das aulas: o banco revalida aluno, decisão,
+          // contato, link e texto na hora de mandar.
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_lesson_recording_consent_request_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) {
+            unavailable("lesson_recording_consent_revalidation_unavailable");
+          }
+          const delivery = lessonRecordingConsentDelivery(snapshot);
+          if (delivery.ok === false) {
+            if (delivery.retryable) unavailable(delivery.reason);
+            invalid(delivery.reason);
+          }
+          prepared = {
+            teacherId: null,
+            destination: delivery.destination,
+            message: delivery.message,
+          };
         } else if (notificationKind.startsWith("TEACHER_TRAINING_")) {
           if (
             item.source_type !== "teacher_training" || !item.source_id ||

@@ -3,6 +3,8 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
+  LESSON_RECORDING_CONSENT_KIND,
+  lessonRecordingConsentDelivery,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -284,4 +286,83 @@ Deno.test("fila: vetado pelo teto volta para pending, nunca failed", () => {
   assertEquals(d.status, "pending");
   assertEquals(d.reason, "throttled_outreach");
   assertEquals(d.releaseOccurrenceReceipt, true);
+});
+
+Deno.test("pedido do termo de registro sai só pela central, com audiência aluno", () => {
+  assertEquals(queueAudience(LESSON_RECORDING_CONSENT_KIND), {
+    audience: "student",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience(" lesson_recording_consent_request "), {
+    audience: "student",
+    centralOnly: true,
+  });
+});
+
+Deno.test("revalidação do termo autoriza só destino de pessoa com o link do termo", () => {
+  const token = "a".repeat(64);
+  const message =
+    `Olá, Ana! Aqui é da Escola.\n\nTermo completo e resposta (leva 1 minuto): https://system.wisewolflanguage.com.br/registro-das-aulas?token=${token}`;
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "11 98888-0001",
+      message,
+    }),
+    { ok: true, destination: "5511988880001", message },
+  );
+  // Grupo nunca recebe o termo de um aluno.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "120363000000000000@g.us",
+      message,
+    }).ok,
+    false,
+  );
+  // Mensagem sem o link do termo (ou com outro domínio) não sai.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: message.replace(
+        "system.wisewolflanguage.com.br",
+        "exemplo.invalid",
+      ),
+    }),
+    {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_payload_invalid",
+    },
+  );
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: `${message}0`,
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("revalidação do termo recusada cancela sem nova tentativa", () => {
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false, reason: "aluno_ja_decidiu" }),
+    { ok: false, retryable: false, reason: "aluno_ja_decidiu" },
+  );
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false }),
+    {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_no_longer_valid",
+    },
+  );
+  // Resposta ilegível do banco é indisponibilidade: tenta de novo depois.
+  assertEquals(lessonRecordingConsentDelivery(null), {
+    ok: false,
+    retryable: true,
+    reason: "lesson_recording_consent_snapshot_unavailable",
+  });
 });
