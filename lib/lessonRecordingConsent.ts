@@ -81,12 +81,17 @@ const ERRORS: Record<string, string> = {
   pessoa_invalida: 'Pessoa não encontrada.',
   informe_o_motivo: 'Informe o motivo (pelo menos 10 caracteres).',
   complete_seu_nome_no_perfil: 'Complete seu nome no perfil antes de responder.',
+  // O professor só autoriza com a conta Google confirmada por login (migration
+  // 20260926180000): sem esta entrada o cartão mostrava "Algo deu errado".
+  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
 };
 
 /** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */
 export function consentErrorMessage(raw: string | null | undefined): string {
   const text = String(raw || '');
-  const code = Object.keys(ERRORS).find(key => text.includes(key));
+  const code = Object.keys(ERRORS)
+    .sort((a, b) => b.length - a.length)
+    .find(key => text.includes(key));
   return code ? ERRORS[code] : 'Algo deu errado. Tente de novo em instantes.';
 }
 
@@ -95,4 +100,33 @@ export function formatDecisionDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+type RpcErrorLike = { code?: string | null; message?: string | null } | null | undefined;
+
+/**
+ * RPC que ainda não existe no banco (PostgREST devolve PGRST202; Postgres,
+ * 42883). A tela mostra o recurso como indisponível em vez de quebrar.
+ */
+export function isMissingRpcError(error: RpcErrorLike): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  return /could not find the function|function .* does not exist/i.test(String(error.message || ''));
+}
+
+export type GoogleIdentityState =
+  | { status: 'verified'; email: string; verifiedAt: string }
+  | { status: 'missing'; email: string | null }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+/** Resposta de `get_my_google_identity`: `{ email, verified_at }` ou nulo. */
+export function googleIdentityState(data: unknown, error: RpcErrorLike): GoogleIdentityState {
+  if (error) return isMissingRpcError(error) ? { status: 'unavailable' } : { status: 'error' };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return { status: 'missing', email: null };
+  const record = row as Record<string, unknown>;
+  const email = typeof record.email === 'string' && record.email.trim() ? record.email.trim() : null;
+  const verifiedAt = typeof record.verified_at === 'string' && record.verified_at.trim() ? record.verified_at : null;
+  return email && verifiedAt ? { status: 'verified', email, verifiedAt } : { status: 'missing', email };
 }

@@ -24,6 +24,7 @@ import {
   oauthResultPage,
   pkceChallenge,
   randomToken,
+  roomClaimNextStep,
   runDocumentationTick,
   saoPauloDayWindow,
   sha256,
@@ -78,6 +79,9 @@ type RoomRow = {
   claim_id?: string | null;
   // Transcrição e anotações ligadas no Google (a revogação desliga).
   artifacts_state?: "ENABLED" | "DISABLED";
+  // A conta confirmada do professor mudou: falta acertar os membros (a sala
+  // continua READY).
+  cohost_sync_pending?: boolean;
 };
 type ImportRow = {
   provider_name: string;
@@ -829,22 +833,53 @@ async function createSessionRoom(
   if (claim.room.organizer_sub !== connection.organizer_sub) {
     throw new Error("google_organizer_changed");
   }
-  if (claim.room.state === "READY") {
-    return { ok: true, room: publicRoom(claim.room) };
-  }
-  if (claim.room.state === "NEEDS_RECONCILIATION") {
+  const step = roomClaimNextStep(claim);
+  if (step === "DONE") return { ok: true, room: publicRoom(claim.room) };
+  if (step === "RECONCILE") {
     throw new Error("google_room_reconciliation_required");
   }
-  if (!claim.claimed && !claim.room.space_name) {
-    throw new Error(
-      claim.room.state === "FAILED"
-        ? "google_room_retry_scheduled"
-        : "google_room_creation_in_progress",
-    );
+  if (step === "RETRY_SCHEDULED") {
+    throw new Error("google_room_retry_scheduled");
+  }
+  if (step === "IN_PROGRESS") {
+    throw new Error("google_room_creation_in_progress");
   }
   const provider = new GoogleMeetProvider(token);
+  if (step === "SYNC_COHOST") {
+    // A conta confirmada do professor mudou numa sala pronta: entra a conta
+    // nova, sai a antiga. A sala NÃO sai de READY (o link segue entregue e a
+    // aula segue importada); falha fica na sala com nova tentativa.
+    const cohostEmail = claim.room.cohost_email;
+    try {
+      await provider.ensureCohost(claim.room.space_name!, cohostEmail);
+    } catch (error) {
+      try {
+        await storage(db, "room_cohost_save", tenantId, actorId, sessionId, {
+          result: "FAILED",
+          cohost_email: cohostEmail,
+          error_code: providerErrorCode(error, "google_cohost_setup_failed"),
+        });
+      } catch (saveError) {
+        // Sem registrar a falha a pendência continua e a fila tenta de novo.
+        console.error("[google-meet] falha ao registrar o coanfitrião", {
+          sessionId,
+          code: providerErrorCode(saveError, "google_meet_storage_unavailable"),
+        });
+      }
+      throw error;
+    }
+    const synced: RoomRow = await storage(
+      db,
+      "room_cohost_save",
+      tenantId,
+      actorId,
+      sessionId,
+      { result: "SYNCED", cohost_email: cohostEmail },
+    );
+    return { ok: true, room: publicRoom(synced) };
+  }
   let room = claim.room;
-  if (claim.claimed) {
+  if (step === "CREATE") {
     let space: { space_name: string; meeting_uri: string };
     try {
       space = await provider.createSpace({
@@ -885,8 +920,11 @@ async function createSessionRoom(
   }
   try {
     await provider.ensureCohost(room.space_name!, room.cohost_email);
+    // O e-mail configurado vai junto: se a conta do professor mudou no meio do
+    // caminho, o banco mantém a pendência e a fila acerta de novo.
     room = await storage(db, "room_save", tenantId, actorId, sessionId, {
       state: "READY",
+      cohost_email: room.cohost_email,
     });
   } catch (error) {
     await storage(db, "room_save", tenantId, actorId, sessionId, {

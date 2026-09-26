@@ -298,11 +298,28 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
     sala (`google_teacher_identity_required`), fora da fila, link de sempre no app, e o professor não autoriza o
     termo (`teacher_google_identity_required`). O e-mail do cadastro não vale; no relatório de presença o
     professor é SÓ a conta confirmada — convidado com o nome do professor não conta mais como ele.
+    Professor que confirma OUTRA conta com a sala pronta: a sala **segue `READY`** (link e importação
+    intactos) com `cohost_sync_pending`, e `ensureCohost` põe a nova como coanfitriã e **tira a antiga**.
+    ⚠️ Não rebaixe sala pronta para `COHOST_PENDING`: o link sumia do app e a aula não era importada.
+    O cartão do professor (`LessonRecordingTeacherCard`) confirma a conta antes do aceite; é o mesmo
+    arquivo da frente do termo seguro (`wave1/termo-aluno-fix`), e as duas sobem juntas.
   - **Revogação desliga a sala já criada**: sem `documentation_consent`, sala `READY`/`COHOST_PENDING` vira
     `DISABLE_ARTIFACTS` na fila (grupo 0) → `spaces.patch` com transcrição e anotações `OFF`
     (`google_meet_rooms.artifacts_state`); aceite de volta antes da aula → `ENABLE_ARTIFACTS`. Falha tenta de
     novo (15 min dobrando até 2 h). `get_my_lesson_rooms` passou a exigir `documentation_consent` (como o
     lembrete do WhatsApp): sala de quem revogou não é mais entregue.
+  - **A revogação vale para a aula que ainda não tinha terminado quando ela chegou** — na hora, sem esperar o
+    job: `private.lesson_session_documentation_blocked(aluno, professor, fim)` (última decisão NÃO, anterior
+    ao fim previsto) tira o aceite efetivo na porta do servidor (`room_claim`, `artifact_save`,
+    `session_state`/`session_detail` devolvem `documentation_consent` efetivo + `documentation_blocked`), na
+    fila e em `get_my_lesson_rooms`. O job desmarca **sem exigir conta conectada** e olhando 8 dias para
+    trás; `trigger_sync_google_meet_artifacts` passa também por escola não conectada. Antes, revogar 5 min
+    antes da aula (job rodando depois do início) ou com a conta em `REAUTH_REQUIRED` deixava a transcrição ser
+    importada. ⚠️ Marcar continua exigindo conta conectada e só nas próximas 24 h.
+  - **Aceite que volta pelo termo religa** (sessão remarcada + `ENABLE_ARTIFACTS`): só um DESLIGAR manual como
+    **último** evento segura o termo. Eventos usam `clock_timestamp()` (a ordem vale na mesma transação).
+    Mudança de `documentation_consent` zera erro/espera da documentação da sala
+    (`trg_zz_lesson_session_meet_artifacts_retry`, dono postgres com grant de coluna na sala).
   - **Transcrição bruta só para o professor da aula, coordenação e direção da escola** (`session_detail` →
     `raw_access`); outros professores do aluno e o `SUPER_ADMIN` veem só o resumo aprovado. A edge usa
     `session_state` (interno, sem texto bruto) na fila.

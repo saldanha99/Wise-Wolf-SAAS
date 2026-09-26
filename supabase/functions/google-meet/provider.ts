@@ -60,6 +60,17 @@ export function googleErrorInfo(
 }
 export class GoogleMeetProvider {
   constructor(private token: string, private request: Fetcher = fetch) {}
+  private static errorCode(status: number): string {
+    return status === 401
+      ? "google_reconnect_required"
+      : status === 403
+      ? "google_permission_or_edition_required"
+      : status === 404
+      ? "google_resource_unavailable"
+      : status === 429
+      ? "google_rate_limited"
+      : "google_provider_error";
+  }
   private async json(
     url: string,
     init: RequestInit = {},
@@ -83,15 +94,7 @@ export class GoogleMeetProvider {
         info = googleErrorInfo(await response.json());
       } catch { /* corpo não-JSON: segue só com o status */ }
       throw new GoogleProviderError(
-        response.status === 401
-          ? "google_reconnect_required"
-          : response.status === 403
-          ? "google_permission_or_edition_required"
-          : response.status === 404
-          ? "google_resource_unavailable"
-          : response.status === 429
-          ? "google_rate_limited"
-          : "google_provider_error",
+        GoogleMeetProvider.errorCode(response.status),
         response.status,
         info.reason,
         info.feature,
@@ -190,29 +193,71 @@ export class GoogleMeetProvider {
       throw new GoogleProviderError("google_room_update_unconfirmed", 502);
     }
   }
+  /**
+   * Deixa a conta confirmada do professor como a ÚNICA coanfitriã da sala
+   * (decisão da direção: coanfitrião é só a conta confirmada por login). A conta
+   * nova entra (ou é promovida) PRIMEIRO; só depois sai quem era coanfitrião com
+   * outro e-mail — a conta antiga do professor, ou a de outro professor quando a
+   * aula mudou de mãos. Se a remoção falhar, a sala não fica sem ninguém para
+   * admitir o aluno, e a fila tenta de novo.
+   */
   async ensureCohost(space: string, email: string): Promise<void> {
     const name = safeResource(space, "space"), identity = googleEmail(email);
     const members = await this.list(
       `https://meet.googleapis.com/v2/${name}/members`,
       "members",
     );
-    const existing = members.find((member) =>
-      text(member.email).toLowerCase() === identity
-    );
-    if (existing?.role === "COHOST") return;
-    if (existing) {
-      const memberName = text(existing.name, 250);
+    const memberNameOf = (member: Record<string, unknown>): string => {
+      const memberName = text(member.name, 250);
       if (!new RegExp(`^${name}/members/[A-Za-z0-9_-]+$`).test(memberName)) {
         throw new Error("google_member_invalid");
       }
+      return memberName;
+    };
+    const existing = members.find((member) =>
+      text(member.email).toLowerCase() === identity
+    );
+    if (existing && existing.role !== "COHOST") {
       await this.json(
-        `https://meet.googleapis.com/v2/${memberName}?updateMask=role`,
+        `https://meet.googleapis.com/v2/${
+          memberNameOf(existing)
+        }?updateMask=role`,
         { method: "PATCH", body: JSON.stringify({ role: "COHOST" }) },
       );
-    } else {await this.json(`https://meet.googleapis.com/v2/${name}/members`, {
+    } else if (!existing) {
+      await this.json(`https://meet.googleapis.com/v2/${name}/members`, {
         method: "POST",
         body: JSON.stringify({ email: identity, role: "COHOST" }),
-      });}
+      });
+    }
+    for (const member of members) {
+      if (
+        member.role !== "COHOST" ||
+        text(member.email).toLowerCase() === identity
+      ) continue;
+      await this.removeMember(memberNameOf(member));
+    }
+  }
+  /** Tira um membro da sala. Já ausente (404) é o estado pedido. */
+  private async removeMember(memberName: string): Promise<void> {
+    let response: Response;
+    try {
+      response = await this.request(
+        `https://meet.googleapis.com/v2/${memberName}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${this.token}` },
+          signal: AbortSignal.timeout(20000),
+        },
+      );
+    } catch {
+      throw new GoogleProviderError("google_request_uncertain", 503);
+    }
+    if (response.ok || response.status === 404) return;
+    throw new GoogleProviderError(
+      GoogleMeetProvider.errorCode(response.status),
+      response.status,
+    );
   }
   async list(
     urlString: string,

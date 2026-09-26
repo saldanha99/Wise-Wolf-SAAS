@@ -124,5 +124,38 @@ describe('Parte 2: troca de conta central, transcrição bruta e documentação 
     expect(screen.getByText(/Professor: entrou 10:04 · 28 min/)).toBeTruthy();
     expect(screen.getByTestId('artifacts-disabled').textContent).toMatch(/Transcrição e anotações desligadas nesta sala/);
     expect(screen.getByText(/autorização de registro desta aula foi retirada/)).toBeTruthy();
+    // Sem aceite a sala da escola não é oferecida (o app usa o link de sempre).
+    expect(screen.queryByText(/Entrar na sala oficial/)).toBeNull();
+    expect(screen.queryByRole('button',{name:/Concluir configuração da sala|Criar sala oficial/})).toBeNull();
+  });
+  it('revogação com o desligar ainda pendente: nada de sala oficial, e o erro diz quando tenta de novo',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      session:{documentation_consent:false,documentation_blocked:true},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',
+        artifacts_error_code:'google_rate_limited',artifacts_next_attempt_at:'2026-09-26T15:30:00Z'}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('artifacts-error');
+    expect(screen.queryByText(/Entrar na sala oficial/)).toBeNull();
+    expect(screen.getByTestId('artifacts-error').textContent).toMatch(/desligar a transcrição falhou/);
+    expect(screen.getByTestId('artifacts-error').textContent).toMatch(/Nova tentativa automática às 12:30/);
+    expect(screen.getByText(/revogou o registro antes do fim desta aula/)).toBeTruthy();
+  });
+  it('sala já no estado do aceite não mostra erro velho de tentativa',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      session:{documentation_consent:false},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'DISABLED',
+        artifacts_error_code:'google_resource_unavailable'}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('artifacts-disabled');
+    expect(screen.queryByTestId('artifacts-error')).toBeNull();
+  });
+  it('conta do professor trocada: a sala segue com o link e avisa o acerto do coanfitrião',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',
+        cohost_sync_pending:true,cohost_error_code:'google_rate_limited',cohost_next_attempt_at:'2026-09-26T15:30:00Z'}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('cohost-sync');
+    expect(screen.getByRole('link',{name:/Entrar na sala oficial/})).toHaveAttribute('href','https://meet.google.com/abc-defg-hij');
+    expect(screen.getByTestId('cohost-sync').textContent).toMatch(/Nova tentativa automática às 12:30/);
   });
 });

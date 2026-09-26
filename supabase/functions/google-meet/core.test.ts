@@ -13,6 +13,7 @@ import {
   normalizeSummary,
   oauthResultPage,
   pkceChallenge,
+  roomClaimNextStep,
   runDocumentationTick,
   safeResource,
   saoPauloDayWindow,
@@ -714,5 +715,55 @@ Deno.test("documentação da sala segue o aceite relido na hora", () => {
       operation: "DISABLE_ARTIFACTS",
     }) === "NO_ROOM",
     "tentou alterar sala inexistente",
+  );
+});
+
+Deno.test("sala pronta com a conta do professor trocada: acerta o coanfitrião sem sair de READY", () => {
+  const ready = { state: "READY", space_name: "spaces/abc" };
+  assert(
+    roomClaimNextStep({ claimed: false, room: ready }) === "DONE",
+    "sala pronta mexida à toa",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: false,
+      room: { ...ready, cohost_sync_pending: true },
+    }) === "SYNC_COHOST",
+    "troca de conta do professor não acertou os membros",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: true,
+      room: { state: "CREATING", space_name: null },
+    }) === "CREATE",
+    "reserva não criou a sala",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: false,
+      room: { state: "COHOST_PENDING", space_name: "spaces/abc" },
+    }) === "CONFIGURE_COHOST",
+    "sala criada ficou sem coanfitrião",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: false,
+      room: { state: "FAILED", space_name: null },
+    }) === "RETRY_SCHEDULED",
+    "falha virou outra coisa",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: false,
+      room: { state: "CREATING", space_name: null },
+    }) === "IN_PROGRESS",
+    "criação em andamento repetida",
+  );
+  assert(
+    roomClaimNextStep({
+      claimed: false,
+      room: { state: "NEEDS_RECONCILIATION", space_name: "spaces/abc" },
+    }) === "RECONCILE",
+    "dois links sem a direção",
   );
 });

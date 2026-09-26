@@ -634,3 +634,117 @@ Deno.test("recusa ou rede fora: falha registrada (a fila tenta de novo), sem exc
     { result: "FAILED", errorCode: "google_resource_invalid" },
   );
 });
+
+// ===== Coanfitrião = só a conta confirmada do professor =======================
+
+const MEMBERS_PATH = "/v2/spaces/nLYkAE855egB/members";
+const member = (id: string, email: string, role: string) => ({
+  name: `spaces/nLYkAE855egB/members/${id}`,
+  email,
+  role,
+});
+const callsOf = (
+  calls: { method: string; url: URL }[],
+) => calls.map((call) => `${call.method} ${call.url.pathname}`);
+
+Deno.test("sala nova: a conta confirmada entra como coanfitriã, ninguém sai", async () => {
+  const google = fakePatch([
+    json({ members: [] }),
+    json(member("m1", "prof.b@gmail.com", "COHOST")),
+  ]);
+  await new GoogleMeetProvider("t", google.request).ensureCohost(
+    "spaces/nLYkAE855egB",
+    "Prof.B@gmail.com",
+  );
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `POST ${MEMBERS_PATH}`,
+  ]);
+  assertEquals(google.calls[1].body, {
+    email: "prof.b@gmail.com",
+    role: "COHOST",
+  });
+});
+
+Deno.test("professor trocou de conta: a nova entra PRIMEIRO e a antiga sai da sala", async () => {
+  const google = fakePatch([
+    json({ members: [member("old", "prof.a@gmail.com", "COHOST")] }),
+    json(member("new", "prof.b@gmail.com", "COHOST")),
+    json({}),
+  ]);
+  await new GoogleMeetProvider("t", google.request).ensureCohost(
+    "spaces/nLYkAE855egB",
+    "prof.b@gmail.com",
+  );
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `POST ${MEMBERS_PATH}`,
+    `DELETE ${MEMBERS_PATH}/old`,
+  ]);
+});
+
+Deno.test("conta nova já coanfitriã: só a antiga sai; membro comum fica; 404 é já removido", async () => {
+  const google = fakePatch([
+    json({
+      members: [
+        member("old", "prof.a@gmail.com", "COHOST"),
+        member("new", "prof.b@gmail.com", "COHOST"),
+        member("guest", "convidado@gmail.com", "MEMBER"),
+      ],
+    }),
+    new Response(null, { status: 404 }),
+  ]);
+  await new GoogleMeetProvider("t", google.request).ensureCohost(
+    "spaces/nLYkAE855egB",
+    "prof.b@gmail.com",
+  );
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `DELETE ${MEMBERS_PATH}/old`,
+  ]);
+});
+
+Deno.test("conta nova era membro comum: é promovida, e a antiga sai", async () => {
+  const google = fakePatch([
+    json({
+      members: [
+        member("old", "prof.a@gmail.com", "COHOST"),
+        member("new", "prof.b@gmail.com", "MEMBER"),
+      ],
+    }),
+    json(member("new", "prof.b@gmail.com", "COHOST")),
+    json({}),
+  ]);
+  await new GoogleMeetProvider("t", google.request).ensureCohost(
+    "spaces/nLYkAE855egB",
+    "prof.b@gmail.com",
+  );
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `PATCH ${MEMBERS_PATH}/new`,
+    `DELETE ${MEMBERS_PATH}/old`,
+  ]);
+  assertEquals(google.calls[1].url.searchParams.get("updateMask"), "role");
+  assertEquals(google.calls[1].body, { role: "COHOST" });
+});
+
+Deno.test("falha ao tirar a conta antiga é erro (a fila tenta de novo), com a nova já dentro", async () => {
+  const google = fakePatch([
+    json({ members: [member("old", "prof.a@gmail.com", "COHOST")] }),
+    json(member("new", "prof.b@gmail.com", "COHOST")),
+    json({ error: { code: 500 } }, 500),
+  ]);
+  await assertRejects(
+    () =>
+      new GoogleMeetProvider("t", google.request).ensureCohost(
+        "spaces/nLYkAE855egB",
+        "prof.b@gmail.com",
+      ),
+    "google_provider_error",
+  );
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `POST ${MEMBERS_PATH}`,
+    `DELETE ${MEMBERS_PATH}/old`,
+  ]);
+});

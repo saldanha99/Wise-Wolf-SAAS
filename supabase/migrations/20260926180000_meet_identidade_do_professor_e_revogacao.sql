@@ -25,6 +25,21 @@
 --     revogação do aluno/responsável ou do professor. Revogação que chega DEPOIS
 --     de uma marcação manual também desmarca a sessão (apply_standing).
 --
+-- Correções da revisão (mesma migration, ainda não publicada):
+--   * a revogação vale para a aula que ainda não tinha terminado quando ela
+--     chegou, mesmo que o job rode depois do início ou com a conta central fora
+--     do ar: o job desmarca sem exigir conexão e fora da janela das 24 h, e a
+--     porta do servidor, a fila e o link do app tratam a sessão como SEM aceite
+--     desde a decisão (private.lesson_session_documentation_blocked) — a
+--     transcrição de uma aula dada depois da revogação não é importada;
+--   * o aceite que volta pelo termo religa a sessão (e a sala, ENABLE): só a
+--     decisão manual de DESLIGAR, quando é o último evento, segura o termo;
+--   * troca da conta confirmada do professor não rebaixa a sala pronta: ela
+--     segue READY (link entregue, importação normal) com cohost_sync_pending,
+--     e a edge acerta os membros (entra a conta nova, sai a antiga);
+--   * erro e espera da documentação da sala zeram com a nova decisão e com o
+--     sucesso (sala apagada no Google não fica como "falha").
+--
 -- Parte das definições de 20260926170000 (google_meet_backend,
 -- get_pending_google_meet_sync_sessions, get_my_lesson_rooms) e das definições
 -- vivas de 20260926120000 (set_my_lesson_recording_consent,
@@ -89,6 +104,52 @@ alter table private.google_meet_rooms add constraint google_meet_rooms_artifacts
 comment on column private.google_meet_rooms.artifacts_state is
   'Transcrição e anotações automáticas no Google: ENABLED (como a sala nasce) ou DISABLED (aceite revogado; spaces.patch com OFF). A fila acerta a diferença com lesson_sessions.documentation_consent.';
 
+-- Coanfitrião trocado numa sala que já existe (o professor confirmou outra conta
+-- Google, ou a aula mudou de professor). A sala NÃO volta para COHOST_PENDING:
+-- ela segue READY, com o link entregue e a importação normal, e a edge acerta os
+-- membros no Google (entra a conta nova como coanfitriã, sai a antiga).
+alter table private.google_meet_rooms add column if not exists cohost_sync_pending boolean not null default false;
+alter table private.google_meet_rooms add column if not exists cohost_error_code text;
+alter table private.google_meet_rooms add column if not exists cohost_attempts integer not null default 0;
+alter table private.google_meet_rooms add column if not exists cohost_next_attempt_at timestamptz;
+alter table private.google_meet_rooms drop constraint if exists google_meet_rooms_cohost_error_check;
+alter table private.google_meet_rooms add constraint google_meet_rooms_cohost_error_check
+  check (cohost_error_code is null or cohost_error_code ~ '^[a-z_]{1,80}$');
+alter table private.google_meet_rooms drop constraint if exists google_meet_rooms_cohost_attempts_check;
+alter table private.google_meet_rooms add constraint google_meet_rooms_cohost_attempts_check
+  check (cohost_attempts >= 0);
+comment on column private.google_meet_rooms.cohost_sync_pending is
+  'A conta confirmada do professor mudou depois que a sala existia: falta acertar os membros no Google (conta nova COHOST, antiga removida). A sala continua READY.';
+
+-- Recusa ou revogação que já vale para a aula ----------------------------------
+-- A última decisão da pessoa (aluno ou responsável, ou professor) é NÃO, e ela
+-- chegou antes do FIM previsto da aula: a aula não terminou sob o aceite. É a
+-- mesma régua do job (que desmarca) e da porta do servidor, da fila e do link do
+-- app (que já tratam a sessão como sem aceite antes de o job rodar). Aula que
+-- terminou antes da decisão segue os prazos do termo ("o que já foi registrado").
+create or replace function private.lesson_recording_said_no_before(p_subject uuid, p_until timestamptz)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select consent.decision in ('REFUSED', 'REVOKED') and consent.decided_at < p_until
+    from private.lesson_recording_consents as consent
+    where consent.subject_id = p_subject
+    order by consent.seq desc
+    limit 1
+  ), false);
+$$;
+create or replace function private.lesson_session_documentation_blocked(
+  p_student uuid, p_teacher uuid, p_scheduled_end timestamptz
+) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select private.lesson_recording_said_no_before(p_student, p_scheduled_end)
+    or private.lesson_recording_said_no_before(p_teacher, p_scheduled_end);
+$$;
+alter function private.lesson_recording_said_no_before(uuid, timestamptz) owner to postgres;
+alter function private.lesson_session_documentation_blocked(uuid, uuid, timestamptz) owner to postgres;
+revoke all on function private.lesson_recording_said_no_before(uuid, timestamptz) from public, anon, authenticated;
+revoke all on function private.lesson_session_documentation_blocked(uuid, uuid, timestamptz) from public, anon, authenticated;
+
 -- Porta do servidor -------------------------------------------------------------
 create or replace function public.google_meet_backend(
   p_action text, p_tenant_id text default null, p_actor_id uuid default null,
@@ -108,6 +169,7 @@ declare
   v_state text; v_claim uuid; v_automatic boolean; v_complete boolean;
   v_interval interval; v_closing boolean; v_raw boolean := false;
   v_sub text; v_email text; v_holder uuid; v_holder_active boolean;
+  v_consent boolean := false;
 begin
   if p_action = 'nonce_consume' then
     update private.google_meet_oauth_states
@@ -216,6 +278,7 @@ begin
       select room.lesson_session_id from private.google_meet_rooms room
       join public.lesson_sessions sess on sess.id=room.lesson_session_id and sess.tenant_id=room.tenant_id
       where room.tenant_id=p_tenant_id and room.state='READY' and sess.documentation_consent and sess.status<>'SUPERSEDED'
+        and not private.lesson_session_documentation_blocked(sess.student_id, sess.teacher_id, sess.scheduled_end_at)
         and sess.scheduled_end_at < now() and sess.scheduled_end_at > now()-interval '7 days'
         and room.sync_status in ('WAITING','PENDING')
         and coalesce(room.next_sync_at, room.last_synced_at+interval '30 minutes', '-infinity'::timestamptz) <= now()
@@ -237,9 +300,14 @@ begin
     -- do aluno e o suporte da plataforma (SUPER_ADMIN) ficam com o resumo aprovado.
     v_raw := (a.role in ('SCHOOL_ADMIN','COORDINATOR') and a.tenant_id=s.tenant_id)
       or (a.role='TEACHER' and s.teacher_id=a.id);
+    -- Aceite EFETIVO: a marca da sessão menos a recusa/revogação que chegou antes
+    -- do fim da aula (o job de 15 min ainda pode não ter desmarcado, ou a conta
+    -- central pode estar fora do ar). Sala, importação e estado da fila usam este.
+    v_consent := s.documentation_consent
+      and not private.lesson_session_documentation_blocked(s.student_id, s.teacher_id, s.scheduled_end_at);
 
     if p_action='room_claim' then
-      if not s.documentation_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
+      if not v_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
       if s.status='SUPERSEDED' then raise exception 'lesson_session_superseded' using errcode='22023'; end if;
       if a.role='TEACHER' and s.teacher_id<>a.id then raise exception 'session_teacher_required' using errcode='42501'; end if;
       v_automatic := coalesce((p_payload->>'automatic')::boolean,false);
@@ -278,11 +346,15 @@ begin
         if r.lesson_session_id is not null then
           insert into private.google_meet_access_events(tenant_id,actor_id,lesson_session_id,action) values(s.tenant_id,a.id,s.id,'ROOM_CREATION_RETRY_CLAIMED');
           return jsonb_build_object('claimed',true,'room',to_jsonb(r)); end if;
-        -- Sala pronta com coanfitrião diferente da conta confirmada (o professor
-        -- confirmou outra conta, ou a aula mudou de professor): volta para
-        -- COHOST_PENDING com o e-mail novo, e a edge configura o membro.
+        -- Sala com coanfitrião diferente da conta confirmada (o professor
+        -- confirmou outra conta, ou a aula mudou de professor): grava o e-mail
+        -- novo e marca a pendência; a edge acerta os membros no Google. A sala
+        -- pronta NÃO é rebaixada: continua READY, com o link já entregue e a
+        -- importação normal — rebaixar tirava o link do app e, se o acerto do
+        -- membro falhasse, a aula nunca era importada.
         update private.google_meet_rooms room
-           set cohost_email=t.google_email, state='COHOST_PENDING', updated_at=now()
+           set cohost_email=t.google_email, cohost_sync_pending=true,
+               cohost_error_code=null, cohost_attempts=0, cohost_next_attempt_at=null, updated_at=now()
          where room.lesson_session_id=s.id and room.tenant_id=s.tenant_id and room.space_name is not null
            and room.state in ('READY','COHOST_PENDING') and room.organizer_sub=p_payload->>'organizer_sub'
            and room.cohost_email<>t.google_email
@@ -324,6 +396,15 @@ begin
           when creation_attempts<=1 then now()+interval '30 minutes'
           when creation_attempts=2 then now()+interval '2 hours'
           else now()+interval '6 hours' end,
+        -- READY depois de configurar o coanfitrião: só sai a pendência se o
+        -- e-mail configurado (cohost_email do payload) ainda é o da sala — a conta
+        -- pode ter mudado de novo no meio do caminho.
+        cohost_sync_pending=case when v_state='READY'
+          then lower(coalesce(p_payload->>'cohost_email',cohost_email)) is distinct from cohost_email
+          else cohost_sync_pending end,
+        cohost_error_code=case when v_state='READY' then null else cohost_error_code end,
+        cohost_attempts=case when v_state='READY' then 0 else cohost_attempts end,
+        cohost_next_attempt_at=case when v_state='READY' then null else cohost_next_attempt_at end,
         updated_at=now()
       where lesson_session_id=s.id and tenant_id=s.tenant_id returning * into r;
       insert into private.google_meet_access_events(tenant_id,actor_id,lesson_session_id,action) values(s.tenant_id,a.id,s.id,'ROOM_'||r.state);
@@ -338,7 +419,9 @@ begin
       update private.google_meet_rooms room set
         artifacts_state=case when v_state='FAILED' then room.artifacts_state else v_state end,
         artifacts_changed_at=case when v_state<>'FAILED' and v_state<>room.artifacts_state then now() else room.artifacts_changed_at end,
-        artifacts_error_code=nullif(p_payload->>'error_code',''),
+        -- Erro só da tentativa que falhou. Sucesso limpa, inclusive o "sala não
+        -- existe mais no Google" do desligar, que é o estado pedido.
+        artifacts_error_code=case when v_state='FAILED' then nullif(p_payload->>'error_code','') else null end,
         artifacts_attempts=case when v_state='FAILED' then room.artifacts_attempts+1 else 0 end,
         -- Falha tenta de novo em 15 min, 30, 60, 120 (teto de 2 h): desligar a
         -- transcrição de quem revogou não desiste.
@@ -351,6 +434,30 @@ begin
       if r.lesson_session_id is null then raise exception 'google_room_not_found' using errcode='22023'; end if;
       insert into private.google_meet_access_events(tenant_id,actor_id,lesson_session_id,action)
       values(s.tenant_id,a.id,s.id,'ROOM_ARTIFACTS_'||v_state);
+      return to_jsonb(r)-'claim_id';
+    elsif p_action='room_cohost_save' then
+      -- Resultado do acerto de membros numa sala que segue READY (conta do
+      -- professor trocada). A sala não muda de estado: falha fica em
+      -- cohost_error_code com nova tentativa (15 min dobrando até 2 h).
+      v_state := p_payload->>'result';
+      if v_state is null or v_state not in ('SYNCED','FAILED') then
+        raise exception 'google_room_state_invalid' using errcode='22023'; end if;
+      update private.google_meet_rooms room set
+        cohost_sync_pending=case when v_state='SYNCED'
+          then lower(coalesce(p_payload->>'cohost_email','')) is distinct from room.cohost_email
+          else true end,
+        cohost_error_code=case when v_state='FAILED'
+          then coalesce(nullif(p_payload->>'error_code',''),'google_cohost_setup_failed') else null end,
+        cohost_attempts=case when v_state='FAILED' then room.cohost_attempts+1 else 0 end,
+        cohost_next_attempt_at=case when v_state='FAILED'
+          then now()+least(interval '2 hours', interval '15 minutes'*power(2,least(room.cohost_attempts,4))::integer)
+          else null end,
+        updated_at=now()
+      where room.lesson_session_id=s.id and room.tenant_id=s.tenant_id and room.space_name is not null
+      returning * into r;
+      if r.lesson_session_id is null then raise exception 'google_room_not_found' using errcode='22023'; end if;
+      insert into private.google_meet_access_events(tenant_id,actor_id,lesson_session_id,action)
+      values(s.tenant_id,a.id,s.id,'ROOM_COHOST_'||v_state);
       return to_jsonb(r)-'claim_id';
     elsif p_action='sync_complete' then
       -- A fila tem fim. Concluída (tudo importado e presença avaliada) sai da
@@ -367,7 +474,9 @@ begin
         next_sync_at=case when v_complete or v_closing then null else now()+v_interval end
       where lesson_session_id=s.id and tenant_id=s.tenant_id;
     elsif p_action='artifact_save' then
-      if not s.documentation_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
+      -- Aula que não terminou sob o aceite (recusa/revogação antes do fim) não
+      -- tem transcrição importada, mesmo com a marca da sessão ainda ligada.
+      if not v_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
       insert into private.meeting_artifact_revisions(tenant_id,lesson_session_id,provider_name,kind,document_id,content_sha256,source_text,expires_at,source)
       values(s.tenant_id,s.id,p_payload->>'provider_name',p_payload->>'kind',p_payload->>'document_id',p_payload->>'content_sha256',
         p_payload->>'source_text',now()+make_interval(days=>greatest(7,least(365,(p_payload->>'retention_days')::integer))),
@@ -381,7 +490,7 @@ begin
       return jsonb_build_object('id',v_id,'inserted',true);
     elsif p_action='artifact_status' then
       -- Situação de UM documento, com o erro dele. Sem conteúdo aqui.
-      if not s.documentation_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
+      if not v_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
       v_status := p_payload->>'status';
       v_id := nullif(p_payload->>'revision_id','')::uuid;
       if v_id is not null and not exists(select 1 from private.meeting_artifact_revisions ar
@@ -457,7 +566,10 @@ begin
     elsif p_action='session_state' then
       -- Uso interno da edge (fila, criação da sala, importação, documentação
       -- ligada/desligada): estado sem texto bruto e sem registro de leitura.
-      return jsonb_build_object('session',to_jsonb(s),
+      -- documentation_consent é o EFETIVO: com recusa/revogação antes do fim da
+      -- aula a edge não cria sala nem importa, e desliga a transcrição da sala.
+      return jsonb_build_object('session',to_jsonb(s)||jsonb_build_object('documentation_consent',v_consent,
+          'documentation_blocked',s.documentation_consent and not v_consent),
         'room',(select to_jsonb(room)-'claim_id' from private.google_meet_rooms room where room.lesson_session_id=s.id),
         'imports',coalesce((select jsonb_agg(to_jsonb(imp) order by imp.kind desc, imp.first_seen_at)
           from private.google_meet_artifact_imports imp
@@ -476,7 +588,10 @@ begin
     elsif p_action='session_detail' then
       insert into private.google_meet_access_events(tenant_id,actor_id,lesson_session_id,action)
       values(s.tenant_id,a.id,s.id,case when v_raw then 'READ_PEDAGOGICAL_DOCUMENTATION' else 'READ_APPROVED_SUMMARIES' end);
-      return jsonb_build_object('session',to_jsonb(s),
+      -- A tela vê o aceite efetivo: revogação antes do fim da aula já esconde a
+      -- sala oficial e o botão de importar, mesmo antes de o job desmarcar.
+      return jsonb_build_object('session',to_jsonb(s)||jsonb_build_object('documentation_consent',v_consent,
+          'documentation_blocked',s.documentation_consent and not v_consent),
         'raw_access',v_raw,
         'room',(select to_jsonb(room)-'claim_id' from private.google_meet_rooms room where room.lesson_session_id=s.id),
         'artifacts',case when v_raw then coalesce((select jsonb_agg(ar order by ar.imported_at desc) from private.meeting_artifact_revisions ar
@@ -519,10 +634,14 @@ grant execute on function public.google_meet_backend(text,text,uuid,uuid,jsonb) 
 -- 4. Fila -----------------------------------------------------------------------
 -- Grupos de prioridade (20260926170000) mais:
 --   0 DISABLE_ARTIFACTS / ENABLE_ARTIFACTS — a documentação da sala acompanha o
---     aceite (revogou → desliga; voltou antes da aula → religa);
+--     aceite EFETIVO (revogou → desliga, mesmo antes de o job desmarcar a
+--     sessão; voltou antes da aula → religa);
 --   PREPARE_ROOM só para professor com conta Google confirmada (sem ela a sala
 --     não sai, e a sessão entupiria as 30 vagas a cada 15 min), e também para
---     sala pronta cujo coanfitrião não é mais a conta confirmada.
+--     sala cujo coanfitrião não é mais a conta confirmada — a sala pronta segue
+--     READY enquanto a edge acerta os membros (até o fim da aula);
+--   nada de sala nova nem de importação para aula com recusa/revogação antes do
+--     fim (private.lesson_session_documentation_blocked).
 create or replace function public.get_pending_google_meet_sync_sessions()
 returns jsonb language sql stable security definer set search_path='' as $$
   select coalesce(jsonb_agg(x order by x.priority_group, x.priority_at),'[]'::jsonb) from (
@@ -535,6 +654,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
       join private.google_workspace_connections c on c.tenant_id=r.tenant_id and c.organizer_sub=r.organizer_sub
       join public.profiles a on a.id=c.connected_by
       where c.status='CONNECTED' and r.state='READY' and s.documentation_consent and s.status<>'SUPERSEDED'
+        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
         and s.scheduled_end_at<now() and s.scheduled_end_at>now()-interval '7 days'
         and r.sync_status in ('WAITING','PENDING')
         and coalesce(r.next_sync_at,r.last_synced_at+interval '30 minutes','-infinity'::timestamptz)<=now()
@@ -550,32 +670,59 @@ returns jsonb language sql stable security definer set search_path='' as $$
       join private.teacher_google_identities ident on ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id
       left join private.google_meet_rooms r on r.lesson_session_id=s.id
       where s.documentation_consent and s.status='SCHEDULED'
+        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
         and s.scheduled_start_at between now() and now()+interval '24 hours'
         and (r.lesson_session_id is null
-          or (r.state='COHOST_PENDING' and r.organizer_sub=c.organizer_sub and r.updated_at<now()-interval '1 hour')
-          or (r.state='READY' and r.organizer_sub=c.organizer_sub and r.space_name is not null
-            and r.cohost_email<>ident.google_email)
+          or (r.state='COHOST_PENDING' and r.organizer_sub=c.organizer_sub
+            and (r.updated_at<now()-interval '1 hour' or r.cohost_email<>ident.google_email))
           or (r.space_name is null and r.state='FAILED' and r.next_attempt_at<=now())
           or (r.space_name is null and r.state in ('CREATING','NEEDS_RECONCILIATION')
             and r.updated_at<now()-interval '15 minutes' and r.creation_attempts<5))
         and lower(coalesce(a.lifecycle_status,''))='active' and a.role in ('SCHOOL_ADMIN','SUPER_ADMIN')
         and (a.tenant_id=c.tenant_id or a.role='SUPER_ADMIN')
       union all
-      -- A documentação da sala segue o aceite. Só a conta que criou a sala
-      -- consegue alterá-la (organizer_sub da conexão atual).
-      select r.tenant_id,c.connected_by,r.lesson_session_id,
-        case when s.documentation_consent then 'ENABLE_ARTIFACTS' else 'DISABLE_ARTIFACTS' end,
-        0, s.scheduled_start_at
+      -- Sala pronta cujo coanfitrião não é mais a conta confirmada (ou cujo
+      -- acerto anterior falhou e a espera venceu). A sala NÃO sai de READY: o
+      -- link continua entregue e a importação segue; só os membros mudam.
+      select s.tenant_id,c.connected_by,s.id,'PREPARE_ROOM',
+        case when s.scheduled_start_at<now()+interval '3 hours' then 0 else 2 end,
+        s.scheduled_start_at
       from private.google_meet_rooms r
       join public.lesson_sessions s on s.id=r.lesson_session_id and s.tenant_id=r.tenant_id
       join private.google_workspace_connections c on c.tenant_id=r.tenant_id and c.organizer_sub=r.organizer_sub
       join public.profiles a on a.id=c.connected_by
-      where c.status='CONNECTED' and r.space_name is not null and r.state in ('READY','COHOST_PENDING')
-        and coalesce(r.artifacts_next_attempt_at,'-infinity'::timestamptz)<=now()
-        and ((not s.documentation_consent and r.artifacts_state='ENABLED' and s.scheduled_end_at>now()-interval '7 days')
-          or (s.documentation_consent and r.artifacts_state='DISABLED' and s.status='SCHEDULED' and s.scheduled_start_at>now()))
+      join private.teacher_google_identities ident on ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id
+      where c.status='CONNECTED' and r.state='READY' and r.space_name is not null
+        and s.documentation_consent and s.status<>'SUPERSEDED'
+        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
+        and s.scheduled_end_at>now()
+        and (r.cohost_email<>ident.google_email
+          or (r.cohost_sync_pending and coalesce(r.cohost_next_attempt_at,'-infinity'::timestamptz)<=now()))
         and lower(coalesce(a.lifecycle_status,''))='active' and a.role in ('SCHOOL_ADMIN','SUPER_ADMIN')
         and (a.tenant_id=c.tenant_id or a.role='SUPER_ADMIN')
+      union all
+      -- A documentação da sala segue o aceite efetivo. Só a conta que criou a
+      -- sala consegue alterá-la (organizer_sub da conexão atual).
+      select jobs_art.tenant_id,jobs_art.connected_by,jobs_art.lesson_session_id,
+        case when jobs_art.effective then 'ENABLE_ARTIFACTS' else 'DISABLE_ARTIFACTS' end,
+        0, jobs_art.scheduled_start_at
+      from (
+        select r.tenant_id,c.connected_by,r.lesson_session_id,r.artifacts_state,s.status,
+          s.scheduled_start_at,s.scheduled_end_at,
+          s.documentation_consent
+            and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at) as effective
+        from private.google_meet_rooms r
+        join public.lesson_sessions s on s.id=r.lesson_session_id and s.tenant_id=r.tenant_id
+        join private.google_workspace_connections c on c.tenant_id=r.tenant_id and c.organizer_sub=r.organizer_sub
+        join public.profiles a on a.id=c.connected_by
+        where c.status='CONNECTED' and r.space_name is not null and r.state in ('READY','COHOST_PENDING')
+          and coalesce(r.artifacts_next_attempt_at,'-infinity'::timestamptz)<=now()
+          and lower(coalesce(a.lifecycle_status,''))='active' and a.role in ('SCHOOL_ADMIN','SUPER_ADMIN')
+          and (a.tenant_id=c.tenant_id or a.role='SUPER_ADMIN')
+      ) jobs_art
+      where (not jobs_art.effective and jobs_art.artifacts_state='ENABLED' and jobs_art.scheduled_end_at>now()-interval '7 days')
+        or (jobs_art.effective and jobs_art.artifacts_state='DISABLED' and jobs_art.status='SCHEDULED'
+          and jobs_art.scheduled_start_at>now())
     ) jobs
     order by jobs.priority_group,jobs.priority_at limit 30
   ) x;
@@ -590,6 +737,8 @@ grant execute on function public.get_pending_google_meet_sync_sessions() to serv
 --     sempre, igual ao lembrete do WhatsApp (official_lesson_link);
 --   * aceite sem sala só segura o link quando a sala PODE sair: sem conta
 --     Google confirmada pelo professor ela nunca sai, e o app usa o link de sempre.
+-- E a revogação vale na hora: recusa/revogação antes do fim da aula tira a sala
+-- da escola do app mesmo antes de o job de 15 min desmarcar a sessão.
 create or replace function public.get_my_lesson_rooms(
   p_from date default null, p_to date default null
 ) returns jsonb language plpgsql stable security definer set search_path='' as $$
@@ -607,6 +756,7 @@ begin
     left join private.google_meet_rooms r on r.lesson_session_id=s.id and r.tenant_id=s.tenant_id
     where s.tenant_id=a.tenant_id and s.status<>'SUPERSEDED'
       and s.documentation_consent
+      and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
       and (r.lesson_session_id is not null or exists (select 1 from private.teacher_google_identities ident
         where ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id))
       and coalesce(r.state,'') not in ('FAILED','NEEDS_RECONCILIATION')
@@ -705,19 +855,33 @@ begin
     raise exception 'termo_recusado_ou_revogado_pelo_aluno' using errcode='42501'; end if;
   if p_allowed and private.lesson_recording_consent_state(s.teacher_id) in ('REFUSED','REVOKED') then
     raise exception 'termo_recusado_ou_revogado_pelo_professor' using errcode='42501'; end if;
-  insert into private.lesson_documentation_consent_events(session_id,actor_id,allowed,reason)
-  values(s.id,v_me.id,p_allowed,left(btrim(p_reason),2000));
+  -- clock_timestamp: o job decide pelo ÚLTIMO evento da sessão (desligar manual
+  -- segura o termo; o desmarque do próprio termo não), e dois eventos na mesma
+  -- transação teriam o mesmo now().
+  insert into private.lesson_documentation_consent_events(session_id,actor_id,allowed,reason,created_at)
+  values(s.id,v_me.id,p_allowed,left(btrim(p_reason),2000),pg_catalog.clock_timestamp());
   update public.lesson_sessions set documentation_consent=p_allowed,updated_at=now() where id=s.id;
   return jsonb_build_object('ok',true);
 end $$;
 revoke all on function public.set_lesson_documentation_consent(uuid,boolean,text) from public,anon;
 grant execute on function public.set_lesson_documentation_consent(uuid,boolean,text) to authenticated;
 
--- 9. Revogação que chega depois de uma marcação manual também desmarca ---------------
--- Partindo da definição viva (20260926120000). Antes só a marcação feita pelo
--- próprio termo era desfeita; a manual da escola seguia ligada depois que o aluno
--- (ou responsável) ou o professor revogava — e a sala continuava transcrevendo.
--- Decisão manual de DESLIGAR continua valendo (o termo não liga por cima dela).
+-- 9. O termo aplicado às sessões -----------------------------------------------------
+-- Partindo da definição viva (20260926120000). Mudanças:
+--   * DESMARCAR não depende da conta central conectada nem da janela das
+--     próximas 24 h: toda sessão marcada (inclusive à mão) cuja aula não tinha
+--     terminado quando o aluno/responsável ou o professor recusou ou revogou é
+--     desmarcada — revogação 5 min antes da aula, com o job rodando depois do
+--     início, ou com a conta em REAUTH_REQUIRED, antes deixava a sessão marcada
+--     e a transcrição era importada depois. Olha até 8 dias para trás (a fila de
+--     importação vai até 7);
+--   * MARCAR continua exigindo a conta CONECTADA (antes disso marcar só
+--     congelaria a sessão à toa) e só nas próximas 24 h;
+--   * o termo não liga por cima de uma decisão manual de DESLIGAR, mas só quando
+--     ela é o ÚLTIMO evento da sessão. O desmarque feito pelo próprio termo
+--     (revogação) não segura: se o aceite volta antes da aula, a sessão é
+--     remarcada e a fila religa a sala (ENABLE_ARTIFACTS). Antes qualquer evento
+--     segurava, e o aceite de volta pelo link nunca religava nada.
 create or replace function private.apply_standing_lesson_recording_consent(p_tenant text)
 returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -726,55 +890,86 @@ declare
   v_changed integer := 0;
   v_session record;
   v_marker constant text := 'Termo de registro das aulas';
+  v_connected boolean;
 begin
-  if not exists (
-    select 1 from private.google_workspace_connections as connection
-    where connection.tenant_id = p_tenant and connection.status = 'CONNECTED'
-  ) then
-    return 0;
-  end if;
   v_actor := private.management_group_default_actor(p_tenant);
   if v_actor is null then
+    -- Sem diretor ativo não há quem assine o evento. A porta do servidor, a
+    -- fila e o link do app já tratam a sessão como sem aceite desde a recusa.
     return 0;
   end if;
+  v_connected := exists (
+    select 1 from private.google_workspace_connections as connection
+    where connection.tenant_id = p_tenant and connection.status = 'CONNECTED'
+  );
 
   -- Mesma trava da materialização das sessões (lesson_quality).
   perform pg_advisory_xact_lock(hashtextextended('lesson-quality:' || p_tenant, 0));
 
+  -- 1. Recusa ou revogação antes do fim da aula: desmarca, com ou sem conexão.
   for v_session in
-    select session.id, session.student_id, session.teacher_id, session.documentation_consent,
-      exists (
-        select 1 from private.lesson_documentation_consent_events as event
-        where event.session_id = session.id
-      ) as has_event,
+    select session.id,
       exists (
         select 1 from private.lesson_documentation_consent_events as event
         where event.session_id = session.id and event.allowed
           and event.reason like (v_marker || '%')
-      ) as marked_by_term,
-      private.lesson_recording_consent_state(session.student_id) in ('REFUSED', 'REVOKED')
-        or private.lesson_recording_consent_state(session.teacher_id) in ('REFUSED', 'REVOKED') as said_no
+      ) as marked_by_term
+    from public.lesson_sessions as session
+    where session.tenant_id = p_tenant
+      and session.status <> 'SUPERSEDED'
+      and session.documentation_consent
+      and session.scheduled_end_at > pg_catalog.now() - interval '8 days'
+      and private.lesson_session_documentation_blocked(session.student_id, session.teacher_id, session.scheduled_end_at)
+  loop
+    insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
+    values (v_session.id, v_actor, false,
+      v_marker || case when v_session.marked_by_term
+        then ': autorização revogada ou recusada depois da marcação.'
+        else ': aluno (ou responsável) ou professor revogou ou recusou; a marcação manual não passa por cima.' end,
+      pg_catalog.clock_timestamp());
+    update public.lesson_sessions
+       set documentation_consent = false, updated_at = pg_catalog.now()
+     where id = v_session.id;
+    v_changed := v_changed + 1;
+  end loop;
+
+  -- 2. Próximas 24 h: marca quem tem os dois aceites (só com a conta conectada)
+  --    e desfaz a marca do termo cujo aceite deixou de valer.
+  for v_session in
+    select session.id, session.student_id, session.teacher_id, session.documentation_consent,
+      coalesce((
+        select not event.allowed and event.reason not like (v_marker || '%')
+        from private.lesson_documentation_consent_events as event
+        where event.session_id = session.id
+        order by event.created_at desc
+        limit 1
+      ), false) as manual_off,
+      exists (
+        select 1 from private.lesson_documentation_consent_events as event
+        where event.session_id = session.id and event.allowed
+          and event.reason like (v_marker || '%')
+      ) as marked_by_term
     from public.lesson_sessions as session
     where session.tenant_id = p_tenant
       and session.status = 'SCHEDULED'
       and session.scheduled_start_at between pg_catalog.now() and pg_catalog.now() + interval '24 hours'
   loop
     if private.lesson_recording_active(v_session.student_id, v_session.teacher_id) then
-      if not v_session.documentation_consent and not v_session.has_event then
-        insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason)
+      if v_connected and not v_session.documentation_consent and not v_session.manual_off then
+        insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
         values (v_session.id, v_actor, true,
-          v_marker || ': aluno (ou responsável) e professor aceitaram o registro permanente.');
+          v_marker || ': aluno (ou responsável) e professor aceitaram o registro permanente.',
+          pg_catalog.clock_timestamp());
         update public.lesson_sessions
            set documentation_consent = true, updated_at = pg_catalog.now()
          where id = v_session.id;
         v_changed := v_changed + 1;
       end if;
-    elsif v_session.documentation_consent and (v_session.marked_by_term or v_session.said_no) then
-      insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason)
+    elsif v_session.documentation_consent and v_session.marked_by_term then
+      insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
       values (v_session.id, v_actor, false,
-        v_marker || case when v_session.marked_by_term
-          then ': autorização revogada ou recusada depois da marcação.'
-          else ': aluno (ou responsável) ou professor revogou ou recusou; a marcação manual não passa por cima.' end);
+        v_marker || ': autorização revogada ou recusada depois da marcação.',
+        pg_catalog.clock_timestamp());
       update public.lesson_sessions
          set documentation_consent = false, updated_at = pg_catalog.now()
        where id = v_session.id;
@@ -786,3 +981,127 @@ begin
 end;
 $$;
 revoke all on function private.apply_standing_lesson_recording_consent(text) from public, anon, authenticated;
+
+-- 10. O job de 15 minutos passa por toda escola com sessão marcada ----------------
+-- Partindo da definição viva (20260926120000). Antes só as escolas com a conta
+-- central CONECTADA: com a conta em REAUTH_REQUIRED a revogação não desmarcava
+-- nada, e depois da reconexão a aula dada nesse meio-tempo era importada. Agora
+-- também as escolas com sessão marcada nos últimos 8 dias (o termo só MARCA com
+-- a conta conectada — apply_standing confere).
+create or replace function public.trigger_sync_google_meet_artifacts()
+returns bigint language plpgsql security definer set search_path='' as $$
+declare v_key text; v_request bigint; v_tenant text;
+begin
+  for v_tenant in
+    select connection.tenant_id from private.google_workspace_connections as connection
+    where connection.status = 'CONNECTED'
+    union
+    select session.tenant_id from public.lesson_sessions as session
+    where session.documentation_consent and session.status <> 'SUPERSEDED'
+      and session.scheduled_end_at > pg_catalog.now() - interval '8 days'
+  loop
+    perform private.apply_standing_lesson_recording_consent(v_tenant);
+  end loop;
+  if public.get_pending_google_meet_sync_sessions()='[]'::jsonb then return null; end if;
+  select decrypted_secret into v_key from vault.decrypted_secrets where name='wisewolf_service_role_key' limit 1;
+  if nullif(v_key,'') is null then return null; end if;
+  select net.http_post(url:='http://kong:8000/functions/v1/google-meet',
+    headers:=jsonb_build_object('Content-Type','application/json','Authorization','Bearer '||v_key),
+    body:='{"action":"sync_due"}'::jsonb,timeout_milliseconds:=180000) into v_request;
+  return v_request;
+end;
+$$;
+revoke all on function public.trigger_sync_google_meet_artifacts() from public, anon, authenticated;
+
+-- 11. Nova decisão sobre a documentação zera a tentativa anterior da sala ---------
+-- Sem isto, o erro de um DISABLE que falhou continuava na tela depois que o
+-- aceite voltava ("nova tentativa em seguida", sem tentativa nenhuma), e uma
+-- nova revogação esperava a espera antiga (até 2 h) para desligar a sala.
+-- Trigger: vale para qualquer escritor de documentation_consent (tela da direção,
+-- job do termo, futuros).
+create or replace function private.lesson_session_meet_artifacts_retry_reset()
+returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  update private.google_meet_rooms as room
+     set artifacts_error_code = null, artifacts_attempts = 0, artifacts_next_attempt_at = null
+   where room.lesson_session_id = new.id
+     and (room.artifacts_error_code is not null or room.artifacts_attempts > 0
+       or room.artifacts_next_attempt_at is not null);
+  return null;
+end;
+$$;
+alter function private.lesson_session_meet_artifacts_retry_reset() owner to postgres;
+revoke all on function private.lesson_session_meet_artifacts_retry_reset() from public, anon, authenticated;
+-- O dono (postgres) mexe só nessas colunas da sala (a tabela é do supabase_admin).
+grant select (lesson_session_id, artifacts_error_code, artifacts_attempts, artifacts_next_attempt_at),
+  update (artifacts_error_code, artifacts_attempts, artifacts_next_attempt_at)
+  on private.google_meet_rooms to postgres;
+drop trigger if exists trg_zz_lesson_session_meet_artifacts_retry on public.lesson_sessions;
+create trigger trg_zz_lesson_session_meet_artifacts_retry
+  after update of documentation_consent on public.lesson_sessions
+  for each row when (old.documentation_consent is distinct from new.documentation_consent)
+  execute function private.lesson_session_meet_artifacts_retry_reset();
+
+-- 12. Presença pelo relatório: mesma régua do aceite efetivo ------------------------
+-- Partindo de 20260926170000 (só muda a checagem do aceite).
+create or replace function public.google_meet_attendance_backend(
+  p_action text,
+  p_tenant_id text,
+  p_session_id uuid,
+  p_payload jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_session public.lesson_sessions;
+  v_id uuid;
+  v_retention integer;
+begin
+  select * into v_session from public.lesson_sessions
+   where id = p_session_id and tenant_id = p_tenant_id;
+  if not found then
+    raise exception 'lesson_session_not_found' using errcode = '22023';
+  end if;
+  -- Aceite efetivo: recusa/revogação antes do fim da aula barra a planilha de
+  -- presença como barra a transcrição, mesmo antes de o job desmarcar a sessão.
+  if not v_session.documentation_consent
+    or private.lesson_session_documentation_blocked(v_session.student_id, v_session.teacher_id,
+      v_session.scheduled_end_at) then
+    raise exception 'documentation_consent_required' using errcode = '42501';
+  end if;
+
+  if p_action = 'attendance_save' then
+    v_retention := greatest(7, least(365, coalesce((p_payload ->> 'retention_days')::integer, 90)));
+    insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, conference_name,
+      document_id, document_name, content_sha256, source_csv, parse_error, participants,
+      teacher_first_join_at, teacher_seconds, student_first_join_at, student_seconds, expires_at,
+      source_document_ids)
+    values (v_session.tenant_id, v_session.id, nullif(p_payload ->> 'conference_name', ''),
+      p_payload ->> 'document_id', left(p_payload ->> 'document_name', 300),
+      p_payload ->> 'content_sha256', p_payload ->> 'source_csv', nullif(p_payload ->> 'parse_error', ''),
+      coalesce(p_payload -> 'participants', '[]'::jsonb),
+      nullif(p_payload ->> 'teacher_first_join_at', '')::timestamptz,
+      nullif(p_payload ->> 'teacher_seconds', '')::integer,
+      nullif(p_payload ->> 'student_first_join_at', '')::timestamptz,
+      nullif(p_payload ->> 'student_seconds', '')::integer,
+      now() + make_interval(days => v_retention),
+      array(select jsonb_array_elements_text(
+        case when jsonb_typeof(p_payload -> 'source_document_ids') = 'array'
+          then p_payload -> 'source_document_ids'
+          else jsonb_build_array(p_payload ->> 'document_id') end)))
+    on conflict (tenant_id, lesson_session_id, content_sha256) do nothing
+    returning id into v_id;
+    return jsonb_build_object('id', v_id, 'inserted', v_id is not null);
+  elsif p_action = 'attendance_evaluate' then
+    return private.meet_attendance_evaluate(
+      v_session.id,
+      private.lesson_session_logged_presence(v_session.id),
+      nullif(p_payload ->> 'conference_count', '')::integer
+    );
+  end if;
+  raise exception 'unknown_attendance_action' using errcode = '22023';
+end;
+$$;
+revoke all on function public.google_meet_attendance_backend(text,text,uuid,jsonb) from public, anon, authenticated;
+grant execute on function public.google_meet_attendance_backend(text,text,uuid,jsonb) to service_role;

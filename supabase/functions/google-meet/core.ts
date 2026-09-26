@@ -402,6 +402,42 @@ export function artifactToggleAction(input: {
   return "PATCH";
 }
 
+/**
+ * O que a edge faz depois de room_claim:
+ * - DONE: sala pronta e coanfitrião certo;
+ * - SYNC_COHOST: sala pronta, mas a conta confirmada do professor mudou — acerta
+ *   os membros SEM tirar a sala de READY (link entregue, importação normal);
+ * - CREATE: esta chamada reservou a criação (claimed);
+ * - CONFIGURE_COHOST: sala criada, falta o coanfitrião (COHOST_PENDING);
+ * - RECONCILE / RETRY_SCHEDULED / IN_PROGRESS: nada a fazer agora (erro próprio).
+ */
+export function roomClaimNextStep(claim: {
+  claimed: boolean;
+  room: {
+    state: string;
+    space_name?: string | null;
+    cohost_sync_pending?: boolean | null;
+  };
+}):
+  | "DONE"
+  | "SYNC_COHOST"
+  | "CREATE"
+  | "CONFIGURE_COHOST"
+  | "RECONCILE"
+  | "RETRY_SCHEDULED"
+  | "IN_PROGRESS" {
+  const room = claim.room;
+  if (room.state === "READY") {
+    return room.cohost_sync_pending && room.space_name ? "SYNC_COHOST" : "DONE";
+  }
+  if (room.state === "NEEDS_RECONCILIATION") return "RECONCILE";
+  if (claim.claimed) return "CREATE";
+  if (!room.space_name) {
+    return room.state === "FAILED" ? "RETRY_SCHEDULED" : "IN_PROGRESS";
+  }
+  return "CONFIGURE_COHOST";
+}
+
 export function grantedRequiredScopes(value: unknown): boolean {
   const scopes = new Set(text(value, 4000).split(/\s+/));
   return GOOGLE_SCOPES.filter((scope) => scope.startsWith("https:")).every((
