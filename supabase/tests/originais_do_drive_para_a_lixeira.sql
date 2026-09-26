@@ -3,6 +3,18 @@
 -- originais, operação PURGE_ORIGINALS na fila, porta da edge, bloqueio de
 -- aula apagada nem o pedido de exclusão da direção.
 --
+-- Correções da revisão (mesma migration), que reprovam contra a primeira versão:
+--   * a conferência da lista roda SEM o escopo drive (só Meet API); a lixeira
+--     dos vencidos é que exige o drive — com a lixeira desligada, a lista ainda
+--     é fechada dentro dos 28 dias da Meet API;
+--   * planilha de presença só vira original quando o nome traz o código da sala
+--     (o plano B da importação fica fora da lixeira automática e aparece para
+--     conferência manual);
+--   * importação em andamento que termina depois do pedido de exclusão não
+--     reabre a sala na fila;
+--   * a prévia separa o que é da conta central anterior, diz o prazo da
+--     conferência e conta as aulas sem planilha de presença registrada.
+--
 -- Não depende de dado real nem da fila global: as conexões reais saem do ar e as
 -- outras escolas ficam pausadas para o resumo automático só dentro desta
 -- transação (o rollback devolve). Horários relativos a now().
@@ -91,6 +103,8 @@ declare
   v_future uuid := gen_random_uuid();    -- amanhã: fora do pedido
   v_live uuid := gen_random_uuid();      -- outro aluno, 3 dias, importação em andamento
   v_blocked uuid := gen_random_uuid();   -- outro aluno, sem aceite, sala criada
+  v_oldacct uuid := gen_random_uuid();   -- 5 dias atrás, sala da conta central ANTERIOR
+  v_done4h uuid := gen_random_uuid();    -- outro aluno, importação concluída há 4 h
   v_today date := (now() at time zone 'America/Sao_Paulo')::date;
   v_result jsonb; v_jobs jsonb; v_job jsonb; v_row record; v_error text;
   v_revision uuid; v_version uuid; v_other_revision uuid;
@@ -145,7 +159,11 @@ begin
     (v_live, v_tenant, v_other_student, v_teacher, v_today - 3, now() - interval '3 days' - interval '30 minutes',
       now() - interval '3 days', 'originais-live', true),
     (v_blocked, v_tenant, v_other_student, v_teacher, v_today - 1, now() - interval '1 day' - interval '30 minutes',
-      now() - interval '1 day', 'originais-blocked', false);
+      now() - interval '1 day', 'originais-blocked', false),
+    (v_oldacct, v_tenant, v_student, v_teacher, v_today - 5, now() - interval '5 days' - interval '30 minutes',
+      now() - interval '5 days', 'originais-oldacct', true),
+    (v_done4h, v_tenant, v_other_student, v_teacher, v_today, now() - interval '270 minutes', now() - interval '4 hours',
+      'originais-done4h', true);
   insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
     cohost_email, state, created_by, sync_status, next_sync_at) values
     (v_old, v_tenant, 'spaces/originaisOld', 'https://meet.google.com/aaa-bbbb-ccc', 'sub-central',
@@ -157,7 +175,11 @@ begin
     (v_live, v_tenant, 'spaces/originaisLive', 'https://meet.google.com/aaa-bbbb-ccf', 'sub-central',
       'prof@example.com', 'READY', v_admin, 'PENDING', now() + interval '1 hour'),
     (v_blocked, v_tenant, 'spaces/originaisBlocked', 'https://meet.google.com/aaa-bbbb-ccg', 'sub-central',
-      'prof@example.com', 'READY', v_admin, 'WAITING', null);
+      'prof@example.com', 'READY', v_admin, 'WAITING', null),
+    (v_oldacct, v_tenant, 'spaces/originaisOldAcct', 'https://meet.google.com/aaa-bbbb-cch', 'sub-antiga',
+      'prof@example.com', 'READY', v_admin, 'EXPIRED', null),
+    (v_done4h, v_tenant, 'spaces/originaisDone4h', 'https://meet.google.com/aaa-bbbb-cci', 'sub-central',
+      'prof@example.com', 'READY', v_admin, 'COMPLETE', null);
 
   -- 1. Registro: documentos pela porta da edge (id da Meet API), planilha de
   --    presença pelo gatilho. Só da conta que criou a sala; nada de planilha
@@ -179,14 +201,34 @@ begin
     '{"organizer_sub":"sub-central","files":[{"file_id":"planilhaPorNome","kind":"ATTENDANCE_REPORT"}]}'::jsonb)$sql$, v_tenant, v_old));
   perform pg_temp.originais_assert(v_error = 'google_original_kind_invalid', 'planilha entrou pela porta dos documentos: ' || v_error);
 
-  insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, document_id, content_sha256, source_csv,
-    expires_at, source_document_ids) values
-    (v_tenant, v_old, 'sheetOld1', encode(sha256('csv-old'::bytea), 'hex'), 'Nome,E-mail', now() + interval '1 day',
+  -- Planilhas escolhidas pelo código da sala no nome (queda e reentrada: duas).
+  insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, document_id, document_name,
+    content_sha256, source_csv, expires_at, source_document_ids) values
+    (v_tenant, v_old, 'sheetOld1', 'Relatório de participação em aaa-bbbb-ccc (2026-06-27 10:31) + Relatório de participação em AAA-BBBB-CCC (2026-06-27 10:45)',
+      encode(sha256('csv-old'::bytea), 'hex'), 'Nome,E-mail', now() + interval '1 day',
       array['sheetOld1', 'sheetOld2']);
   perform pg_temp.originais_assert(
     (select count(*) from private.google_meet_drive_originals
       where lesson_session_id = v_old and kind = 'ATTENDANCE_REPORT' and origin = 'ATTENDANCE_REPORT_SAVED') = 2,
     'planilhas de presença guardadas não viraram originais');
+  -- Plano B da importação (planilha sem o código da sala no nome — reunião da
+  -- escola na mesma janela, planilha que a direção criou): pode não ser da aula.
+  -- Fica guardada, mas NÃO vai para a lixeira sozinha.
+  insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, document_id, document_name,
+    content_sha256, source_csv, expires_at, source_document_ids, parse_error) values
+    (v_tenant, v_live, 'sheetPlanoB', 'Presença setembro', encode(sha256('csv-plano-b'::bytea), 'hex'), 'x',
+      now() + interval '1 day', array['sheetPlanoB'], 'attendance_header_not_found');
+  insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, document_id, document_name,
+    content_sha256, source_csv, expires_at, source_document_ids) values
+    (v_tenant, v_live, 'sheetReuniao', 'Reunião pedagógica - relatório de participação', encode(sha256('csv-reuniao'::bytea), 'hex'),
+      'Nome,E-mail', now() + interval '1 day', array['sheetReuniao']);
+  perform pg_temp.originais_assert(
+    not exists (select 1 from private.google_meet_drive_originals where file_id in ('sheetPlanoB', 'sheetReuniao')),
+    'planilha do plano B (sem o código da sala no nome) registrada para a lixeira');
+  -- Conta central anterior: o registro fica com a conta que criou a sala.
+  v_result := public.google_meet_originals_backend('register', v_tenant, v_oldacct, jsonb_build_object(
+    'organizer_sub', 'sub-antiga', 'files', jsonb_build_array(jsonb_build_object('file_id', 'docOldAcctT', 'kind', 'TRANSCRIPT'))));
+  perform pg_temp.originais_assert((v_result ->> 'registered')::integer = 1, 'documento da conta anterior não registrado');
   perform pg_temp.originais_assert(
     (select bool_and(trash_due_at = (select scheduled_end_at from public.lesson_sessions where id = v_old) + interval '90 days')
       from private.google_meet_drive_originals where lesson_session_id = v_old)
@@ -218,14 +260,34 @@ begin
   perform pg_temp.originais_assert(exists (select 1 from jsonb_array_elements(v_jobs) as job
     where job ->> 'lesson_session_id' = v_sync::text and job ->> 'operation' = 'SYNC_ARTIFACTS'),
     'fixture: importação pendente deveria estar na fila');
-  -- Sem a lixeira autorizada pela conta central (escopo drive): nada de
-  -- PURGE_ORIGINALS, nem a conferência (ela só existe para alimentar a lixeira).
+  perform pg_temp.originais_assert(not exists (select 1 from jsonb_array_elements(v_jobs) as job
+    where job ->> 'lesson_session_id' = v_oldacct::text),
+    'sala da conta central anterior oferecida à conta atual');
+  -- Importação concluída que não fechou a lista (documento ainda sendo gerado):
+  -- a fila só confere 6 h depois da aula; antes, seria só "ainda gerando".
+  perform pg_temp.originais_assert(not private.google_meet_original_discovery_due(v_done4h)
+    and not exists (select 1 from jsonb_array_elements(v_jobs) as job where job ->> 'lesson_session_id' = v_done4h::text),
+    'importação concluída há 4 h conferida antes de o Google terminar os documentos');
+  update public.lesson_sessions set scheduled_start_at = scheduled_start_at - interval '3 hours',
+    scheduled_end_at = scheduled_end_at - interval '3 hours' where id = v_done4h;
+  perform pg_temp.originais_assert(private.google_meet_original_discovery_due(v_done4h),
+    'importação concluída há 7 h sem a lista fechada não é conferida');
+  -- Sem o escopo drive (lixeira desligada, o padrão da instalação): a lixeira dos
+  -- vencidos não é oferecida, mas a CONFERÊNCIA da lista continua — ela só lê a
+  -- Meet API (meetings.space.created) e tem de acontecer nos 28 dias em que o
+  -- Google ainda guarda a conferência; senão, ligar a lixeira depois não acharia
+  -- mais os documentos de aula revogada ou apagada a pedido.
   update private.google_workspace_connections set granted_scopes = array_remove(granted_scopes, v_drive)
    where tenant_id = v_tenant;
   v_jobs := public.get_pending_google_meet_sync_sessions();
   perform pg_temp.originais_assert(not exists (select 1 from jsonb_array_elements(v_jobs) as job
-    where job ->> 'operation' = 'PURGE_ORIGINALS'),
-    'lixeira oferecida sem o escopo drive');
+    where job ->> 'lesson_session_id' = v_old::text and job ->> 'operation' = 'PURGE_ORIGINALS'),
+    'lixeira dos vencidos oferecida sem o escopo drive');
+  perform pg_temp.originais_assert(exists (select 1 from jsonb_array_elements(v_jobs) as job
+    where job ->> 'lesson_session_id' = v_recent::text and job ->> 'operation' = 'PURGE_ORIGINALS')
+    and exists (select 1 from jsonb_array_elements(v_jobs) as job
+    where job ->> 'lesson_session_id' = v_blocked::text and job ->> 'operation' = 'PURGE_ORIGINALS'),
+    'conferência da lista parou sem o escopo drive: ' || coalesce(v_jobs::text, 'null'));
   update private.google_workspace_connections set granted_scopes = granted_scopes || array[v_drive]
    where tenant_id = v_tenant;
 
@@ -325,9 +387,14 @@ begin
   v_error := pg_temp.originais_error(format('select public.erase_student_lesson_records(%L)', v_teacher));
   perform pg_temp.originais_assert(v_error = 'aluno_nao_encontrado', 'apagou registros de quem não é aluno: ' || v_error);
 
+  -- A direção vê as planilhas do plano B, que não vão para a lixeira sozinhas.
+  v_result := public.get_meet_originals_retention_status();
+  perform pg_temp.originais_assert((v_result ->> 'attendance_unidentified')::integer = 2,
+    'planilhas sem o código da sala não aparecem para conferência manual: ' || v_result::text);
+
   v_result := public.get_student_lesson_records_erasure_preview(v_student);
   perform pg_temp.originais_assert((v_result ->> 'ok')::boolean
-    and (v_result ->> 'sessions')::integer = 3            -- old, recent, sync (a de amanhã não)
+    and (v_result ->> 'sessions')::integer = 4            -- old, recent, sync, oldacct (a de amanhã não)
     and (v_result ->> 'raw_copies')::integer = 1
     and (v_result ->> 'attendance_reports')::integer = 1
     and (v_result ->> 'drafts')::integer = 1
@@ -340,18 +407,47 @@ begin
     and (v_result ->> 'rooms_beyond_window')::integer = 0
     and (v_result ->> 'drive_delete_ready')::boolean,
     'prévia errada: ' || v_result::text);
+  -- O que a conta central atual NÃO alcança fica separado (a tela manda apagar
+  -- à mão no Drive da conta anterior), com o prazo da conferência e as aulas sem
+  -- planilha de presença registrada.
+  perform pg_temp.originais_assert(
+    (v_result ->> 'originals_other_account')::integer = 1   -- docOldAcctT
+    and (v_result ->> 'rooms_other_account')::integer = 1   -- oldacct, lista não conferida
+    and (v_result ->> 'rooms_attendance_unregistered')::integer = 3   -- recent, sync, oldacct
+    and (v_result ->> 'discovery_deadline')::timestamptz
+      = (select scheduled_end_at + interval '28 days' from public.lesson_sessions where id = v_recent)
+    and v_result ->> 'connection_status' = 'CONNECTED',
+    'prévia promete lixeira para o que a conta atual não alcança: ' || v_result::text);
 
   v_erased_at := now();
   v_result := public.erase_student_lesson_records(v_student);
-  perform pg_temp.originais_assert((v_result ->> 'sessions')::integer = 3
+  perform pg_temp.originais_assert((v_result ->> 'sessions')::integer = 4
     and (v_result ->> 'raw_copies_deleted')::integer = 1
     and (v_result ->> 'attendance_reports_deleted')::integer = 1
     and (v_result ->> 'summary_versions_deleted')::integer = 2
     and (v_result ->> 'memories_deleted')::integer = 2
     and (v_result ->> 'card_deleted')::boolean
     and (v_result ->> 'originals_queued')::integer = 2
-    and (v_result ->> 'sessions_to_discover')::integer = 2, 'exclusão com contagem errada: ' || v_result::text);
+    and (v_result ->> 'originals_other_account')::integer = 1
+    and (v_result ->> 'sessions_to_discover')::integer = 2
+    and (v_result ->> 'rooms_other_account')::integer = 1
+    and (v_result ->> 'rooms_attendance_unregistered')::integer = 3
+    and v_result ? 'discovery_deadline', 'exclusão com contagem errada: ' || v_result::text);
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- Importação que estava em andamento e termina DEPOIS do pedido (cada documento
+  -- recusado): a sala não volta para a fila (nada de PENDING em 10 min).
+  perform public.google_meet_backend('sync_complete', v_tenant, v_admin, v_sync,
+    '{"complete":false,"error_code":"ARTIFACTS_FAILED"}'::jsonb);
+  perform pg_temp.originais_assert(
+    (select sync_status = 'EXPIRED' and next_sync_at is null and last_error_code = 'lesson_records_erased'
+      from private.google_meet_rooms where lesson_session_id = v_sync),
+    'importação em andamento reabriu a aula apagada na fila');
+  perform public.google_meet_backend('sync_complete', v_tenant, v_admin, v_live,
+    '{"complete":false,"error_code":"ARTIFACTS_PENDING"}'::jsonb);
+  perform pg_temp.originais_assert(
+    (select sync_status = 'PENDING' and next_sync_at > now() from private.google_meet_rooms where lesson_session_id = v_live),
+    'a trava da aula apagada pegou a sala de outro aluno');
 
   perform pg_temp.originais_assert(
     not exists (select 1 from private.meeting_artifact_revisions where id = v_revision)
@@ -384,12 +480,12 @@ begin
     'importação da aula apagada continua aberta (ou mexeu na sala de outro aluno)');
   perform pg_temp.originais_assert(
     (select count(*) from private.google_meet_original_sessions where records_erased_at is not null
-      and lesson_session_id in (v_old, v_recent, v_sync)) = 3
+      and lesson_session_id in (v_old, v_recent, v_sync, v_oldacct)) = 4
     and not exists (select 1 from private.google_meet_original_sessions where lesson_session_id in (v_future, v_live)
       and records_erased_at is not null),
     'aulas marcadas erradas (a de amanhã ou a do outro aluno)');
   perform pg_temp.originais_assert(
-    (select sessions = 3 and raw_copies_deleted = 1 and summary_versions_deleted = 2 and memories_deleted = 2
+    (select sessions = 4 and raw_copies_deleted = 1 and summary_versions_deleted = 2 and memories_deleted = 2
       and card_deleted and requested_by = v_admin from private.student_lesson_record_erasures where student_id = v_student)
     and exists (select 1 from private.google_meet_access_events where tenant_id = v_tenant and actor_id = v_admin
       and action = 'STUDENT_LESSON_RECORDS_ERASED'),
@@ -452,9 +548,10 @@ begin
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   v_result := public.get_meet_originals_retention_status();
   perform pg_temp.originais_assert((v_result ->> 'trashed')::integer = 1 and (v_result ->> 'gone')::integer = 1
-    and (v_result ->> 'refused')::integer = 1 and (v_result ->> 'due')::integer = 3
-    and (v_result ->> 'failing')::integer = 1 and (v_result ->> 'other_account')::integer = 0
+    and (v_result ->> 'refused')::integer = 1 and (v_result ->> 'due')::integer = 4
+    and (v_result ->> 'failing')::integer = 1 and (v_result ->> 'other_account')::integer = 1
     and (v_result ->> 'drive_delete_ready')::boolean and (v_result ->> 'erasures')::integer = 1
+    and (v_result ->> 'attendance_unidentified')::integer = 2
     and v_result ->> 'last_error_code' is not null, 'situação da lixeira errada: ' || v_result::text);
   -- Segundo pedido: nada mais a apagar, a trilha ganha outra linha.
   v_result := public.erase_student_lesson_records(v_student);

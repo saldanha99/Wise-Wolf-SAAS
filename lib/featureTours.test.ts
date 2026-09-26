@@ -76,6 +76,16 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });
 
+  it('o tour da lixeira dos originais sobe com a lixeira desligada: não a dá como ligada nem manda reconectar', () => {
+    // A flag GOOGLE_MEET_DELETE_ORIGINALS_ENABLED nasce desligada; o tour é visto
+    // uma vez só. Reconectar só muda algo com a flag ligada — isso é o cartão
+    // que diz, pela configuração da instalação.
+    const tour = FEATURE_TOURS.find(t => t.id === '2026-09-27-retencao-dos-originais');
+    const text = (tour?.steps || []).map(step => step.text).join(' ');
+    expect(text).toContain('Quando a lixeira automática está ligada');
+    expect(text.toLowerCase()).not.toContain('reconect');
+  });
+
   it('achatar põe todos os passos sob o capítulo "Novidade"', () => {
     const flat = flattenFeatureTour(FEATURE_TOURS[0]);
     expect(flat).toHaveLength(FEATURE_TOURS[0].steps.length);

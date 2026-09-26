@@ -37,6 +37,19 @@
 --   7. telas: situação da lixeira (direção, "Conta central Google") e o pedido
 --      de exclusão na ficha do aluno (direção).
 --
+-- Correções da revisão (antes de publicar):
+--   * a CONFERÊNCIA da lista na Meet API não depende do escopo drive (só a
+--     lixeira depende): com a lixeira desligada — o padrão —, aula com aceite
+--     revogado ou apagada a pedido perdia os documentos depois de 28 dias;
+--   * planilha de presença só vira original quando o nome traz o código da sala
+--     (o plano B da importação pode ser outra planilha da escola);
+--   * importação em andamento que termina depois do pedido de exclusão não
+--     reabre a sala (gatilho em google_meet_rooms);
+--   * importação concluída com documento ainda sendo gerado não fecha a lista, e
+--     a fila confere 6 h depois da aula;
+--   * a prévia/resultado da exclusão separam o que é da conta central anterior,
+--     dizem o prazo da conferência e as aulas sem planilha de presença registrada.
+--
 -- ⚠️ A Meet API guarda a conferência e os documentos dela por ~30 dias: a lista
 -- de documentos de uma aula só pode ser conferida nesse prazo (28 dias, com
 -- folga). A importação registra os documentos que vê; a fila confere de novo as
@@ -170,7 +183,11 @@ language sql immutable set search_path = '' as $$
     -- conferida até 28 dias depois da aula.
     'discovery_window_days', 28,
     -- Espera depois do fim da aula antes de conferir (o Google ainda gera).
-    'discovery_delay_hours', 2
+    'discovery_delay_hours', 2,
+    -- Importação concluída que não fechou a lista: só falta um documento que o
+    -- Google ainda gerava (transcrição montada pelas falas). Antes de 6 h a
+    -- conferência só daria "ainda gerando" (DOCUMENT_SETTLE_MS da edge).
+    'complete_settle_hours', 6
   );
 $$;
 
@@ -234,7 +251,9 @@ $$;
 --   * a importação não vai fazer isso: terminou sem fechar (EXPIRED), a aula já
 --     passou da janela de 7 dias, a aula está sem aceite efetivo (revogação:
 --     o que o Google gerou antes nunca é importado), ou a direção pediu a
---     exclusão. Importação COMPLETE fecha a lista ela mesma (register).
+--     exclusão. Importação COMPLETE fecha a lista ela mesma (register) quando
+--     todo documento já tem arquivo; se faltava um ainda sendo gerado, a fila
+--     confere 6 h depois da aula (antes disso daria só "ainda gerando").
 create or replace function private.google_meet_original_discovery_due(p_session uuid)
 returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -246,7 +265,9 @@ language sql stable security definer set search_path = '' as $$
         - pg_catalog.make_interval(hours => (config.policy ->> 'discovery_delay_hours')::integer)
       and session.scheduled_end_at > pg_catalog.now()
         - pg_catalog.make_interval(days => (config.policy ->> 'discovery_window_days')::integer)
-      and (room.sync_status in ('COMPLETE','EXPIRED')
+      and ((room.sync_status = 'COMPLETE' and session.scheduled_end_at < pg_catalog.now()
+          - pg_catalog.make_interval(hours => (config.policy ->> 'complete_settle_hours')::integer))
+        or room.sync_status = 'EXPIRED'
         or session.scheduled_end_at < pg_catalog.now() - interval '7 days'
         or not session.documentation_consent
         or private.lesson_session_documentation_blocked(session.id)
@@ -279,6 +300,14 @@ $$;
 
 -- Contagens do que existe hoje dos registros das aulas de um aluno (as aulas que
 -- já começaram). A prévia da tela e a exclusão usam a mesma conta.
+--
+-- Correção da revisão: o que a conta central ATUAL não alcança sai separado —
+-- originais e salas de uma conta central anterior (só ela move os arquivos dela;
+-- a tela manda apagar à mão no Drive daquela conta) — e a prévia diz o prazo da
+-- conferência na Meet API (28 dias depois da aula) e quantas aulas terminaram
+-- sem planilha de presença registrada (aceite revogado, aula apagada antes da
+-- importação ou planilha do plano B): essas a tela manda conferir à mão, sem
+-- prometer lixeira.
 create or replace function private.student_lesson_records_counts(p_tenant text, p_student uuid)
 returns jsonb
 language sql stable security definer set search_path = '' as $$
@@ -290,6 +319,25 @@ language sql stable security definer set search_path = '' as $$
   ), window_limit as (
     select pg_catalog.now() - pg_catalog.make_interval(
       days => (private.google_meet_originals_policy() ->> 'discovery_window_days')::integer) as since
+  ), conn as (
+    -- Conta central atual (qualquer estado). Sem conexão, nada é "de outra conta":
+    -- tudo espera a direção conectar.
+    select connection.organizer_sub, connection.status
+    from private.google_workspace_connections as connection
+    where connection.tenant_id = p_tenant
+  ), rooms as (
+    select scope.id, scope.scheduled_end_at, room.space_name, state.discovered_at,
+      (select conn.organizer_sub from conn) is not null
+        and room.organizer_sub is distinct from (select conn.organizer_sub from conn) as other_account
+    from scope
+    join private.google_meet_rooms as room on room.lesson_session_id = scope.id and room.tenant_id = p_tenant
+    left join private.google_meet_original_sessions as state on state.lesson_session_id = scope.id
+    where room.space_name is not null
+  ), pending as (
+    select original.organizer_sub
+    from private.google_meet_drive_originals as original
+    join scope on scope.id = original.lesson_session_id
+    where original.tenant_id = p_tenant and original.status = 'PENDING'
   )
   select pg_catalog.jsonb_build_object(
     'sessions', (select pg_catalog.count(*) from scope),
@@ -307,30 +355,72 @@ language sql stable security definer set search_path = '' as $$
       where memory.tenant_id = p_tenant and memory.student_id = p_student and memory.source_type = 'MEET_SESSION'),
     'card', exists (select 1 from public.student_learning_cards as card
       where card.tenant_id = p_tenant and card.student_id = p_student),
-    'originals_pending', (select pg_catalog.count(*) from private.google_meet_drive_originals as original
-      join scope on scope.id = original.lesson_session_id where original.status = 'PENDING'),
+    -- Originais registrados que a conta central atual move (ou moverá).
+    'originals_pending', (select pg_catalog.count(*) from pending
+      where (select conn.organizer_sub from conn) is null
+        or pending.organizer_sub = (select conn.organizer_sub from conn)),
+    -- Da conta central anterior: só ela move — apagar à mão no Drive dela.
+    'originals_other_account', (select pg_catalog.count(*) from pending
+      where (select conn.organizer_sub from conn) is not null
+        and pending.organizer_sub is distinct from (select conn.organizer_sub from conn)),
     'originals_done', (select pg_catalog.count(*) from private.google_meet_drive_originals as original
       join scope on scope.id = original.lesson_session_id where original.status in ('TRASHED','GONE')),
     -- Salas cuja lista de documentos ainda não foi conferida: dentro da janela da
-    -- Meet API a fila confere e manda para a lixeira; fora dela, não há como
-    -- localizar sem procurar por nome (proibido) — a tela pede conferência manual.
-    'rooms_to_discover', (select pg_catalog.count(*) from scope
-      join private.google_meet_rooms as room on room.lesson_session_id = scope.id
-      left join private.google_meet_original_sessions as state on state.lesson_session_id = scope.id
-      where room.space_name is not null and state.discovered_at is null
-        and scope.scheduled_end_at > (select since from window_limit)),
-    'rooms_beyond_window', (select pg_catalog.count(*) from scope
-      join private.google_meet_rooms as room on room.lesson_session_id = scope.id
-      left join private.google_meet_original_sessions as state on state.lesson_session_id = scope.id
-      where room.space_name is not null and state.discovered_at is null
-        and scope.scheduled_end_at <= (select since from window_limit))
+    -- Meet API a fila confere (com a conta central conectada, mesmo sem a lixeira
+    -- ligada); fora dela, não há como localizar sem procurar por nome (proibido) —
+    -- a tela pede conferência manual.
+    'rooms_to_discover', (select pg_catalog.count(*) from rooms
+      where rooms.discovered_at is null and not rooms.other_account
+        and rooms.scheduled_end_at > (select since from window_limit)),
+    -- Prazo da conferência mais próximo: depois dele a Meet API não diz mais quais
+    -- são os documentos da aula.
+    'discovery_deadline', (select pg_catalog.min(rooms.scheduled_end_at) + pg_catalog.make_interval(
+        days => (private.google_meet_originals_policy() ->> 'discovery_window_days')::integer)
+      from rooms
+      where rooms.discovered_at is null and not rooms.other_account
+        and rooms.scheduled_end_at > (select since from window_limit)),
+    'rooms_other_account', (select pg_catalog.count(*) from rooms
+      where rooms.discovered_at is null and rooms.other_account
+        and rooms.scheduled_end_at > (select since from window_limit)),
+    'rooms_beyond_window', (select pg_catalog.count(*) from rooms
+      where rooms.discovered_at is null and rooms.scheduled_end_at <= (select since from window_limit)),
+    -- Aulas terminadas, com sala no Google, sem planilha de presença registrada
+    -- para a lixeira: se o relatório de presença estava ligado na sala, a planilha
+    -- está no Drive e só se confere à mão (nunca se procura por nome para apagar).
+    'rooms_attendance_unregistered', (select pg_catalog.count(*) from rooms
+      where rooms.scheduled_end_at < pg_catalog.now()
+        and not exists (select 1 from private.google_meet_drive_originals as original
+          where original.lesson_session_id = rooms.id and original.kind = 'ATTENDANCE_REPORT')),
+    'connection_status', (select conn.status from conn)
   );
 $$;
 
+-- Planilha de presença identificada COM SEGURANÇA: o nome traz o código da sala
+-- ("Relatório de participação em abc-defg-hij (...)"). A importação tem um plano
+-- B — sem planilha com o código, escolhe a que cita o e-mail do professor entre
+-- as planilhas da conta central criadas na janela da aula —, e essa escolha pode
+-- ser de outra reunião da escola ou de uma planilha feita à mão (correção da
+-- revisão). Ela serve para a presença, mas não vai para a lixeira sozinha: fica
+-- para conferência manual (get_meet_originals_retention_status →
+-- attendance_unidentified). Com várias planilhas juntadas (queda e reentrada),
+-- o nome gravado é "nome1 + nome2" e todas vieram do código.
+create or replace function private.google_meet_attendance_report_identified(
+  p_session uuid, p_document_name text
+) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select pg_catalog.strpos(pg_catalog.lower(coalesce(p_document_name, '')), code.value) > 0
+    from private.google_meet_rooms as room
+    cross join lateral (select pg_catalog.lower((pg_catalog.regexp_match(coalesce(room.meeting_uri, ''),
+      'meet[.]google[.]com/([a-z]{3,4}-[a-z]{3,4}-[a-z]{3,4})', 'i'))[1]) as value) as code
+    where room.lesson_session_id = p_session and code.value is not null
+  ), false);
+$$;
+
 -- 5. Gatilhos --------------------------------------------------------------------------
--- Planilha de presença guardada pelo sistema = original registrado, venha de onde
--- vier a gravação. O dono é a conta que criou a sala (a importação só lê a
--- planilha com a conta central que criou a sala).
+-- Planilha de presença guardada pelo sistema e identificada pelo código da sala =
+-- original registrado, venha de onde vier a gravação. O dono é a conta que criou
+-- a sala (a importação só lê a planilha com a conta central que criou a sala).
 create or replace function private.meeting_attendance_reports_register_originals()
 returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -340,7 +430,8 @@ declare
 begin
   select room.organizer_sub into v_sub from private.google_meet_rooms as room
    where room.lesson_session_id = new.lesson_session_id and room.tenant_id = new.tenant_id;
-  if v_sub is null then
+  if v_sub is null
+    or not private.google_meet_attendance_report_identified(new.lesson_session_id, new.document_name) then
     return null;
   end if;
   for v_file in
@@ -383,6 +474,31 @@ drop trigger if exists trg_aa_lesson_records_erased_guard on private.lesson_summ
 create trigger trg_aa_lesson_records_erased_guard
   before insert on private.lesson_summary_versions
   for each row execute function private.lesson_records_erased_guard();
+
+-- A importação da aula apagada a pedido não reabre (correção da revisão). A
+-- exclusão encerra a sala (EXPIRED), mas uma importação JÁ em andamento termina
+-- depois dela: cada documento é recusado pelo gatilho acima e o sync_complete
+-- (google_meet_backend) gravaria PENDING com nova tentativa em 10 min — a aula
+-- voltava para a fila, com chamadas ao Google, por até 7 dias. Vale para qualquer
+-- escritor da sala: a aula apagada fica encerrada, com o motivo.
+create or replace function private.google_meet_rooms_keep_erased_closed()
+returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.sync_status in ('WAITING','PENDING')
+    and private.google_meet_session_records_erased(new.lesson_session_id) then
+    new.sync_status := 'EXPIRED';
+    new.next_sync_at := null;
+    new.sync_completed_at := coalesce(new.sync_completed_at, pg_catalog.now());
+    new.last_error_code := 'lesson_records_erased';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_zz_google_meet_rooms_records_erased on private.google_meet_rooms;
+create trigger trg_zz_google_meet_rooms_records_erased
+  before update of sync_status on private.google_meet_rooms
+  for each row execute function private.google_meet_rooms_keep_erased_closed();
 
 -- 6. Porta da edge (só service_role) ----------------------------------------------------
 -- Ações:
@@ -555,7 +671,13 @@ begin
       'erasures', (select pg_catalog.count(*) from private.student_lesson_record_erasures as erasure
         where erasure.tenant_id = v_tenant),
       'last_erasure_at', (select pg_catalog.max(erasure.requested_at) from private.student_lesson_record_erasures as erasure
-        where erasure.tenant_id = v_tenant))
+        where erasure.tenant_id = v_tenant),
+      -- Planilhas de presença guardadas sem o código da sala no nome (plano B da
+      -- importação): usadas na presença, mas não vão para a lixeira sozinhas —
+      -- a direção confere à mão no Drive.
+      'attendance_unidentified', (select pg_catalog.count(*) from private.meeting_attendance_reports as report
+        where report.tenant_id = v_tenant
+          and not private.google_meet_attendance_report_identified(report.lesson_session_id, report.document_name)))
     from private.google_meet_drive_originals as original
     where original.tenant_id = v_tenant
   );
@@ -616,6 +738,7 @@ declare
   v_card_version integer;
   v_queued integer := 0;
   v_discover integer := 0;
+  v_counts jsonb;
 begin
   if v_uid is null or v_tenant is null or public._my_role() is distinct from 'SCHOOL_ADMIN' then
     raise exception 'sem_permissao' using errcode = '42501';
@@ -676,21 +799,16 @@ begin
       array['real_goal', 'engaging_topics', 'correction_style', 'avoid_topics', 'notes']::text[]);
   end if;
 
-  -- Originais já registrados: vencem agora (a fila manda para a lixeira).
+  -- Originais já registrados: vencem agora (a fila manda para a lixeira, quando
+  -- ela está ligada e autorizada). As mesmas contas da prévia dizem o que a conta
+  -- central atual alcança e o que fica para conferência manual.
   update private.google_meet_drive_originals as original
      set trash_due_at = least(original.trash_due_at, v_now), next_attempt_at = null
    where original.tenant_id = v_tenant and original.lesson_session_id = any (v_sessions)
      and original.status = 'PENDING';
-  get diagnostics v_queued = row_count;
-  -- Salas cuja lista ainda será conferida na Meet API (dentro da janela).
-  select pg_catalog.count(*)::integer into v_discover
-  from private.google_meet_rooms as room
-  join public.lesson_sessions as session on session.id = room.lesson_session_id
-  left join private.google_meet_original_sessions as state on state.lesson_session_id = room.lesson_session_id
-  where room.lesson_session_id = any (v_sessions) and room.space_name is not null
-    and state.discovered_at is null
-    and session.scheduled_end_at > v_now - pg_catalog.make_interval(
-      days => (private.google_meet_originals_policy() ->> 'discovery_window_days')::integer);
+  v_counts := private.student_lesson_records_counts(v_tenant, v_student.id);
+  v_queued := coalesce((v_counts ->> 'originals_pending')::integer, 0);
+  v_discover := coalesce((v_counts ->> 'rooms_to_discover')::integer, 0);
 
   insert into private.student_lesson_record_erasures (id, tenant_id, student_id, requested_by, requested_at,
     sessions, raw_copies_deleted, attendance_reports_deleted, summary_versions_deleted, memories_deleted,
@@ -710,7 +828,14 @@ begin
     'memories_deleted', v_memories,
     'card_deleted', v_card_version is not null,
     'originals_queued', v_queued,
-    'sessions_to_discover', v_discover);
+    'sessions_to_discover', v_discover,
+    -- O que a lixeira automática não alcança (a tela manda conferir à mão).
+    'originals_other_account', coalesce((v_counts ->> 'originals_other_account')::integer, 0),
+    'rooms_other_account', coalesce((v_counts ->> 'rooms_other_account')::integer, 0),
+    'rooms_beyond_window', coalesce((v_counts ->> 'rooms_beyond_window')::integer, 0),
+    'rooms_attendance_unregistered', coalesce((v_counts ->> 'rooms_attendance_unregistered')::integer, 0),
+    'discovery_deadline', v_counts -> 'discovery_deadline',
+    'connection_status', v_counts -> 'connection_status');
 end;
 $$;
 
@@ -726,9 +851,11 @@ begin
     'private.google_meet_register_original(uuid,text,text,text,text)',
     'private.google_meet_original_discovery_due(uuid)',
     'private.google_meet_original_files_due(uuid)',
+    'private.google_meet_attendance_report_identified(uuid,text)',
     'private.student_lesson_records_counts(text,uuid)',
     'private.meeting_attendance_reports_register_originals()',
-    'private.lesson_records_erased_guard()'
+    'private.lesson_records_erased_guard()',
+    'private.google_meet_rooms_keep_erased_closed()'
   ] loop
     execute pg_catalog.format('alter function %s owner to postgres', v_signature);
     execute pg_catalog.format('revoke all on function %s from public, anon, authenticated, service_role', v_signature);
@@ -749,9 +876,10 @@ end
 $owners$;
 
 -- 9. O que já está no banco vira registro ----------------------------------------------
--- Planilhas de presença guardadas e documentos exportados pelo Docs (source
--- DRIVE_EXPORT: o document_id É o docsDestination). Transcrição montada pelas
--- falas (MEET_ENTRIES) fica de fora: sem documento, o document_id é o nome do
+-- Planilhas de presença guardadas e identificadas pelo código da sala (a mesma
+-- régua do gatilho) e documentos exportados pelo Docs (source DRIVE_EXPORT: o
+-- document_id É o docsDestination). Transcrição montada pelas falas
+-- (MEET_ENTRIES) fica de fora: sem documento, o document_id é o nome do
 -- artefato, não um arquivo do Drive — a conferência da fila acha o documento, se
 -- houver. Re-executável: arquivo já registrado não muda.
 do $backfill$
@@ -766,6 +894,7 @@ begin
     cross join lateral pg_catalog.unnest(array[report.document_id] || coalesce(report.source_document_ids, '{}'::text[]))
       as candidate(file_id)
     where coalesce(candidate.file_id, '') <> ''
+      and private.google_meet_attendance_report_identified(report.lesson_session_id, report.document_name)
   loop
     perform private.google_meet_register_original(v_row.lesson_session_id, v_row.file_id, 'ATTENDANCE_REPORT',
       'ATTENDANCE_REPORT_SAVED', v_row.organizer_sub);
@@ -790,12 +919,20 @@ $backfill$;
 -- GENERATE_SUMMARY de 20260927110000, e o que outras frentes acrescentarem),
 -- com a MESMA âncora do resumo, que continua valendo depois deste remendo para a
 -- próxima frente: PURGE_ORIGINALS — até 5 aulas por rodada, grupo 4 (3 quando é
--- pedido de exclusão), da conta central que criou a sala e SÓ quando ela
--- autorizou a lixeira (escopo drive; a flag GOOGLE_MEET_DELETE_ORIGINALS_ENABLED
--- é que pede esse escopo): originais vencidos ou lista de documentos a conferir
--- na Meet API. Sem a lixeira ligada, nada disso chama o Google.
+-- pedido de exclusão), da conta central que criou a sala:
+--   * LIXEIRA dos originais vencidos: SÓ quando a conta central autorizou
+--     escrever no Drive (escopo drive; a flag GOOGLE_MEET_DELETE_ORIGINALS_ENABLED
+--     é que pede esse escopo). Sem ela, os vencidos não chamam o Google;
+--   * CONFERÊNCIA da lista de documentos na Meet API: com a conta conectada,
+--     mesmo SEM o escopo drive (só lê conferências e o id dos documentos, o que
+--     meetings.space.created cobre). Correção da revisão: a conferência tem de
+--     acontecer nos 28 dias em que o Google guarda a conferência — com ela presa
+--     ao escopo drive, e a lixeira desligada (o padrão), os documentos de aula
+--     com aceite revogado ou apagada a pedido nunca eram localizados, e ligar a
+--     lixeira depois não os achava mais.
 -- (Aula apagada a pedido sai de SYNC_ARTIFACTS porque a exclusão encerra a
--- importação da sala — sync_status EXPIRED —, e de GENERATE_SUMMARY porque fica
+-- importação da sala — sync_status EXPIRED, mantido pelo gatilho
+-- trg_zz_google_meet_rooms_records_erased —, e de GENERATE_SUMMARY porque fica
 -- sem fonte; o gatilho lesson_records_erased barra o resto.)
 do $patch_queue$
 declare
@@ -803,8 +940,9 @@ declare
   v_anchor constant text := E'(\\)\\s+jobs\\s+order\\s+by\\s+jobs\\.priority_group)';
   v_branch constant text := E'union all\n'
     || E'      -- Originais no Drive da conta central (20260927120000): lixeira dos\n'
-    || E'      -- vencidos (90 dias depois da aula ou pedido de exclusão) e conferência\n'
-    || E'      -- da lista de documentos na Meet API. Até 5 aulas por rodada.\n'
+    || E'      -- vencidos (90 dias depois da aula ou pedido de exclusão; só com o\n'
+    || E'      -- escopo drive) e conferência da lista de documentos na Meet API (sem\n'
+    || E'      -- exigir o drive: tem de caber nos 28 dias do Google). Até 5 aulas.\n'
     || E'      (select room.tenant_id,conn.connected_by,room.lesson_session_id,''PURGE_ORIGINALS'',\n'
     || E'         case when state.erasure_requested_at is not null then 3 else 4 end,\n'
     || E'         coalesce(due.first_due,sess.scheduled_end_at)\n'
@@ -819,13 +957,13 @@ declare
     || E'           and original.trash_due_at<=now()\n'
     || E'           and coalesce(original.next_attempt_at,''-infinity''::timestamptz)<=now()) due on true\n'
     || E'       where conn.status=''CONNECTED''\n'
-    || E'         -- Só com a lixeira autorizada pela conta central (escopo drive).\n'
-    || E'         and ''https://www.googleapis.com/auth/drive''=any(conn.granted_scopes)\n'
     || E'         and lower(coalesce(adm.lifecycle_status,''''))=''active'' and adm.role in (''SCHOOL_ADMIN'',''SUPER_ADMIN'')\n'
     || E'         and (adm.tenant_id=conn.tenant_id or adm.role=''SUPER_ADMIN'')\n'
-    || E'         and (due.first_due is not null\n'
-    || E'           -- pré-filtro barato (a régua é a função): sala no Google e aula\n'
-    || E'           -- dentro da janela da Meet API.\n'
+    || E'         -- Lixeira: só com a escrita no Drive autorizada pela conta central.\n'
+    || E'         and ((due.first_due is not null\n'
+    || E'             and ''https://www.googleapis.com/auth/drive''=any(conn.granted_scopes))\n'
+    || E'           -- Conferência: pré-filtro barato (a régua é a função): sala no\n'
+    || E'           -- Google e aula dentro da janela da Meet API.\n'
     || E'           or (room.space_name is not null and sess.scheduled_end_at>now()-interval ''28 days''\n'
     || E'             and private.google_meet_original_discovery_due(room.lesson_session_id)))\n'
     || E'       order by 5,6 limit 5)\n    ';

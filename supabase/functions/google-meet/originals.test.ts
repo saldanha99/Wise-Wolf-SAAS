@@ -3,13 +3,19 @@
 // Tudo com fetch falso: nenhuma chamada ao Google sai daqui.
 import { DRIVE_READONLY_SCOPE, DRIVE_WRITE_SCOPE } from "./core.ts";
 import {
+  DISCOVERY_MARGIN_MS,
   discoveryComplete,
+  importClosesOriginalsList,
   originalFilesFromArtifacts,
   type OriginalsBackendAction,
   readOriginalFiles,
   runOriginalsPurge,
+  TRASH_MARGIN_MS,
 } from "./originals.ts";
 import { GoogleMeetProvider, type MeetConference } from "./provider.ts";
+
+// Prazo da rodada que não interfere (os testes de prazo usam o seu).
+const NO_DEADLINE = Number.POSITIVE_INFINITY;
 
 function assertEquals(actual: unknown, expected: unknown, message = "") {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -322,7 +328,7 @@ Deno.test("nada vencido e nada a conferir: não pede token nem chama o Google", 
   });
   let asked = false;
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () => {
@@ -345,7 +351,7 @@ Deno.test("vencidos vão para a lixeira um a um; falha fica registrada para nova
   });
   const google = driveFor();
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () =>
@@ -398,7 +404,7 @@ Deno.test("lixeira desligada ou conta sem o escopo drive: espera sem gastar tent
     });
     const google = fakeGoogle(() => undefined);
     const outcome = await runOriginalsPurge(
-      { deleteEnabled, deadline: Date.now() + 60_000 },
+      { deleteEnabled, deadline: NO_DEADLINE },
       {
         backend: db.backend,
         access: () =>
@@ -427,7 +433,7 @@ Deno.test("conta central trocada: nada é lido nem movido, e a aula espera", asy
   });
   const google = fakeGoogle(() => undefined);
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () =>
@@ -493,7 +499,7 @@ Deno.test("conferência: lista a sala no dia da aula, registra só docsDestinati
     return undefined;
   });
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () =>
@@ -561,7 +567,7 @@ Deno.test("conferência com documento ainda sendo gerado: registra o que há e t
     return undefined;
   });
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () =>
@@ -609,7 +615,7 @@ Deno.test("falha ao listar não impede a lixeira do que já estava vencido", asy
     return undefined;
   });
   const outcome = await runOriginalsPurge(
-    { deleteEnabled: true, deadline: Date.now() + 60_000 },
+    { deleteEnabled: true, deadline: NO_DEADLINE },
     {
       backend: db.backend,
       access: () =>
@@ -652,6 +658,195 @@ Deno.test("prazo da rodada vencido: o resto fica para a próxima, sem chamar o D
   assertEquals(google.calls.length, 0);
   assertEquals(
     db.calls.some((call) => call.action === "file_result"),
+    false,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Correções da revisão
+// ---------------------------------------------------------------------------
+/** Meet API falsa: uma conferência com a transcrição já em arquivo. */
+const meetWithDocs = () =>
+  fakeGoogle((call) => {
+    const path = call.url.pathname;
+    if (path === "/v2/conferenceRecords") {
+      return json({ conferenceRecords: [conference] });
+    }
+    if (path === "/v2/conferenceRecords/conf1/transcripts") {
+      return json({
+        transcripts: [{
+          name: "conferenceRecords/conf1/transcripts/t1",
+          state: "FILE_GENERATED",
+          docsDestination: { document: "docTranscript01" },
+        }],
+      });
+    }
+    if (path === "/v2/conferenceRecords/conf1/smartNotes") {
+      return json({ smartNotes: [] });
+    }
+    return undefined;
+  });
+
+Deno.test("lixeira desligada: a conferência da lista roda (só Meet API) e registra; o Drive não é tocado", async () => {
+  const db = fakeBackend(
+    {
+      room: ROOM,
+      session: { class_date: "2026-09-26" },
+      discovery_needed: true,
+      files_due: [],
+    },
+    // Pedido de exclusão: o documento achado vence na hora.
+    {
+      registered: 1,
+      files_due: [{ file_id: "docTranscript01", kind: "TRANSCRIPT" }],
+    },
+  );
+  const google = meetWithDocs();
+  const outcome = await runOriginalsPurge(
+    { deleteEnabled: false, deadline: NO_DEADLINE },
+    {
+      backend: db.backend,
+      access: () =>
+        Promise.resolve({
+          provider: new GoogleMeetProvider("t", google.request),
+          organizerSub: "sub-central",
+          grantedScopes: READ_ONLY,
+        }),
+      now: () => Date.parse("2026-09-26T18:00:00Z"),
+    },
+  );
+  assertEquals(
+    { status: outcome.status, discovered: outcome.discovered },
+    { status: "DEFERRED", discovered: true },
+  );
+  assertEquals(db.calls.map((call) => call.action), [
+    "session_state",
+    "register",
+    "defer",
+  ]);
+  assertEquals(db.calls[2].payload, {
+    error_code: "google_drive_delete_disabled",
+    minutes: 360,
+  });
+  assertEquals(
+    google.calls.some((call) => call.url.pathname.startsWith("/drive/")),
+    false,
+  );
+});
+
+Deno.test("lixeira desligada e nada a conferir: os vencidos esperam sem pedir token", async () => {
+  const db = fakeBackend({
+    room: ROOM,
+    discovery_needed: false,
+    files_due: due,
+  });
+  let asked = false;
+  const outcome = await runOriginalsPurge(
+    { deleteEnabled: false, deadline: NO_DEADLINE },
+    {
+      backend: db.backend,
+      access: () => {
+        asked = true;
+        throw new Error("não devia pedir token");
+      },
+    },
+  );
+  assertEquals(outcome.status, "DEFERRED");
+  assertEquals(outcome.deferred, 2);
+  assertEquals(asked, false);
+  assertEquals(db.calls.map((call) => call.action), ["session_state", "defer"]);
+});
+
+Deno.test("pouco tempo na rodada: a conferência fica para a próxima, sem gastar tentativa nem pedir token", async () => {
+  const db = fakeBackend({
+    room: ROOM,
+    session: { class_date: "2026-09-26" },
+    discovery_needed: true,
+    files_due: [],
+  });
+  let asked = false;
+  const outcome = await runOriginalsPurge(
+    { deleteEnabled: true, deadline: 100_000 },
+    {
+      backend: db.backend,
+      access: () => {
+        asked = true;
+        throw new Error("não devia pedir token");
+      },
+      now: () => 100_000 - DISCOVERY_MARGIN_MS + 1,
+    },
+  );
+  assertEquals(outcome.status, "DEFERRED");
+  assertEquals(outcome.error, "google_no_time_left");
+  assertEquals(asked, false);
+  // Nem discovery_failed: a espera crescente é para falha, não para falta de tempo.
+  assertEquals(db.calls.map((call) => call.action), ["session_state"]);
+});
+
+Deno.test("mover para a lixeira só com 45 s de folga (files.get + files.update em série)", async () => {
+  for (
+    const [margin, moved] of [
+      [TRASH_MARGIN_MS - 1, false],
+      [TRASH_MARGIN_MS, true],
+    ] as const
+  ) {
+    const db = fakeBackend({
+      room: ROOM,
+      discovery_needed: false,
+      files_due: [{ file_id: "docTranscript01", kind: "TRANSCRIPT" }],
+    });
+    const google = driveFor();
+    const outcome = await runOriginalsPurge(
+      { deleteEnabled: true, deadline: 500_000 },
+      {
+        backend: db.backend,
+        access: () =>
+          Promise.resolve({
+            provider: new GoogleMeetProvider("t", google.request),
+            organizerSub: "sub-central",
+            grantedScopes: WRITE,
+          }),
+        now: () => 500_000 - margin,
+      },
+    );
+    assertEquals(outcome.trashed, moved ? 1 : 0, `folga ${margin}`);
+    assertEquals(outcome.deferred, moved ? 0 : 1, `folga ${margin}`);
+    assertEquals(google.calls.length, moved ? 2 : 0, `folga ${margin}`);
+  }
+});
+
+Deno.test("importação concluída com a transcrição montada pelas falas NÃO fecha a lista dos originais", () => {
+  const ended = Date.parse(conference.endTime);
+  // Transcrição ENDED sem documento (MEET_ENTRIES): o Google ainda pode gerar
+  // o documento — 2 h depois da aula a lista continua aberta para a fila.
+  const byEntries = { document: null, state: "ENDED", conference };
+  const notes = { document: "docNotes01", state: "FILE_GENERATED", conference };
+  assertEquals(
+    importClosesOriginalsList(
+      true,
+      [byEntries, notes],
+      [conference],
+      ended + 2 * 3_600_000,
+    ),
+    false,
+  );
+  // Seis horas depois, o documento que não veio não vem mais: fecha.
+  assertEquals(
+    importClosesOriginalsList(
+      true,
+      [byEntries, notes],
+      [conference],
+      ended + 7 * 3_600_000,
+    ),
+    true,
+  );
+  // Todos com arquivo: fecha na hora. Importação incompleta nunca fecha.
+  assertEquals(
+    importClosesOriginalsList(true, [notes], [conference], ended + 60_000),
+    true,
+  );
+  assertEquals(
+    importClosesOriginalsList(false, [notes], [conference], ended + 60_000),
     false,
   );
 });

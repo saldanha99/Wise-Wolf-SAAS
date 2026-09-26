@@ -308,14 +308,17 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {
         target: 'meet-originals-retention',
         view: 'google-meet',
-        title: 'Os originais das aulas vão para a lixeira 🗑️',
-        text: 'O documento da transcrição, o das anotações do Gemini e a planilha de presença de cada aula ficam no Drive da conta central. 90 dias depois da aula eles vão para a lixeira do Drive (ainda recuperáveis por 30 dias). Só vão os arquivos que o próprio Meet indicou e as planilhas que o sistema guardou — nada é procurado por nome. Aqui você acompanha o que já foi, o que espera o prazo e o que falhou. A lixeira pede reconectar a conta central uma vez, para autorizar o Drive.',
+        // O tour sobe com o deploy, com a lixeira ainda desligada (padrão): o
+        // texto não promete a lixeira nem manda reconectar — o cartão é que diz,
+        // pela configuração de cada instalação, se ela está ligada e o que falta.
+        title: 'Os originais das aulas no Drive 🗑️',
+        text: 'O documento da transcrição, o das anotações do Gemini e a planilha de presença de cada aula ficam no Drive da conta central. Quando a lixeira automática está ligada, eles vão para a lixeira do Drive 90 dias depois da aula (ainda recuperáveis por 30 dias). Só vão os arquivos que o próprio Meet indicou e as planilhas que o sistema identificou pelo código da sala — nada é procurado por nome. Este cartão mostra se a lixeira está ligada, o que já foi, o que espera o prazo e o que precisa ser conferido à mão.',
       },
       {
         target: null,
         view: 'students',
         title: 'Aluno pediu para apagar? ✋',
-        text: 'Abra a ficha do aluno e vá em "Continuidade pedagógica" → "Apagar registros das aulas deste aluno". A tela mostra antes o que será apagado — cópias da transcrição e das anotações, relatórios de presença, rascunhos e resumos, memória das aulas no Meet e o cartão do aluno — e os originais entram na fila da lixeira na hora. Presença lançada, pagamento e o aceite do termo não mudam. Só a direção vê o botão.',
+        text: 'Abra a ficha do aluno e vá em "Continuidade pedagógica" → "Apagar registros das aulas deste aluno". A tela mostra antes o que será apagado — cópias da transcrição e das anotações, relatórios de presença, rascunhos e resumos, memória das aulas no Meet e o cartão do aluno — e o que acontece com os originais no Drive: com a lixeira ligada eles vão para ela na hora; o que ela não alcança, a tela manda apagar à mão. Presença lançada, pagamento e o aceite do termo não mudam. Só a direção vê o botão.',
       },
     ],
   },

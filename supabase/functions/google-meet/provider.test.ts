@@ -2,6 +2,7 @@
 import {
   applyRoomArtifacts,
   ARTIFACT_UPDATE_MASK,
+  ATTENDANCE_UPDATE_MASK,
   exchangeToken,
   googleErrorInfo,
   GoogleMeetProvider,
@@ -633,6 +634,123 @@ Deno.test("recusa ou rede fora: falha registrada (a fila tenta de novo), sem exc
     ),
     { result: "FAILED", errorCode: "google_resource_invalid" },
   );
+});
+
+// ===== Relatório de presença junto da revogação (correção da revisão) =========
+// A planilha de presença de aula sem aceite nunca é importada e, sem importação,
+// nunca entraria na lixeira de 90 dias. Desligar a documentação também desliga
+// o relatório — num PATCH separado, depois da transcrição.
+const attendanceWith = (value: string) => ({
+  name: "spaces/nLYkAE855egB",
+  config: { attendanceReportGenerationType: value },
+});
+
+Deno.test("desligar com relatório de presença: segundo PATCH só do relatório, DO_NOT_GENERATE", async () => {
+  assertEquals(ATTENDANCE_UPDATE_MASK, "config.attendanceReportGenerationType");
+  const google = fakePatch([
+    json(spaceWith("OFF")),
+    json(attendanceWith("DO_NOT_GENERATE")),
+  ]);
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider("t", google.request),
+    "spaces/nLYkAE855egB",
+    false,
+    { attendanceReport: true },
+  );
+  assertEquals(outcome, {
+    result: "DISABLED",
+    errorCode: null,
+    attendanceErrorCode: null,
+  });
+  assertEquals(google.calls.length, 2);
+  // A transcrição vem PRIMEIRO: a revogação nunca depende do relatório.
+  assertEquals(
+    google.calls[0].url.searchParams.get("updateMask"),
+    ARTIFACT_UPDATE_MASK,
+  );
+  assertEquals(
+    google.calls[1].url.searchParams.get("updateMask"),
+    ATTENDANCE_UPDATE_MASK,
+  );
+  assertEquals(google.calls[1].method, "PATCH");
+  assertEquals(google.calls[1].body, {
+    config: { attendanceReportGenerationType: "DO_NOT_GENERATE" },
+  });
+});
+
+Deno.test("religar com relatório de presença: GENERATE_REPORT", async () => {
+  const google = fakePatch([
+    json(spaceWith("ON")),
+    json(attendanceWith("GENERATE_REPORT")),
+  ]);
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider("t", google.request),
+    "spaces/nLYkAE855egB",
+    true,
+    { attendanceReport: true },
+  );
+  assertEquals(outcome.result, "ENABLED");
+  assertEquals(google.calls[1].body, {
+    config: { attendanceReportGenerationType: "GENERATE_REPORT" },
+  });
+});
+
+Deno.test("relatório de presença recusado: a transcrição segue desligada e o erro vai à parte", async () => {
+  const google = fakePatch([
+    json(spaceWith("OFF")),
+    json({ error: { code: 400 } }, 400),
+  ]);
+  const outcome = await applyRoomArtifacts(
+    new GoogleMeetProvider("t", google.request),
+    "spaces/nLYkAE855egB",
+    false,
+    { attendanceReport: true },
+  );
+  assertEquals(outcome.result, "DISABLED");
+  assertEquals(outcome.errorCode, null);
+  assertEquals(typeof outcome.attendanceErrorCode, "string");
+  // Google devolve outro valor: não conta como feito.
+  const unconfirmed = await applyRoomArtifacts(
+    new GoogleMeetProvider(
+      "t",
+      fakePatch([
+        json(spaceWith("OFF")),
+        json(attendanceWith("GENERATE_REPORT")),
+      ]).request,
+    ),
+    "spaces/nLYkAE855egB",
+    false,
+    { attendanceReport: true },
+  );
+  assertEquals(
+    unconfirmed.attendanceErrorCode,
+    "google_room_update_unconfirmed",
+  );
+});
+
+Deno.test("sem relatório de presença na instalação, ou sala que sumiu: nenhum PATCH extra", async () => {
+  const off = fakePatch([json(spaceWith("OFF"))]);
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", off.request),
+      "spaces/nLYkAE855egB",
+      false,
+      { attendanceReport: false },
+    ),
+    { result: "DISABLED", errorCode: null },
+  );
+  assertEquals(off.calls.length, 1);
+  const gone = fakePatch([json({ error: { code: 404 } }, 404)]);
+  assertEquals(
+    await applyRoomArtifacts(
+      new GoogleMeetProvider("t", gone.request),
+      "spaces/nLYkAE855egB",
+      false,
+      { attendanceReport: true },
+    ),
+    { result: "DISABLED", errorCode: "google_resource_unavailable" },
+  );
+  assertEquals(gone.calls.length, 1);
 });
 
 // ===== Coanfitrião = só a conta confirmada do professor =======================

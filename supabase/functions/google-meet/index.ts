@@ -61,6 +61,7 @@ import {
   summarizeAttendance,
 } from "./attendance.ts";
 import {
+  importClosesOriginalsList,
   originalFilesFromArtifacts,
   type OriginalsBackend,
   type OriginalsOutcome,
@@ -795,12 +796,19 @@ async function syncSession(
   });
   // Originais no Drive (ids da Meet API): registrados para a lixeira de 90 dias
   // depois da aula. Importação concluída fecha a lista (a fila não confere de
-  // novo). Falha aqui não derruba a importação: a fila confere depois.
+  // novo) só quando todo documento já tem arquivo: transcrição montada pelas
+  // falas deixa a lista aberta, e a fila confere o documento que o Google
+  // terminar depois. Falha aqui não derruba a importação: a fila confere depois.
   try {
     await originalsBackend(db, tenantId, sessionId)("register", {
       organizer_sub: room.organizer_sub,
       files: originalFilesFromArtifacts(artifacts),
-      discovered: outcome.complete,
+      discovered: importClosesOriginalsList(
+        outcome.complete,
+        artifacts,
+        conferences,
+        Date.now(),
+      ),
     });
   } catch (error) {
     console.error("[google-meet] registro dos originais", {
@@ -1182,7 +1190,18 @@ async function setRoomArtifacts(
     new GoogleMeetProvider(token),
     room.space_name,
     operation === "ENABLE_ARTIFACTS",
+    { attendanceReport: cfg.attendanceEnabled },
   );
+  if (outcome.attendanceErrorCode) {
+    // A transcrição mudou; a planilha de presença, não. Sem nova tentativa
+    // automática: a ficha do aluno mostra a aula sem planilha registrada para
+    // conferência manual no Drive.
+    console.error("[google-meet] relatório de presença da sala", {
+      sessionId,
+      operation,
+      code: outcome.attendanceErrorCode,
+    });
+  }
   const saved: RoomRow = await storage(
     db,
     "room_artifacts_save",
@@ -1359,6 +1378,9 @@ serve(async (req: Request) => {
         drive_read_granted: hasConnection && grantedRequiredScopes(granted),
         drive_delete_enabled: cfg.deleteOriginals,
         drive_delete_granted: hasConnection && hasDriveWriteScope(granted),
+        // A ficha do aluno só manda conferir planilha de presença à mão quando
+        // a instalação gera o relatório.
+        attendance_report_enabled: cfg.attendanceEnabled,
         configured: cfg.missing.length === 0,
         missing_configuration: cfg.missing,
         enabled: cfg.enabled,

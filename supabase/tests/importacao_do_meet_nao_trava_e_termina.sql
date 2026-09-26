@@ -231,8 +231,13 @@ begin
     from jsonb_array_elements(v_jobs) with ordinality as t(j, ord);
   perform pg_temp.fila_assert(v_pos_first is not null and v_pos_repoll is not null and v_pos_first < v_pos_repoll,
     'primeira importação depois da aula não veio antes da re-consulta');
+  -- A conferência da lista de documentos para a lixeira do Drive
+  -- (PURGE_ORIGINALS, 20260927120000) é outra operação: a aula que a importação
+  -- não alcança mais (fora da janela de 7 dias) tem os documentos localizados na
+  -- Meet API dentro dos 28 dias do Google. A importação, não.
   perform pg_temp.fila_assert(not exists (select 1 from jsonb_array_elements(v_jobs) j
-    where j ->> 'lesson_session_id' in (v_done::text, v_old::text)),
+    where j ->> 'lesson_session_id' in (v_done::text, v_old::text)
+      and j ->> 'operation' is distinct from 'PURGE_ORIGINALS'),
     'importação concluída ou fora da janela voltou para a fila');
   -- Sala da aula em 10 min + primeira importação + duas re-consultas: mais de 3.
   perform pg_temp.fila_assert(jsonb_array_length(v_jobs) >= 4, 'lote ainda limitado a 3 trabalhos');

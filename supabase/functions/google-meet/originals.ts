@@ -48,6 +48,15 @@ export const DOCUMENT_SETTLE_MS = 6 * 3_600_000;
 // tentativa. Conta central trocada: 24 h (só a conta antiga move os arquivos).
 const DEFER_MINUTES = 360;
 const ORGANIZER_CHANGED_MINUTES = 1440;
+// Folga antes do prazo da rodada (o worker morre em 150 s; o prazo do trabalho
+// é ~125 s). A conferência faz uma lista de conferências e duas por conferência,
+// cada chamada com até 20 s: só começa com 60 s de folga — senão fica para a
+// próxima rodada, sem gastar tentativa. Mover um arquivo são duas chamadas em
+// série (files.get + files.update, até 40 s): só com 45 s de folga — o worker
+// morto entre o PATCH e o registro faria a próxima rodada ler "já na lixeira"
+// (GONE) em vez de "foi para a lixeira" (TRASHED).
+export const DISCOVERY_MARGIN_MS = 60_000;
+export const TRASH_MARGIN_MS = 45_000;
 
 const ORIGINAL_KINDS = new Set<string>([
   "TRANSCRIPT",
@@ -103,6 +112,22 @@ export function discoveryComplete(
     const ended = Date.parse(artifact.conference.endTime);
     return Number.isFinite(ended) && nowMs - ended > DOCUMENT_SETTLE_MS;
   });
+}
+
+/**
+ * A importação fecha a lista dos originais (a fila não confere de novo) só se
+ * ela concluiu E a lista está fechada pela mesma régua da conferência. Importação
+ * concluída com a transcrição montada pelas falas (MEET_ENTRIES: o documento
+ * ainda não existia) não fecha: o Google pode terminar o documento horas depois,
+ * e ele precisa entrar na lixeira de 90 dias (correção da revisão).
+ */
+export function importClosesOriginalsList(
+  importComplete: boolean,
+  artifacts: Pick<MeetArtifact, "document" | "state" | "conference">[],
+  conferences: { endTime: string }[],
+  nowMs: number,
+): boolean {
+  return importComplete && discoveryComplete(artifacts, conferences, nowMs);
 }
 
 type DiscoveryProvider = Pick<
@@ -168,6 +193,10 @@ export type OriginalsOutcome = {
  * banco pedir), registra, e move para a lixeira o que venceu — um arquivo por
  * vez, cada resultado gravado no banco (TRASHED, GONE, REFUSED ou FAILED com
  * nova tentativa). Resposta sem conteúdo de aula: só contagens e códigos.
+ *
+ * A conferência só lê a Meet API e roda mesmo com a lixeira desligada (tem de
+ * caber nos 28 dias em que o Google guarda a conferência); a lixeira é que
+ * depende da flag e do escopo drive.
  */
 export async function runOriginalsPurge(
   input: { deleteEnabled: boolean; deadline: number },
@@ -193,6 +222,27 @@ export async function runOriginalsPurge(
   const discover = state.discovery_needed === true && !!space;
   if (!discover && !due.length) return outcome;
 
+  // Conferência só com folga no prazo da rodada; senão fica para a próxima
+  // (o banco oferece de novo, sem gastar tentativa).
+  const canDiscover = discover && now() + DISCOVERY_MARGIN_MS <= input.deadline;
+  if (!canDiscover && (!due.length || !input.deleteEnabled)) {
+    // Nada a fazer no Google agora — nem token é pedido: a lixeira está
+    // desligada nesta instalação (os vencidos esperam sem gastar tentativa)
+    // e/ou a conferência não cabe no que resta da rodada.
+    if (due.length) {
+      await deps.backend("defer", {
+        error_code: "google_drive_delete_disabled",
+        minutes: DEFER_MINUTES,
+      });
+    }
+    return {
+      ...outcome,
+      status: "DEFERRED",
+      deferred: due.length,
+      ...(discover ? { error: "google_no_time_left" } : {}),
+    };
+  }
+
   const access = await deps.access();
   if (!owner || access.organizerSub !== owner) {
     // Os documentos estão no Drive da conta que criou a sala: com outra conta
@@ -211,7 +261,7 @@ export async function runOriginalsPurge(
     return { ...outcome, status: "FAILED", error: "google_organizer_changed" };
   }
 
-  if (discover) {
+  if (canDiscover) {
     try {
       const found = await discoverOriginals(
         access.provider,
@@ -254,7 +304,8 @@ export async function runOriginalsPurge(
   }
 
   for (const file of due) {
-    if (now() > input.deadline) {
+    // Mover são duas chamadas em série: só com folga no prazo da rodada.
+    if (now() + TRASH_MARGIN_MS > input.deadline) {
       outcome.deferred++;
       continue;
     }

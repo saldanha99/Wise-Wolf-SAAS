@@ -48,6 +48,9 @@ export const ARTIFACT_UPDATE_MASK = [
   "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration",
   "config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration",
 ].join(",");
+// Relatório de presença da sala (campo de SpaceConfig usado na criação). Vai
+// num PATCH separado, depois da transcrição: a revogação nunca depende dele.
+export const ATTENDANCE_UPDATE_MASK = "config.attendanceReportGenerationType";
 export class GoogleProviderError extends Error {
   constructor(
     public code: string,
@@ -210,6 +213,35 @@ export class GoogleMeetProvider {
         : "",
     ];
     if (returned.some((found) => found && found !== value)) {
+      throw new GoogleProviderError("google_room_update_unconfirmed", 502);
+    }
+  }
+  /**
+   * Liga ou desliga o relatório de presença de uma sala JÁ criada. A revogação
+   * do termo também o desliga (correção da revisão, 26/09/2026): a planilha traz
+   * nome, e-mail e horários do aluno, nunca é importada sem aceite e, sem
+   * importação, nunca entraria na lixeira de 90 dias — ficaria no Drive da
+   * escola para sempre. updateMask só com esse campo; resposta com valor
+   * diferente do pedido não conta.
+   */
+  async setAttendanceReportGeneration(
+    space: string,
+    generate: boolean,
+  ): Promise<void> {
+    const name = safeResource(space, "space");
+    const value = generate ? "GENERATE_REPORT" : "DO_NOT_GENERATE";
+    const url = new URL(`https://meet.googleapis.com/v2/${name}`);
+    url.searchParams.set("updateMask", ATTENDANCE_UPDATE_MASK);
+    const result = await this.json(url.toString(), {
+      method: "PATCH",
+      body: JSON.stringify({
+        config: { attendanceReportGenerationType: value },
+      }),
+    });
+    const returned = isRecord(result.config)
+      ? text(result.config.attendanceReportGenerationType, 60)
+      : "";
+    if (returned && returned !== value) {
       throw new GoogleProviderError("google_room_update_unconfirmed", 502);
     }
   }
@@ -772,18 +804,44 @@ export async function applyRoomArtifacts(
   provider: GoogleMeetProvider,
   space: string,
   enable: boolean,
+  // Instalação com relatório de presença (GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED):
+  // desligar a documentação também desliga a planilha, e religar a religa.
+  options: { attendanceReport?: boolean } = {},
 ): Promise<
-  { result: "ENABLED" | "DISABLED" | "FAILED"; errorCode: string | null }
+  {
+    result: "ENABLED" | "DISABLED" | "FAILED";
+    errorCode: string | null;
+    attendanceErrorCode?: string | null;
+  }
 > {
   try {
     await provider.setArtifactGeneration(space, enable);
-    return { result: enable ? "ENABLED" : "DISABLED", errorCode: null };
   } catch (error) {
     const code = providerErrorCode(error, "google_room_update_failed");
     if (!enable && code === "google_resource_unavailable") {
       return { result: "DISABLED", errorCode: code };
     }
     return { result: "FAILED", errorCode: code };
+  }
+  const done = {
+    result: enable ? "ENABLED" as const : "DISABLED" as const,
+    errorCode: null,
+  };
+  if (!options.attendanceReport) return done;
+  // A transcrição já está no estado pedido: falha na planilha não desfaz isso
+  // nem prende a sala na fila — fica no log, e a ficha do aluno manda conferir
+  // à mão a planilha de aula sem presença registrada.
+  try {
+    await provider.setAttendanceReportGeneration(space, enable);
+    return { ...done, attendanceErrorCode: null };
+  } catch (error) {
+    return {
+      ...done,
+      attendanceErrorCode: providerErrorCode(
+        error,
+        "google_room_update_failed",
+      ),
+    };
   }
 }
 

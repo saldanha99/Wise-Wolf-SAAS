@@ -34,9 +34,19 @@ describe('Originais no Drive (direção)', () => {
     expect(screen.getByText(/conta central anterior: só ela consegue movê-los/)).toBeTruthy();
   });
 
-  it('lixeira desligada na instalação é dita com clareza', async () => {
+  it('lixeira desligada na instalação é dita com clareza (e a conferência no Meet segue)', async () => {
     rpc.mockResolvedValue({ data: status({ trashed: 0 }), error: null });
     render(<MeetOriginalsRetentionCard deleteEnabled={false} deleteGranted={false} />);
-    expect(await screen.findByText(/ainda não foi ligada nesta instalação/)).toBeTruthy();
+    const off = await screen.findByText(/ainda não foi ligada nesta instalação/);
+    expect(off.textContent).toContain('28 dias depois da aula');
+    // Nada de "vão para a lixeira" como fato quando ela está desligada.
+    expect(screen.getByText(/Com a lixeira automática ligada/)).toBeTruthy();
+  });
+
+  it('planilha de presença do plano B aparece para conferência manual', async () => {
+    rpc.mockResolvedValue({ data: status({ attendance_unidentified: 2 }), error: null });
+    render(<MeetOriginalsRetentionCard deleteEnabled deleteGranted />);
+    expect((await screen.findByTestId('originals-attendance-unidentified')).textContent)
+      .toContain('2 planilhas de presença foram escolhidas sem o código da sala');
   });
 });
