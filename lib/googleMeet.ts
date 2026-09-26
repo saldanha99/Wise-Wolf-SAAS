@@ -59,6 +59,12 @@ const MESSAGES: Record<string,string> = {
   google_summary_no_time_left: 'Não houve tempo para gerar agora. Tente de novo.',
   summary_artifact_scope_mismatch: 'As fontes desta aula mudaram ou venceram. Atualize a tela.',
   summary_cap_invalid: 'O teto mensal precisa estar entre US$ 0 e US$ 500.',
+  // Originais no Drive e exclusão a pedido (migration 20260927120000).
+  lesson_records_erased: 'Os registros desta aula foram apagados a pedido do aluno. Ela não é importada nem resumida de novo.',
+  aluno_nao_encontrado: 'Aluno não encontrado nesta escola.',
+  google_drive_delete_disabled: 'A lixeira dos originais no Drive está desligada nesta instalação.',
+  google_drive_scope_missing: 'A conta central ainda não autorizou mover arquivos para a lixeira do Drive. Reconecte a conta central.',
+  google_required_scopes_missing: 'O Google não concedeu todas as permissões pedidas. Reconecte e permita o acesso ao Meet e ao Drive.',
 };
 
 /**

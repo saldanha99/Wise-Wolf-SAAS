@@ -4,9 +4,10 @@ import {
   X, Loader2, Flame, Gem, Heart, CalendarCheck, AlertTriangle, TrendingUp,
   BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users, ArrowRightLeft
 } from 'lucide-react';
-import { User as UserType } from '../types';
+import { User as UserType, UserRole } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import StudentHandover from './StudentHandover';
+import StudentLessonRecordsErasure from './StudentLessonRecordsErasure';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
 import StudentManualPixManager from './StudentManualPixManager';
 import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
@@ -57,6 +58,8 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<'overview' | 'classes' | 'notes' | 'financial' | 'history' | 'handover'>('overview');
+  // Depois de apagar os registros das aulas, o dossiê é recarregado do zero.
+  const [handoverKey, setHandoverKey] = useState(0);
   const [newNote, setNewNote] = useState('');
   const [noteCat, setNoteCat] = useState('GERAL');
   const [savingNote, setSavingNote] = useState(false);
@@ -264,7 +267,13 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
             </div>
 
             <div className="p-6 max-h-[60vh] overflow-y-auto">
-              {tab === 'handover' && <StudentHandover studentId={studentId} />}
+              {tab === 'handover' && <React.Fragment key={handoverKey}><StudentHandover studentId={studentId} /></React.Fragment>}
+              {/* Exclusão a pedido do aluno: só a direção (o servidor confere de novo). */}
+              {tab === 'handover' && user?.role === UserRole.SCHOOL_ADMIN && (
+                <div className="mt-6">
+                  <StudentLessonRecordsErasure studentId={studentId} onErased={() => setHandoverKey(key => key + 1)} />
+                </div>
+              )}
               {/* OVERVIEW */}
               {tab === 'overview' && (
                 <div className="space-y-5">
