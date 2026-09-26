@@ -115,5 +115,7 @@ Deno.test("recusas do banco têm status HTTP próprios", () => {
   assertEquals(httpStatusForIssueError("responsavel_obrigatorio"), 409);
   assertEquals(httpStatusForIssueError("telefone_nao_cadastrado"), 409);
   assertEquals(httpStatusForIssueError("limite_de_envios"), 429);
+  assertEquals(httpStatusForIssueError("limite_diario"), 429);
+  assertEquals(httpStatusForIssueError("link_bloqueado"), 410);
   assertEquals(httpStatusForIssueError("qualquer"), 503);
 });

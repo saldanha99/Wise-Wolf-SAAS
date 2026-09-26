@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { consentErrorMessage, formatDecisionDate, type GuardianReason } from '../lib/lessonRecordingConsent';
+import {
+  consentErrorMessage,
+  formatDecisionDate,
+  GUARDIAN_PHONE_UNCONFIRMED_TEXT,
+  type GuardianReason,
+} from '../lib/lessonRecordingConsent';
 
 // Data de nascimento cadastrada pela ESCOLA (direção ou coordenação), com
 // trilha. É a única prova de maioridade que o termo de registro das aulas
@@ -16,6 +21,9 @@ type BirthDateRecord = {
   recorded_by_name: string | null;
   is_kids: boolean;
   guardian_reason: GuardianReason | null;
+  /** Telefone do responsável que recebe o código (só o confirmado pela escola). */
+  guardian_code_phone_masked?: string | null;
+  guardian_phone_unconfirmed?: boolean;
 };
 
 const REASON_TEXT: Record<GuardianReason | 'ADULT', string> = {
@@ -126,6 +134,13 @@ export default function StudentBirthDateField({
           : 'Sem data de nascimento cadastrada. '}
       {reasonText}
     </p>
+    {record.guardian_reason && 'guardian_code_phone_masked' in record && <p className="text-xs text-slate-500">
+      {record.guardian_code_phone_masked
+        ? `O código do termo vai para o WhatsApp do responsável ${record.guardian_code_phone_masked}.`
+        : record.guardian_phone_unconfirmed
+          ? GUARDIAN_PHONE_UNCONFIRMED_TEXT
+          : 'Sem telefone do responsável confirmado pela escola: cadastre em “Contatos verificados” para o código do termo poder sair.'}
+    </p>}
     {error && <p role="alert" className="text-xs font-semibold text-red-600">{error}</p>}
     {saved && <p role="status" className="text-xs font-semibold text-emerald-700">{saved}</p>}
   </div>;

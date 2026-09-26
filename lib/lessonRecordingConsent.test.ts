@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   asDecision,
   asGuardianReason,
+  asLinkBlockedReason,
+  asNotEffectiveReason,
   codeErrorMessage,
   consentErrorMessage,
   consentLink,
@@ -13,6 +15,7 @@ import {
   isMissingRpcError,
   isSixDigitCode,
   normalizeSignerName,
+  notEffectiveText,
   onlyDigits,
   whatsappDigits,
   whatsappUrl,
@@ -162,5 +165,24 @@ describe('conta Google do professor', () => {
     expect(googleIdentityState({ email: 'p@gmail.com', verified_at: null }, null)).toEqual({ status: 'missing', email: 'p@gmail.com' });
     expect(googleIdentityState([{ email: 'p@gmail.com', verified_at: '2026-09-26T12:00:00Z' }], null))
       .toEqual({ status: 'verified', email: 'p@gmail.com', verifiedAt: '2026-09-26T12:00:00Z' });
+  });
+});
+
+describe('aceite que não vale e link bloqueado', () => {
+  it('página explica por que o aceite anterior não vale, em vez de mostrar "Autorizado"', () => {
+    expect(asNotEffectiveReason('GUARDIAN_REQUIRED')).toBe('GUARDIAN_REQUIRED');
+    expect(asNotEffectiveReason('qualquer')).toBeNull();
+    expect(notEffectiveText('GUARDIAN_REQUIRED', 'Pedro')).toMatch(/responsável precisa responder/);
+    expect(notEffectiveText('UNVERIFIED', 'Pedro')).toMatch(/sem a confirmação pelo WhatsApp/);
+  });
+
+  it('teto do dia e link bloqueado têm texto próprio', () => {
+    expect(codeErrorMessage({ error: 'limite_diario', retryAfterSeconds: 7200 })).toBe(
+      'Já mandamos 6 códigos por este link hoje. Espere para pedir outro. Tente em 2 horas.',
+    );
+    expect(consentErrorMessage('link_bloqueado')).toMatch(/Peça um link novo à escola/);
+    expect(asLinkBlockedReason('CODE_ATTEMPTS')).toBe('CODE_ATTEMPTS');
+    expect(asLinkBlockedReason('CODE_SENDS')).toBe('CODE_SENDS');
+    expect(asLinkBlockedReason(null)).toBeNull();
   });
 });

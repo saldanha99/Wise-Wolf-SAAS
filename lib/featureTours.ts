@@ -217,7 +217,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'recording-consents',
         view: 'recording-consents',
         title: 'A família confirma pelo WhatsApp 🔐',
-        text: 'A página do termo agora manda um código de 6 dígitos para o WhatsApp do cadastro antes de gravar a resposta. Sem data de nascimento confirmada pela escola, quem responde é o responsável — por segurança, idade desconhecida conta como menor.',
+        text: 'A página do termo agora manda um código de 6 dígitos para o WhatsApp do cadastro antes de gravar a resposta. Sem data de nascimento confirmada pela escola, quem responde é o responsável — por segurança, idade desconhecida conta como menor. O código do responsável só vai para telefone confirmado pela escola (ficha do aluno ou “Contatos verificados”); o painel avisa quando falta.',
       },
       {
         target: 'recording-age-check',

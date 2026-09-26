@@ -19,8 +19,9 @@ import {
 // (/registro-das-aulas). Sem login: quem prova o direito é o token do link
 // (64 hex, gerado pela escola) e, agora, a posse do WhatsApp cadastrado.
 //
-// Fluxo: o banco emite o código e guarda só o hash (limite de 3 envios por
-// hora por link), esta função manda pela instância central da escola usando o
+// Fluxo: o banco emite o código e guarda só o hash (por link: 3 envios por
+// hora, 6 por dia e 10 no total; passou do total ou de 15 tentativas erradas,
+// o link fecha), esta função manda pela instância central da escola usando o
 // helper que pede licença ao teto do WhatsApp (`whatsapp_outbound_permit`) e
 // registra o resultado. O código nunca volta ao navegador nem vai para log.
 

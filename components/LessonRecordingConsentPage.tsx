@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   asDecision,
   asGuardianReason,
+  asNotEffectiveReason,
   CODE_FUNCTION,
   CODE_LENGTH,
   codeErrorMessage,
@@ -13,6 +14,7 @@ import {
   isFullName,
   isSixDigitCode,
   normalizeSignerName,
+  notEffectiveText,
   onlyDigits,
   type RecordingDecision,
 } from '../lib/lessonRecordingConsent';
@@ -27,6 +29,8 @@ type Relation = 'SELF' | 'GUARDIAN';
 interface ConsentPublic {
   found: boolean;
   expired?: boolean;
+  /** Link fechado por excesso de códigos pedidos ou digitados errado. */
+  blocked?: boolean;
   school_name?: string | null;
   student_first_name?: string | null;
   requires_guardian?: boolean;
@@ -36,6 +40,9 @@ interface ConsentPublic {
   term_version?: string;
   term_body?: string;
   current_decision?: string;
+  /** A última resposta vale para transcrever? (falso: sem código, ou do aluno quando é o responsável quem responde). */
+  current_effective?: boolean;
+  current_not_effective_reason?: string | null;
 }
 
 interface CodeResponse {
@@ -97,6 +104,11 @@ export default function LessonRecordingConsentPage() {
   const guardianReason = asGuardianReason(data?.guardian_reason, data?.requires_guardian);
   const firstName = data?.student_first_name?.trim() || 'o aluno';
   const targetPhone = relation === 'SELF' ? data?.student_phone_masked : relation === 'GUARDIAN' ? data?.guardian_phone_masked : null;
+  // Servidor que ainda não manda os telefones mascarados (a página pública foi
+  // recriada por outra versão): oferece o envio assim mesmo; quem decide se há
+  // telefone é o servidor, e ele devolve o número mascarado ao mandar.
+  const phoneFieldKnown = !!data && (relation === 'SELF' ? 'student_phone_masked' in data : 'guardian_phone_masked' in data);
+  const canSendCode = !!targetPhone || !phoneFieldKnown;
   const codeReady = !!sentTo && sentTo.relation === relation;
 
   function chooseRelation(value: Relation) {
@@ -156,9 +168,11 @@ export default function LessonRecordingConsentPage() {
     return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
       <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
         <AlertCircle size={44} className="mx-auto mb-4 text-amber-500" />
-        <h1 className="mb-2 text-lg font-black text-slate-800">Link indisponível</h1>
+        <h1 className="mb-2 text-lg font-black text-slate-800">{data?.blocked ? 'Link bloqueado' : 'Link indisponível'}</h1>
         <p className="text-sm text-slate-500">
-          {data?.expired ? 'Este link expirou ou foi substituído por um mais novo.' : 'Não encontramos este link.'} Peça um novo à escola pelo WhatsApp.
+          {data?.blocked
+            ? 'Por segurança, este link foi bloqueado: pediram ou digitaram códigos errados vezes demais.'
+            : data?.expired ? 'Este link expirou ou foi substituído por um mais novo.' : 'Não encontramos este link.'} Peça um novo à escola pelo WhatsApp.
         </p>
       </div>
     </div>;
@@ -183,6 +197,9 @@ export default function LessonRecordingConsentPage() {
   }
 
   const current = asDecision(data.current_decision);
+  const notEffective = current === 'ACCEPTED' && data.current_effective === false
+    ? asNotEffectiveReason(data.current_not_effective_reason) || 'GUARDIAN_REQUIRED'
+    : null;
   const whoLabel = relation === 'SELF' ? 'do aluno' : 'do responsável';
 
   return <div className="min-h-screen bg-slate-100 px-4 py-8">
@@ -197,9 +214,13 @@ export default function LessonRecordingConsentPage() {
         <p className="text-sm text-slate-600">
           Este termo é sobre as aulas de <b className="text-slate-800">{firstName}</b>. Leia com calma e responda abaixo.
         </p>
-        {current !== 'NONE' && <p className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-          Situação atual: <b>{DECISION_LABEL[current]}</b>. Você pode responder de novo; vale a resposta mais recente.
-        </p>}
+        {notEffective
+          ? <p role="status" className="rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+              {notEffectiveText(notEffective, firstName)}
+            </p>
+          : current !== 'NONE' && <p className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
+              Situação atual: <b>{DECISION_LABEL[current]}</b>. Você pode responder de novo; vale a resposta mais recente.
+            </p>}
 
         <div className="max-h-[50vh] overflow-y-auto whitespace-pre-line rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
           {data.term_body}
@@ -236,9 +257,11 @@ export default function LessonRecordingConsentPage() {
             <MessageCircle size={16} className="mt-0.5 shrink-0 text-emerald-600" />
             {targetPhone
               ? <span>Para confirmar que é você, mandamos um código de 6 dígitos para o WhatsApp {whoLabel} cadastrado na escola: <b>{targetPhone}</b>.</span>
-              : <span>A escola não tem o WhatsApp {whoLabel} no cadastro. Peça à escola para cadastrar e mandar um link novo.</span>}
+              : canSendCode
+                ? <span>Para confirmar que é você, mandamos um código de 6 dígitos para o WhatsApp {whoLabel} cadastrado na escola.</span>
+                : <span>A escola não tem o WhatsApp {whoLabel} no cadastro. Peça à escola para cadastrar e mandar um link novo.</span>}
           </p>
-          {targetPhone && <button type="button" disabled={!!busy} onClick={() => void sendCode()}
+          {canSendCode && <button type="button" disabled={!!busy} onClick={() => void sendCode()}
             className="w-full rounded-2xl border border-emerald-600 py-3 text-[11px] font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">
             {busy === 'code' ? 'Enviando…' : codeReady ? 'Reenviar código' : 'Enviar código pelo WhatsApp'}
           </button>}

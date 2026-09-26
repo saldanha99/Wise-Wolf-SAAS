@@ -5,12 +5,16 @@ import StudentBirthDateField from './StudentBirthDateField';
 import {
   asDecision,
   asGuardianReason,
+  asLinkBlockedReason,
   consentErrorMessage,
   consentLink,
   consentWhatsAppMessage,
   DECISION_LABEL,
   formatDecisionDate,
+  GUARDIAN_PHONE_SAME_AS_STUDENT_TEXT,
+  GUARDIAN_PHONE_UNCONFIRMED_TEXT,
   GUARDIAN_REASON_LABEL,
+  LINK_BLOCKED_LABEL,
   RELATION_LABEL,
   whatsappUrl,
   type RecordingDecision,
@@ -34,8 +38,12 @@ type StudentRow = {
   verified_phone?: string | null;
   link_expires_at: string | null;
   link_code_phone_masked?: string | null;
+  /** Telefone/vínculo de responsável no cadastro sem confirmação da escola. */
+  guardian_phone_unconfirmed?: boolean;
+  guardian_phone_same_as_student?: boolean;
+  link_blocked_reason?: string | null;
 };
-type GeneratedLink = { url: string; codePhone: string | null };
+type GeneratedLink = { url: string; codePhone: string | null; guardianUnconfirmed: boolean };
 type TeacherRow = { teacher_id: string; name: string; decision: string; decided_at: string | null };
 type Overview = { google_connected: boolean; students: StudentRow[]; teachers: TeacherRow[] };
 
@@ -76,7 +84,11 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
     const codePhone = result.guardian_reason ? result.guardian_phone_masked : result.student_phone_masked;
     setLinks(current => ({
       ...current,
-      [student.student_id]: { url: consentLink(window.location.origin, result.token), codePhone: codePhone || null },
+      [student.student_id]: {
+        url: consentLink(window.location.origin, result.token),
+        codePhone: codePhone || null,
+        guardianUnconfirmed: !!result.guardian_reason && result.guardian_phone_unconfirmed === true,
+      },
     }));
     void load();
   }
@@ -147,6 +159,7 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
         const message = link ? consentWhatsAppMessage({ studentName: student.name, schoolName, link, forGuardian: !!reason, guardianReason: reason }) : '';
         const whatsapp = link ? whatsappUrl(student.contact_phone, message) : null;
         const ineffective = decision === 'ACCEPTED' && student.effective === false;
+        const blockedReason = asLinkBlockedReason(student.link_blocked_reason);
         return <article key={student.student_id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -165,6 +178,15 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
             {student.verification
               ? 'Este aceite foi dado pelo próprio aluno e hoje o cadastro exige o responsável: não vale para transcrever. Gere um link novo para o responsável.'
               : 'Este aceite foi dado sem o código de confirmação e não vale para transcrever. Gere um link novo.'}
+          </p>}
+          {reason && student.guardian_phone_unconfirmed && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+            {GUARDIAN_PHONE_UNCONFIRMED_TEXT}
+          </p>}
+          {reason && student.guardian_phone_same_as_student && <p className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {GUARDIAN_PHONE_SAME_AS_STUDENT_TEXT}
+          </p>}
+          {blockedReason && !link && <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-800">
+            {LINK_BLOCKED_LABEL[blockedReason]}
           </p>}
           {reason === 'AGE_UNKNOWN' && (ageEditor === student.student_id
             ? <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
@@ -200,7 +222,9 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
             <p className="text-xs">
               {generated?.codePhone
                 ? `O código de confirmação vai para ${generated.codePhone} (o cadastro de agora). Corrigiu o telefone depois? Gere um link novo.`
-                : `Sem WhatsApp ${reason ? 'do responsável' : 'do aluno'} no cadastro: a página não consegue mandar o código. Cadastre o telefone${reason === 'AGE_UNKNOWN' ? ' (ou a data de nascimento, se o aluno for maior)' : ''} e gere um link novo.`}
+                : generated?.guardianUnconfirmed
+                  ? GUARDIAN_PHONE_UNCONFIRMED_TEXT
+                  : `Sem WhatsApp ${reason ? 'do responsável' : 'do aluno'} no cadastro: a página não consegue mandar o código. Cadastre o telefone${reason === 'AGE_UNKNOWN' ? ' (ou a data de nascimento, se o aluno for maior)' : ''} e gere um link novo.`}
             </p>
             <p className="text-xs">O link vale 30 dias. Gerar outro invalida este.</p>
           </div>}

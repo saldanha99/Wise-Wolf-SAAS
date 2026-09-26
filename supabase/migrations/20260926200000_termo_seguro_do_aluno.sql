@@ -20,12 +20,21 @@
 --    edge `lesson-recording-code` (service_role), que o envia pelo helper que
 --    respeita o teto do WhatsApp; no banco fica só o hash (com o id do desafio
 --    como sal). Vale 10 minutos, 5 tentativas, 3 envios por hora por link.
---    O telefone é o do cadastro no momento em que a escola gerou o link: o
---    aluno que troca o próprio "telefone do responsável" depois não recebe o
---    código no lugar dele.
+--    O telefone é congelado no link por um trigger (vale para QUALQUER criador
+--    de link, inclusive o envio em lote), e só entra telefone ATESTADO: o
+--    contato de responsável verificado pela escola, ou o telefone/vínculo do
+--    responsável cuja última gravação na trilha (profile_audit_log) foi da
+--    direção, da coordenação ou do servidor (matrícula). O próprio aluno não
+--    altera mais nascimento, turma infantil, telefone nem vínculo do
+--    responsável pela API — senão um menor apontava o "telefone do
+--    responsável" para o próprio número e assinava no lugar da família.
 -- 4. A decisão registra que houve código e para qual telefone (mascarado).
 --    Aceite pelo link sem código (versão anterior) não vale para marcar aula,
---    e aceite "como aluno" deixa de valer se a escola descobrir que é menor.
+--    e aceite "como aluno" deixa de valer se a escola descobrir que é menor —
+--    e a página pública diz isso, em vez de mostrar "Autorizado".
+-- 5. Tetos acumulados por link: 3 envios por hora, 6 por dia e 10 no total;
+--    15 tentativas erradas somando todos os códigos. Batido o total, o link é
+--    bloqueado (a escola gera outro) e o painel mostra o motivo.
 
 -- ---------------------------------------------------------------------------
 -- 1. Data de nascimento cadastrada pela escola
@@ -209,13 +218,20 @@ begin
     'recorded_role', v_record.recorded_role,
     'reason', v_record.reason,
     'is_kids', coalesce(v_student.is_kids, false),
-    'guardian_reason', private.lesson_recording_guardian_reason(p_student_id)
+    'guardian_reason', private.lesson_recording_guardian_reason(p_student_id),
+    -- Telefone do responsável que recebe o código (só o atestado pela escola).
+    'guardian_code_phone_masked', private.lesson_recording_mask_phone(private.lesson_recording_guardian_phone(p_student_id)),
+    'guardian_phone_unconfirmed', private.lesson_recording_guardian_phone_unconfirmed(p_student_id)
   );
 end;
 $$;
 
--- Trilha de aluno ganha nascimento, turma infantil e telefone do responsável
--- (quem recebe o código quando o responsável responde). Resto igual ao vivo.
+-- Trilha de aluno ganha nascimento, turma infantil, telefone e vínculo do
+-- responsável (quem recebe o código quando o responsável responde): é por
+-- ela que se sabe se o telefone do responsável foi gravado pela escola.
+-- changed_at passa a ser o relógio da mudança (clock_timestamp), não o início
+-- da transação: duas mudanças na mesma transação ficam em ordem na trilha.
+-- Resto igual ao vivo.
 create or replace function public.log_profile_changes()
  returns trigger
  language plpgsql
@@ -235,11 +251,12 @@ BEGIN
       ('cpf', OLD.cpf, NEW.cpf), ('phone', OLD.phone, NEW.phone),
       ('birth_date', OLD.birth_date::text, NEW.birth_date::text),
       ('is_kids', OLD.is_kids::text, NEW.is_kids::text),
-      ('guardian_phone', OLD.guardian_phone, NEW.guardian_phone)
+      ('guardian_phone', OLD.guardian_phone, NEW.guardian_phone),
+      ('guardian_id', OLD.guardian_id::text, NEW.guardian_id::text)
     ) AS t(field, oldv, newv) LOOP
       IF PROC.oldv IS DISTINCT FROM PROC.newv THEN
-        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value)
-        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv); END IF;
+        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value, changed_at)
+        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv, clock_timestamp()); END IF;
     END LOOP;
   ELSIF NEW.role = 'TEACHER' THEN
     FOR PROC IN SELECT * FROM (VALUES
@@ -249,8 +266,8 @@ BEGIN
       ('status', OLD.status, NEW.status), ('pix_key', OLD.pix_key, NEW.pix_key)
     ) AS t(field, oldv, newv) LOOP
       IF PROC.oldv IS DISTINCT FROM PROC.newv THEN
-        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value)
-        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv); END IF;
+        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value, changed_at)
+        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv, clock_timestamp()); END IF;
     END LOOP;
   ELSIF NEW.role = 'SALESPERSON' THEN
     FOR PROC IN SELECT * FROM (VALUES
@@ -259,8 +276,8 @@ BEGIN
       ('status', OLD.status, NEW.status), ('pix_key', OLD.pix_key, NEW.pix_key)
     ) AS t(field, oldv, newv) LOOP
       IF PROC.oldv IS DISTINCT FROM PROC.newv THEN
-        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value)
-        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv); END IF;
+        INSERT INTO profile_audit_log (tenant_id, profile_id, changed_by, field, old_value, new_value, changed_at)
+        VALUES (NEW.tenant_id, NEW.id, v_by, PROC.field, PROC.oldv, PROC.newv, clock_timestamp()); END IF;
     END LOOP;
   END IF;
   RETURN NEW;
@@ -272,7 +289,11 @@ $function$;
 -- ---------------------------------------------------------------------------
 
 -- Pela API (PostgREST): mesmo bloco que já protege nascimento e telefone do
--- responsável. Resto igual à definição viva.
+-- responsável. E o próprio aluno deixa de mudar, no perfil dele, o que decide
+-- quem responde o termo (nascimento, turma infantil, telefone e vínculo do
+-- responsável): nenhuma tela do aluno grava esses campos (conferido em
+-- 26/09/2026); matrícula e escola gravam por outros caminhos. Resto igual à
+-- definição viva.
 create or replace function public.enforce_profile_authorization_fields()
  returns trigger
  language plpgsql
@@ -363,6 +384,16 @@ begin
     end if;
   end if;
 
+  if actor_role = 'STUDENT' and old.id = actor_id then
+    if new.birth_date is distinct from old.birth_date
+       or new.is_kids is distinct from old.is_kids
+       or new.guardian_phone is distinct from old.guardian_phone
+       or new.guardian_id is distinct from old.guardian_id then
+      raise exception 'school-managed profile fields cannot be changed by the student'
+        using errcode = '42501';
+    end if;
+  end if;
+
   return new;
 end;
 $function$;
@@ -414,7 +445,7 @@ end;
 $function$;
 
 -- ---------------------------------------------------------------------------
--- 3. Telefone do código: o do cadastro quando a escola gerou o link
+-- 3. Telefone do código: o atestado pela escola, congelado quando o link nasce
 -- ---------------------------------------------------------------------------
 
 -- Só dígitos; número brasileiro sem DDI ganha o 55. Fora do formato, nulo.
@@ -466,8 +497,59 @@ language sql stable security definer set search_path = '' as $$
   );
 $$;
 
--- Telefone do responsável: contato verificado, o do cadastro do aluno, e o
--- do perfil do responsável financeiro vinculado.
+-- Quem pode atestar um dado do aluno que decide o termo: a escola (direção,
+-- coordenação da própria escola, super admin) ou o servidor sem usuário na
+-- sessão (matrícula por service_role, rotina de banco). Aluno, professor e
+-- qualquer outro papel, não.
+create or replace function private.lesson_recording_trusted_editor(p_actor uuid, p_tenant text)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select p_actor is null or exists (
+    select 1 from public.profiles as editor
+    where editor.id = p_actor
+      and (editor.role = 'SUPER_ADMIN'
+        or (editor.role in ('SCHOOL_ADMIN', 'COORDINATOR') and editor.tenant_id = p_tenant))
+  );
+$$;
+
+-- O valor ATUAL de um campo do aluno foi gravado por quem pode atestar? Lê a
+-- trilha de profile_audit_log (escrita só pelo trigger log_profile_changes e
+-- por RPCs da escola; a tabela não aceita INSERT de fora): as linhas mais
+-- recentes do campo têm de trazer o valor de hoje e autor confiável. Empate
+-- de horário conta contra (fail-closed). Sem trilha — valor gravado antes da
+-- auditoria ou na criação do perfil — não está atestado: a escola confirma
+-- pelo contato de responsável verificado (ficha do aluno).
+create or replace function private.lesson_recording_profile_value_attested(
+  p_student uuid,
+  p_field text,
+  p_current text
+)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select p_current is not null and coalesce((
+    select bool_and(
+      latest.new_value is not distinct from p_current
+      and latest.tenant_id is not distinct from student.tenant_id
+      and private.lesson_recording_trusted_editor(latest.changed_by, student.tenant_id)
+    )
+    from public.profiles as student
+    cross join lateral (
+      select log.new_value, log.changed_by, log.tenant_id,
+             rank() over (order by log.changed_at desc) as position
+      from public.profile_audit_log as log
+      where log.profile_id = p_student and log.field = p_field
+    ) as latest
+    where student.id = p_student and latest.position = 1
+  ), false);
+$$;
+
+-- Telefone do responsável que recebe o código: só o ATESTADO pela escola.
+-- 1) contato de responsável verificado pela escola (student_quality_contacts,
+--    aprovado na ficha do aluno); 2) guardian_phone gravado pela escola ou pela
+--    matrícula; 3) telefone do perfil do responsável financeiro, quando o
+--    vínculo (guardian_id) foi gravado pela escola ou pela matrícula.
+-- Número que o próprio aluno pôs no cadastro não entra, nem que seja por uma
+-- rota antiga: a trilha diria que foi ele.
 create or replace function private.lesson_recording_guardian_phone(p_student uuid)
 returns text
 language sql stable security definer set search_path = '' as $$
@@ -482,24 +564,84 @@ language sql stable security definer set search_path = '' as $$
       order by contact.verified_at desc
       limit 1
     ),
-    (select private.lesson_recording_normalize_phone(student.guardian_phone) from public.profiles as student where student.id = p_student),
+    (
+      select private.lesson_recording_normalize_phone(student.guardian_phone)
+      from public.profiles as student
+      where student.id = p_student
+        and private.lesson_recording_profile_value_attested(p_student, 'guardian_phone', student.guardian_phone)
+    ),
     (
       select private.lesson_recording_normalize_phone(guardian.phone)
       from public.profiles as student
       join public.profiles as guardian on guardian.id = student.guardian_id
-      where student.id = p_student and guardian.tenant_id = student.tenant_id
+      where student.id = p_student and guardian.id <> student.id
+        and guardian.tenant_id = student.tenant_id
+        and private.lesson_recording_profile_value_attested(p_student, 'guardian_id', student.guardian_id::text)
     )
   );
+$$;
+
+-- O cadastro tem telefone ou vínculo de responsável, mas nenhum atestado: a
+-- escola precisa confirmar (o painel explica onde).
+create or replace function private.lesson_recording_guardian_phone_unconfirmed(p_student uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select (nullif(btrim(coalesce(student.guardian_phone, '')), '') is not null
+        or student.guardian_id is not null)
+      and private.lesson_recording_guardian_phone(p_student) is null
+    from public.profiles as student
+    where student.id = p_student
+  ), false);
+$$;
+
+-- Mesmo número para aluno e responsável (comum quando a criança não tem
+-- celular e o cadastro usa o da família). Não bloqueia — a escola atestou —,
+-- mas o painel pede para conferir.
+create or replace function private.lesson_recording_same_phone(p_left text, p_right text)
+returns boolean
+language sql immutable set search_path = '' as $$
+  select length(pg_catalog.regexp_replace(coalesce(p_left, ''), '\D', '', 'g')) >= 8
+    and right(pg_catalog.regexp_replace(coalesce(p_left, ''), '\D', '', 'g'), 8)
+      = right(pg_catalog.regexp_replace(coalesce(p_right, ''), '\D', '', 'g'), 8);
 $$;
 
 alter table private.lesson_recording_consent_links
   add column if not exists student_phone text
     check (student_phone is null or student_phone ~ '^[0-9]{12,15}$'),
   add column if not exists guardian_phone text
-    check (guardian_phone is null or guardian_phone ~ '^[0-9]{12,15}$');
+    check (guardian_phone is null or guardian_phone ~ '^[0-9]{12,15}$'),
+  add column if not exists blocked_at timestamptz,
+  add column if not exists blocked_reason text
+    check (blocked_reason is null or blocked_reason in ('CODE_ATTEMPTS', 'CODE_SENDS'));
+
+-- Congela no link, na criação, os telefones atestados de hoje — para QUALQUER
+-- criador (a tela da escola, o envio em lote, uma rotina futura) e ignorando
+-- o que o criador mandou. Depois de criado, o telefone do link não muda.
+create or replace function private.lesson_recording_freeze_link_phones()
+returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    new.student_phone := private.lesson_recording_student_phone(new.student_id);
+    new.guardian_phone := private.lesson_recording_guardian_phone(new.student_id);
+  elsif new.student_phone is distinct from old.student_phone
+     or new.guardian_phone is distinct from old.guardian_phone then
+    raise exception 'lesson_recording_link_phone_frozen' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists lesson_recording_consent_links_freeze_phones
+  on private.lesson_recording_consent_links;
+create trigger lesson_recording_consent_links_freeze_phones
+  before insert or update of student_phone, guardian_phone
+  on private.lesson_recording_consent_links
+  for each row execute function private.lesson_recording_freeze_link_phones();
 
 create table if not exists private.lesson_recording_consent_challenges (
   id uuid primary key,
+  seq bigint generated always as identity,
   link_id uuid not null references private.lesson_recording_consent_links(id),
   tenant_id text not null references public.tenants(id),
   student_id uuid not null references public.profiles(id),
@@ -515,8 +657,14 @@ create table if not exists private.lesson_recording_consent_challenges (
   consumed_at timestamptz,
   invalidated_at timestamptz
 );
+-- Ordem estrita dos códigos de um link (created_at empata dentro da mesma
+-- transação). Quem já tinha a tabela sem a coluna ganha a coluna aqui.
+alter table private.lesson_recording_consent_challenges
+  add column if not exists seq bigint generated always as identity;
 create index if not exists lesson_recording_consent_challenges_link_idx
   on private.lesson_recording_consent_challenges(link_id, created_at desc);
+create index if not exists lesson_recording_consent_challenges_link_seq_idx
+  on private.lesson_recording_consent_challenges(link_id, seq desc);
 
 alter table private.lesson_recording_consent_challenges owner to postgres;
 alter table private.lesson_recording_consent_challenges enable row level security;
@@ -608,15 +756,15 @@ begin
      set revoked_at = pg_catalog.now()
    where student_id = p_student_id and revoked_at is null;
 
-  v_student_phone := private.lesson_recording_student_phone(p_student_id);
-  v_guardian_phone := private.lesson_recording_guardian_phone(p_student_id);
+  -- Os telefones do código são congelados pelo trigger do link (atestados).
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
   insert into private.lesson_recording_consent_links (
-    tenant_id, student_id, token_hash, created_by, expires_at, student_phone, guardian_phone
+    tenant_id, student_id, token_hash, created_by, expires_at
   ) values (
     v_student.tenant_id, p_student_id, encode(extensions.digest(v_token, 'sha256'), 'hex'),
-    (select auth.uid()), v_expires, v_student_phone, v_guardian_phone
-  );
+    (select auth.uid()), v_expires
+  )
+  returning student_phone, guardian_phone into v_student_phone, v_guardian_phone;
 
   return jsonb_build_object(
     'ok', true,
@@ -624,7 +772,50 @@ begin
     'expires_at', v_expires,
     'guardian_reason', private.lesson_recording_guardian_reason(p_student_id),
     'student_phone_masked', private.lesson_recording_mask_phone(v_student_phone),
-    'guardian_phone_masked', private.lesson_recording_mask_phone(v_guardian_phone)
+    'guardian_phone_masked', private.lesson_recording_mask_phone(v_guardian_phone),
+    'guardian_phone_unconfirmed', private.lesson_recording_guardian_phone_unconfirmed(p_student_id)
+  );
+end;
+$$;
+
+-- O que a página pública precisa saber para pedir o código e para não
+-- mostrar como resolvido um aceite que não vale. Fica numa função própria
+-- para que QUALQUER versão de get_lesson_recording_consent_public (a do envio
+-- em lote recria a página) só precise juntar `|| lesson_recording_public_link_fields(link)`.
+create or replace function private.lesson_recording_public_link_fields(p_link_id uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_link private.lesson_recording_consent_links;
+  v_reason text;
+  v_decision text;
+  v_verification text;
+  v_effective boolean;
+begin
+  select * into v_link from private.lesson_recording_consent_links where id = p_link_id;
+  if not found then
+    return '{}'::jsonb;
+  end if;
+  v_reason := private.lesson_recording_guardian_reason(v_link.student_id);
+  select consent.decision, consent.verification into v_decision, v_verification
+  from private.lesson_recording_consents as consent
+  where consent.subject_id = v_link.student_id
+  order by consent.seq desc
+  limit 1;
+  v_effective := private.lesson_recording_student_consent_effective(v_link.student_id);
+
+  return jsonb_build_object(
+    'requires_guardian', v_reason is not null,
+    'guardian_reason', v_reason,
+    'student_phone_masked', private.lesson_recording_mask_phone(v_link.student_phone),
+    'guardian_phone_masked', private.lesson_recording_mask_phone(v_link.guardian_phone),
+    'current_effective', v_effective,
+    -- Aceite gravado que não vale: sem o código (versão anterior do link) ou
+    -- dado pelo aluno quando hoje o cadastro exige o responsável.
+    'current_not_effective_reason', case
+      when v_decision = 'ACCEPTED' and not v_effective then
+        case when v_verification is distinct from 'WHATSAPP_CODE' then 'UNVERIFIED' else 'GUARDIAN_REQUIRED' end
+    end
   );
 end;
 $$;
@@ -637,7 +828,6 @@ declare
   v_term private.lesson_recording_terms;
   v_student_name text;
   v_school_name text;
-  v_reason text;
 begin
   if coalesce(p_token, '') !~ '^[a-f0-9]{64}$' then
     return jsonb_build_object('found', false);
@@ -645,6 +835,9 @@ begin
   select * into v_link
   from private.lesson_recording_consent_links
   where token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex');
+  if found and v_link.blocked_at is not null then
+    return jsonb_build_object('found', false, 'expired', true, 'blocked', true);
+  end if;
   if not found or v_link.revoked_at is not null or v_link.expires_at <= pg_catalog.now() then
     return jsonb_build_object('found', false, 'expired', found);
   end if;
@@ -653,22 +846,49 @@ begin
   select split_part(btrim(student.full_name), ' ', 1) into v_student_name
   from public.profiles as student where student.id = v_link.student_id;
   select tenant.name into v_school_name from public.tenants as tenant where tenant.id = v_link.tenant_id;
-  v_reason := private.lesson_recording_guardian_reason(v_link.student_id);
 
   return jsonb_build_object(
     'found', true,
     'school_name', v_school_name,
     'student_first_name', v_student_name,
-    'requires_guardian', v_reason is not null,
-    'guardian_reason', v_reason,
-    'student_phone_masked', private.lesson_recording_mask_phone(v_link.student_phone),
-    'guardian_phone_masked', private.lesson_recording_mask_phone(v_link.guardian_phone),
     'term_version', v_term.version,
     'term_body', v_term.body,
     'current_decision', private.lesson_recording_consent_state(v_link.student_id),
     'expires_at', v_link.expires_at
-  );
+  ) || private.lesson_recording_public_link_fields(v_link.id);
 end;
+$$;
+
+-- Tetos do código por link. Por hora e por dia protegem o número da escola
+-- (restringido pelo WhatsApp em 17/09/2026 depois de mensagens em série) e a
+-- família de receber código sem pedir; o total e as tentativas erradas
+-- somadas fecham o link vazado de vez — a escola gera outro.
+create or replace function private.lesson_recording_code_limits()
+returns jsonb
+language sql immutable set search_path = '' as $$
+  select jsonb_build_object(
+    'sends_per_hour', 3,
+    'requests_per_hour', 10,
+    'sends_per_day', 6,
+    'sends_per_link', 10,
+    'wrong_attempts_per_code', 5,
+    'wrong_attempts_per_link', 15
+  );
+$$;
+
+-- Bloqueia o link (e os códigos vivos dele). Bloqueado também é revogado:
+-- toda rota que confere revoked_at já trata o link como morto.
+create or replace function private.lesson_recording_block_link(p_link_id uuid, p_reason text)
+returns void
+language sql volatile security definer set search_path = '' as $$
+  update private.lesson_recording_consent_links
+     set blocked_at = coalesce(blocked_at, pg_catalog.now()),
+         blocked_reason = coalesce(blocked_reason, p_reason),
+         revoked_at = coalesce(revoked_at, pg_catalog.now())
+   where id = p_link_id;
+  update private.lesson_recording_consent_challenges
+     set invalidated_at = pg_catalog.now()
+   where link_id = p_link_id and consumed_at is null and invalidated_at is null;
 $$;
 
 -- Só a edge `lesson-recording-code` (service_role) chama: devolve o código
@@ -677,12 +897,16 @@ create or replace function public.issue_lesson_recording_consent_code(p_token te
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
+  v_limits jsonb := private.lesson_recording_code_limits();
   v_link private.lesson_recording_consent_links;
   v_destination text;
-  v_delivered integer;
-  v_issued integer;
-  v_oldest_delivered timestamptz;
-  v_oldest_issued timestamptz;
+  v_delivered_hour integer;
+  v_issued_hour integer;
+  v_delivered_day integer;
+  v_delivered_total integer;
+  v_oldest_delivered_hour timestamptz;
+  v_oldest_issued_hour timestamptz;
+  v_oldest_delivered_day timestamptz;
   v_id uuid := extensions.gen_random_uuid();
   v_code text;
   v_expires timestamptz := pg_catalog.now() + interval '10 minutes';
@@ -698,6 +922,9 @@ begin
   from private.lesson_recording_consent_links
   where token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')
   for update;
+  if found and v_link.blocked_at is not null then
+    return jsonb_build_object('ok', false, 'error', 'link_bloqueado');
+  end if;
   if not found or v_link.revoked_at is not null or v_link.expires_at <= pg_catalog.now() then
     return jsonb_build_object('ok', false, 'error', 'link_expirado');
   end if;
@@ -710,20 +937,45 @@ begin
     return jsonb_build_object('ok', false, 'error', 'telefone_nao_cadastrado');
   end if;
 
-  select count(*) filter (where challenge.delivery_status <> 'NOT_SENT'),
-         count(*),
-         min(challenge.created_at) filter (where challenge.delivery_status <> 'NOT_SENT'),
-         min(challenge.created_at)
-    into v_delivered, v_issued, v_oldest_delivered, v_oldest_issued
+  -- "Entregue" = pode ter chegado (SENT, AMBIGUOUS e ISSUED sem resultado);
+  -- NOT_SENT não saiu e não conta.
+  select count(*) filter (where challenge.delivery_status <> 'NOT_SENT'
+           and challenge.created_at > pg_catalog.now() - interval '1 hour'),
+         count(*) filter (where challenge.created_at > pg_catalog.now() - interval '1 hour'),
+         count(*) filter (where challenge.delivery_status <> 'NOT_SENT'
+           and challenge.created_at > pg_catalog.now() - interval '24 hours'),
+         count(*) filter (where challenge.delivery_status <> 'NOT_SENT'),
+         min(challenge.created_at) filter (where challenge.delivery_status <> 'NOT_SENT'
+           and challenge.created_at > pg_catalog.now() - interval '1 hour'),
+         min(challenge.created_at) filter (where challenge.created_at > pg_catalog.now() - interval '1 hour'),
+         min(challenge.created_at) filter (where challenge.delivery_status <> 'NOT_SENT'
+           and challenge.created_at > pg_catalog.now() - interval '24 hours')
+    into v_delivered_hour, v_issued_hour, v_delivered_day, v_delivered_total,
+         v_oldest_delivered_hour, v_oldest_issued_hour, v_oldest_delivered_day
   from private.lesson_recording_consent_challenges as challenge
-  where challenge.link_id = v_link.id
-    and challenge.created_at > pg_catalog.now() - interval '1 hour';
-  if v_delivered >= 3 or v_issued >= 10 then
+  where challenge.link_id = v_link.id;
+
+  if v_delivered_total >= (v_limits ->> 'sends_per_link')::integer then
+    perform private.lesson_recording_block_link(v_link.id, 'CODE_SENDS');
+    return jsonb_build_object('ok', false, 'error', 'link_bloqueado');
+  end if;
+  if v_delivered_day >= (v_limits ->> 'sends_per_day')::integer then
+    return jsonb_build_object(
+      'ok', false,
+      'error', 'limite_diario',
+      'retry_after_seconds', greatest(60, ceil(extract(epoch from (
+        v_oldest_delivered_day + interval '24 hours' - pg_catalog.now()
+      )))::integer)
+    );
+  end if;
+  if v_delivered_hour >= (v_limits ->> 'sends_per_hour')::integer
+     or v_issued_hour >= (v_limits ->> 'requests_per_hour')::integer then
     return jsonb_build_object(
       'ok', false,
       'error', 'limite_de_envios',
       'retry_after_seconds', greatest(60, ceil(extract(epoch from (
-        (case when v_delivered >= 3 then v_oldest_delivered else v_oldest_issued end)
+        (case when v_delivered_hour >= (v_limits ->> 'sends_per_hour')::integer
+          then v_oldest_delivered_hour else v_oldest_issued_hour end)
           + interval '1 hour' - pg_catalog.now()
       )))::integer)
     );
@@ -758,9 +1010,12 @@ begin
 end;
 $$;
 
--- Resultado do envio. NOT_SENT (nada saiu) não conta no limite de 3 por hora
--- e invalida este código; SENT/AMBIGUOUS (pode ter chegado) conta e passa a
--- ser o único código vivo do link. Enquanto ISSUED, o código não decide nada.
+-- Resultado do envio. NOT_SENT (nada saiu) não conta no limite e invalida
+-- este código; SENT/AMBIGUOUS (pode ter chegado) conta e derruba os códigos
+-- ANTERIORES deste link. Só os anteriores: dois pedidos ao mesmo tempo (duas
+-- abas, um retry depois de timeout) terminando fora de ordem não podem matar
+-- o mais novo — antes, cada um derrubava o outro e a família ficava com dois
+-- códigos inúteis. Enquanto ISSUED, o código não decide nada.
 create or replace function public.settle_lesson_recording_consent_code(
   p_challenge_id uuid,
   p_status text,
@@ -770,6 +1025,8 @@ returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   v_link uuid;
+  v_seq bigint;
+  v_invalidated timestamptz;
 begin
   if coalesce(p_status, '') not in ('SENT', 'AMBIGUOUS', 'NOT_SENT') then
     return jsonb_build_object('ok', false, 'error', 'resposta_invalida');
@@ -780,14 +1037,15 @@ begin
          invalidated_at = case when p_status = 'NOT_SENT'
            then coalesce(invalidated_at, pg_catalog.now()) else invalidated_at end
    where id = p_challenge_id and delivery_status = 'ISSUED'
-  returning link_id into v_link;
+  returning link_id, seq, invalidated_at into v_link, v_seq, v_invalidated;
   if v_link is null then
     return jsonb_build_object('ok', false);
   end if;
-  if p_status <> 'NOT_SENT' then
+  -- Código já derrubado por um mais novo não derruba ninguém.
+  if p_status <> 'NOT_SENT' and v_invalidated is null then
     update private.lesson_recording_consent_challenges
        set invalidated_at = pg_catalog.now()
-     where link_id = v_link and id <> p_challenge_id
+     where link_id = v_link and seq < v_seq
        and consumed_at is null and invalidated_at is null;
   end if;
   return jsonb_build_object('ok', true);
@@ -808,6 +1066,7 @@ create or replace function public.decide_lesson_recording_consent_public(
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
+  v_limits jsonb := private.lesson_recording_code_limits();
   v_link private.lesson_recording_consent_links;
   v_term private.lesson_recording_terms;
   v_challenge private.lesson_recording_consent_challenges;
@@ -815,6 +1074,7 @@ declare
   v_code text := btrim(coalesce(p_code, ''));
   v_decision text;
   v_masked text;
+  v_wrong_total integer;
 begin
   if p_accept is null or coalesce(p_token, '') !~ '^[a-f0-9]{64}$' then
     raise exception 'resposta_invalida' using errcode = '22023';
@@ -830,6 +1090,9 @@ begin
   from private.lesson_recording_consent_links
   where token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')
   for update;
+  if found and v_link.blocked_at is not null then
+    raise exception 'link_bloqueado' using errcode = '22023';
+  end if;
   if not found or v_link.revoked_at is not null or v_link.expires_at <= pg_catalog.now() then
     raise exception 'link_expirado' using errcode = '22023';
   end if;
@@ -850,25 +1113,36 @@ begin
     and challenge.consumed_at is null
     and challenge.invalidated_at is null
     and challenge.delivery_status in ('SENT', 'AMBIGUOUS')
-  order by challenge.created_at desc
+  order by challenge.seq desc
   limit 1
   for update;
   if not found or v_challenge.expires_at <= pg_catalog.now() then
     return jsonb_build_object('ok', false, 'error', 'codigo_expirado');
   end if;
-  if v_challenge.attempts >= 5 then
+  if v_challenge.attempts >= (v_limits ->> 'wrong_attempts_per_code')::integer then
     return jsonb_build_object('ok', false, 'error', 'codigo_bloqueado', 'attempts_left', 0);
   end if;
 
   if encode(extensions.digest(v_challenge.id::text || ':' || v_code, 'sha256'), 'hex') <> v_challenge.code_hash then
     update private.lesson_recording_consent_challenges
        set attempts = attempts + 1,
-           invalidated_at = case when attempts + 1 >= 5 then pg_catalog.now() else invalidated_at end
+           invalidated_at = case when attempts + 1 >= (v_limits ->> 'wrong_attempts_per_code')::integer
+             then pg_catalog.now() else invalidated_at end
      where id = v_challenge.id;
+    -- Tentativas erradas somando todos os códigos do link: passou do teto,
+    -- quem está chutando não tem o WhatsApp da família; o link fecha.
+    select coalesce(sum(challenge.attempts), 0) into v_wrong_total
+    from private.lesson_recording_consent_challenges as challenge
+    where challenge.link_id = v_link.id;
+    if v_wrong_total >= (v_limits ->> 'wrong_attempts_per_link')::integer then
+      perform private.lesson_recording_block_link(v_link.id, 'CODE_ATTEMPTS');
+      return jsonb_build_object('ok', false, 'error', 'link_bloqueado', 'attempts_left', 0);
+    end if;
     return jsonb_build_object(
       'ok', false,
-      'error', case when v_challenge.attempts + 1 >= 5 then 'codigo_bloqueado' else 'codigo_incorreto' end,
-      'attempts_left', greatest(0, 5 - (v_challenge.attempts + 1))
+      'error', case when v_challenge.attempts + 1 >= (v_limits ->> 'wrong_attempts_per_code')::integer
+        then 'codigo_bloqueado' else 'codigo_incorreto' end,
+      'attempts_left', greatest(0, (v_limits ->> 'wrong_attempts_per_code')::integer - (v_challenge.attempts + 1))
     );
   end if;
 
@@ -925,7 +1199,7 @@ begin
           'school_birth_date', private.lesson_recording_school_birth_date(student.id),
           'guardian_name', nullif(btrim(coalesce(student.guardian_name, '')), ''),
           'contact_phone', case when reason.value is not null
-            then private.lesson_recording_guardian_phone(student.id)
+            then guardian_phone.value
             else private.lesson_recording_student_phone(student.id) end,
           'decision', coalesce(last_decision.decision, 'NONE'),
           'effective', private.lesson_recording_student_consent_effective(student.id),
@@ -937,10 +1211,29 @@ begin
           'link_expires_at', live_link.expires_at,
           'link_code_phone_masked', private.lesson_recording_mask_phone(
             case when reason.value is not null then live_link.guardian_phone else live_link.student_phone end
-          )
+          ),
+          -- Tem telefone/vínculo de responsável no cadastro, mas nenhum
+          -- atestado pela escola: o código não sai até a escola confirmar.
+          'guardian_phone_unconfirmed', reason.value is not null
+            and private.lesson_recording_guardian_phone_unconfirmed(student.id),
+          -- Responsável com o mesmo número do aluno: vale (a escola atestou),
+          -- mas o painel pede para conferir.
+          'guardian_phone_same_as_student', reason.value is not null
+            and (private.lesson_recording_same_phone(guardian_phone.value, student.phone)
+              or private.lesson_recording_same_phone(guardian_phone.value, student.attendance_phone)),
+          -- Último link bloqueado por excesso de códigos ou de tentativas.
+          'link_blocked_reason', case when live_link.expires_at is null then last_link.blocked_reason end,
+          'link_blocked_at', case when live_link.expires_at is null then last_link.blocked_at end
         ) as row_data
         from public.profiles as student
         cross join lateral (select private.lesson_recording_guardian_reason(student.id) as value) as reason
+        cross join lateral (select private.lesson_recording_guardian_phone(student.id) as value) as guardian_phone
+        left join lateral (
+          select link.blocked_reason, link.blocked_at
+          from private.lesson_recording_consent_links as link
+          where link.student_id = student.id
+          order by link.created_at desc limit 1
+        ) as last_link on true
         left join lateral (
           select consent.decision, consent.decided_at, consent.signer_name, consent.signer_relation,
                  consent.verification, consent.verified_phone
@@ -1009,6 +1302,14 @@ begin
     'private.lesson_recording_mask_phone(text)',
     'private.lesson_recording_student_phone(uuid)',
     'private.lesson_recording_guardian_phone(uuid)',
+    'private.lesson_recording_trusted_editor(uuid,text)',
+    'private.lesson_recording_profile_value_attested(uuid,text,text)',
+    'private.lesson_recording_guardian_phone_unconfirmed(uuid)',
+    'private.lesson_recording_same_phone(text,text)',
+    'private.lesson_recording_freeze_link_phones()',
+    'private.lesson_recording_public_link_fields(uuid)',
+    'private.lesson_recording_code_limits()',
+    'private.lesson_recording_block_link(uuid,text)',
     'private.lesson_recording_student_consent_effective(uuid)',
     'private.lesson_recording_active(uuid,uuid)',
     'public.set_student_birth_date(uuid,date,text)',

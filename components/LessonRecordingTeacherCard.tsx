@@ -18,6 +18,11 @@ type MyConsent = { applies: boolean; decision?: string; decided_at?: string | nu
 // professor confirma por login Google a conta que entra como coanfitriã da
 // sala (decisão da direção, 26/09/2026): a escola não infere identidade pelo
 // e-mail digitado no cadastro.
+// ⚠️ Depende do backend de identidade (get_my_google_identity, ação
+// teacher_identity_connect do google-meet e a trava
+// teacher_google_identity_required em set_my_lesson_recording_consent), de
+// outra frente: sem ele o estado é "indisponível" e ninguém aceita pela tela.
+// Os dois sobem juntos (runbook, "Conta Google do professor antes do aceite").
 export default function LessonRecordingTeacherCard() {
   const [data, setData] = useState<MyConsent | null>(null);
   const [identity, setIdentity] = useState<GoogleIdentityState | null>(null);

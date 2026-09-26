@@ -45,6 +45,46 @@ export function guardianReasonText(reason: GuardianReason, firstName: string): s
   return `Como ${firstName} é menor de idade, quem responde é o responsável legal.`;
 }
 
+/** Por que um aceite gravado não vale para transcrever (servidor decide). */
+export type NotEffectiveReason = 'GUARDIAN_REQUIRED' | 'UNVERIFIED';
+
+export function asNotEffectiveReason(value: unknown): NotEffectiveReason | null {
+  return value === 'GUARDIAN_REQUIRED' || value === 'UNVERIFIED' ? value : null;
+}
+
+/**
+ * Texto da página pública quando a última resposta foi "autorizo" mas ela não
+ * vale mais — em vez de "Situação atual: Autorizado", que faria o responsável
+ * fechar a página achando que está resolvido.
+ */
+export function notEffectiveText(reason: NotEffectiveReason, firstName: string): string {
+  if (reason === 'UNVERIFIED') {
+    return `A autorização anterior foi registrada sem a confirmação pelo WhatsApp e não vale mais. Responda de novo abaixo para as aulas de ${firstName} serem registradas.`;
+  }
+  return `A autorização anterior foi dada pelo próprio aluno e não vale: ${firstName} é menor de idade (ou a escola não confirmou a idade). O responsável precisa responder abaixo.`;
+}
+
+/** Por que o link foi fechado pelo servidor. */
+export type LinkBlockedReason = 'CODE_ATTEMPTS' | 'CODE_SENDS';
+
+export function asLinkBlockedReason(value: unknown): LinkBlockedReason | null {
+  return value === 'CODE_ATTEMPTS' || value === 'CODE_SENDS' ? value : null;
+}
+
+/** Explicação para a escola, no painel, de por que o último link fechou. */
+export const LINK_BLOCKED_LABEL: Record<LinkBlockedReason, string> = {
+  CODE_ATTEMPTS: 'O último link foi bloqueado: muitos códigos digitados errado. Confirme com a família e gere um link novo.',
+  CODE_SENDS: 'O último link foi bloqueado: pediram códigos demais por ele. Confirme com a família e gere um link novo.',
+};
+
+/** Painel: telefone do responsável existe no cadastro, mas a escola não confirmou. */
+export const GUARDIAN_PHONE_UNCONFIRMED_TEXT =
+  'O telefone do responsável no cadastro não foi confirmado pela escola, então o código não sai. Cadastre o responsável em “Contatos verificados” na ficha do aluno (ou corrija o telefone pela ficha) e gere um link novo.';
+
+/** Painel: responsável com o mesmo número do aluno. */
+export const GUARDIAN_PHONE_SAME_AS_STUDENT_TEXT =
+  'O telefone do responsável é o mesmo do aluno. Confira se esse número é mesmo do responsável: é ele que recebe o código.';
+
 /** Explicação curta para a escola, no painel. */
 export const GUARDIAN_REASON_LABEL: Record<GuardianReason, string> = {
   KIDS: 'Turma infantil · responde o responsável',
@@ -129,6 +169,8 @@ const ERRORS: Record<string, string> = {
   codigo_expirado: 'O código venceu ou não vale mais. Peça um código novo.',
   codigo_bloqueado: 'Muitas tentativas erradas. Peça um código novo.',
   limite_de_envios: 'Já mandamos 3 códigos na última hora. Espere um pouco para pedir outro.',
+  limite_diario: 'Já mandamos 6 códigos por este link hoje. Espere para pedir outro.',
+  link_bloqueado: 'Este link foi bloqueado por segurança (muitos códigos pedidos ou digitados errado). Peça um link novo à escola.',
   aguarde: 'O WhatsApp da escola está com fila. Tente pedir o código de novo em instantes.',
   telefone_nao_cadastrado: 'A escola não tem este WhatsApp no cadastro. Peça à escola para cadastrar e mandar um link novo.',
   whatsapp_indisponivel: 'O WhatsApp da escola está fora do ar agora. Tente de novo mais tarde ou fale com a escola.',
@@ -166,7 +208,7 @@ export function codeErrorMessage(input: {
     const left = Number(input.attemptsLeft);
     return `Código incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`} para este código.`;
   }
-  if ((code === 'limite_de_envios' || code === 'aguarde') && input.retryAfterSeconds) {
+  if ((code === 'limite_de_envios' || code === 'limite_diario' || code === 'aguarde') && input.retryAfterSeconds) {
     return `${consentErrorMessage(code)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
   }
   return consentErrorMessage(code);

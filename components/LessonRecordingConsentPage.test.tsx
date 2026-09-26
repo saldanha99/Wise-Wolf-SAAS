@@ -90,6 +90,52 @@ describe('<LessonRecordingConsentPage />', () => {
     expect(screen.queryByLabelText('Código recebido')).not.toBeInTheDocument();
   });
 
+  it('aceite anterior que não vale: explica em vez de mostrar "Autorizado"', async () => {
+    rpc.mockResolvedValueOnce({
+      data: page({
+        guardian_reason: 'MINOR',
+        current_decision: 'ACCEPTED',
+        current_effective: false,
+        current_not_effective_reason: 'GUARDIAN_REQUIRED',
+      }),
+      error: null,
+    });
+    render(<LessonRecordingConsentPage />);
+
+    expect(await screen.findByText(/autorização anterior foi dada pelo próprio aluno e não vale/)).toBeInTheDocument();
+    expect(screen.queryByText(/Situação atual/)).not.toBeInTheDocument();
+  });
+
+  it('aceite que vale continua aparecendo como situação atual', async () => {
+    rpc.mockResolvedValueOnce({ data: page({ current_decision: 'ACCEPTED', current_effective: true }), error: null });
+    render(<LessonRecordingConsentPage />);
+
+    expect(await screen.findByText('Autorizado')).toBeInTheDocument();
+    expect(screen.queryByText(/não vale/)).not.toBeInTheDocument();
+  });
+
+  it('link bloqueado por segurança tem aviso próprio', async () => {
+    rpc.mockResolvedValueOnce({ data: { found: false, expired: true, blocked: true }, error: null });
+    render(<LessonRecordingConsentPage />);
+
+    expect(await screen.findByText('Link bloqueado')).toBeInTheDocument();
+    expect(screen.getByText(/Peça um novo à escola/)).toBeInTheDocument();
+  });
+
+  it('servidor sem telefones mascarados na página: ainda oferece o código e mostra o número devolvido', async () => {
+    const legacy = page();
+    delete (legacy as Record<string, unknown>).guardian_phone_masked;
+    delete (legacy as Record<string, unknown>).student_phone_masked;
+    rpc.mockResolvedValueOnce({ data: legacy, error: null });
+    invoke.mockResolvedValueOnce({ data: { ok: true, sent_to: '(11) •••••-0001' }, error: null });
+    render(<LessonRecordingConsentPage />);
+
+    expect(await screen.findByText(/mandamos um código de 6 dígitos para o WhatsApp do responsável cadastrado na escola\./)).toBeInTheDocument();
+    expect(screen.queryByText(/não tem o WhatsApp/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /enviar código pelo whatsapp/i }));
+    expect(await screen.findByText(/Código enviado para \(11\) •••••-0001/)).toBeInTheDocument();
+  });
+
   it('sem WhatsApp no cadastro, não oferece envio de código', async () => {
     rpc.mockResolvedValueOnce({ data: page({ guardian_phone_masked: null }), error: null });
     render(<LessonRecordingConsentPage />);

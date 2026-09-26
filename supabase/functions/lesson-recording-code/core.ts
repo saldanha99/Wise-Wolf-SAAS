@@ -136,11 +136,14 @@ export function httpStatusForIssueError(error: string): number {
     case "resposta_invalida":
       return 400;
     case "link_expirado":
+    // Link fechado por excesso de códigos ou de tentativas: a escola gera outro.
+    case "link_bloqueado":
       return 410;
     case "responsavel_obrigatorio":
     case "telefone_nao_cadastrado":
       return 409;
     case "limite_de_envios":
+    case "limite_diario":
       return 429;
     default:
       return 503;

@@ -261,9 +261,18 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   cadastrada pela ESCOLA por `set_student_birth_date` (trilha em `private.student_birth_date_records` +
   `profile_audit_log`; data mudada por outro caminho perde a prova). `is_kids` é da direção (professor
   barrado na RPC e na API). Toda decisão pelo link exige **código de 6 dígitos no WhatsApp** do cadastro
-  (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas, 3 envios/h por link, telefone
-  congelado quando o link é gerado) e grava `verification`/`verified_phone`. Aceite sem código ou "como
-  aluno" de quem hoje exige responsável **não marca aula**.
+  (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas; por link 3 envios/h, 6/dia, 10 no
+  total e 15 erros somados — batido o total, o link é **bloqueado**) e grava `verification`/`verified_phone`.
+  Aceite sem código ou "como aluno" de quem hoje exige responsável **não marca aula**, e a página diz isso.
+- ⚠️ **O telefone do código é o ATESTADO, congelado por trigger no link** (qualquer criador, inclusive o
+  lote): responsável = contato verificado pela escola, ou `guardian_phone`/`guardian_id` cuja última
+  gravação em `profile_audit_log` foi da direção/coordenação/matrícula (service_role). O próprio aluno não
+  altera nascimento, `is_kids`, `guardian_phone` nem `guardian_id` pela API — antes, um menor apontava o
+  "telefone do responsável" para si e assinava pela família. Quem recriar
+  `get_lesson_recording_consent_public` termina com `|| private.lesson_recording_public_link_fields(link)`.
+- ⚠️ **O cartão do professor depende do backend de identidade Google** (`get_my_google_identity`,
+  `teacher_identity_connect`, trava `teacher_google_identity_required`), que em 26/09 não existe em branch
+  nenhuma: sem ele nenhum professor aceita pela tela. Publicar os dois juntos.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
