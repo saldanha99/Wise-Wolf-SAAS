@@ -42,10 +42,14 @@ const MESSAGES: Record<string,string> = {
   registre_a_base_e_o_comprovante_da_autorizacao: 'Informe o motivo e onde está o comprovante (pelo menos 10 caracteres).',
   termo_recusado_ou_revogado_pelo_aluno: 'O aluno (ou o responsável) recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
   termo_recusado_ou_revogado_pelo_professor: 'O professor recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
+  // Integração da onda 2 (20260927100000): aceite de versão anterior do termo.
+  termo_mudou_aceite_do_aluno_pendente: 'O termo mudou e o aluno (ou o responsável) ainda não aceitou a versão vigente. Mande o link do termo de novo; até a resposta, as aulas não são transcritas.',
+  termo_mudou_aceite_do_professor_pendente: 'O termo mudou e o professor ainda não aceitou a versão vigente (em "Salas e continuidade"). Até lá, as aulas dele não são transcritas.',
   sem_permissao: 'Você não tem permissão para esta ação.',
   // Resumo por IA automático (migration 20260927110000, OpenRouter).
   google_summary_api_usage_ack_required: 'Confirme que está ciente do custo antes de gerar o rascunho pela IA.',
   google_summary_already_generated: 'Estas mesmas fontes já têm um rascunho da IA. Um novo só sai quando chegar transcrição ou anotação nova.',
+  google_summary_ai_consent_required: 'Esta aula foi registrada sem o aceite de um termo que fala do resumo por IA (termo anterior, ou autorização registrada à mão). O rascunho por IA não sai; revise as notas do Google à mão.',
   google_summary_evidence_required: 'A IA não citou nenhum trecho da aula; o rascunho foi descartado. Revise as notas à mão ou tente mais tarde.',
   google_summary_response_invalid: 'A IA devolveu uma resposta ilegível. Tente de novo em alguns minutos.',
   google_summary_response_truncated: 'A resposta da IA veio cortada. Tente de novo em alguns minutos.',

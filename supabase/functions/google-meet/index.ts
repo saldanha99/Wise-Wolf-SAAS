@@ -217,9 +217,11 @@ function config(): Config {
     aiKey,
     aiModel: aiModel || "",
     deleteOriginals: env("GOOGLE_MEET_DELETE_ORIGINALS_ENABLED") === "true",
+    // O termo v3 promete 90 dias para as cópias brutas: a variável só encurta.
+    // O banco aplica o mesmo teto (lesson_memory_retention_policy.raw_copies_days).
     retentionDays: Math.max(
       7,
-      Math.min(365, Number(env("GOOGLE_MEET_RAW_RETENTION_DAYS")) || 90),
+      Math.min(90, Number(env("GOOGLE_MEET_RAW_RETENTION_DAYS")) || 90),
     ),
     missing,
   };

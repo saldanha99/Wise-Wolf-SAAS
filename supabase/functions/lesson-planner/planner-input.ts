@@ -183,6 +183,19 @@ export const safeRows = <T>(
 ): Record<string, unknown>[] => (value ?? []).map(mapper);
 
 /**
+ * Plano salvo cuja base das aulas aprovadas foi apagada — pedido de exclusão
+ * do aluno (erase_student_lesson_records) ou retenção de quem deixou a escola
+ * (purge_lesson_memory_retention) marcam structured_plan com
+ * approved_lessons_removed_at. O plano fica para o professor, mas não volta ao
+ * modelo como continuidade: o texto dele foi escrito a partir daquelas aulas.
+ */
+export function approvedLessonsRemoved(row: Record<string, unknown>): boolean {
+  const plan = isRecord(row.structured_plan) ? row.structured_plan : {};
+  return typeof plan.approved_lessons_removed_at === "string" &&
+    plan.approved_lessons_removed_at.length > 0;
+}
+
+/**
  * Objetivo, temas, o que evitar e estilo de correção: o cartão do professor
  * vence o que o Wolfie inferiu (wolf_intelligence) e as colunas de profiles.
  */
@@ -377,8 +390,10 @@ export function buildPlannerModelInput(
       homework_assigned: boundedText(row.homework_assigned, 800),
       recommended_next_step: boundedText(row.recommended_next_step, 700),
     })),
+    // Sem os planos das aulas aprovadas apagadas (approvedLessonsRemoved).
     previous_plans_for_continuity: safeRows(
-      context.previousPlans,
+      context.previousPlans?.filter((row) => !approvedLessonsRemoved(row)) ??
+        null,
       (row) => {
         const plan = isRecord(row.structured_plan) ? row.structured_plan : {};
         return {

@@ -38,10 +38,13 @@ describe('prévia do pedido de exclusão', () => {
     expect(erasureItems(readErasurePreview(preview())!).map(item => item.key)).not.toContain('planner');
     const one = erasureItems(readErasurePreview(preview({ planner_basis: 1 }))!);
     expect(one.find(item => item.key === 'planner')?.label)
-      .toBe('a base das aulas aprovadas copiada em 1 plano do Planner (o plano fica)');
+      .toBe('a base das aulas aprovadas e a memória proposta a partir delas, em 1 plano do Planner (o plano fica)');
     const many = erasureItems(readErasurePreview(preview({ planner_basis: 3 }))!);
     expect(many.find(item => item.key === 'planner')?.label)
-      .toBe('a base das aulas aprovadas copiada em 3 planos do Planner (os planos ficam)');
+      .toBe('a base das aulas aprovadas e a memória proposta a partir delas, em 3 planos do Planner (os planos ficam)');
+    // A memória que o Planner propôs com as aulas aprovadas conta com a do Meet.
+    expect(erasureItems(readErasurePreview(preview())!).find(item => item.key === 'memories')?.label)
+      .toBe('2 registros de memória vindos das aulas no Meet (do resumo aprovado e do que o Planner propôs a partir dele)');
     expect(readErasureResult({ ok: true, planner_basis_cleared: 2 })?.planner_basis_cleared).toBe(2);
   });
 

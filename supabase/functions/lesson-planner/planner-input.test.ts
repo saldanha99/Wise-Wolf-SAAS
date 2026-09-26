@@ -441,3 +441,45 @@ Deno.test("aula aprovada que ficou para trás não guia o plano nem a busca da b
     "homework_attacks_recurring_errors",
   );
 });
+
+Deno.test("plano cuja base das aulas aprovadas foi apagada não volta ao modelo como continuidade", () => {
+  const input = JSON.parse(buildPlannerModelInput(
+    request(),
+    adultStudent(),
+    personalContext({
+      previousPlans: [
+        {
+          task_mode: "lesson_plan",
+          created_at: "2026-09-20T12:00:00Z",
+          structured_plan: {
+            title: "SENTINELA-PLANO-DE-AULA-APAGADA",
+            objective: "Continuar do próximo passo aprovado",
+            overview: "Baseado na aula de 18/09.",
+            homework: "Atacar o erro aprovado",
+            approved_lessons_removed_at: "2026-09-27T10:00:00Z",
+          },
+        },
+        {
+          task_mode: "lesson_plan",
+          created_at: "2026-09-10T12:00:00Z",
+          structured_plan: {
+            title: "Plano sem aula aprovada",
+            objective: "Pedir informação",
+            overview: "Plano do Wolfie",
+            homework: "Gravar 5 perguntas",
+          },
+        },
+      ],
+    }),
+    [],
+    TODAY,
+  ));
+  const plans = input.recent_lesson_memory.previous_plans_for_continuity;
+  assertEquals(plans.map((plan: { title: string }) => plan.title), [
+    "Plano sem aula aprovada",
+  ]);
+  assert(
+    !JSON.stringify(input).includes("SENTINELA-PLANO-DE-AULA-APAGADA"),
+    "o plano das aulas aprovadas apagadas voltou ao prompt",
+  );
+});

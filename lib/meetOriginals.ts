@@ -170,13 +170,16 @@ export function erasureItems(preview: ErasurePreview): { key: string; label: str
     { key: 'raw', label: `${plural(preview.raw_copies, 'cópia', 'cópias')} da transcrição e das anotações guardadas no sistema` },
     { key: 'attendance', label: `${plural(preview.attendance_reports, 'relatório', 'relatórios')} de presença guardado${preview.attendance_reports === 1 ? '' : 's'}` },
     { key: 'drafts', label: `${plural(preview.drafts, 'rascunho', 'rascunhos')} de resumo e ${plural(preview.approved_summaries, 'resumo aprovado', 'resumos aprovados')}` },
-    { key: 'memories', label: `${plural(preview.memories, 'registro', 'registros')} de memória vindo${preview.memories === 1 ? '' : 's'} das aulas no Meet` },
+    // Inclui a memória que o Planner propôs com as aulas aprovadas na entrada
+    // (PLANNER_AI da geração com a base — correção da integração da onda 2).
+    { key: 'memories', label: `${plural(preview.memories, 'registro', 'registros')} de memória vindo${preview.memories === 1 ? '' : 's'} das aulas no Meet (do resumo aprovado e do que o Planner propôs a partir dele)` },
   ];
   if (preview.card) items.push({ key: 'card', label: 'o cartão do aluno (objetivo, temas e preferências)' });
   // Só aparece com plano afetado: o plano (material do professor) fica, sem a
-  // base copiada do resumo aprovado.
+  // base copiada do resumo aprovado e sem a memória proposta a partir dela, e
+  // não volta ao Planner como continuidade.
   if (preview.planner_basis > 0) {
-    items.push({ key: 'planner', label: `a base das aulas aprovadas copiada em ${plural(preview.planner_basis, 'plano', 'planos')} do Planner (${preview.planner_basis === 1 ? 'o plano fica' : 'os planos ficam'})` });
+    items.push({ key: 'planner', label: `a base das aulas aprovadas e a memória proposta a partir delas, em ${plural(preview.planner_basis, 'plano', 'planos')} do Planner (${preview.planner_basis === 1 ? 'o plano fica' : 'os planos ficam'})` });
   }
   return items;
 }
