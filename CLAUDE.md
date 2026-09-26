@@ -259,7 +259,9 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - ⚠️ **Termo seguro do lado da família** (migration `20260926200000`, runbook seção "Lado do aluno e do
   responsável"): **idade desconhecida = responsável** (fail-closed); só vale a data de nascimento
   cadastrada pela ESCOLA por `set_student_birth_date` (trilha em `private.student_birth_date_records` +
-  `profile_audit_log`; data mudada por outro caminho perde a prova). `is_kids` é da direção (professor
+  `profile_audit_log`; data mudada por outro caminho perde a prova). ⚠️ A RPC grava o atestado ANTES de
+  mudar `profiles.birth_date`: os gatilhos AFTER UPDATE de `profiles` (o cartão do aluno apaga campos de
+  menor) leem o atestado — na ordem inversa, corrigir a data de um adulto apagava o cartão dele. `is_kids` é da direção (professor
   barrado na RPC e na API). Toda decisão pelo link exige **código de 6 dígitos no WhatsApp** do cadastro
   (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas; por link 3 envios/h, 6/dia, 10 no
   total e 15 erros somados — batido o total, o link é **bloqueado**) e grava `verification`/`verified_phone`.
@@ -339,13 +341,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
     novo (15 min dobrando até 2 h). `get_my_lesson_rooms` passou a exigir `documentation_consent` (como o
     lembrete do WhatsApp): sala de quem revogou não é mais entregue.
   - **A revogação vale para a aula que ainda não tinha terminado quando ela chegou** — na hora, sem esperar o
-    job: `private.lesson_session_documentation_blocked(aluno, professor, fim)` (última decisão NÃO, anterior
-    ao fim previsto) tira o aceite efetivo na porta do servidor (`room_claim`, `artifact_save`,
+    job: `private.lesson_session_documentation_blocked(sessão)` (última decisão NÃO, anterior
+    ao fim previsto — ou aceite do termo que caiu, abaixo) tira o aceite efetivo na porta do servidor (`room_claim`, `artifact_save`,
     `session_state`/`session_detail` devolvem `documentation_consent` efetivo + `documentation_blocked`), na
     fila e em `get_my_lesson_rooms`. O job desmarca **sem exigir conta conectada** e olhando 8 dias para
     trás; `trigger_sync_google_meet_artifacts` passa também por escola não conectada. Antes, revogar 5 min
     antes da aula (job rodando depois do início) ou com a conta em `REAUTH_REQUIRED` deixava a transcrição ser
     importada. ⚠️ Marcar continua exigindo conta conectada e só nas próximas 24 h.
+  - **Aceite que CAI sem decisão nova também barra** (integração da onda 1): aceite "como aluno" de quem a
+    escola passou a tratar como menor (marca `is_kids`, atesta data de menor) numa sessão marcada **pelo
+    termo** → `private.lesson_session_term_consent_lapsed` → sem aceite efetivo na hora (sala desligada,
+    fora do app, importação recusada). Sem hora (não é um "não"): o job desmarca a aula que não terminou; a
+    que terminou fica barrada na leitura e volta se a escola atestar a maioridade. Marcação manual da
+    direção não entra. Antes a aula em andamento de um menor era transcrita e importada.
   - **Aceite que volta pelo termo religa** (sessão remarcada + `ENABLE_ARTIFACTS`): só um DESLIGAR manual como
     **último** evento segura o termo. Eventos usam `clock_timestamp()` (a ordem vale na mesma transação).
     Mudança de `documentation_consent` zera erro/espera da documentação da sala
@@ -373,7 +381,11 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   regra de `lesson_quality_sources`). Sessão com aceite ou sala fica **congelada**
   (`lesson_session_has_evidence`): cobertura confirmada, reposição com professor trocado ou agendamento
   transferido depois do aceite não mudam o `teacher_id` dela, e o aluno cairia na sala do ausente (só
-  ele admite quem bate). ⚠️ Duas salas vivas para a mesma aula sem horário que desempate → nenhuma
+  ele admite quem bate). A régua é UMA (`private.lesson_occurrence_giver`, `20260926180000`) e vale
+  também para o link do app (`get_my_lesson_rooms` não devolve a sessão dada hoje por outro professor,
+  `private.lesson_session_taught_by_other`) e para a fila (sem `PREPARE_ROOM`/coanfitrião) — até a
+  integração da onda 1 só o lembrete conferia, e o app dividia a aula coberta em duas salas.
+  ⚠️ Duas salas vivas para a mesma aula sem horário que desempate → nenhuma
   (mandar a errada é pior). ⚠️ Consulta da sala falhou → o lembrete **espera** (não cai no link de
   sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
   a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
@@ -786,6 +798,13 @@ onClick texto → sendMessage() → unlockAudio()
   `whatsapp_delivery_pipeline.sql` ainda exige `pg_extension` = `pg_cron` na pré-condição. O
   `pg_net` do clone não envia nada (`pg_net.database_name = postgres`). Reproduza também a forma do
   release (migrations + todos os testes em savepoint, UMA transação, `now()` único), não só um a um.
+- ⚠️ **Teste SQL do release roda no banco de PRODUÇÃO** (savepoint na transação do release): não pode
+  depender de fila global. A do Meet (`get_pending_google_meet_sync_sessions`, 30 por vez, todas as
+  escolas) → o teste tira as conexões reais do ar dentro da transação (`update
+  private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED'`). A de
+  notificações → nunca chame `claim_notification_delivery_batch` (reserva trabalho real e perde para a
+  fila represada): reserve só as linhas do teste com o mesmo `update` do claim. E horário "diferente" num
+  teste sai do horário da aula, não de uma constante (`23:59` é a própria aula às 23:29).
 - 0 afiliados e 0 comissões em 26/09. O bot do WhatsApp **não** reconhece cupom na conversa —
   o caminho é a escola (link manual) ou o aluno (página de matrícula).
 
