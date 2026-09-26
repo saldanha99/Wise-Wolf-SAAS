@@ -128,6 +128,18 @@ export const SCHOOL_IDENTITY_GAP_LABEL: Record<SchoolIdentityGap, string> = {
   contato_privacidade: 'contato de privacidade (LGPD)',
 };
 
+/**
+ * O servidor recusa o aceite de uma versão que não é a vigente (a tela manda
+ * a versão que mostrou): a tela recarrega o texto e pede a resposta de novo.
+ */
+export const TERM_CHANGED_ERROR = 'termo_mudou';
+
+/** Aviso da página pública depois de recarregar o texto novo (o código continua valendo). */
+export function termChangedNotice(version: string | null | undefined): string {
+  const which = version ? ` (versão ${version})` : '';
+  return `O termo mudou enquanto você lia${which}. Leia o texto novo acima e confirme de novo: o código que você recebeu continua valendo.`;
+}
+
 /** Por que o link foi fechado pelo servidor. */
 export type LinkBlockedReason = 'CODE_ATTEMPTS' | 'CODE_SENDS';
 
@@ -260,6 +272,9 @@ const ERRORS: Record<string, string> = {
   // O professor só autoriza com a conta Google confirmada por login (migration
   // 20260926180000): sem esta entrada o cartão mostrava "Algo deu errado".
   teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
+  // O aceite vale para o texto que a pessoa leu (migration 20260927100000): a
+  // escola publicou outra versão enquanto a tela estava aberta.
+  [TERM_CHANGED_ERROR]: 'O termo mudou enquanto você lia. Leia a nova versão e responda de novo.',
 };
 
 /** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */

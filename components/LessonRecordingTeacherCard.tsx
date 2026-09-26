@@ -10,6 +10,7 @@ import {
   fillTermMarkers,
   formatDecisionDate,
   googleIdentityState,
+  TERM_CHANGED_ERROR,
   type GoogleIdentityState,
 } from '../lib/lessonRecordingConsent';
 
@@ -39,8 +40,11 @@ type MyConsent = {
 // outra frente: sem ele o estado é "indisponível" e ninguém aceita pela tela.
 // Os dois sobem juntos (runbook, "Conta Google do professor antes do aceite").
 // Termo v3 (20260927100000): o texto identifica a escola por marcadores que o
-// cartão preenche com os dados dela, e o aceite de uma versão anterior não vale
-// — o cartão diz que o termo mudou e volta a oferecer "Li e autorizo".
+// servidor já devolve preenchidos com os dados dela (o cartão só completa, se
+// sobrar algum), e o aceite de uma versão anterior não vale — o cartão diz que
+// o termo mudou e volta a oferecer "Li e autorizo". O aceite manda a versão
+// exibida: se a direção publicou outra com o texto aberto, o servidor recusa
+// (`termo_mudou`) e o cartão recarrega o texto novo.
 export default function LessonRecordingTeacherCard() {
   const [data, setData] = useState<MyConsent | null>(null);
   const [identity, setIdentity] = useState<GoogleIdentityState | null>(null);
@@ -81,13 +85,21 @@ export default function LessonRecordingTeacherCard() {
 
   async function decide(accept: boolean) {
     setBusy('decide'); setError('');
-    const { data: result, error: rpcError } = await supabase.rpc('set_my_lesson_recording_consent', { p_accept: accept });
-    setBusy('');
+    const { data: result, error: rpcError } = await supabase.rpc('set_my_lesson_recording_consent', {
+      p_accept: accept,
+      // O aceite vale para o texto que está na tela.
+      p_term_version: data?.term_version ?? null,
+    });
     if (rpcError || result?.ok !== true) {
-      setError(consentErrorMessage(rpcError?.message));
-      if (String(rpcError?.message || '').includes('teacher_google_identity_required')) void loadIdentity();
+      const message = String(rpcError?.message || '');
+      // Termo novo publicado com o texto aberto: mostra a versão nova.
+      if (message.includes(TERM_CHANGED_ERROR)) await load();
+      setBusy('');
+      setError(consentErrorMessage(message));
+      if (message.includes('teacher_google_identity_required')) void loadIdentity();
       return;
     }
+    setBusy('');
     setOpen(false);
     await load();
   }

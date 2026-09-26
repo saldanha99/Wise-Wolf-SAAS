@@ -51,7 +51,8 @@ describe('<LessonRecordingTeacherCard />', () => {
     const accept = screen.getByRole('button', { name: /li e autorizo/i });
     expect(accept).toBeEnabled();
     fireEvent.click(accept);
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true }));
+    // O aceite leva a versão do termo que está na tela.
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true, p_term_version: 'v2' }));
   });
 
   it('rota de identidade ainda não publicada: avisa sem quebrar e não deixa autorizar', async () => {
@@ -100,6 +101,31 @@ describe('<LessonRecordingTeacherCard />', () => {
     expect(accept).toBeEnabled();
     expect(screen.getByRole('button', { name: /não autorizo/i })).toBeEnabled();
     fireEvent.click(accept);
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true, p_term_version: 'v3' }));
+  });
+
+  it('texto aberto numa versão e a direção publica outra: o servidor recusa, o cartão mostra a versão nova e aceita com ela', async () => {
+    mockRpc({ data: { email: 'professora@gmail.com', verified_at: '2026-09-26T15:00:00Z' }, error: null });
+    render(<LessonRecordingTeacherCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ler e responder' }));
+    expect(screen.getByText('Termo do professor.')).toBeInTheDocument();
+
+    // Enquanto o texto v2 estava aberto, saiu a v3.
+    myConsent = { ...consent, term_version: 'v3', term_body: 'Termo do professor, versão nova.' };
+    rpc.mockImplementation((name: string) => {
+      if (name === 'set_my_lesson_recording_consent') {
+        return Promise.resolve({ data: null, error: { code: '22023', message: 'termo_mudou' } });
+      }
+      if (name === 'get_my_lesson_recording_consent') return Promise.resolve({ data: myConsent, error: null });
+      return Promise.resolve({ data: { email: 'professora@gmail.com', verified_at: '2026-09-26T15:00:00Z' }, error: null });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /li e autorizo/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('O termo mudou enquanto você lia');
+    expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true, p_term_version: 'v2' });
+    expect(await screen.findByText('Termo do professor, versão nova.')).toBeInTheDocument();
+
+    mockRpc({ data: { email: 'professora@gmail.com', verified_at: '2026-09-26T15:00:00Z' }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /li e autorizo/i }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('set_my_lesson_recording_consent', { p_accept: true, p_term_version: 'v3' }));
   });
 });

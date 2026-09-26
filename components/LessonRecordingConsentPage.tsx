@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, MessageCircle, ShieldCheck, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
@@ -18,6 +18,8 @@ import {
   normalizeSignerName,
   notEffectiveText,
   onlyDigits,
+  TERM_CHANGED_ERROR,
+  termChangedNotice,
   type RecordingDecision,
 } from '../lib/lessonRecordingConsent';
 
@@ -26,9 +28,12 @@ import {
 // Desde 26/09/2026 a decisão só é gravada com o código de 6 dígitos mandado
 // pelo WhatsApp da escola ao telefone cadastrado (migration 20260926200000).
 // Desde 27/09/2026 (migration 20260927100000) o texto identifica a escola por
-// marcadores que esta página preenche com os dados da própria escola, e o
-// aceite de uma versão anterior do termo não vale: a página diz que o termo
-// mudou e pede a resposta de novo.
+// marcadores que o servidor já devolve preenchidos com os dados da própria
+// escola (a página só completa, se ainda sobrar algum), e o aceite de uma
+// versão anterior do termo não vale: a página diz que o termo mudou e pede a
+// resposta de novo. A decisão manda a versão exibida; se a escola publicou
+// outra enquanto a pessoa lia, o servidor recusa (`termo_mudou`) sem gastar o
+// código, e a página recarrega o texto novo para ela confirmar.
 
 type Relation = 'SELF' | 'GUARDIAN';
 
@@ -70,6 +75,8 @@ interface DecisionResponse {
   error?: string;
   attempts_left?: number;
   verified_phone?: string;
+  /** Versão vigente (com `termo_mudou`) ou a gravada na decisão. */
+  term_version?: string | null;
 }
 
 /** Pede o código à edge; erro HTTP volta com o corpo que ela mandou. */
@@ -93,6 +100,16 @@ export default function LessonRecordingConsentPage() {
   const [busy, setBusy] = useState<'' | 'code' | 'decide'>('');
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ decision: RecordingDecision; phone: string | null } | null>(null);
+  const [termChanged, setTermChanged] = useState('');
+
+  const loadPage = useCallback(async () => {
+    const { data: result, error: rpcError } = await supabase.rpc('get_lesson_recording_consent_public', { p_token: token });
+    if (rpcError || !result) setData({ found: false });
+    else {
+      setData(result as ConsentPublic);
+      if ((result as ConsentPublic).requires_guardian) setRelation('GUARDIAN');
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!/^[a-f0-9]{64}$/.test(token)) {
@@ -100,16 +117,8 @@ export default function LessonRecordingConsentPage() {
       setLoading(false);
       return;
     }
-    (async () => {
-      const { data: result, error: rpcError } = await supabase.rpc('get_lesson_recording_consent_public', { p_token: token });
-      if (rpcError || !result) setData({ found: false });
-      else {
-        setData(result as ConsentPublic);
-        if ((result as ConsentPublic).requires_guardian) setRelation('GUARDIAN');
-      }
-      setLoading(false);
-    })();
-  }, [token]);
+    void loadPage().finally(() => setLoading(false));
+  }, [token, loadPage]);
 
   const guardianReason = asGuardianReason(data?.guardian_reason, data?.requires_guardian);
   const firstName = data?.student_first_name?.trim() || 'o aluno';
@@ -144,6 +153,7 @@ export default function LessonRecordingConsentPage() {
 
   async function decide(accept: boolean) {
     setError('');
+    setTermChanged('');
     if (!relation) { setError('Escolha se você é o aluno ou o responsável.'); return; }
     if (!isFullName(name)) { setError('Digite nome e sobrenome.'); return; }
     if (!codeReady) { setError('Peça o código pelo WhatsApp antes de responder.'); return; }
@@ -155,9 +165,19 @@ export default function LessonRecordingConsentPage() {
       p_relation: relation,
       p_accept: accept,
       p_code: code,
+      // O aceite vale para o texto que está na tela.
+      p_term_version: data?.term_version ?? null,
     });
-    setBusy('');
     const response = (result || {}) as DecisionResponse;
+    if (!rpcError && response.error === TERM_CHANGED_ERROR) {
+      // A escola publicou outra versão enquanto a pessoa lia: mostra o texto
+      // novo; o código não foi gasto e confirma de novo.
+      await loadPage();
+      setBusy('');
+      setTermChanged(termChangedNotice(response.term_version));
+      return;
+    }
+    setBusy('');
     if (rpcError) { setError(consentErrorMessage(rpcError.message)); return; }
     if (!response.ok) {
       setError(codeErrorMessage({ error: response.error, attemptsLeft: response.attempts_left }));
@@ -296,6 +316,9 @@ export default function LessonRecordingConsentPage() {
           </>}
         </section>}
 
+        {termChanged && <p role="status" className="rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+          {termChanged}
+        </p>}
         {error && <p role="alert" className="text-xs font-bold text-red-600">{error}</p>}
 
         <div className="grid gap-3 sm:grid-cols-2">

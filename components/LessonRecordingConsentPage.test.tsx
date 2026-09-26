@@ -66,6 +66,8 @@ describe('<LessonRecordingConsentPage />', () => {
       p_relation: 'GUARDIAN',
       p_accept: true,
       p_code: '123456',
+      // O aceite leva a versão do termo que está na tela.
+      p_term_version: 'v2',
     });
     expect(screen.queryByText('Autorização registrada')).not.toBeInTheDocument();
 
@@ -170,5 +172,31 @@ describe('<LessonRecordingConsentPage />', () => {
     expect(screen.queryByText(/Situação atual/)).not.toBeInTheDocument();
     // Dá para responder de novo (com código).
     expect(screen.getByRole('button', { name: /enviar código pelo whatsapp/i })).toBeEnabled();
+  });
+
+  it('a escola publica outra versão enquanto a pessoa lê: o servidor recusa, a página mostra o texto novo e o mesmo código confirma', async () => {
+    rpc.mockResolvedValueOnce({ data: page({ term_body: 'Texto da versão dois. '.repeat(5) }), error: null });
+    invoke.mockResolvedValueOnce({ data: { ok: true, sent_to: '(11) •••••-0001', expires_at: '2026-09-26T20:10:00Z' }, error: null });
+    render(<LessonRecordingConsentPage />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /seu nome completo/i }), { target: { value: 'Maria Responsavel' } });
+    fireEvent.click(screen.getByRole('button', { name: /enviar código pelo whatsapp/i }));
+    fireEvent.change(await screen.findByLabelText('Código recebido'), { target: { value: '123456' } });
+
+    rpc.mockResolvedValueOnce({ data: { ok: false, error: 'termo_mudou', term_version: 'v3' }, error: null });
+    rpc.mockResolvedValueOnce({ data: page({ term_version: 'v3', term_body: 'Texto da versão três. '.repeat(5) }), error: null });
+    fireEvent.click(screen.getByRole('button', { name: /^autorizo$/i }));
+
+    expect(await screen.findByText(/O termo mudou enquanto você lia \(versão v3\)/)).toBeInTheDocument();
+    expect(rpc).toHaveBeenCalledWith('decide_lesson_recording_consent_public', expect.objectContaining({ p_term_version: 'v2' }));
+    expect(screen.getByText(/Texto da versão três/)).toBeInTheDocument();
+    expect(screen.queryByText(/Texto da versão dois/)).not.toBeInTheDocument();
+    // O código continua na tela (não foi gasto) e a confirmação leva a versão nova.
+    expect((screen.getByLabelText('Código recebido') as HTMLInputElement).value).toBe('123456');
+
+    rpc.mockResolvedValueOnce({ data: { ok: true, decision: 'ACCEPTED', verified_phone: '(11) •••••-0001', term_version: 'v3' }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /^autorizo$/i }));
+    expect(await screen.findByText('Autorização registrada')).toBeInTheDocument();
+    expect(rpc).toHaveBeenLastCalledWith('decide_lesson_recording_consent_public', expect.objectContaining({ p_term_version: 'v3' }));
   });
 });

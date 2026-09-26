@@ -29,7 +29,9 @@ import {
   whatsappDigits,
   whatsappUrl,
   SCHOOL_IDENTITY_GAP_LABEL,
+  TERM_CHANGED_ERROR,
   TERM_MARKERS,
+  termChangedNotice,
 } from './lessonRecordingConsent';
 
 describe('nome de quem autoriza', () => {
@@ -299,5 +301,13 @@ describe('termo v3: a escola no texto e o aceite por versão', () => {
     expect(asNotEffectiveReason('TERM_UPDATED')).toBe('TERM_UPDATED');
     expect(notEffectiveText('TERM_UPDATED', 'Pedro', 'v2')).toMatch(/O termo mudou.*\(a versão v2\).*Leia a nova versão/);
     expect(notEffectiveText('TERM_UPDATED', 'Pedro')).not.toMatch(/versão v/);
+  });
+
+  it('servidor recusa o aceite de versão que não é a vigente: mensagem própria, e o código continua valendo', () => {
+    expect(TERM_CHANGED_ERROR).toBe('termo_mudou');
+    expect(consentErrorMessage('termo_mudou')).toBe('O termo mudou enquanto você lia. Leia a nova versão e responda de novo.');
+    expect(codeErrorMessage({ error: 'termo_mudou' })).toMatch(/O termo mudou enquanto você lia/);
+    expect(termChangedNotice('v3')).toMatch(/\(versão v3\).*o código que você recebeu continua valendo/);
+    expect(termChangedNotice(null)).not.toMatch(/versão v/);
   });
 });

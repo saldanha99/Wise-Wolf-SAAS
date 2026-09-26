@@ -266,7 +266,8 @@ export const FEATURE_TOURS: FeatureTour[] = [
         text: 'Antes de autorizar o registro das aulas, entre com a conta Google que você usa nas aulas. É ela que a escola coloca como coanfitriã da sala — sem essa confirmação o botão de autorizar fica desligado.',
       },
     ],
-  },  {
+  },
+  {
     id: '2026-09-27-termo-v3',
     title: 'Termo das aulas, versão 3',
     roles: ['SCHOOL_ADMIN'],
@@ -275,13 +276,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'recording-term-identity',
         view: 'recording-consents',
         title: 'O termo das aulas mudou 📄',
-        text: 'A versão 3 conta tudo o que o sistema faz com o registro: resumo por IA que o professor aprova, planejamento, dossiê por link com login na troca de professor, cartão do aluno, prazos de 90 dias e direitos. A escola aparece no termo como responsável pelos dados — confira aqui como ela aparece; se faltar razão social, CNPJ ou contato de privacidade, complete em Configurações → Escola e legal.',
+        text: 'A versão 3 conta tudo o que o sistema faz com o registro: resumo por IA que o professor aprova, planejamento, dossiê por link com login na troca de professor, cartão do aluno, quem vê (inclusive o suporte técnico do sistema), prazos de 90 dias e direitos. A escola aparece no termo como responsável pelos dados — confira aqui como ela aparece; se faltar razão social, CNPJ ou contato de privacidade, complete em Configurações → Escola e legal.',
       },
       {
         target: 'recording-consents',
         view: 'recording-consents',
         title: 'Aceite antigo não vale mais',
-        text: 'Quem autorizou uma versão anterior precisa aceitar o texto novo: até lá as aulas dessa pessoa não são transcritas, e as aulas que o termo antigo tinha marcado são desmarcadas sozinhas. O envio em lote já conta esses alunos como pendentes; os professores respondem de novo na tela deles.',
+        text: 'Quem autorizou uma versão anterior precisa aceitar o texto novo: até lá as próximas aulas dessa pessoa não são transcritas e são desmarcadas sozinhas (aula que já aconteceu segue o aceite que valia nela). O envio em lote já conta esses alunos como pendentes; os professores respondem de novo na tela deles.',
       },
     ],
   },
