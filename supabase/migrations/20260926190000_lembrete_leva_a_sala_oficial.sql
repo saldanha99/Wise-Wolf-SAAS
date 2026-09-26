@@ -14,10 +14,12 @@
 --     sessão (o coanfitrião da sala) → o link enviado é o dela;
 --   • senão → a mensagem de sempre, sem mudança nenhuma.
 --
--- A sala exige documentation_consent = true, e não só "sala existe" como o
--- get_my_lesson_rooms: a sala transcreve sozinha, e quem revogou o aceite não
--- pode ser mandado para lá pelo WhatsApp (decisão da direção: sala da escola só
--- com aceite).
+-- A sala exige documentation_consent = true, e não só "sala existe": a sala
+-- transcreve sozinha, e quem revogou o aceite não pode ser mandado para lá pelo
+-- WhatsApp (decisão da direção: sala da escola só com aceite). E o aceite
+-- EFETIVO: recusa ou revogação que chegou antes do fim da aula barra na hora,
+-- antes de o job desmarcar a sessão (private.lesson_session_documentation_blocked,
+-- de 20260926180000 — a mesma régua de get_my_lesson_rooms).
 --
 -- A sala também exige que o professor da sessão seja quem DÁ a aula. Sessão com
 -- aceite ou sala fica congelada (private.lesson_session_has_evidence): depois de
@@ -103,6 +105,12 @@ as $function$
     and (p_start_time is null or occurrence.start_time = p_start_time)
     and session.status <> 'SUPERSEDED'
     and session.documentation_consent
+    -- Aceite EFETIVO, a mesma régua de get_my_lesson_rooms e da porta do Meet
+    -- (20260926180000): recusa ou revogação que chegou antes do fim da aula já
+    -- vale, mesmo antes de o job de 15 min desmarcar a sessão.
+    and not private.lesson_session_documentation_blocked(
+      session.student_id, session.teacher_id, session.scheduled_end_at
+    )
     and (p_student_id is null or session.student_id = p_student_id)
     -- Quem dá a aula: o professor da agenda, ou o substituto da cobertura viva.
     -- Duas coberturas com substitutos diferentes (ou sem substituto) não têm

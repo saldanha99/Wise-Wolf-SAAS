@@ -467,6 +467,27 @@ from walink_clock as c;
 update public.lesson_sessions set documentation_consent = true
 where id = '00000000-0000-4000-8000-00000000d5a3';
 
+-- Revogação que chegou antes do fim da aula, com a sessão ainda marcada (o job
+-- de 15 min não rodou): o aceite efetivo já não vale, como no app
+-- (private.lesson_session_documentation_blocked, 20260926180000).
+savepoint walink_revoked_before_job;
+insert into private.lesson_recording_consents (
+  tenant_id, subject_id, subject_role, decision, signer_name, signer_relation, source, reason
+) values (
+  'sala-oficial-test', '00000000-0000-4000-8000-00000000d503', 'STUDENT', 'REVOKED',
+  'Diretora Sala', 'SCHOOL', 'SCHOOL', 'Família pediu para parar (fixture).'
+);
+select pg_temp.assert_true(
+  (select documentation_consent from public.lesson_sessions
+    where id = '00000000-0000-4000-8000-00000000d5a3')
+  and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null) is null,
+  'revogação antes do fim da aula ainda mandou a sala oficial (antes do job desmarcar)'
+)
+from walink_clock as c;
+rollback to savepoint walink_revoked_before_job;
+release savepoint walink_revoked_before_job;
+
 -- Sessão substituída não vale.
 update public.lesson_sessions set status = 'SUPERSEDED'
 where id = '00000000-0000-4000-8000-00000000d5a3';
