@@ -89,8 +89,8 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
     // Indicação de afiliado: o cupom (ou o nome de quem indicou, dito na
     // conversa) isenta a taxa de matrícula e vincula a comissão. Quem decide é o
-    // servidor (`create_enrollment_offer` com affiliateCoupon): ele confere o
-    // cupom e congela o valor da comissão na oferta.
+    // servidor (`create_enrollment_offer_with_affiliate`): ele confere o cupom
+    // e congela o valor da comissão na oferta, no mesmo commit do link.
     const [affiliateQuery, setAffiliateQuery] = useState('');
     const [affiliateOptions, setAffiliateOptions] = useState<AffiliateMatch[]>([]);
     const [selectedAffiliate, setSelectedAffiliate] = useState<AffiliateMatch | null>(null);
@@ -370,9 +370,6 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             startDate: startDate,
             requiresEnrollment: duration !== 0,
             enrollmentFee: affiliateApplies ? 0 : (chargeEnrollmentFee ? enrollmentFee : 0),
-            // Indicação de afiliado: o servidor confere o cupom, isenta a taxa e
-            // congela a comissão no mesmo commit (cupom inválido desfaz o link).
-            affiliateCoupon: affiliateApplies ? selectedAffiliate?.affiliate_code : undefined,
             // Módulo 3 - Pro-rata + billing start month
             enableProRata: proRataEnabled,
             billingStartMonth,
@@ -398,12 +395,21 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
             setGenerating(true);
-            const requestKey = JSON.stringify(data);
+            // A indicação entra na chave: trocar o afiliado gera outro link.
+            const affiliateCode = affiliateApplies ? selectedAffiliate?.affiliate_code || null : null;
+            const requestKey = JSON.stringify({ data, affiliateCode });
             const requestId = offerRequestIds.current[requestKey] || crypto.randomUUID();
             offerRequestIds.current[requestKey] = requestId;
-            const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', {
-                p_payload: { ...data, requestId },
-            });
+            // Com indicação: porta própria, que cria pela porta pública e aplica
+            // o benefício no mesmo commit (cupom inválido desfaz o link inteiro).
+            const { data: offerId, error: offerErr } = affiliateCode
+                ? await supabase.rpc('create_enrollment_offer_with_affiliate', {
+                    p_payload: { ...data, requestId },
+                    p_affiliate_code: affiliateCode,
+                })
+                : await supabase.rpc('create_enrollment_offer', {
+                    p_payload: { ...data, requestId },
+                });
             if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
             delete offerRequestIds.current[requestKey];
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);

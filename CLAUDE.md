@@ -562,15 +562,26 @@ onClick texto → sendMessage() → unlockAudio()
   comissão congelada em `offers.metadata.affiliate_commission_cents`):
   1. o aluno digita o cupom na página de matrícula (`apply_affiliate_coupon`, service role
      via `tenant-legal-assets`, 10 chutes/hora por oferta);
-  2. a escola põe o cupom no **link manual** (`RegistrationLinkGenerator` → `affiliateCoupon`
-     no payload de `create_enrollment_offer`; cupom inválido desfaz o link inteiro). O campo
+  2. a escola põe o cupom no **link manual** (`RegistrationLinkGenerator` →
+     `create_enrollment_offer_with_affiliate(payload, cupom)`, que chama a porta pública e
+     aplica o benefício no mesmo commit; cupom inválido desfaz o link inteiro). O campo
      aceita cupom **ou nome** (`find_affiliates`, sem acento): cupom exato resolve sozinho;
      nome pede um clique, e com dois nomes iguais a lista mostra o cupom de cada um;
   3. legado: experimental aberta por afiliado (`opportunities.created_by_vendor_id`).
   Só vale para **plano** — aula avulsa não tem matrícula e não gera comissão.
-- ⚠️ **SALESPERSON não cria oferta de matrícula** (camada nova sobre `create_enrollment_offer`,
-  a anterior virou `_pre_affiliate_coupon_impl` sem grant). A porta aceitava **qualquer
-  mensalidade** vinda do afiliado. O menu dele é só Painel + Como funciona + Perfil.
+- ⚠️ **SALESPERSON não cria oferta de matrícula** — trava na tabela
+  (`trg_block_salesperson_enrollment_offer`, BEFORE INSERT em `offers`, pelo `_my_role()` da
+  sessão). A porta aceitava **qualquer mensalidade** vinda do afiliado. O menu dele é só
+  Painel + Como funciona + Perfil.
+- ⚠️ **Não encaixe camada nova na cadeia de `create_enrollment_offer`.** Três testes
+  (`crm_trial_conversion_hardening`, `harden_trial_offer_authority_and_idempotency`,
+  `enrollment_without_trial_feedback`) leem o **texto-fonte** de cada camada (a pública tem de
+  travar o lead do CRM; a `_pre_crm_lead_lock_impl` tem de conter a idempotência…). A primeira
+  versão do cupom virou camada por cima da porta pública e reprovou a auditoria. Porta
+  própria ao lado, chamando a pública, não quebra nada.
+- ⚠️ Guarda de papel é sempre `coalesce(role, '') not in (…)`: a reescrita de
+  `set_vendor_commission_status` perdeu o `coalesce(v_role` e o `tenant_id = v_tenant`, e o
+  `conciliacao_caixa_asaas.sql` (que audita o texto da função) reprovou.
 - **Liberação:** comissão nasce `PENDING` quando o aluno começa a matrícula e vira `CONFIRMED`
   quando a oferta chega a `COMPLETED` — que é disparado pela liquidação (`PAYMENT_RECEIVED`/
   `RECEIVED_IN_CASH`) da cobrança que ativa a matrícula. Como o cupom zera a taxa, essa
@@ -597,9 +608,11 @@ onClick texto → sendMessage() → unlockAudio()
   `createdb ww_x` + `pg_dump --schema-only | psql -d ww_x` (só o `pg_cron` falha, fica no
   banco principal), rodar migration 2× + teste em `BEGIN … ROLLBACK` ali, `dropdb` no fim.
   Não pega `ACCESS EXCLUSIVE` em `profiles` em horário de aula.
-- **Estado em 25/09/2026:** 0 afiliados, 0 comissões; no ar ainda a versão antiga ("Vendedores",
-  sem cupom). O bot do WhatsApp **não** reconhece cupom na conversa — hoje o caminho é a escola
-  (link manual) ou o aluno (página de matrícula).
+- **Validação de 26/09/2026:** os 134 testes SQL do release rodados um a um numa cópia
+  só-estrutura, sem e com as migrations novas — **zero regressões** (as ~35 falhas nas duas
+  rodadas dependem de dado real que a cópia não tem).
+- 0 afiliados e 0 comissões em 26/09. O bot do WhatsApp **não** reconhece cupom na conversa —
+  o caminho é a escola (link manual) ou o aluno (página de matrícula).
 
 ---
 
@@ -1649,6 +1662,13 @@ nem MCP da Supabase. Nada disso chega na produção.
 `/opt/wisewolf/releases/<timestamp>-<commit>/`, **aplica as migrations**,
 promove e roda smoke test.
 
+⚠️ **O release NÃO roda `npm ci`** — builda o site com o `node_modules` da pasta de onde
+roda. Em 26/09/2026 a pasta principal tinha 20 pacotes fora do lock (`@supabase/supabase-js`
+2.112 contra 2.89, React 19.2.8 contra 19.2.3): publicar dali trocaria dependência em
+produção sem ninguém decidir. **Rode `npm ci` antes do deploy.** Prova de que o site no ar é
+de um commit: `npm ci` + build dele com as mesmas `VITE_*` → os 472 arquivos batem byte a byte
+com `release-inputs.sha256`.
+
 ⚠️ **O release APLICA MIGRATION, sim** (corrigido em 04/08/2026 — este arquivo
 afirmava o contrário e o erro custou um deploy quebrado). Ele percorre
 `MIGRATION_RELATIVES` e roda a lista **inteira a cada deploy**, dentro da
@@ -1669,7 +1689,7 @@ Já mordeu duas vezes no mesmo dia:
 | Lista | O que registra | Sintoma quando esquece |
 |---|---|---|
 | `MIGRATION_RELATIVES` | migrations aplicadas/enviadas | banco fica sem o objeto, ou o pacote de restauração fica incompleto |
-| `HARDENED_FUNCTIONS` (aparece **2×** no arquivo — edite as duas) | pastas de edge function | "Deploy concluído" e o diretório **nem existe** na VPS |
+| `HARDENED_FUNCTIONS` (literal **1×**; o script remoto lê `hardened-functions.txt`) | pastas de edge function | "Deploy concluído" e o diretório **nem existe** na VPS |
 | lista do `deno check` | type-check das functions | função nova sobe sem validação |
 
 **Arquivo novo dentro de uma function que JÁ está na lista** vai junto sozinho
@@ -1797,7 +1817,10 @@ ssh wisewolf-vps 'docker restart supabase-edge-functions'
 
 Faça backup antes (`cp -a` do diretório em `/opt/wisewolf/backup-<fn>-<data>`).
 
-**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) —
+**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) — os das edge
+functions (OpenRouter, Evolution, Resend, Asaas, Gamma…) em **`.env.functions`**, que o
+`docker-compose.override.yml` injeta por `env_file` (mudou o arquivo → recriar o container
+das functions, `docker compose up -d functions`) —
 nunca no Git nem no chat. Testes que precisam de chave (OpenAI etc.) devem rodar
 **dentro da VPS**, lendo do `.env`, para a chave não entrar no contexto.
 

@@ -72,13 +72,21 @@ select pg_temp.assert_true(
   'affiliate RPCs have the wrong audience'
 );
 
--- A porta nova de matrícula é a única exposta: a versão anterior virou _impl.
+-- A porta com cupom fica ao lado da cadeia de create_enrollment_offer (as
+-- auditorias leem o texto-fonte de cada camada da cadeia).
 select pg_temp.assert_true(
-  has_function_privilege('authenticated', 'public.create_enrollment_offer(jsonb)', 'EXECUTE')
+  has_function_privilege(
+    'authenticated', 'public.create_enrollment_offer_with_affiliate(jsonb,text)', 'EXECUTE'
+  )
   and not has_function_privilege(
-    'authenticated',
-    'public.create_enrollment_offer_pre_affiliate_coupon_impl(jsonb)',
-    'EXECUTE'
+    'anon', 'public.create_enrollment_offer_with_affiliate(jsonb,text)', 'EXECUTE'
+  )
+  and exists (
+    select 1
+      from pg_catalog.pg_trigger as trigger
+     where trigger.tgrelid = 'public.offers'::pg_catalog.regclass
+       and trigger.tgname = 'trg_block_salesperson_enrollment_offer'
+       and not trigger.tgisinternal
   )
   and not has_function_privilege(
     'authenticated', 'private.grant_affiliate_benefit(uuid,uuid,text)', 'EXECUTE'
@@ -482,6 +490,9 @@ select pg_temp.assert_true(
 
 -- ── Aula avulsa não gera comissão ───────────────────────────────────────────
 
+-- Inserção direta como serviço: a sessão ainda carrega a identidade da
+-- afiliada, e trg_block_salesperson_enrollment_offer (corretamente) barraria.
+set local request.jwt.claims = '{"role":"service_role"}';
 insert into public.offers (
   id, kind, tenant_id, payload, metadata, expires_at, created_by,
   requires_enrollment, enrollment_fee, processing_state, vendor_id,
@@ -643,7 +654,6 @@ select set_config(
 );
 
 create or replace function pg_temp.affiliate_test_payload(
-  p_coupon text,
   p_request_id text,
   p_duration integer default 12
 )
@@ -671,12 +681,9 @@ as $$
       )
     ),
     'requestId', p_request_id
-  ) || case
-    when p_coupon is null then '{}'::jsonb
-    else jsonb_build_object('affiliateCoupon', p_coupon)
-  end;
+  );
 $$;
-grant execute on function pg_temp.affiliate_test_payload(text, text, integer)
+grant execute on function pg_temp.affiliate_test_payload(text, integer)
   to authenticated;
 
 set local role authenticated;
@@ -686,9 +693,10 @@ do $staff_link_checks$
 begin
   -- Cupom inexistente desfaz o link inteiro (nenhuma oferta sobra).
   begin
-    perform public.create_enrollment_offer(pg_temp.affiliate_test_payload(
-      'NAOEXISTE', '6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e01'
-    ));
+    perform public.create_enrollment_offer_with_affiliate(
+      pg_temp.affiliate_test_payload('6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e01'),
+      'NAOEXISTE'
+    );
     raise exception 'assertion failed: an unknown coupon created a link';
   exception when sqlstate '22023' then
     if sqlerrm not like 'cupom de afiliado invalido%' then
@@ -699,9 +707,10 @@ end;
 $staff_link_checks$;
 select set_config(
   'affiliate_test.staff_offer_id',
-  public.create_enrollment_offer(pg_temp.affiliate_test_payload(
-    ' afiliada10 ', '6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e02'
-  ))::text,
+  public.create_enrollment_offer_with_affiliate(
+    pg_temp.affiliate_test_payload('6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e02'),
+    ' afiliada10 '
+  )::text,
   true
 );
 reset role;
@@ -758,9 +767,9 @@ set local request.jwt.claims =
 do $affiliate_link_check$
 begin
   begin
-    perform public.create_enrollment_offer(pg_temp.affiliate_test_payload(
-      null, '6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e03'
-    ));
+    perform public.create_enrollment_offer(
+      pg_temp.affiliate_test_payload('6c1a4d2e-0b7f-4e6a-9c3d-1a2b3c4d5e03')
+    );
     raise exception 'assertion failed: an affiliate created an enrollment link';
   exception when insufficient_privilege then
     null;

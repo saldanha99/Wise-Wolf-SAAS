@@ -753,7 +753,7 @@ begin
   if v_actor.id is null or not found or (
     v_actor_id <> v_vendor_id
     and (
-      v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN')
+      coalesce(v_actor.role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN')
       or (v_actor.role <> 'SUPER_ADMIN' and v_actor.tenant_id <> v_vendor.tenant_id)
     )
   ) then
@@ -807,7 +807,7 @@ begin
   select profile.* into v_actor
     from public.profiles as profile
    where profile.id = v_actor_id;
-  if not found or v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
+  if not found or coalesce(v_actor.role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'FORBIDDEN');
   end if;
 
@@ -876,7 +876,7 @@ begin
   select profile.* into v_actor
     from public.profiles as profile
    where profile.id = v_actor_id;
-  if not found or v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
+  if not found or coalesce(v_actor.role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
     return '[]'::jsonb;
   end if;
   return coalesce((
@@ -929,7 +929,7 @@ begin
    for update;
   if v_actor.id is null
      or not found
-     or v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN')
+     or coalesce(v_actor.role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN')
      or (v_actor.role <> 'SUPER_ADMIN' and v_actor.tenant_id <> v_vendor.tenant_id)
   then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'FORBIDDEN');
@@ -1473,39 +1473,38 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor_id uuid := (select auth.uid());
-  v_actor public.profiles%rowtype;
-  v_commission public.vendor_commissions%rowtype;
+  v_role text;
+  v_tenant text;
   v_status text := pg_catalog.upper(pg_catalog.btrim(coalesce(p_status, '')));
+  v_commission public.vendor_commissions%rowtype;
 begin
-  select profile.* into v_actor
+  select profile.role, profile.tenant_id
+    into v_role, v_tenant
     from public.profiles as profile
-   where profile.id = v_actor_id;
-  if not found or v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
+   where profile.id = (select auth.uid());
+  -- coalesce: papel nulo não pode passar pela guarda ("NULL not in" é NULL).
+  if coalesce(v_role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_permissao');
   end if;
   if v_status not in ('PENDING', 'CONFIRMED', 'PAID', 'CANCELLED') then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'status_invalido');
   end if;
 
+  -- Mesma resposta para "não existe" e "não é sua": responder diferente
+  -- contaria a um diretor quais ids existem na outra escola.
   select commission.* into v_commission
     from public.vendor_commissions as commission
    where commission.id = p_commission_id
-     and (
-       v_actor.role = 'SUPER_ADMIN'
-       or commission.tenant_id = v_actor.tenant_id
-     )
+     and (v_role = 'SUPER_ADMIN' or commission.tenant_id = v_tenant)
    for update;
   if not found then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'nao_encontrado');
   end if;
+  -- Comissão reservada num saque só muda pelo saque (aprovar, pagar, recusar).
   if v_commission.withdrawal_request_id is not null
      and v_status is distinct from v_commission.status
   then
-    return pg_catalog.jsonb_build_object(
-      'ok', false,
-      'error', 'saque_em_andamento'
-    );
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'saque_em_andamento');
   end if;
 
   update public.vendor_commissions as commission
@@ -2029,101 +2028,91 @@ revoke all on function public.create_affiliate_invite(integer,text,text)
 grant execute on function public.create_affiliate_invite(integer,text,text)
   to authenticated;
 
--- Link manual de matrícula com cupom. Camada nova sobre a porta existente
--- (mesmo padrão das anteriores: a versão revisada vira _impl e só esta fica
--- exposta). Duas regras:
---   1. Afiliado não cria link de matrícula. Ele não precisa (o cupom é a
---      atribuição) e a porta aceitava a mensalidade que ele quisesse.
---   2. Com "affiliateCoupon" no payload, a oferta nasce com o benefício da
---      indicação no MESMO commit — cupom inválido desfaz o link inteiro.
-do $preserve_create_enrollment_offer_affiliate$
-begin
-  if pg_catalog.to_regprocedure(
-       'public.create_enrollment_offer_pre_affiliate_coupon_impl(jsonb)'
-     ) is null
-  then
-    alter function public.create_enrollment_offer(jsonb)
-      rename to create_enrollment_offer_pre_affiliate_coupon_impl;
-  end if;
-end;
-$preserve_create_enrollment_offer_affiliate$;
-
-create or replace function public.create_enrollment_offer(p_payload jsonb)
+-- Link manual de matrícula com cupom. Porta PRÓPRIA, ao lado da cadeia de
+-- create_enrollment_offer — não dentro dela: as auditorias
+-- (crm_trial_conversion_hardening, harden_trial_offer_authority_and_idempotency,
+-- enrollment_without_trial_feedback) leem o texto-fonte de cada camada da cadeia,
+-- e uma camada nova no meio quebraria todas. Esta porta chama a porta pública
+-- (com todas as travas dela, como quem chamou) e aplica o benefício da indicação
+-- no MESMO commit: cupom inválido desfaz o link inteiro.
+create or replace function public.create_enrollment_offer_with_affiliate(
+  p_payload jsonb,
+  p_affiliate_code text
+)
 returns uuid
 language plpgsql
 security definer
 set search_path = ''
 as $function$
 declare
-  v_payload jsonb := p_payload;
-  v_coupon text;
+  v_code text := private.normalize_affiliate_code(p_affiliate_code);
   v_offer_id uuid;
-  v_offer public.offers%rowtype;
+  v_tenant_id text;
   v_vendor_id uuid;
   v_result jsonb;
 begin
-  if public._my_role() = 'SALESPERSON' then
-    raise exception 'forbidden: afiliado nao gera link de matricula'
-      using errcode = '42501';
+  if v_code !~ '^[A-Z0-9][A-Z0-9_-]{3,31}$' then
+    raise exception 'cupom de afiliado invalido' using errcode = '22023';
   end if;
 
-  if pg_catalog.jsonb_typeof(v_payload) = 'object'
-     and v_payload ? 'affiliateCoupon'
-  then
-    if pg_catalog.jsonb_typeof(v_payload -> 'affiliateCoupon') = 'string' then
-      v_coupon := nullif(
-        private.normalize_affiliate_code(v_payload ->> 'affiliateCoupon'),
-        ''
-      );
-    elsif pg_catalog.jsonb_typeof(v_payload -> 'affiliateCoupon') <> 'null' then
-      raise exception 'cupom de afiliado invalido' using errcode = '22023';
-    end if;
-    v_payload := v_payload - 'affiliateCoupon';
-  end if;
+  v_offer_id := public.create_enrollment_offer(p_payload);
 
-  v_offer_id :=
-    public.create_enrollment_offer_pre_affiliate_coupon_impl(v_payload);
-
-  select offer.* into v_offer
+  select offer.tenant_id into v_tenant_id
     from public.offers as offer
    where offer.id = v_offer_id;
 
-  if v_coupon is not null then
-    v_vendor_id := private.active_affiliate_by_code(v_offer.tenant_id, v_coupon);
-    if v_vendor_id is null then
-      raise exception 'cupom de afiliado invalido' using errcode = '22023';
-    end if;
-    v_result := private.grant_affiliate_benefit(
-      v_offer_id, v_vendor_id, 'COUPON_STAFF'
-    );
-    if coalesce((v_result ->> 'ok')::boolean, false) is false then
-      raise exception 'cupom de afiliado nao se aplica a esta matricula: %',
-        coalesce(v_result ->> 'error', 'OFFER_NOT_ELIGIBLE')
-        using errcode = '22023';
-    end if;
-  elsif v_offer.vendor_id is not null then
-    -- Experimental aberta por afiliado (legado): a indicação dele recebe o
-    -- mesmo benefício. Em aula avulsa não há matrícula, e segue como está.
-    perform private.grant_affiliate_benefit(
-      v_offer_id, v_offer.vendor_id, 'OPPORTUNITY'
-    );
+  v_vendor_id := private.active_affiliate_by_code(v_tenant_id, v_code);
+  if v_vendor_id is null then
+    raise exception 'cupom de afiliado invalido' using errcode = '22023';
+  end if;
+
+  v_result := private.grant_affiliate_benefit(v_offer_id, v_vendor_id, 'COUPON_STAFF');
+  if coalesce((v_result ->> 'ok')::boolean, false) is false then
+    raise exception 'cupom de afiliado nao se aplica a esta matricula: %',
+      coalesce(v_result ->> 'error', 'OFFER_NOT_ELIGIBLE')
+      using errcode = '22023';
   end if;
 
   return v_offer_id;
 end;
 $function$;
 
-alter function
-  public.create_enrollment_offer_pre_affiliate_coupon_impl(jsonb)
+alter function public.create_enrollment_offer_with_affiliate(jsonb,text)
   owner to postgres;
-alter function public.create_enrollment_offer(jsonb) owner to postgres;
-revoke all on function
-  public.create_enrollment_offer_pre_affiliate_coupon_impl(jsonb)
+revoke all on function public.create_enrollment_offer_with_affiliate(jsonb,text)
   from public, anon, authenticated, service_role;
-revoke all on function public.create_enrollment_offer(jsonb)
-  from public, anon, authenticated, service_role;
-grant execute on function public.create_enrollment_offer(jsonb)
+grant execute on function public.create_enrollment_offer_with_affiliate(jsonb,text)
   to authenticated;
+
+-- Afiliado não cria oferta de matrícula: a indicação dele é o cupom, e a porta
+-- aceitava a mensalidade que ele quisesse. A trava fica na tabela — vale para
+-- qualquer caminho — e só pega quem chama como SALESPERSON (service role e a
+-- escola seguem livres).
+create or replace function private.block_salesperson_enrollment_offer()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if new.kind = 'ENROLLMENT'
+     and coalesce(public._my_role(), '') = 'SALESPERSON'
+  then
+    raise exception 'forbidden: afiliado nao gera link de matricula'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$function$;
+
+alter function private.block_salesperson_enrollment_offer() owner to postgres;
+revoke all on function private.block_salesperson_enrollment_offer()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists trg_block_salesperson_enrollment_offer on public.offers;
+create trigger trg_block_salesperson_enrollment_offer
+before insert on public.offers
+for each row execute function private.block_salesperson_enrollment_offer();
 
 -- Ficha do afiliado para a direção: mesma forma de antes, agora com o cupom e
 -- a etapa de cada indicação (aguardando pagamento, em liquidação, liberada…).
@@ -2140,7 +2129,7 @@ begin
   select profile.* into v_actor
     from public.profiles as profile
    where profile.id = (select auth.uid());
-  if not found or v_actor.role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
+  if not found or coalesce(v_actor.role, '') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN') then
     return pg_catalog.jsonb_build_object('error', 'sem_permissao');
   end if;
 
@@ -2270,8 +2259,8 @@ comment on table public.vendor_withdrawal_requests is
 comment on function public.apply_affiliate_coupon(uuid,text) is
   'Aplica cupom antes do claim, zera apenas a taxa de matricula e congela a comissao por oferta.';
 
-comment on function public.create_enrollment_offer(jsonb) is
-  'Link manual de matricula. affiliateCoupon aplica o beneficio da indicacao no mesmo commit; afiliado (SALESPERSON) nao gera link.';
+comment on function public.create_enrollment_offer_with_affiliate(jsonb,text) is
+  'Link manual de matricula com cupom de afiliado: cria pela porta publica e aplica o beneficio no mesmo commit.';
 comment on function public.find_affiliates(text,text) is
   'Busca afiliado ativo da escola pelo cupom exato ou pelo nome (sem acento).';
 comment on function public.get_my_affiliate_panel() is
