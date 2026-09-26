@@ -17,16 +17,19 @@
 -- A sala exige documentation_consent = true, e não só "sala existe": a sala
 -- transcreve sozinha, e quem revogou o aceite não pode ser mandado para lá pelo
 -- WhatsApp (decisão da direção: sala da escola só com aceite). E o aceite
--- EFETIVO: recusa ou revogação que chegou antes do fim da aula barra na hora,
--- antes de o job desmarcar a sessão (private.lesson_session_documentation_blocked,
--- de 20260926180000 — a mesma régua de get_my_lesson_rooms).
+-- EFETIVO: recusa ou revogação que chegou antes do fim da aula, ou o aceite do
+-- termo que caiu, barra na hora, antes de o job desmarcar a sessão
+-- (private.lesson_session_documentation_blocked, de 20260926180000 — a mesma
+-- régua de get_my_lesson_rooms).
 --
 -- A sala também exige que o professor da sessão seja quem DÁ a aula. Sessão com
 -- aceite ou sala fica congelada (private.lesson_session_has_evidence): depois de
 -- cobertura confirmada, reposição com professor trocado ou agendamento
 -- transferido, o sync não troca o teacher_id da sessão, e a sala continua com o
 -- coanfitrião antigo. Mandar o aluno para lá o deixaria esperando alguém que não
--- vem admitir, e dividiria a aula em duas salas.
+-- vem admitir, e dividiria a aula em duas salas. A régua de quem dá a aula é
+-- private.lesson_occurrence_giver (20260926180000), a mesma do link do app
+-- (get_my_lesson_rooms) e da preparação da sala na fila.
 --
 -- O texto do lembrete tem UMA fonte: public.render_lesson_reminder_message. O
 -- worker renderiza por ela e a cerca do banco
@@ -80,20 +83,6 @@ as $function$
   join private.google_meet_rooms as room
     on room.lesson_session_id = session.id
    and room.tenant_id = session.tenant_id
-  cross join lateral (
-    select
-      pg_catalog.count(*) as live_coverages,
-      pg_catalog.count(distinct coverage.cover_teacher_id) as cover_teachers,
-      pg_catalog.min(coverage.cover_teacher_id::text)::uuid as cover_teacher_id
-    from public.class_coverages as coverage
-    where occurrence.source_type = 'booking'
-      and coverage.tenant_id = occurrence.tenant_id
-      and coverage.booking_id::text = occurrence.source_id
-      and coverage.class_date = occurrence.class_date
-      and pg_catalog.lower(coalesce(coverage.status, '')) in (
-        'confirmed', 'scheduled', 'completed'
-      )
-  ) as coverage
   where p_teacher_id is not null
     and occurrence.tenant_id = p_tenant
     and occurrence.source_type = pg_catalog.lower(
@@ -108,19 +97,16 @@ as $function$
     -- Aceite EFETIVO, a mesma régua de get_my_lesson_rooms e da porta do Meet
     -- (20260926180000): recusa ou revogação que chegou antes do fim da aula já
     -- vale, mesmo antes de o job de 15 min desmarcar a sessão.
-    and not private.lesson_session_documentation_blocked(
-      session.student_id, session.teacher_id, session.scheduled_end_at
-    )
+    and not private.lesson_session_documentation_blocked(session.id)
     and (p_student_id is null or session.student_id = p_student_id)
     -- Quem dá a aula: o professor da agenda, ou o substituto da cobertura viva.
     -- Duas coberturas com substitutos diferentes (ou sem substituto) não têm
-    -- dono claro: nenhuma sala.
-    and session.teacher_id = case
-      when coverage.live_coverages = 0 then p_teacher_id
-      when coverage.cover_teachers = 1
-        and coverage.live_coverages = coverage.cover_teachers
-        then coverage.cover_teacher_id
-    end
+    -- dono claro: nenhuma sala. A régua é a do link do app e da fila
+    -- (private.lesson_occurrence_giver, 20260926180000).
+    and session.teacher_id = private.lesson_occurrence_giver(
+      occurrence.tenant_id, occurrence.source_type, occurrence.source_id,
+      occurrence.class_date, p_teacher_id
+    )
     and room.state = 'READY'
     and room.meeting_uri ~ '^https://meet[.]google[.]com/[a-z-]+$'
 $function$;

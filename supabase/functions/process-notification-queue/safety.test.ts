@@ -86,6 +86,14 @@ const officialRoomMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+// A régua de quem dá a aula mora no núcleo do Meet (integração da onda 1): é
+// a mesma para o lembrete, o link do app e a fila.
+const meetCoreMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260926180000_meet_identidade_do_professor_e_revogacao.sql",
+    import.meta.url,
+  ),
+);
 
 Deno.test("lembrete é montado pelo mesmo renderizador que a cerca confere", () => {
   // O worker não renderiza mais o lembrete sozinho: achatar o modelo e pôr o
@@ -114,10 +122,20 @@ Deno.test("sala oficial é a de quem dá a aula, e a sala que muda na hora não 
     source,
     "teacherId,\n      template: teacher.lesson_reminder_template",
   );
-  assertStringIncludes(officialRoomMigration, "and session.teacher_id = case");
   assertStringIncludes(
     officialRoomMigration,
-    "from public.class_coverages as coverage",
+    "and session.teacher_id = private.lesson_occurrence_giver(",
+  );
+  assertStringIncludes(
+    meetCoreMigration,
+    "create or replace function private.lesson_occurrence_giver(",
+  );
+  assertStringIncludes(meetCoreMigration, "from public.class_coverages as c");
+  // O link do app e a preparação da sala na fila usam a mesma régua: a aula
+  // coberta não vai para a sala do ausente por outro caminho.
+  assertStringIncludes(
+    meetCoreMigration,
+    "and not private.lesson_session_taught_by_other(s.id)",
   );
   // Worker e cerca consultam a sala em momentos diferentes: se só a sala mudou,
   // RETRY devolve à fila em vez de marcar 'skipped' para sempre.

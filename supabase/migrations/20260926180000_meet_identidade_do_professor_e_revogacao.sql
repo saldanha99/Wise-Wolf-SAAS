@@ -40,6 +40,19 @@
 --   * erro e espera da documentação da sala zeram com a nova decisão e com o
 --     sucesso (sala apagada no Google não fica como "falha").
 --
+-- Correções da integração da onda 1 (26/09/2026, com as frentes do lembrete e
+-- do termo seguro, ainda não publicadas):
+--   * o aceite "como aluno" que deixa de valer sem decisão nova (a escola marca
+--     KIDS, atesta data de menor) também tira o aceite efetivo da sessão marcada
+--     pelo termo (private.lesson_session_term_consent_lapsed, dentro de
+--     private.lesson_session_documentation_blocked, que passou a receber a
+--     sessão): antes a sala seguia ligada na aula em andamento e a transcrição
+--     de um menor, sem o responsável, era importada;
+--   * a sala só é entregue (get_my_lesson_rooms) e preparada (PREPARE_ROOM) se
+--     a sessão congelada ainda for de quem DÁ a aula — a mesma régua do lembrete
+--     (private.lesson_occurrence_giver / lesson_session_taught_by_other). Em aula
+--     coberta, o aluno ia para a sala do ausente e o substituto para o link dele.
+--
 -- Parte das definições de 20260926170000 (google_meet_backend,
 -- get_pending_google_meet_sync_sessions, get_my_lesson_rooms) e das definições
 -- vivas de 20260926120000 (set_my_lesson_recording_consent,
@@ -48,8 +61,9 @@
 -- aluno/responsável (link, decisão pública, lesson_recording_active).
 --
 -- Re-executável: if not exists, drop/add constraint, create or replace, on
--- conflict. Dono das funções existentes preservado; a única SECURITY DEFINER
--- nova (get_my_google_identity) é do postgres, que é dono da tabela nova.
+-- conflict. Dono das funções existentes preservado; as SECURITY DEFINER novas
+-- (get_my_google_identity e as réguas private.*) são do postgres, que é dono da
+-- tabela nova e lê as tabelas de aula, agenda e aceite.
 
 -- 1. Identidade Google do professor --------------------------------------------
 create table if not exists private.teacher_google_identities (
@@ -138,17 +152,166 @@ language sql stable security definer set search_path = '' as $$
     limit 1
   ), false);
 $$;
-create or replace function private.lesson_session_documentation_blocked(
-  p_student uuid, p_teacher uuid, p_scheduled_end timestamptz
-) returns boolean
+-- Aceite do termo que caiu SEM decisão nova (integração da onda 1, com o termo
+-- seguro de 20260926200000): a sessão foi marcada PELO TERMO (o último evento
+-- dela é o "ligar" do termo), aluno e professor continuam com o último "sim", e
+-- mesmo assim o aceite do aluno não vale mais — o aceite "como aluno" de quem a
+-- escola passou a tratar como menor (direção marcou is_kids, atestou data de
+-- menor, ou a data mudou por fora e perdeu a prova). Não é uma decisão, então
+-- não tem hora: vale enquanto durar. A importação da aula fica barrada, e volta
+-- sozinha se a escola atestar a maioridade. Sessão marcada à mão pela direção
+-- não entra (a base dela é outra, registrada no motivo). Revogação e recusa
+-- continuam na régua com hora (lesson_recording_said_no_before).
+create or replace function private.lesson_session_term_consent_lapsed(p_session uuid)
+returns boolean
 language sql stable security definer set search_path = '' as $$
-  select private.lesson_recording_said_no_before(p_student, p_scheduled_end)
-    or private.lesson_recording_said_no_before(p_teacher, p_scheduled_end);
+  select coalesce((
+    select coalesce((
+        select event.allowed and event.reason like 'Termo de registro das aulas%'
+        from private.lesson_documentation_consent_events as event
+        where event.session_id = session.id
+        order by event.created_at desc
+        limit 1
+      ), false)
+      and private.lesson_recording_consent_state(session.student_id) = 'ACCEPTED'
+      and private.lesson_recording_consent_state(session.teacher_id) = 'ACCEPTED'
+      and not private.lesson_recording_active(session.student_id, session.teacher_id)
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
+$$;
+
+-- A sessão está SEM aceite efetivo, mesmo com a marca ligada: recusa/revogação
+-- que chegou antes do fim da aula, ou aceite do termo que caiu. Uma régua só
+-- para a porta do servidor, a fila, o link do app, o lembrete do WhatsApp
+-- (official_lesson_link) e a presença. A versão de três argumentos (aluno,
+-- professor, fim) não enxergava a sessão e perdia o aceite que caiu.
+drop function if exists private.lesson_session_documentation_blocked(uuid, uuid, timestamptz);
+create or replace function private.lesson_session_documentation_blocked(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select private.lesson_recording_said_no_before(session.student_id, session.scheduled_end_at)
+      or private.lesson_recording_said_no_before(session.teacher_id, session.scheduled_end_at)
+      or private.lesson_session_term_consent_lapsed(session.id)
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
 $$;
 alter function private.lesson_recording_said_no_before(uuid, timestamptz) owner to postgres;
-alter function private.lesson_session_documentation_blocked(uuid, uuid, timestamptz) owner to postgres;
+alter function private.lesson_session_term_consent_lapsed(uuid) owner to postgres;
+alter function private.lesson_session_documentation_blocked(uuid) owner to postgres;
 revoke all on function private.lesson_recording_said_no_before(uuid, timestamptz) from public, anon, authenticated;
-revoke all on function private.lesson_session_documentation_blocked(uuid, uuid, timestamptz) from public, anon, authenticated;
+revoke all on function private.lesson_session_term_consent_lapsed(uuid) from public, anon, authenticated;
+revoke all on function private.lesson_session_documentation_blocked(uuid) from public, anon, authenticated;
+
+-- Quem dá a aula ------------------------------------------------------------------
+-- Sessão com aceite ou sala fica CONGELADA (private.lesson_session_has_evidence):
+-- cobertura confirmada, reposição com professor trocado ou agendamento transferido
+-- depois disso não mudam o teacher_id dela, e a sala continua com o coanfitrião
+-- antigo. Mandar o aluno para lá o deixa esperando quem não vem admitir, e divide
+-- a aula em duas salas. Regra única (integração da onda 1) do lembrete do
+-- WhatsApp (public.official_lesson_link, 20260926190000), do link do app
+-- (get_my_lesson_rooms) e da preparação da sala na fila.
+--
+-- Quem dá UMA ocorrência: o professor da agenda (p_scheduled_teacher) ou, com
+-- cobertura viva do agendamento naquela data, o substituto. Duas coberturas
+-- vivas sem substituto único: ninguém (null). A cobertura é casada pelo
+-- agendamento + data, sem o horário: ela fica amarrada ao slot do booking mesmo
+-- quando o horário combinado é outro, e o índice único
+-- class_coverages_live_booking_date_uidx já é por (booking, data).
+create or replace function private.lesson_occurrence_giver(
+  p_tenant text, p_source_type text, p_source_id text, p_class_date date, p_scheduled_teacher uuid
+) returns uuid
+language sql stable security definer set search_path = '' as $$
+  select case
+    when coverage.live_coverages = 0 then p_scheduled_teacher
+    when coverage.cover_teachers = 1 and coverage.live_coverages = coverage.cover_teachers
+      then coverage.cover_teacher_id
+  end
+  from (
+    select pg_catalog.count(*) as live_coverages,
+      pg_catalog.count(distinct c.cover_teacher_id) as cover_teachers,
+      pg_catalog.min(c.cover_teacher_id::text)::uuid as cover_teacher_id
+    from public.class_coverages as c
+    where p_source_type = 'booking'
+      and c.tenant_id = p_tenant
+      and c.booking_id::text = p_source_id
+      and c.class_date = p_class_date
+      and pg_catalog.lower(coalesce(c.status, '')) in ('confirmed', 'scheduled', 'completed')
+  ) as coverage;
+$$;
+
+-- Professor da agenda de uma ocorrência, lido HOJE da fonte: antecipação do
+-- agendamento naquela data e hora, senão o agendamento; a reposição; a aula
+-- experimental. Fonte que não existe mais (ou id que não é uuid): null.
+create or replace function private.lesson_occurrence_scheduled_teacher(
+  p_tenant text, p_source_type text, p_source_id text, p_class_date date, p_start_time time
+) returns uuid
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_id uuid;
+  v_teacher uuid;
+begin
+  if coalesce(p_source_id, '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return null;
+  end if;
+  v_id := p_source_id::uuid;
+  if p_source_type = 'booking' then
+    select advance.teacher_id into v_teacher
+      from public.lesson_advances as advance
+     where advance.booking_id = v_id and advance.tenant_id = p_tenant
+       and advance.advance_date = p_class_date and advance.advance_time = p_start_time
+       and advance.status <> 'CANCELLED'
+     order by advance.created_at desc
+     limit 1;
+    if v_teacher is null then
+      select booking.teacher_id into v_teacher
+        from public.bookings as booking
+       where booking.id = v_id and booking.tenant_id = p_tenant;
+    end if;
+  elsif p_source_type = 'reschedule' then
+    select reschedule.teacher_id into v_teacher
+      from public.reschedules as reschedule
+     where reschedule.id = v_id and reschedule.tenant_id = p_tenant;
+  elsif p_source_type = 'appointment' then
+    select appointment.teacher_id into v_teacher
+      from public.appointments as appointment
+     where appointment.id = v_id and appointment.tenant_id = p_tenant;
+  end if;
+  return v_teacher;
+end;
+$$;
+
+-- A sessão hoje é dada por OUTRO professor: alguma ocorrência viva dela tem
+-- outro dono (cobertura viva, reposição reatribuída, agendamento transferido).
+-- Fonte que sumiu não decide nada: fica o professor da sessão.
+create or replace function private.lesson_session_taught_by_other(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1
+    from public.lesson_occurrences as occurrence
+    join public.lesson_sessions as session
+      on session.id = occurrence.session_id and session.tenant_id = occurrence.tenant_id
+    where occurrence.session_id = p_session
+      and occurrence.status <> 'SUPERSEDED'
+      and private.lesson_occurrence_giver(
+            occurrence.tenant_id, occurrence.source_type, occurrence.source_id, occurrence.class_date,
+            coalesce(
+              private.lesson_occurrence_scheduled_teacher(
+                occurrence.tenant_id, occurrence.source_type, occurrence.source_id,
+                occurrence.class_date, occurrence.start_time),
+              session.teacher_id)
+          ) is distinct from session.teacher_id
+  );
+$$;
+alter function private.lesson_occurrence_giver(text, text, text, date, uuid) owner to postgres;
+alter function private.lesson_occurrence_scheduled_teacher(text, text, text, date, time) owner to postgres;
+alter function private.lesson_session_taught_by_other(uuid) owner to postgres;
+revoke all on function private.lesson_occurrence_giver(text, text, text, date, uuid) from public, anon, authenticated;
+revoke all on function private.lesson_occurrence_scheduled_teacher(text, text, text, date, time) from public, anon, authenticated;
+revoke all on function private.lesson_session_taught_by_other(uuid) from public, anon, authenticated;
 
 -- Porta do servidor -------------------------------------------------------------
 create or replace function public.google_meet_backend(
@@ -278,7 +441,7 @@ begin
       select room.lesson_session_id from private.google_meet_rooms room
       join public.lesson_sessions sess on sess.id=room.lesson_session_id and sess.tenant_id=room.tenant_id
       where room.tenant_id=p_tenant_id and room.state='READY' and sess.documentation_consent and sess.status<>'SUPERSEDED'
-        and not private.lesson_session_documentation_blocked(sess.student_id, sess.teacher_id, sess.scheduled_end_at)
+        and not private.lesson_session_documentation_blocked(sess.id)
         and sess.scheduled_end_at < now() and sess.scheduled_end_at > now()-interval '7 days'
         and room.sync_status in ('WAITING','PENDING')
         and coalesce(room.next_sync_at, room.last_synced_at+interval '30 minutes', '-infinity'::timestamptz) <= now()
@@ -302,9 +465,11 @@ begin
       or (a.role='TEACHER' and s.teacher_id=a.id);
     -- Aceite EFETIVO: a marca da sessão menos a recusa/revogação que chegou antes
     -- do fim da aula (o job de 15 min ainda pode não ter desmarcado, ou a conta
-    -- central pode estar fora do ar). Sala, importação e estado da fila usam este.
+    -- central pode estar fora do ar) e menos o aceite do termo que caiu (aceite
+    -- "como aluno" de quem hoje exige responsável). Sala, importação e estado da
+    -- fila usam este.
     v_consent := s.documentation_consent
-      and not private.lesson_session_documentation_blocked(s.student_id, s.teacher_id, s.scheduled_end_at);
+      and not private.lesson_session_documentation_blocked(s.id);
 
     if p_action='room_claim' then
       if not v_consent then raise exception 'documentation_consent_required' using errcode='42501'; end if;
@@ -640,8 +805,14 @@ grant execute on function public.google_meet_backend(text,text,uuid,uuid,jsonb) 
 --     não sai, e a sessão entupiria as 30 vagas a cada 15 min), e também para
 --     sala cujo coanfitrião não é mais a conta confirmada — a sala pronta segue
 --     READY enquanto a edge acerta os membros (até o fim da aula);
---   nada de sala nova nem de importação para aula com recusa/revogação antes do
---     fim (private.lesson_session_documentation_blocked).
+--   nada de sala nova nem de importação para aula sem aceite efetivo (recusa ou
+--     revogação antes do fim, ou aceite do termo que caiu —
+--     private.lesson_session_documentation_blocked);
+--   PREPARE_ROOM nem acerto de coanfitrião para sessão que hoje é dada por OUTRO
+--     professor (cobertura viva, reposição reatribuída, agendamento transferido
+--     depois do aceite — private.lesson_session_taught_by_other): a sala não é
+--     entregue a ninguém (get_my_lesson_rooms, official_lesson_link), e mantê-la
+--     só deixaria o professor ausente como quem admite a turma.
 create or replace function public.get_pending_google_meet_sync_sessions()
 returns jsonb language sql stable security definer set search_path='' as $$
   select coalesce(jsonb_agg(x order by x.priority_group, x.priority_at),'[]'::jsonb) from (
@@ -654,7 +825,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
       join private.google_workspace_connections c on c.tenant_id=r.tenant_id and c.organizer_sub=r.organizer_sub
       join public.profiles a on a.id=c.connected_by
       where c.status='CONNECTED' and r.state='READY' and s.documentation_consent and s.status<>'SUPERSEDED'
-        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
+        and not private.lesson_session_documentation_blocked(s.id)
         and s.scheduled_end_at<now() and s.scheduled_end_at>now()-interval '7 days'
         and r.sync_status in ('WAITING','PENDING')
         and coalesce(r.next_sync_at,r.last_synced_at+interval '30 minutes','-infinity'::timestamptz)<=now()
@@ -670,7 +841,8 @@ returns jsonb language sql stable security definer set search_path='' as $$
       join private.teacher_google_identities ident on ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id
       left join private.google_meet_rooms r on r.lesson_session_id=s.id
       where s.documentation_consent and s.status='SCHEDULED'
-        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
+        and not private.lesson_session_documentation_blocked(s.id)
+        and not private.lesson_session_taught_by_other(s.id)
         and s.scheduled_start_at between now() and now()+interval '24 hours'
         and (r.lesson_session_id is null
           or (r.state='COHOST_PENDING' and r.organizer_sub=c.organizer_sub
@@ -694,7 +866,8 @@ returns jsonb language sql stable security definer set search_path='' as $$
       join private.teacher_google_identities ident on ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id
       where c.status='CONNECTED' and r.state='READY' and r.space_name is not null
         and s.documentation_consent and s.status<>'SUPERSEDED'
-        and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
+        and not private.lesson_session_documentation_blocked(s.id)
+        and not private.lesson_session_taught_by_other(s.id)
         and s.scheduled_end_at>now()
         and (r.cohost_email<>ident.google_email
           or (r.cohost_sync_pending and coalesce(r.cohost_next_attempt_at,'-infinity'::timestamptz)<=now()))
@@ -710,7 +883,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
         select r.tenant_id,c.connected_by,r.lesson_session_id,r.artifacts_state,s.status,
           s.scheduled_start_at,s.scheduled_end_at,
           s.documentation_consent
-            and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at) as effective
+            and not private.lesson_session_documentation_blocked(s.id) as effective
         from private.google_meet_rooms r
         join public.lesson_sessions s on s.id=r.lesson_session_id and s.tenant_id=r.tenant_id
         join private.google_workspace_connections c on c.tenant_id=r.tenant_id and c.organizer_sub=r.organizer_sub
@@ -739,6 +912,13 @@ grant execute on function public.get_pending_google_meet_sync_sessions() to serv
 --     Google confirmada pelo professor ela nunca sai, e o app usa o link de sempre.
 -- E a revogação vale na hora: recusa/revogação antes do fim da aula tira a sala
 -- da escola do app mesmo antes de o job de 15 min desmarcar a sessão.
+-- Integração da onda 1: a mesma régua do lembrete do WhatsApp para QUEM DÁ a
+-- aula. Sessão congelada que hoje é dada por outro professor (cobertura viva do
+-- agendamento naquela data, reposição reatribuída, agendamento transferido) não
+-- volta para ninguém: o aluno ia para a sala do professor ausente (só ele admite
+-- quem bate) enquanto o substituto, que não é o professor da sessão, caía no link
+-- pessoal — a aula se dividia em duas salas. Sem a sessão, os dois usam o link
+-- de sempre, como no lembrete (official_lesson_link, 20260926190000).
 create or replace function public.get_my_lesson_rooms(
   p_from date default null, p_to date default null
 ) returns jsonb language plpgsql stable security definer set search_path='' as $$
@@ -756,7 +936,8 @@ begin
     left join private.google_meet_rooms r on r.lesson_session_id=s.id and r.tenant_id=s.tenant_id
     where s.tenant_id=a.tenant_id and s.status<>'SUPERSEDED'
       and s.documentation_consent
-      and not private.lesson_session_documentation_blocked(s.student_id,s.teacher_id,s.scheduled_end_at)
+      and not private.lesson_session_documentation_blocked(s.id)
+      and not private.lesson_session_taught_by_other(s.id)
       and (r.lesson_session_id is not null or exists (select 1 from private.teacher_google_identities ident
         where ident.teacher_id=s.teacher_id and ident.tenant_id=s.tenant_id))
       and coalesce(r.state,'') not in ('FAILED','NEEDS_RECONCILIATION')
@@ -907,24 +1088,39 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('lesson-quality:' || p_tenant, 0));
 
   -- 1. Recusa ou revogação antes do fim da aula: desmarca, com ou sem conexão.
+  --    E o aceite do termo que caiu sem decisão nova (aceite "como aluno" de
+  --    quem hoje exige responsável — lesson_session_term_consent_lapsed) numa
+  --    aula que ainda não terminou: é a aula que não tinha terminado quando ele
+  --    caiu, e ela não volta a ser marcada depois de começar. Aula já terminada
+  --    fica barrada na leitura (lesson_session_documentation_blocked) enquanto o
+  --    aceite não voltar a valer, sem virar decisão permanente — ele caiu por
+  --    uma regra, não por um "não" com hora.
   for v_session in
     select session.id,
       exists (
         select 1 from private.lesson_documentation_consent_events as event
         where event.session_id = session.id and event.allowed
           and event.reason like (v_marker || '%')
-      ) as marked_by_term
+      ) as marked_by_term,
+      private.lesson_recording_said_no_before(session.student_id, session.scheduled_end_at)
+        or private.lesson_recording_said_no_before(session.teacher_id, session.scheduled_end_at) as said_no
     from public.lesson_sessions as session
     where session.tenant_id = p_tenant
       and session.status <> 'SUPERSEDED'
       and session.documentation_consent
       and session.scheduled_end_at > pg_catalog.now() - interval '8 days'
-      and private.lesson_session_documentation_blocked(session.student_id, session.teacher_id, session.scheduled_end_at)
+      and (private.lesson_recording_said_no_before(session.student_id, session.scheduled_end_at)
+        or private.lesson_recording_said_no_before(session.teacher_id, session.scheduled_end_at)
+        or (session.scheduled_end_at > pg_catalog.now()
+          and private.lesson_session_term_consent_lapsed(session.id)))
   loop
     insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
     values (v_session.id, v_actor, false,
-      v_marker || case when v_session.marked_by_term
-        then ': autorização revogada ou recusada depois da marcação.'
+      v_marker || case
+        when not v_session.said_no
+          then ': o aceite do aluno deixou de valer (hoje a escola exige o responsável).'
+        when v_session.marked_by_term
+          then ': autorização revogada ou recusada depois da marcação.'
         else ': aluno (ou responsável) ou professor revogou ou recusou; a marcação manual não passa por cima.' end,
       pg_catalog.clock_timestamp());
     update public.lesson_sessions
@@ -1063,11 +1259,11 @@ begin
   if not found then
     raise exception 'lesson_session_not_found' using errcode = '22023';
   end if;
-  -- Aceite efetivo: recusa/revogação antes do fim da aula barra a planilha de
-  -- presença como barra a transcrição, mesmo antes de o job desmarcar a sessão.
+  -- Aceite efetivo: recusa/revogação antes do fim da aula (ou aceite do termo que
+  -- caiu) barra a planilha de presença como barra a transcrição, mesmo antes de
+  -- o job desmarcar a sessão.
   if not v_session.documentation_consent
-    or private.lesson_session_documentation_blocked(v_session.student_id, v_session.teacher_id,
-      v_session.scheduled_end_at) then
+    or private.lesson_session_documentation_blocked(v_session.id) then
     raise exception 'documentation_consent_required' using errcode = '42501';
   end if;
 

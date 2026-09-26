@@ -18,6 +18,14 @@
 --     virava REVIEW_REQUIRED, e o lembrete era descartado para sempre;
 --   • modelo terminado em {class_link} numa aula sem sala sobrava com "\n\n" no
 --     fim; o worker aparava e a cerca recusava o lembrete.
+--
+-- E reprova contra a integração da onda 1 antes do corretor (26/09): a régua
+-- de quem dá a aula valia só para o lembrete — o link do app
+-- (get_my_lesson_rooms) mandava o aluno de uma aula coberta ou transferida para
+-- a sala do professor que não vem, e a fila continuava preparando essa sala.
+--
+-- Nada aqui reserva nem espera trabalho real: no release este teste roda no
+-- banco de produção, e a fila de notificações e a do Meet são globais.
 
 \set ON_ERROR_STOP on
 
@@ -34,6 +42,31 @@ begin
 end;
 $$;
 grant execute on function pg_temp.assert_true(boolean, text) to public;
+
+-- Sala que o app (get_my_lesson_rooms, como o navegador chama) devolve a
+-- p_user para a sessão na data: o link, '(sem link)' se a sessão volta sem
+-- sala pronta, ou null se a sessão nem volta (o app usa o link de sempre).
+create or replace function pg_temp.walink_room_of(p_user uuid, p_date date, p_session uuid)
+returns text
+language plpgsql
+as $$
+declare
+  v_rooms jsonb;
+  v_room jsonb;
+begin
+  perform set_config('request.jwt.claims',
+    jsonb_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  v_rooms := public.get_my_lesson_rooms(p_date, p_date);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  select x into v_room
+  from jsonb_array_elements(v_rooms) as x
+  where x ->> 'session_id' = p_session::text;
+  if v_room is null then
+    return null;
+  end if;
+  return coalesce(v_room ->> 'meeting_uri', '(sem link)');
+end;
+$$;
 
 -- ─── 1. Superfície: só o servidor chama ─────────────────────────────────────
 
@@ -346,12 +379,14 @@ select pg_temp.assert_true(
 )
 from walink_clock as c;
 
--- Outra data, outro horário, outro aluno, outra escola, outro tipo: nada.
+-- Outra data, outro horário, outro aluno, outra escola, outro tipo: nada. O
+-- outro horário sai do horário da aula (um horário fixo, como 23:59, é o da
+-- própria aula quando o teste roda às 23:29 de Brasília).
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
     c.class_date + 3, '00000000-0000-4000-8000-00000000d502', null, null) is null
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, '00000000-0000-4000-8000-00000000d502', time '23:59', null) is null
+    c.class_date, '00000000-0000-4000-8000-00000000d502', c.class_time::time + interval '1 hour', null) is null
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
     c.class_date, '00000000-0000-4000-8000-00000000d502', null, '00000000-0000-4000-8000-00000000d505') is null
   and public.official_lesson_link('sala-oficial-outra', 'booking', '00000000-0000-4000-8000-00000000d5b1',
@@ -379,6 +414,34 @@ select pg_temp.assert_true(
 )
 from walink_clock as c;
 
+-- O link do app segue a mesma régua (integração da onda 1): a aula transferida
+-- para a Débora não entrega a sala da Teacher Sala a ninguém — o aluno e a
+-- Débora usam o link de sempre, como no lembrete. A aula que continua da Teacher
+-- Sala (B1) segue com a sala, e reposição cuja fonte não existe mais não decide
+-- nada (fica o professor da sessão).
+select pg_temp.assert_true(
+  pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d507', c.class_date,
+    '00000000-0000-4000-8000-00000000d5a6') is null
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d501', c.class_date,
+    '00000000-0000-4000-8000-00000000d5a6') is null
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date,
+    '00000000-0000-4000-8000-00000000d5a1') = 'https://meet.google.com/abc-defg-hij'
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date + 1,
+    '00000000-0000-4000-8000-00000000d5a2') = 'https://meet.google.com/rep-osic-aoo',
+  'app entregou a sala da professora que não dá mais a aula transferida (ou tirou a de quem dá)'
+)
+from walink_clock as c;
+
+-- Antes da cobertura, a antecipação (S3) chega ao aluno e à titular pelo app.
+select pg_temp.assert_true(
+  pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') = 'https://meet.google.com/ant-ecip-ada'
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d502', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') = 'https://meet.google.com/ant-ecip-ada',
+  'fixture: sala da antecipação não chegou ao app antes da cobertura'
+)
+from walink_clock as c;
+
 -- Cobertura confirmada depois da sala ("Flávio não dá aula hoje", a Débora
 -- aceita): o lembrete continua saindo pelo agendamento do Flávio, mas a sala
 -- dele não vale — quem dá a aula é a Débora.
@@ -403,8 +466,54 @@ select pg_temp.assert_true(
 )
 from walink_clock as c;
 
+-- ...e o app também não: nem o aluno (que ia bater na sala do ausente), nem a
+-- substituta, nem a direção recebem a sala. Aluno e substituta usam o link de
+-- sempre — a aula não se divide em duas salas.
+select pg_temp.assert_true(
+  pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') is null
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d504', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') is null
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d501', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') is null,
+  'app entregou a sala do professor ausente na aula coberta'
+)
+from walink_clock as c;
+
+-- A fila também não prepara a sala (nem acerta o coanfitrião) de aula dada por
+-- outro professor: coberta (S3) ou transferida (S6). A da própria Teacher Sala
+-- (S1) segue. A professora confirmou outra conta Google, então toda sala pronta
+-- dela pede acerto do coanfitrião. A fila é global: as conexões reais saem do ar
+-- só neste savepoint.
+savepoint walink_meet_queue;
+update private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED';
+insert into private.google_workspace_connections (tenant_id, organizer_sub, organizer_email, status, connected_by)
+values ('sala-oficial-test', 'synthetic-sub', 'escola-sala@example.invalid', 'CONNECTED',
+  '00000000-0000-4000-8000-00000000d501');
+insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+values ('00000000-0000-4000-8000-00000000d502', 'sala-oficial-test', 'walink-teacher-sub',
+  'walink-nova@example.invalid', true);
+select pg_temp.assert_true(
+  exists (
+    select 1 from jsonb_array_elements(q.jobs) as j
+    where j ->> 'lesson_session_id' = '00000000-0000-4000-8000-00000000d5a1'
+      and j ->> 'operation' = 'PREPARE_ROOM'
+  )
+  and not exists (
+    select 1 from jsonb_array_elements(q.jobs) as j
+    where j ->> 'lesson_session_id' in (
+      '00000000-0000-4000-8000-00000000d5a3', '00000000-0000-4000-8000-00000000d5a6'
+    )
+  ),
+  'fila preparou a sala de aula dada por outro professor: ' || q.jobs::text
+)
+from (select public.get_pending_google_meet_sync_sessions() as jobs) as q;
+rollback to savepoint walink_meet_queue;
+release savepoint walink_meet_queue;
+
 -- Sessão que nasceu DEPOIS da cobertura (o sync já a criou com o substituto):
--- a sala é do substituto, e vale para o lembrete do agendamento do titular.
+-- a sala é do substituto, e vale para o lembrete do agendamento do titular —
+-- e para o app, do aluno e da substituta.
 update public.lesson_sessions set teacher_id = '00000000-0000-4000-8000-00000000d504'
 where id = '00000000-0000-4000-8000-00000000d5a3';
 select pg_temp.assert_true(
@@ -412,6 +521,14 @@ select pg_temp.assert_true(
     c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null)
     = 'https://meet.google.com/ant-ecip-ada',
   'sala do substituto não foi mandada na aula coberta'
+)
+from walink_clock as c;
+select pg_temp.assert_true(
+  pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') = 'https://meet.google.com/ant-ecip-ada'
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d504', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') = 'https://meet.google.com/ant-ecip-ada',
+  'sala do substituto não chegou ao app na aula coberta'
 )
 from walink_clock as c;
 update public.lesson_sessions set teacher_id = '00000000-0000-4000-8000-00000000d502'
@@ -425,7 +542,9 @@ alter table public.class_coverages enable trigger user;
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
     c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null)
-    = 'https://meet.google.com/ant-ecip-ada',
+    = 'https://meet.google.com/ant-ecip-ada'
+  and pg_temp.walink_room_of('00000000-0000-4000-8000-00000000d503', c.class_date + 2,
+    '00000000-0000-4000-8000-00000000d5a3') = 'https://meet.google.com/ant-ecip-ada',
   'cobertura cancelada tirou a sala do titular'
 )
 from walink_clock as c;
@@ -585,7 +704,46 @@ begin
 
   select class_time into strict v_class_time from walink_clock;
 
-  for v_row in select * from public.claim_notification_delivery_batch(200, 300) loop
+  -- Reserva SÓ os quatro lembretes de teste, com o efeito do claim da fila
+  -- (public.claim_notification_delivery_batch): processing/preparing, uma
+  -- tentativa, token e prazo. O claim de verdade é global: no release este
+  -- teste roda no banco de produção, e ele reservaria (e travaria) notificações
+  -- reais vencidas — que ainda passam na frente das de teste, então com a fila
+  -- represada (restrição do WhatsApp, Evolution fora) o teste reprovaria sem
+  -- defeito nenhum. A reserva em si é coberta por whatsapp_delivery_pipeline.sql;
+  -- aqui se confere que os lembretes estão no ponto em que o claim os pega.
+  perform pg_temp.assert_true(
+    (
+      select pg_catalog.count(*) = 4
+      from public.notification_queue as notification
+      where notification.id in (
+          '00000000-0000-4000-8000-00000000d5e1', '00000000-0000-4000-8000-00000000d5e2',
+          '00000000-0000-4000-8000-00000000d5e3', '00000000-0000-4000-8000-00000000d5e4'
+        )
+        and notification.status = 'pending'
+        and notification.delivery_status = 'queued'
+        and notification.attempts < notification.max_attempts
+        and notification.scheduled_for <= now()
+        and notification.next_attempt_at <= now()
+    ),
+    'lembretes de teste fora do ponto em que a fila os reserva'
+  );
+
+  for v_row in
+    update public.notification_queue as notification
+    set status = 'processing',
+        delivery_status = 'preparing',
+        attempts = notification.attempts + 1,
+        claim_token = gen_random_uuid(),
+        lease_expires_at = now() + interval '300 seconds',
+        last_error = null,
+        updated_at = now()
+    where notification.id in (
+      '00000000-0000-4000-8000-00000000d5e1', '00000000-0000-4000-8000-00000000d5e2',
+      '00000000-0000-4000-8000-00000000d5e3', '00000000-0000-4000-8000-00000000d5e4'
+    )
+    returning notification.*
+  loop
     if v_row.id = '00000000-0000-4000-8000-00000000d5e1' then
       v_official := v_row;
     elsif v_row.id = '00000000-0000-4000-8000-00000000d5e2' then
