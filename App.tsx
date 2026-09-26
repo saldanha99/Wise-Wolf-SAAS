@@ -93,6 +93,8 @@ const ScheduleChangeRequests = lazy(() => import('./components/ScheduleChangeReq
 const ContactQualityManager = lazy(() => import('./components/ContactQualityManager'));
 const GoogleMeetSettings = lazy(() => import('./components/GoogleMeetSettings'));
 const LessonSessionsPanel = lazy(() => import('./components/LessonSessionsPanel'));
+const LessonRecordingConsentsPanel = lazy(() => import('./components/LessonRecordingConsentsPanel'));
+const LessonRecordingConsentPage = lazy(() => import('./components/LessonRecordingConsentPage'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
 const CourseRenewalSign = lazy(() => import('./components/CourseRenewalSign'));
@@ -161,6 +163,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Aulas' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Aulas' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Aulas' },
+    { tab: 'recording-consents', label: 'Autorizações de registro', group: 'Aulas', keywords: 'termo transcrição meet lgpd consentimento' },
     { tab: 'google-meet', label: 'Conta central Google', group: 'Configurações' },
     { tab: 'dashboard', label: 'Início', group: 'Visão geral', keywords: 'dashboard painel' },
     { tab: 'wolfie-lab', label: 'Wolfie Lab', group: 'Visão geral' },
@@ -209,6 +212,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Qualidade' },
+    { tab: 'recording-consents', label: 'Autorizações de registro', group: 'Qualidade' },
     { tab: 'profile', label: 'Meu perfil', group: 'Conta' },
   ],
   [UserRole.TEACHER]: [
@@ -1043,6 +1047,13 @@ const App: React.FC = () => {
     </Suspense>;
   }
 
+  // Termo de registro das aulas: aluno ou responsável responde pelo link (público, sem login).
+  if (path === '/registro-das-aulas' || path.startsWith('/registro-das-aulas')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <LessonRecordingConsentPage />
+    </Suspense>;
+  }
+
   // Aceite de transferência de aluno pelo novo professor (link público, sem login)
   if (path === '/transferencia' || path.startsWith('/transferencia')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
@@ -1370,6 +1381,7 @@ const App: React.FC = () => {
       'quality-contacts': <ContactQualityManager manager />,
       'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} />,
       'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
+      'recording-consents': <LessonRecordingConsentsPanel schoolName={currentTenant?.name} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,
       'student-insights': <StudentInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'teacher-insights': <TeacherInsightsBoard user={user} tenantId={currentTenant?.id} />,

@@ -98,6 +98,7 @@ export const ADMIN_NAV: NavGroup[] = [
     { id: 'schedule-requests', label: 'Aceites de horário' },
     { id: 'quality-contacts', label: 'Contatos verificados' },
     { id: 'lesson-sessions', label: 'Salas e continuidade' },
+    { id: 'recording-consents', label: 'Autorizações de registro' },
     { id: 'google-meet', label: 'Conta central Google' },
   ] },
   { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca', tabs: [] },

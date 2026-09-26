@@ -332,6 +332,11 @@ select pg_temp.assert_true(
           -- 14 dias, devolve só o nome do professor e do aluno (migration
           -- 20260918060000, suíte assentos_de_aluno_no_hub.sql).
           'public.hub_learner_invite_preview(text)',
+          -- Termo de registro das aulas: token de 64 hex com validade de 30
+          -- dias; a leitura devolve só o primeiro nome do aluno e o texto do
+          -- termo (migration 20260926120000, suíte termo_de_registro_das_aulas.sql).
+          'public.get_lesson_recording_consent_public(text)',
+          'public.decide_lesson_recording_consent_public(text,text,text,boolean)',
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
@@ -360,7 +365,9 @@ begin
     'public.sign_student_course_renewal(text,text,date)',
     'public.resolve_public_tenant(text)',
     'public.hub_get_public_settings()',
-    'public.hub_learner_invite_preview(text)'
+    'public.hub_learner_invite_preview(text)',
+    'public.get_lesson_recording_consent_public(text)',
+    'public.decide_lesson_recording_consent_public(text,text,text,boolean)'
   ]
   loop
     perform pg_temp.assert_true(

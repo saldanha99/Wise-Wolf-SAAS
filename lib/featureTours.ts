@@ -182,6 +182,32 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-26-registro-das-aulas',
+    title: 'Autorização do registro das aulas',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'recording-consents',
+        view: 'recording-consents',
+        title: 'Quem autorizou o registro das aulas 🎙️',
+        text: 'A aula só é transcrita no Meet da escola quando o aluno (ou o responsável, se for menor) e o professor autorizaram — uma vez, até revogar. Aqui você gera o link do termo para cada aluno, manda pelo WhatsApp e acompanha quem já respondeu. Os professores respondem na própria tela de "Salas e continuidade".',
+      },
+    ],
+  },
+  {
+    id: '2026-09-26-registro-das-aulas-professor',
+    title: 'Registro das suas aulas',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'recording-teacher-consent',
+        view: 'lesson-sessions',
+        title: 'Sua autorização para o registro das aulas 🎙️',
+        text: 'Nas salas do Meet da escola, a aula pode ser transcrita para registrar o que foi trabalhado e dar continuidade ao aluno. Leia o termo e responda aqui — sem a sua autorização nenhuma aula sua é transcrita. Nada disso muda o seu pagamento automaticamente.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
