@@ -10,12 +10,29 @@
 // conteúdo dá 403 appNotAuthorizedToFile — nada da aula seria importado. O
 // servidor só abre arquivos com id vindo da Meet API (docsDestination) ou a
 // planilha de presença da própria conta localizada pelo código da sala.
-export const GOOGLE_SCOPES = [
+export const DRIVE_READONLY_SCOPE =
+  "https://www.googleapis.com/auth/drive.readonly";
+// Mover os originais para a lixeira (decisão da direção, 26/09/2026: 90 dias
+// depois da aula, ou na hora num pedido de exclusão) exige ESCREVER no Drive: o
+// drive.readonly não serve e o drive.file só alcança arquivos criados pelo app —
+// os documentos do Meet são criados pelo Google. Só é pedido com a flag
+// GOOGLE_MEET_DELETE_ORIGINALS_ENABLED ligada; o servidor continua abrindo e
+// movendo apenas arquivos com id vindo da Meet API ou da planilha guardada.
+export const DRIVE_WRITE_SCOPE = "https://www.googleapis.com/auth/drive";
+const BASE_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/meetings.space.created",
-  "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
+/** Escopos pedidos à conta central: o Drive depende da lixeira dos originais. */
+export function googleScopes(deleteOriginals: boolean): string[] {
+  return [
+    ...BASE_SCOPES,
+    deleteOriginals ? DRIVE_WRITE_SCOPE : DRIVE_READONLY_SCOPE,
+  ];
+}
+// Escopos com a lixeira desligada (o padrão da instalação).
+export const GOOGLE_SCOPES: readonly string[] = googleScopes(false);
 // Login Google do PROFESSOR, só para confirmar qual conta é dele (decisão da
 // direção, 26/09/2026): nenhum acesso a Meet ou Drive, nenhum token guardado.
 export const TEACHER_IDENTITY_SCOPES = ["openid", "email"] as const;
@@ -274,6 +291,7 @@ export function authorizationUrl(
   config: { clientId: string; redirectUri: string },
   state: string,
   challenge: string,
+  deleteOriginals = false,
 ): string {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
@@ -282,7 +300,7 @@ export function authorizationUrl(
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    scope: GOOGLE_SCOPES.join(" "),
+    scope: googleScopes(deleteOriginals).join(" "),
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -438,11 +456,31 @@ export function roomClaimNextStep(claim: {
   return "CONFIGURE_COHOST";
 }
 
-export function grantedRequiredScopes(value: unknown): boolean {
-  const scopes = new Set(text(value, 4000).split(/\s+/));
-  return GOOGLE_SCOPES.filter((scope) => scope.startsWith("https:")).every((
-    scope,
-  ) => scopes.has(scope));
+const scopeSet = (value: unknown): Set<string> =>
+  new Set(
+    (Array.isArray(value) ? value.join(" ") : text(value, 4000)).split(/\s+/),
+  );
+/**
+ * A conta central concedeu o que a configuração pede. O escopo drive (escrita)
+ * inclui a leitura: conexão feita com a lixeira ligada continua valendo se a
+ * flag for desligada depois. Com a flag ligada, drive.readonly não basta —
+ * a tela pede para reconectar.
+ */
+export function grantedRequiredScopes(
+  value: unknown,
+  deleteOriginals = false,
+): boolean {
+  const scopes = scopeSet(value);
+  return googleScopes(deleteOriginals).filter((scope) =>
+    scope.startsWith("https:")
+  ).every((scope) =>
+    scopes.has(scope) ||
+    (scope === DRIVE_READONLY_SCOPE && scopes.has(DRIVE_WRITE_SCOPE))
+  );
+}
+/** A conta central autorizou mover arquivos para a lixeira do Drive. */
+export function hasDriveWriteScope(value: unknown): boolean {
+  return scopeSet(value).has(DRIVE_WRITE_SCOPE);
 }
 export interface SourceArtifact {
   id: string;

@@ -26,6 +26,22 @@ export type MeetArtifact = {
   document: string | null;
   conference: MeetConference;
 };
+// Originais da aula no Drive da conta central que vão para a lixeira (90 dias
+// depois da aula ou num pedido de exclusão): documentos do Meet e planilha de
+// presença. O tipo esperado no Drive é conferido antes de mover.
+export type OriginalKind = "TRANSCRIPT" | "SMART_NOTES" | "ATTENDANCE_REPORT";
+export const ORIGINAL_MIME_TYPES: Record<OriginalKind, string> = {
+  TRANSCRIPT: "application/vnd.google-apps.document",
+  SMART_NOTES: "application/vnd.google-apps.document",
+  ATTENDANCE_REPORT: "application/vnd.google-apps.spreadsheet",
+};
+// TRASHED: foi para a lixeira; GONE: já não existia para esta conta (404) ou já
+// estava na lixeira; REFUSED: não é da conta central ou não é do tipo esperado —
+// o servidor não mexe (resultado final, visível para a direção).
+export type TrashOutcome = {
+  result: "TRASHED" | "GONE" | "REFUSED";
+  code: string | null;
+};
 // Campos que a revogação desliga na sala já criada (spaces.patch). Mesmo formato
 // do guia do Meet (updateMask=config.accessType), um caminho por campo.
 export const ARTIFACT_UPDATE_MASK = [
@@ -439,6 +455,58 @@ export class GoogleMeetProvider {
       name: text(file.name, 300),
       createdTime: text(file.createdTime, 40),
     }));
+  }
+  /**
+   * Move UM original para a LIXEIRA do Drive (files.update com trashed=true —
+   * o Drive guarda 30 dias e a escola ainda recupera). O id vem só da Meet API
+   * (docsDestination) ou da planilha de presença guardada pelo sistema; nunca de
+   * uma busca por nome. Antes de mover confere que o arquivo é da conta central
+   * (ownedByMe) e do tipo esperado — arquivo de terceiro ou de outro tipo não é
+   * tocado (REFUSED). 404 = a conta já não tem o arquivo (GONE). Outra falha
+   * lança o erro: quem chama registra e tenta de novo com espera.
+   */
+  async trashDriveFile(
+    fileId: string,
+    kind: OriginalKind,
+  ): Promise<TrashOutcome> {
+    const id = safeResource(fileId, "document");
+    const base = `https://www.googleapis.com/drive/v3/files/${id}`;
+    const gone = (error: unknown): boolean =>
+      error instanceof GoogleProviderError && error.status === 404;
+    let file: Record<string, unknown>;
+    try {
+      file = await this.json(`${base}?fields=id,mimeType,trashed,ownedByMe`);
+    } catch (error) {
+      if (gone(error)) {
+        return { result: "GONE", code: "google_drive_file_not_found" };
+      }
+      throw error;
+    }
+    if (file.trashed === true) {
+      return { result: "GONE", code: "google_drive_already_trashed" };
+    }
+    if (file.ownedByMe !== true) {
+      return { result: "REFUSED", code: "google_drive_not_owner" };
+    }
+    if (text(file.mimeType, 120) !== ORIGINAL_MIME_TYPES[kind]) {
+      return { result: "REFUSED", code: "google_drive_unexpected_type" };
+    }
+    let updated: Record<string, unknown>;
+    try {
+      updated = await this.json(`${base}?fields=id,trashed`, {
+        method: "PATCH",
+        body: JSON.stringify({ trashed: true }),
+      });
+    } catch (error) {
+      if (gone(error)) {
+        return { result: "GONE", code: "google_drive_file_not_found" };
+      }
+      throw error;
+    }
+    if (updated.trashed !== true) {
+      throw new GoogleProviderError("google_drive_trash_unconfirmed", 502);
+    }
+    return { result: "TRASHED", code: null };
   }
   async spreadsheetCsv(fileId: string): Promise<string> {
     const id = safeResource(fileId, "document");

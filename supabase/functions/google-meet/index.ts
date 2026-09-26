@@ -16,6 +16,7 @@ import {
   encryptSecret,
   estimateSummaryCost,
   grantedRequiredScopes,
+  hasDriveWriteScope,
   identityAuthorizationUrl,
   isRecord,
   JOB_DEADLINE_MS,
@@ -60,6 +61,12 @@ import {
   summarizeAttendance,
 } from "./attendance.ts";
 import {
+  originalFilesFromArtifacts,
+  type OriginalsBackend,
+  type OriginalsOutcome,
+  runOriginalsPurge,
+} from "./originals.ts";
+import {
   runAutoSummaryJob,
   runSummaryGeneration,
   type SummaryBackend,
@@ -73,6 +80,8 @@ type ConnectionRow = {
   organizer_email: string | null;
   refresh_token_ciphertext: string | null;
   status: string;
+  // Escopos concedidos pela conta central (a lixeira exige o drive).
+  granted_scopes?: string[];
 };
 type TokenGrant = { token: string; connection: ConnectionRow };
 // Um token de acesso por escola e por rodada: o lote processa vários trabalhos
@@ -124,7 +133,8 @@ type PendingJob = {
     | "SYNC_ARTIFACTS"
     | "DISABLE_ARTIFACTS"
     | "ENABLE_ARTIFACTS"
-    | "GENERATE_SUMMARY";
+    | "GENERATE_SUMMARY"
+    | "PURGE_ORIGINALS";
 };
 // claim_id é a reserva interna da criação; não vai para o navegador.
 const publicRoom = (room: RoomRow | null) => {
@@ -159,6 +169,9 @@ type Config = {
   aiEnabled: boolean;
   aiKey: string;
   aiModel: string;
+  // Originais da aula para a lixeira do Drive 90 dias depois (pede o escopo
+  // drive, de escrita, à conta central).
+  deleteOriginals: boolean;
   retentionDays: number;
   missing: string[];
 };
@@ -202,6 +215,7 @@ function config(): Config {
       !!aiModel,
     aiKey,
     aiModel: aiModel || "",
+    deleteOriginals: env("GOOGLE_MEET_DELETE_ORIGINALS_ENABLED") === "true",
     retentionDays: Math.max(
       7,
       Math.min(365, Number(env("GOOGLE_MEET_RAW_RETENTION_DAYS")) || 90),
@@ -318,6 +332,63 @@ function summaryDeps(
         },
       }),
   };
+}
+// google_meet_originals_backend (só service_role) amarrada à escola e à aula.
+function originalsBackend(
+  db: SupabaseClient,
+  tenantId: string,
+  sessionId: string,
+): OriginalsBackend {
+  return async (action, payload = {}) => {
+    const { data, error } = await db.rpc("google_meet_originals_backend", {
+      p_action: action,
+      p_tenant_id: tenantId,
+      p_session_id: sessionId,
+      p_payload: payload,
+    });
+    if (error) {
+      throw new Error(
+        /^[a-z_]+$/.test(error.message || "")
+          ? error.message
+          : "google_meet_storage_unavailable",
+      );
+    }
+    return isRecord(data) ? data : {};
+  };
+}
+/**
+ * PURGE_ORIGINALS: confere a lista de documentos da aula na Meet API (quando o
+ * banco pede) e move para a lixeira do Drive os originais vencidos — só ids
+ * vindos da Meet API ou da planilha de presença guardada.
+ */
+function purgeOriginals(
+  db: SupabaseClient,
+  cfg: Config,
+  tenantId: string,
+  actorId: string,
+  sessionId: string,
+  options: { deadline: number; tokens?: TokenCache },
+): Promise<OriginalsOutcome> {
+  return runOriginalsPurge(
+    { deleteEnabled: cfg.deleteOriginals, deadline: options.deadline },
+    {
+      backend: originalsBackend(db, tenantId, sessionId),
+      access: async () => {
+        const { token, connection } = await tokenFor(
+          db,
+          cfg,
+          tenantId,
+          actorId,
+          options.tokens,
+        );
+        return {
+          provider: new GoogleMeetProvider(token),
+          organizerSub: connection.organizer_sub,
+          grantedScopes: connection.granted_scopes || [],
+        };
+      },
+    },
+  );
 }
 // Resultado da geração que não virou rascunho, com o status HTTP da tela.
 function summaryFailure(outcome: SummaryOutcome): Response | null {
@@ -474,7 +545,7 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
       code,
       code_verifier: verifier,
     });
-    if (!grantedRequiredScopes(token.scope)) {
+    if (!grantedRequiredScopes(token.scope, cfg.deleteOriginals)) {
       throw new Error("google_required_scopes_missing");
     }
     if (!text(token.refresh_token, 8000)) {
@@ -542,6 +613,15 @@ async function syncSession(
   const room = detail.room;
   if (!room?.space_name || room.state !== "READY") {
     throw new Error("google_room_not_ready");
+  }
+  // "Importar transcrição e notas" numa aula apagada a pedido do aluno: o banco
+  // recusaria cada documento; a tela recebe o motivo de uma vez. (A fila já não
+  // oferece a aula.)
+  if (options.force) {
+    const erased = await originalsBackend(db, tenantId, sessionId)(
+      "session_state",
+    ).then((value) => value.records_erased === true, () => false);
+    if (erased) throw new Error("lesson_records_erased");
   }
   const { token, connection } = await tokenFor(
     db,
@@ -713,6 +793,21 @@ async function syncSession(
     attendanceRequired: cfg.attendanceEnabled,
     attendanceDone,
   });
+  // Originais no Drive (ids da Meet API): registrados para a lixeira de 90 dias
+  // depois da aula. Importação concluída fecha a lista (a fila não confere de
+  // novo). Falha aqui não derruba a importação: a fila confere depois.
+  try {
+    await originalsBackend(db, tenantId, sessionId)("register", {
+      organizer_sub: room.organizer_sub,
+      files: originalFilesFromArtifacts(artifacts),
+      discovered: outcome.complete,
+    });
+  } catch (error) {
+    console.error("[google-meet] registro dos originais", {
+      sessionId,
+      code: providerErrorCode(error, "google_meet_storage_unavailable"),
+    });
+  }
   const state = outcome.complete ? null : listingError ||
     (artifacts.length === 0
       ? "ARTIFACTS_NOT_AVAILABLE"
@@ -1187,6 +1282,17 @@ serve(async (req: Request) => {
                 job.lesson_session_id,
                 { deadline, tokens },
               );
+            } else if (job.operation === "PURGE_ORIGINALS") {
+              // Só contagens e códigos na resposta (nada da aula).
+              const purge = await purgeOriginals(
+                db,
+                cfg,
+                job.tenant_id,
+                job.actor_id,
+                job.lesson_session_id,
+                { deadline, tokens },
+              );
+              result = { ok: purge.status !== "FAILED", ...purge };
             } else if (
               job.operation === "DISABLE_ARTIFACTS" ||
               job.operation === "ENABLE_ARTIFACTS"
@@ -1240,14 +1346,19 @@ serve(async (req: Request) => {
       const connection = status.connection
         ? await storage(db, "connection_get", tenantId, actorId)
         : null;
+      const granted: string[] = Array.isArray(connection?.granted_scopes)
+        ? connection.granted_scopes
+        : [];
+      const hasConnection = !!connection?.tenant_id;
       return json({
         ...status,
-        scopes_outdated: !!connection?.tenant_id &&
-          !grantedRequiredScopes(
-            (Array.isArray(connection.granted_scopes)
-              ? connection.granted_scopes
-              : []).join(" "),
-          ),
+        // Segue a configuração: com a lixeira ligada, conexão só com leitura do
+        // Drive também pede reconexão.
+        scopes_outdated: hasConnection &&
+          !grantedRequiredScopes(granted, cfg.deleteOriginals),
+        drive_read_granted: hasConnection && grantedRequiredScopes(granted),
+        drive_delete_enabled: cfg.deleteOriginals,
+        drive_delete_granted: hasConnection && hasDriveWriteScope(granted),
         configured: cfg.missing.length === 0,
         missing_configuration: cfg.missing,
         enabled: cfg.enabled,
@@ -1380,6 +1491,7 @@ serve(async (req: Request) => {
           cfg,
           state,
           await pkceChallenge(verifier),
+          cfg.deleteOriginals,
         ),
       });
     }

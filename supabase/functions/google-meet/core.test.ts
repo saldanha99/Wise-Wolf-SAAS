@@ -6,11 +6,15 @@ import {
   decryptSecret,
   DEFAULT_SUMMARY_MODEL,
   documentationSyncOutcome,
+  DRIVE_READONLY_SCOPE,
+  DRIVE_WRITE_SCOPE,
   encryptSecret,
   estimateSummaryCost,
   formatTranscriptEntries,
   GOOGLE_SCOPES,
+  googleScopes,
   grantedRequiredScopes,
+  hasDriveWriteScope,
   identityAuthorizationUrl,
   nativeNextSteps,
   nativeNotesDraft,
@@ -108,6 +112,54 @@ Deno.test("OAuth uses scoped offline consent, state and RFC7636 PKCE", async () 
     ),
   );
   assert(grantedRequiredScopes(GOOGLE_SCOPES.join(" ")));
+});
+Deno.test("lixeira dos originais: escopo do Drive segue GOOGLE_MEET_DELETE_ORIGINALS_ENABLED", () => {
+  const config = {
+    clientId: "test-client",
+    redirectUri: "https://school.example/functions/v1/google-meet",
+  };
+  const base =
+    "openid email https://www.googleapis.com/auth/meetings.space.created";
+  // Desligada: só leitura do Drive, como antes (o padrão continua o mesmo).
+  const readUrl = new URL(authorizationUrl(config, "s", "c", false));
+  const readScope = readUrl.searchParams.get("scope")!;
+  assert(readScope === `${base} ${DRIVE_READONLY_SCOPE}`);
+  assert(readScope === GOOGLE_SCOPES.join(" "));
+  assert(!readScope.split(" ").includes(DRIVE_WRITE_SCOPE));
+  assert(
+    new URL(authorizationUrl(config, "s", "c")).searchParams.get("scope") ===
+      readScope,
+    "sem a flag o link pede só leitura",
+  );
+  // Ligada: escrita no Drive (drive.readonly e drive.file não movem para a
+  // lixeira um documento criado pelo Meet); nada de Gmail ou agenda.
+  const writeScope = new URL(authorizationUrl(config, "s", "c", true))
+    .searchParams.get("scope")!;
+  assert(writeScope === `${base} ${DRIVE_WRITE_SCOPE}`);
+  assert(writeScope === googleScopes(true).join(" "));
+  assert(!/drive\.file|drive\.readonly|gmail|calendar/.test(writeScope));
+
+  // Conexão feita só com leitura: vale com a flag desligada, pede reconexão
+  // com a flag ligada (scopes_outdated segue a configuração).
+  const readOnly = `${base} ${DRIVE_READONLY_SCOPE}`;
+  assert(grantedRequiredScopes(readOnly, false));
+  assert(!grantedRequiredScopes(readOnly, true));
+  assert(!hasDriveWriteScope(readOnly));
+  // Conexão com escrita: vale nos dois casos (drive inclui a leitura) — a
+  // direção pode desligar a lixeira sem reconectar.
+  const write = `${base} ${DRIVE_WRITE_SCOPE}`;
+  assert(grantedRequiredScopes(write, true));
+  assert(grantedRequiredScopes(write, false));
+  assert(hasDriveWriteScope(write));
+  // O banco guarda os escopos como lista.
+  assert(grantedRequiredScopes(write.split(" "), true));
+  assert(hasDriveWriteScope(write.split(" ")));
+  assert(!grantedRequiredScopes([], false) && !hasDriveWriteScope([]));
+  // Sem o Meet não serve, com ou sem a lixeira.
+  assert(
+    !grantedRequiredScopes(`openid email ${DRIVE_WRITE_SCOPE}`, true) &&
+      !grantedRequiredScopes(`openid email ${DRIVE_WRITE_SCOPE}`, false),
+  );
 });
 Deno.test("encrypted refresh tokens bind ciphertext to tenant and reject tampering", async () => {
   const key = btoa("a".repeat(32)), token = "synthetic-test-token";
