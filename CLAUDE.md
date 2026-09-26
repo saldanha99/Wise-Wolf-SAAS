@@ -305,8 +305,21 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (`private.purge_lesson_memory_retention`, cron diário): **toda versão de resumo** (rascunho e aprovada) perde
   `narrative`/`evidence` 90 dias depois da aula; quem **deixou a escola** (`lifecycle_status = 'offboarded'` +
   `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão, resumos e a base das aulas aprovadas
-  copiada nos planos do Planner (`lesson_basis`, integração da onda 2) 90 dias depois; trilha só com
-  contagens. ⚠️ Publicar versão nova do termo derruba os aceites na hora — avise a direção antes. ⚠️ Os
+  copiada nos planos do Planner (`lesson_basis`, integração da onda 2) 90 dias depois — com a memória que o
+  Planner propôs a partir delas (`student_memory_update` e a linha `PLANNER_AI` da geração com `lesson_basis`,
+  `private.planner_runs_from_approved_lessons`; o plano fica marcado `approved_lessons_removed_at` e o Planner não
+  o relê); trilha só com contagens. **Correções da integração (27/09):** (1) **a IA só entra com aceite de termo
+  que a declara** — v3 em diante (`lesson_recording_term_declares_ai`), do aluno E do professor, na decisão que
+  valia no FIM da aula (`lesson_recording_ai_accepted_at`): aula dada sob a v2 ou marcada à mão para quem não
+  respondeu no sistema não vai ao OpenRouter, nem pelo botão manual; aceitar a v3 depois não muda a aula já dada.
+  (2) A **marcação manual** da direção recusa aluno/professor com aceite de versão anterior
+  (`termo_mudou_aceite_do_aluno_pendente` / `…_do_professor_pendente`) e a marcada antes de a versão mudar cai na
+  régua única (`lesson_session_documentation_blocked` → `lesson_session_manual_mark_outdated`); quem nunca
+  respondeu no sistema segue marcável com o comprovante no motivo. (3) **Cópias brutas no máximo 90 dias**: teto
+  no banco (`lesson_memory_retention_policy().raw_copies_days`, remendo por âncora em `artifact_save` e
+  `attendance_save`) e na edge — `GOOGLE_MEET_RAW_RETENTION_DAYS` só encurta. (4) A confirmação de leitura do
+  dossiê (`student_handover_reads`) guarda só referências (ids, datas, versão), nunca o texto das memórias e
+  lançamentos. ⚠️ Publicar versão nova do termo derruba os aceites na hora — avise a direção antes. ⚠️ Os
   **originais no Drive** que o termo promete apagar dependem da lixeira de `20260927120000` **ligada**
   (`GOOGLE_MEET_DELETE_ORIGINALS_ENABLED=true` + reconectar a conta central com o escopo `drive`; em 26/09 ela
   tinha só `drive.readonly`): o primeiro vence 90 dias depois da primeira aula transcrita sob a v3 — até lá a
@@ -425,7 +438,11 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `director_pending_counts.resumos_para_revisar` (3+ dias). ⚠️ A fila e as pendências foram remendadas **por
   âncora**: quem recriar `get_pending_google_meet_sync_sessions` ou `director_pending_counts` mantém o ramo
   `GENERATE_SUMMARY` e a chave `resumos_para_revisar` (o teste reprova sem eles). ⚠️ `greatest`/`least` são
-  formas especiais como `nullif`: `pg_catalog.greatest(...)` não existe.
+  formas especiais como `nullif`: `pg_catalog.greatest(...)` não existe. ⚠️ A elegibilidade e a reserva
+  (automática E manual) exigem `private.meet_summary_ai_consented` — aceite de termo que declara a IA valendo no
+  fim da aula; sem ele a reserva devolve `google_summary_ai_consent_required` e o professor revisa as notas do
+  Google à mão. ⚠️ O teste não recua `created_at` de geração do mês: recuar reprovava o release nas duas
+  primeiras horas do dia 1º (BRT).
 - **Originais no Drive vão para a LIXEIRA 90 dias depois da aula; a direção apaga os registros de um aluno a
   pedido** (migration `20260927120000`, runbook seção própria, teste `originais_do_drive_para_a_lixeira.sql`).
   Flag `GOOGLE_MEET_DELETE_ORIGINALS_ENABLED`: ligada, a conexão pede o escopo **`drive`** (escrita) em vez de
@@ -444,7 +461,10 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (`erase_student_lesson_records`, só `SCHOOL_ADMIN`, ficha → Continuidade pedagógica): apaga cópias brutas,
   planilhas, todas as versões de resumo, memória `MEET_SESSION` e cartão, e tira dos planos do Planner a base das
   aulas aprovadas (`lesson_plans.structured_plan.lesson_basis` e `planner_ai_runs.result`: o próximo passo e os
-  erros copiados do resumo — o plano fica); originais vencem na hora; a aula
+  erros copiados do resumo — o plano fica) junto com a memória que o Planner propôs a partir delas
+  (`student_memory_update` e a linha `PLANNER_AI` das gerações com `lesson_basis`, contada em `memories`); o plano
+  fica marcado (`approved_lessons_removed_at`) e `planner-input.ts` não o manda mais ao modelo como
+  continuidade; originais vencem na hora; a aula
   fica marcada, a importação da sala é encerrada (`sync_status = EXPIRED`, `last_error_code =
   lesson_records_erased`, mantido por gatilho em `google_meet_rooms` mesmo com importação em andamento) e um
   gatilho recusa nova cópia, planilha ou rascunho dela. Não mexe em presença, pagamento nem na trilha do aceite.
@@ -454,8 +474,11 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   resumo** (`) jobs order by jobs.priority_group`), que continua valendo uma vez para a próxima frente — quem
   recriar a fila mantém `GENERATE_SUMMARY` e `PURGE_ORIGINALS` (os testes reprovam sem eles).
 - **O aluno vê o próprio registro** (migration `20260927140000`, tela "Minhas aulas registradas", aba
-  `lesson-records` do aluno): `get_my_lesson_records()` devolve só a última versão `VERIFIED` de cada aula
-  DELE na escola dele — objetivo, praticado, próximo passo, lição, com os tetos da aprovação —, o prazo de
+  `lesson-records` do aluno): `get_my_lesson_records()` devolve, de cada aula DELE na escola dele, a última
+  decisão humana (versão `VERIFIED` ou `REJECTED` de maior número) **quando ela é `VERIFIED`** — aprovada e
+  depois rejeitada sai, como sai da memória (`20260927130000`); a "Sala e resumo" de quem não vê a fonte
+  (`session_detail` sem `raw_access`) segue a mesma régua — objetivo, praticado, próximo passo, lição, com os
+  tetos da aprovação —, o prazo de
   CADA cópia bruta pelo nome (`transcript_until`, `notes_until`, `attendance_until`), quantas esperam revisão
   (a rejeitada por último não conta), a situação do próprio termo (sem token; validade do link só se ele
   CHEGOU — aberto ou mensagem aceita; aceite que não vale com o motivo, `not_effective_reason`:
@@ -1957,7 +1980,9 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   fail-closed chegar.
 - **Histórico** (`private.student_learning_card_events`): quem, quando, papel e QUAIS campos —
   **nunca o texto**. A confirmação de leitura do dossiê (`student_handover_reads`) guarda só
-  `learning_card_version`, pelo mesmo motivo.
+  referências — `learning_card_version`, id/origem/data de cada memória lida (e a versão do resumo que a
+  originou) e id/data de cada lançamento —, pelo mesmo motivo: até 27/09 ela copiava o texto das memórias
+  (inclusive do resumo aprovado), que nem a exclusão a pedido nem a retenção alcançam.
 - **Tela:** aba "Continuidade pedagógica" da ficha (`StudentHandover` → `StudentLearningCard`,
   regras espelhadas em `lib/studentLearningCard.ts`). O cartão chega por
   `get_student_handover` → `learning_card`. Conflito de versão **não apaga o rascunho**:
@@ -1992,8 +2017,11 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   ⚠️ A base COPIA texto do resumo aprovado (próximo passo, erros): a exclusão a pedido
   (`erase_student_lesson_records`) e a retenção de quem deixou a escola
   (`purge_lesson_memory_retention`) tiram `lesson_basis` do plano salvo e do
-  `planner_ai_runs.result` (integração da onda 2); o plano fica. Campo novo que copie o
-  resumo aprovado para o plano entra nessas duas limpezas.
+  `planner_ai_runs.result` (integração da onda 2); o plano fica. Saem também a memória que o
+  Planner propôs com as aulas aprovadas na entrada (`student_memory_update` e a linha
+  `PLANNER_AI` dessas gerações) e o plano fica marcado `approved_lessons_removed_at`, que
+  `planner-input.ts` (`approvedLessonsRemoved`) tira de `previous_plans_for_continuity`.
+  Campo novo que copie o resumo aprovado para o plano entra nessas duas limpezas.
   ⚠️ O mesmo `data-tour` mora num cartão do estado vazio (sem plano gerado): o tour abre
   no primeiro acesso, sem plano, e um alvo que só existe depois de gerar faz o motor
   **pular o passo e marcar o tour como visto**. `featureTours.test.ts` só confere que o
