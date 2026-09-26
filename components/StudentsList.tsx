@@ -534,7 +534,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             interests: formData.interests,
             private_notes: formData.private_notes,
             fixed_schedule: formData.fixed_schedule,
-            is_kids: formData.is_kids,
+            // is_kids fica com a direção (migration 20260926200000).
             module: requestedModule,
           }
         });

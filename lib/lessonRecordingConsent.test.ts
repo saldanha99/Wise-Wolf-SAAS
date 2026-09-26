@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   asDecision,
+  asGuardianReason,
+  asLinkBlockedReason,
+  asNotEffectiveReason,
+  codeErrorMessage,
   consentErrorMessage,
   consentLink,
   consentWhatsAppMessage,
+  formatWait,
+  googleIdentityState,
+  guardianReasonText,
   isFullName,
+  isMissingRpcError,
+  isSixDigitCode,
   normalizeSignerName,
+  notEffectiveText,
+  onlyDigits,
   whatsappDigits,
   whatsappUrl,
 } from './lessonRecordingConsent';
@@ -78,5 +89,100 @@ describe('respostas do servidor', () => {
     expect(asDecision('REVOKED')).toBe('REVOKED');
     expect(asDecision('outra')).toBe('NONE');
     expect(asDecision(null)).toBe('NONE');
+  });
+});
+
+describe('responsável e idade (fail-closed)', () => {
+  it('motivo fora da lista com responsável exigido vira idade desconhecida', () => {
+    expect(asGuardianReason('MINOR')).toBe('MINOR');
+    expect(asGuardianReason('KIDS', true)).toBe('KIDS');
+    expect(asGuardianReason(null, true)).toBe('AGE_UNKNOWN');
+    expect(asGuardianReason('outro', true)).toBe('AGE_UNKNOWN');
+    expect(asGuardianReason(null, false)).toBeNull();
+  });
+
+  it('explica à família por que o responsável responde', () => {
+    expect(guardianReasonText('AGE_UNKNOWN', 'Ana')).toContain('ainda não cadastrou a data de nascimento de Ana');
+    expect(guardianReasonText('MINOR', 'Ana')).toContain('Como Ana é menor de idade');
+    expect(guardianReasonText('KIDS', 'Ana')).toContain('menor de idade');
+  });
+
+  it('mensagem do link não chama de menor quem só não tem idade cadastrada', () => {
+    const message = consentWhatsAppMessage({
+      studentName: 'Bruno Fixture',
+      link: 'https://exemplo.invalid/z',
+      forGuardian: true,
+      guardianReason: 'AGE_UNKNOWN',
+    });
+    expect(message).toContain('autorização do responsável por Bruno');
+    expect(message).not.toContain('menor de idade');
+    expect(message).toContain('código de 6 dígitos');
+  });
+});
+
+describe('código do WhatsApp', () => {
+  it('campo aceita só 6 números', () => {
+    expect(onlyDigits('12a3-45678')).toBe('123456');
+    expect(isSixDigitCode('123456')).toBe(true);
+    expect(isSixDigitCode('12345')).toBe(false);
+    expect(isSixDigitCode('12345a')).toBe(false);
+  });
+
+  it('erro do código diz as tentativas restantes e a espera', () => {
+    expect(codeErrorMessage({ error: 'codigo_incorreto', attemptsLeft: 4 })).toContain('Restam 4 tentativas');
+    expect(codeErrorMessage({ error: 'codigo_incorreto', attemptsLeft: 1 })).toContain('Resta 1 tentativa');
+    expect(codeErrorMessage({ error: 'codigo_bloqueado' })).toContain('código novo');
+    expect(codeErrorMessage({ error: 'limite_de_envios', retryAfterSeconds: 1200 })).toContain('Tente em 20 minutos');
+    expect(codeErrorMessage({ error: 'telefone_nao_cadastrado' })).toContain('cadastrar');
+  });
+
+  it('formata a espera', () => {
+    expect(formatWait(30)).toBe('30 segundos');
+    expect(formatWait(60)).toBe('1 minuto');
+    expect(formatWait(3000)).toBe('50 minutos');
+    expect(formatWait(3600)).toBe('1 hora');
+    expect(formatWait(null)).toBe('1 minuto');
+  });
+
+  it('o código mais específico vence na tradução do erro', () => {
+    expect(consentErrorMessage('ERROR: teacher_google_identity_required')).toContain('conta Google');
+    expect(consentErrorMessage('kids_classification_requires_direction')).toContain('infantil');
+  });
+});
+
+describe('conta Google do professor', () => {
+  it('rota ainda não publicada é indisponível, não erro', () => {
+    expect(isMissingRpcError({ code: 'PGRST202', message: 'x' })).toBe(true);
+    expect(isMissingRpcError({ code: '42883', message: 'x' })).toBe(true);
+    expect(isMissingRpcError({ message: 'Could not find the function public.get_my_google_identity' })).toBe(true);
+    expect(isMissingRpcError({ code: '42501', message: 'sem_permissao' })).toBe(false);
+    expect(googleIdentityState(null, { code: 'PGRST202' })).toEqual({ status: 'unavailable' });
+    expect(googleIdentityState(null, { code: '500', message: 'timeout' })).toEqual({ status: 'error' });
+  });
+
+  it('só conta como confirmada com e-mail e data de confirmação', () => {
+    expect(googleIdentityState(null, null)).toEqual({ status: 'missing', email: null });
+    expect(googleIdentityState({ email: 'p@gmail.com', verified_at: null }, null)).toEqual({ status: 'missing', email: 'p@gmail.com' });
+    expect(googleIdentityState([{ email: 'p@gmail.com', verified_at: '2026-09-26T12:00:00Z' }], null))
+      .toEqual({ status: 'verified', email: 'p@gmail.com', verifiedAt: '2026-09-26T12:00:00Z' });
+  });
+});
+
+describe('aceite que não vale e link bloqueado', () => {
+  it('página explica por que o aceite anterior não vale, em vez de mostrar "Autorizado"', () => {
+    expect(asNotEffectiveReason('GUARDIAN_REQUIRED')).toBe('GUARDIAN_REQUIRED');
+    expect(asNotEffectiveReason('qualquer')).toBeNull();
+    expect(notEffectiveText('GUARDIAN_REQUIRED', 'Pedro')).toMatch(/responsável precisa responder/);
+    expect(notEffectiveText('UNVERIFIED', 'Pedro')).toMatch(/sem a confirmação pelo WhatsApp/);
+  });
+
+  it('teto do dia e link bloqueado têm texto próprio', () => {
+    expect(codeErrorMessage({ error: 'limite_diario', retryAfterSeconds: 7200 })).toBe(
+      'Já mandamos 6 códigos por este link hoje. Espere para pedir outro. Tente em 2 horas.',
+    );
+    expect(consentErrorMessage('link_bloqueado')).toMatch(/Peça um link novo à escola/);
+    expect(asLinkBlockedReason('CODE_ATTEMPTS')).toBe('CODE_ATTEMPTS');
+    expect(asLinkBlockedReason('CODE_SENDS')).toBe('CODE_SENDS');
+    expect(asLinkBlockedReason(null)).toBeNull();
   });
 });
