@@ -38,7 +38,9 @@
 -- E (seção 2, no fim) a última decisão humana sobre o resumo da aula vale:
 -- resumo aprovado e depois REJEITADO sai da memória do aluno — o Planner, o
 -- dossiê do substituto e o segundo professor liam só o status da memória, que
--- ficava VERIFIED para sempre.
+-- ficava VERIFIED para sempre. A seção 3 (correção da integração) leva a mesma
+-- régua à tela "Sala e resumo" de quem não vê a fonte: versão aprovada e
+-- depois rejeitada deixa de ser servida como resumo aprovado.
 
 create or replace function private.planner_student_access(
   p_teacher_id uuid,
@@ -308,5 +310,45 @@ begin
           'memória MEET_SESSION VERIFIED cuja última revisão do resumo foi REJECTED virou REJECTED');
 end
 $oneshot$;
+
+-- ---------------------------------------------------------------------------
+-- 3. A mesma régua na leitura do resumo aprovado (correção da integração)
+-- ---------------------------------------------------------------------------
+-- A memória segue a última decisão humana, mas a tela "Sala e resumo" de quem
+-- não vê a fonte (outros professores do aluno e o suporte da plataforma —
+-- session_detail do google_meet_backend, caminho sem raw_access) continuava
+-- servindo TODA versão VERIFIED, com narrative e evidence. O professor rejeita a
+-- versão aprovada porque ela cita a saúde do aluno, e os outros continuam lendo
+-- aquele texto como "resumo aprovado". Agora quem não vê a fonte recebe só a
+-- versão VERIFIED sem rejeição posterior. Quem vê a fonte (professor da aula,
+-- coordenação e direção) continua com o histórico inteiro, com o status de cada
+-- versão. A tela do aluno (get_my_lesson_records, 20260927140000) usa a mesma
+-- régua. Remendo por âncora na definição viva (20260926180000): âncora uma vez
+-- só, pula se já aplicado, para com erro se sumiu.
+do $approved_read$
+declare
+  v_definition text;
+  v_occurrences integer;
+  v_anchor constant text := $anchor$and (v_raw or sv.status='VERIFIED')),'[]'::jsonb));$anchor$;
+  v_done constant text := $done$and newer.status='REJECTED'$done$;
+begin
+  v_definition := pg_catalog.pg_get_functiondef(
+    'public.google_meet_backend(text,text,uuid,uuid,jsonb)'::pg_catalog.regprocedure);
+  if pg_catalog.strpos(v_definition, v_done) > 0 then
+    return;
+  end if;
+  v_occurrences := (pg_catalog.length(v_definition)
+    - pg_catalog.length(pg_catalog.replace(v_definition, v_anchor, '')))
+    / pg_catalog.length(v_anchor);
+  if v_occurrences <> 1 then
+    raise exception 'planner_aulas_aprovadas_ancora_mudou: google_meet_backend session_detail (% ocorrências)',
+      v_occurrences;
+  end if;
+  execute pg_catalog.replace(v_definition, v_anchor,
+    $new$and (v_raw or (sv.status='VERIFIED' and not exists (select 1 from private.lesson_summary_versions newer
+            where newer.lesson_session_id=sv.lesson_session_id and newer.version>sv.version
+              and newer.status='REJECTED')))),'[]'::jsonb));$new$);
+end
+$approved_read$;
 
 notify pgrst, 'reload schema';

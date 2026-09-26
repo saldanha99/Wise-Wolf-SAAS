@@ -82,7 +82,7 @@ declare
   v_outsider uuid := gen_random_uuid();
   v_s1 uuid := gen_random_uuid();   -- aprovada, com rascunho posterior; transcrição e presença vivas
   v_s2 uuid := gen_random_uuid();   -- transcrição guardada, só rascunho (espera revisão)
-  v_s3 uuid := gen_random_uuid();   -- aprovada duas vezes e rejeitada depois; cópia vencida
+  v_s3 uuid := gen_random_uuid();   -- aprovada, rejeitada e reaprovada com correção; cópia vencida
   v_s4 uuid := gen_random_uuid();   -- do colega de escola
   v_s5 uuid := gen_random_uuid();   -- do aluno, mas registrada em outra escola
   v_s6 uuid := gen_random_uuid();   -- do aluno da outra escola
@@ -90,6 +90,7 @@ declare
   v_s8 uuid := gen_random_uuid();   -- rascunho e depois REJEIÇÃO: revisada, nada a esperar
   v_s9 uuid := gen_random_uuid();   -- rejeitada e depois rascunho novo: volta a esperar
   v_s10 uuid := gen_random_uuid();  -- documento importado, rascunho ainda não gerado
+  v_s11 uuid := gen_random_uuid();  -- aprovada e depois REJEITADA: a última decisão vale, sai daqui
   v_v1 uuid := gen_random_uuid();
   v_v3a uuid := gen_random_uuid();
   v_v8 uuid := gen_random_uuid();
@@ -166,7 +167,8 @@ begin
     (v_s7, v_tid, v_student, interval '6 days', 'registro-s7'),
     (v_s8, v_tid, v_student, interval '7 days', 'registro-s8'),
     (v_s9, v_tid, v_student, interval '8 days', 'registro-s9'),
-    (v_s10, v_tid, v_student, interval '9 days', 'registro-s10')
+    (v_s10, v_tid, v_student, interval '9 days', 'registro-s10'),
+    (v_s11, v_tid, v_student, interval '10 days', 'registro-s11')
   ) as fixture(id, tenant_id, student_id, ago, source_key);
 
   -- s1: notas nativas (rascunho) → aprovação do professor → rascunho novo da IA.
@@ -189,15 +191,24 @@ begin
   -- s2: só rascunho, com transcrição guardada.
   insert into private.lesson_summary_versions (tenant_id, lesson_session_id, version, status, origin, content, created_by)
   values (v_tid, v_s2, 1, 'PROPOSED', 'GOOGLE_SMART_NOTES', '{"lesson_objective":"RASCUNHO-SEM-APROVACAO"}', v_teacher);
-  -- s3: aprovada, reaprovada com correção, e um rascunho rejeitado depois.
+  -- s3: aprovada, rejeitada depois (a última decisão tira a aula) e reaprovada
+  -- com correção (volta, com o texto da reaprovação).
   insert into private.lesson_summary_versions (id, tenant_id, lesson_session_id, version, status, origin, content, created_by)
   values (v_v3a, v_tid, v_s3, 1, 'VERIFIED', 'HUMAN_REVIEW',
           '{"lesson_objective":"OBJETIVO-ANTIGO","recommended_next_step":"PASSO-ANTIGO"}', v_teacher);
   insert into private.lesson_summary_versions (tenant_id, lesson_session_id, version, parent_version_id, status, origin, content, created_by)
   values
-    (v_tid, v_s3, 2, v_v3a, 'VERIFIED', 'HUMAN_REVIEW',
-     '{"lesson_objective":"Objetivo revisado","content_practiced":"past simple","recommended_next_step":"Revisar verbos irregulares"}', v_teacher),
-    (v_tid, v_s3, 3, v_v3a, 'REJECTED', 'HUMAN_REVIEW', '{"lesson_objective":"OBJETIVO-REJEITADO"}', v_teacher);
+    (v_tid, v_s3, 2, v_v3a, 'REJECTED', 'HUMAN_REVIEW', '{"lesson_objective":"OBJETIVO-REJEITADO"}', v_teacher),
+    (v_tid, v_s3, 3, v_v3a, 'VERIFIED', 'HUMAN_REVIEW',
+     '{"lesson_objective":"Objetivo revisado","content_practiced":"past simple","recommended_next_step":"Revisar verbos irregulares"}', v_teacher);
+  -- s11: aprovada e depois REJEITADA (o professor viu um erro ou um dado pessoal
+  -- no resumo). A memória da aula vira REJECTED (20260927130000) e a tela do
+  -- aluno segue a mesma régua: o aprovado de antes não aparece mais.
+  insert into private.lesson_summary_versions (tenant_id, lesson_session_id, version, status, origin, content, created_by)
+  values
+    (v_tid, v_s11, 1, 'VERIFIED', 'HUMAN_REVIEW',
+     '{"lesson_objective":"OBJETIVO-APROVADO-E-REJEITADO","recommended_next_step":"PASSO-APROVADO-E-REJEITADO"}', v_teacher),
+    (v_tid, v_s11, 2, 'REJECTED', 'HUMAN_REVIEW', '{"lesson_objective":"OBJETIVO-APROVADO-E-REJEITADO"}', v_teacher);
   insert into private.lesson_summary_versions (tenant_id, lesson_session_id, version, status, origin, content, created_by)
   values
     (v_tid, v_s4, 1, 'VERIFIED', 'HUMAN_REVIEW',
@@ -252,7 +263,9 @@ begin
     (v_tid, v_s9, 'fixture-s9-notes', 'SMART_NOTES', 'docS9',
       encode(extensions.digest('s9', 'sha256'), 'hex'), 'NOTAS-BRUTAS-S9', now() + interval '40 days'),
     (v_tid, v_s10, 'fixture-s10-transcript', 'TRANSCRIPT', 'docS10',
-      encode(extensions.digest('s10', 'sha256'), 'hex'), 'TEXTO-BRUTO-SEM-RASCUNHO', now() + interval '40 days');
+      encode(extensions.digest('s10', 'sha256'), 'hex'), 'TEXTO-BRUTO-SEM-RASCUNHO', now() + interval '40 days'),
+    (v_tid, v_s11, 'fixture-s11-transcript', 'TRANSCRIPT', 'docS11',
+      encode(extensions.digest('s11', 'sha256'), 'hex'), 'TEXTO-BRUTO-S11', now() + interval '40 days');
   insert into private.meeting_attendance_reports (tenant_id, lesson_session_id, document_id,
     content_sha256, source_csv, expires_at)
   values (v_tid, v_s1, 'presencaS1', encode(extensions.digest('p1', 'sha256'), 'hex'), 'CSV-BRUTO', v_report_expires);
@@ -321,7 +334,7 @@ begin
     and v_rec -> 'transcript_until' = 'null'::jsonb
     and v_rec -> 'notes_until' = 'null'::jsonb
     and v_rec -> 'attendance_until' = 'null'::jsonb,
-    'reaprovação/rejeição posterior ou cópia vencida tratadas errado: ' || v_rec::text);
+    'rejeição seguida de reaprovação ou cópia vencida tratadas errado: ' || v_rec::text);
 
   -- Resumo longo aprovado chega inteiro; o que passa do teto sai com "…".
   v_rec := v_r -> 'records' -> 2;
@@ -346,7 +359,8 @@ begin
     'aula aprovada só das anotações apareceu com validade de transcrição: ' || v_rec::text);
 
   -- Esperam revisão: s2 (rascunho), s9 (rascunho novo depois da rejeição) e
-  -- s10 (documento sem rascunho). s8 foi REJEITADA pelo professor: fora.
+  -- s10 (documento sem rascunho). s8 e s11 foram REJEITADAS pelo professor (a
+  -- s11 depois de aprovada): revisadas, fora.
   perform pg_temp.rec_assert((v_r ->> 'pending_review')::integer = 3,
     'aulas esperando revisão contadas errado (rejeitada conta? rascunho não conta?): '
       || coalesce(v_r ->> 'pending_review', 'nulo'));
@@ -359,7 +373,8 @@ begin
     'TEXTO-BRUTO-DA-AULA', 'TEXTO-BRUTO-SEM-RESUMO', 'TEXTO-BRUTO-VENCIDO', 'CSV-BRUTO',
     'ANOTACOES-BRUTAS-DO-GOOGLE', 'TEXTO-DAS-ANOTACOES-REVISADO', 'TEXTO-BRUTO-REJEITADO',
     'NOTAS-BRUTAS-S9', 'TEXTO-BRUTO-SEM-RASCUNHO', 'RASCUNHO-REJEITADO', 'REJEITADO-ANTES',
-    'RASCUNHO-DEPOIS-DA-REJEICAO',
+    'RASCUNHO-DEPOIS-DA-REJEICAO', 'OBJETIVO-APROVADO-E-REJEITADO', 'PASSO-APROVADO-E-REJEITADO',
+    'TEXTO-BRUTO-S11',
     'OBJETIVO-ANTIGO', 'PASSO-ANTIGO', 'OBJETIVO-REJEITADO', 'OBJETIVO-DO-COLEGA',
     'OBJETIVO-DE-OUTRA-ESCOLA', 'Objetivo da escola B', 'OBJETIVO-DO-CARTAO', 'TEMA-DO-CARTAO',
     v_token_hash, 'token-fixture-registro-aluno'

@@ -615,6 +615,124 @@ begin
 end
 $version$;
 
+-- 3b. Marcação manual × versão do termo, e o teto das cópias brutas ---------
+-- (correção da integração da onda 2). A direção marca à mão quem aceitou a
+-- versão vigente e quem nunca respondeu no sistema (comprovante por outro
+-- meio). Quando sai uma versão nova, a marcação manual de quem tinha aceitado a
+-- anterior deixa de valer (o termo promete: até responder de novo, as próximas
+-- aulas não são transcritas) e a direção não marca por cima; quem nunca
+-- respondeu segue com a marcação — até o termo do PROFESSOR mudar. As cópias
+-- brutas ficam no máximo 90 dias, qualquer que seja o prazo pedido pela edge.
+do $manual$
+declare
+  v_tenant constant text := 'v3-manual-fixture';
+  v_admin uuid := gen_random_uuid();
+  v_teacher uuid := gen_random_uuid();
+  v_ok uuid := gen_random_uuid();
+  v_none uuid := gen_random_uuid();
+  v_ok_marked uuid := gen_random_uuid();
+  v_none_marked uuid := gen_random_uuid();
+  v_ok_later uuid := gen_random_uuid();
+  v_none_later uuid := gen_random_uuid();
+  v_student_version text := private.lesson_recording_current_version('STUDENT');
+  v_teacher_version text := private.lesson_recording_current_version('TEACHER');
+  v_result jsonb;
+  v_error text;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into public.tenants (id, name) values (v_tenant, 'Marcação manual fixture');
+  insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data) values
+    (v_admin, 'v3-manual-admin@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_teacher, 'v3-manual-teacher@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_ok, 'v3-manual-ok@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_none, 'v3-manual-none@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
+  update public.profiles
+     set tenant_id = v_tenant, lifecycle_status = 'active', status = 'Ativo', is_test_account = true,
+         role = case when id = v_admin then 'SCHOOL_ADMIN' when id = v_teacher then 'TEACHER' else 'STUDENT' end,
+         full_name = case when id = v_admin then 'Direcao Manual Fixture' when id = v_teacher then 'Professor Manual Fixture'
+           when id = v_ok then 'Aluno Aceitou Fixture' else 'Aluno Sem Resposta Fixture' end,
+         professor_id = case when id in (v_ok, v_none) then v_teacher end
+   where id in (v_admin, v_teacher, v_ok, v_none);
+  insert into public.tenant_memberships (tenant_id, user_id, role, status)
+    select tenant_id, id, role, 'ACTIVE' from public.profiles where id in (v_admin, v_teacher, v_ok, v_none)
+  on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
+  insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+    scheduled_start_at, scheduled_end_at, source_key)
+  select fixture.id, v_tenant, fixture.student_id, v_teacher, ((now() + interval '2 hours') at time zone 'America/Sao_Paulo')::date,
+    now() + interval '2 hours', now() + interval '150 minutes', fixture.source_key
+  from (values (v_ok_marked, v_ok, 'v3-manual-ok'), (v_none_marked, v_none, 'v3-manual-none'),
+    (v_ok_later, v_ok, 'v3-manual-ok-later'), (v_none_later, v_none, 'v3-manual-none-later'))
+    as fixture(id, student_id, source_key);
+  perform pg_temp.v3_student_decision(v_tenant, v_ok, v_admin, 'ACCEPTED', v_student_version);
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, term_audience, term_version, source, recorded_by)
+  values (v_tenant, v_teacher, 'TEACHER', 'ACCEPTED', 'Professor Manual Fixture', 'SELF', 'TEACHER',
+    v_teacher_version, 'APP', v_teacher);
+
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_ok_marked, true, 'Autorização conferida na secretaria.');
+  perform public.set_lesson_documentation_consent(v_none_marked, true, 'Autorização em papel arquivada na secretaria.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform pg_temp.v3_assert(
+    (select bool_and(documentation_consent) from public.lesson_sessions where id in (v_ok_marked, v_none_marked))
+      and not private.lesson_session_documentation_blocked(v_ok_marked)
+      and not private.lesson_session_documentation_blocked(v_none_marked),
+    'marcação manual da direção não valeu (aceite vigente ou comprovante por outro meio)');
+
+  -- Teto das cópias brutas: a edge pede 365 dias, o banco guarda 90.
+  v_result := public.google_meet_backend('artifact_save', v_tenant, v_admin, v_ok_marked, jsonb_build_object(
+    'provider_name', 'conferenceRecords/v3m/transcripts/t1', 'kind', 'TRANSCRIPT', 'document_id', 'docV3Manual',
+    'content_sha256', repeat('9', 64), 'source_text', 'Fala da aula.', 'retention_days', 365));
+  perform public.google_meet_attendance_backend('attendance_save', v_tenant, v_ok_marked, jsonb_build_object(
+    'document_id', 'sheetV3Manual', 'document_name', 'Planilha', 'source_csv', 'csv', 'content_sha256', repeat('8', 64),
+    'retention_days', 365));
+  perform pg_temp.v3_assert(
+    (select expires_at <= now() + interval '90 days' from private.meeting_artifact_revisions
+      where id = (v_result ->> 'id')::uuid)
+    and (select expires_at <= now() + interval '90 days' from private.meeting_attendance_reports
+      where lesson_session_id = v_ok_marked)
+    and (private.lesson_memory_retention_policy() ->> 'raw_copies_days')::integer = 90,
+    'cópia bruta guardada por mais de 90 dias (o termo promete 90)');
+
+  -- Versão nova do termo do aluno.
+  insert into private.lesson_recording_terms (audience, version, body, published_at) values
+    ('STUDENT', 'v100', repeat('Termo do aluno da marcação manual. ', 10)
+      || '{escola_nome}, {escola_documento}. Contato: {escola_contato_privacidade}.', now() + interval '3 minutes');
+  perform pg_temp.v3_assert(private.lesson_session_documentation_blocked(v_ok_marked)
+      and not private.lesson_session_documentation_blocked(v_none_marked),
+    'marcação manual de quem aceitou a versão anterior continuou valendo (ou a de quem nunca respondeu caiu)');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  v_error := null;
+  begin
+    perform public.set_lesson_documentation_consent(v_ok_later, true, 'Autorização conferida na secretaria.');
+  exception when others then v_error := sqlerrm; end;
+  perform pg_temp.v3_assert(v_error = 'termo_mudou_aceite_do_aluno_pendente'
+      and not (select documentation_consent from public.lesson_sessions where id = v_ok_later),
+    'a direção marcou à mão por cima do aceite do aluno de versão anterior: ' || coalesce(v_error, 'sem erro'));
+
+  -- Versão nova do termo do professor.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into private.lesson_recording_terms (audience, version, body, published_at) values
+    ('TEACHER', 'v100', repeat('Termo do professor da marcação manual. ', 10)
+      || '{escola_nome}, {escola_documento}. Contato: {escola_contato_privacidade}.', now() + interval '4 minutes');
+  perform pg_temp.v3_assert(private.lesson_session_documentation_blocked(v_none_marked),
+    'marcação manual continuou valendo com o aceite do professor de versão anterior');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  v_error := null;
+  begin
+    perform public.set_lesson_documentation_consent(v_none_later, true, 'Autorização em papel arquivada na secretaria.');
+  exception when others then v_error := sqlerrm; end;
+  perform pg_temp.v3_assert(v_error = 'termo_mudou_aceite_do_professor_pendente',
+    'a direção marcou à mão por cima do aceite do professor de versão anterior: ' || coalesce(v_error, 'sem erro'));
+  -- Desligar sempre pode.
+  v_result := public.set_lesson_documentation_consent(v_ok_marked, false, 'Direção retirou a marcação manual.');
+  perform pg_temp.v3_assert((v_result ->> 'ok')::boolean
+      and not (select documentation_consent from public.lesson_sessions where id = v_ok_marked),
+    'a direção não conseguiu desligar a marcação');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+end
+$manual$;
+
 -- 4. Retenção ------------------------------------------------------------------
 do $retention$
 declare
@@ -640,6 +758,10 @@ declare
     'content_practiced', jsonb_build_array('have been'),
     'recommended_next_step', 'Revisar os verbos');
   v_left timestamptz := now() - interval '100 days';
+  v_run_basis uuid := gen_random_uuid();
+  v_run_plain uuid := gen_random_uuid();
+  v_keep_memory uuid;
+  v_snapshot jsonb;
   v_result jsonb;
   v_trail private.lesson_memory_retention_runs;
   v_trails integer;
@@ -688,14 +810,49 @@ begin
   -- Planos do Planner com a base das aulas aprovadas (20260927130000): a base
   -- copia o próximo passo do resumo aprovado — sai 90 dias depois de o aluno
   -- deixar a escola, como o resumo; o plano fica. Quem continua não perde.
-  insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan) values
+  -- A memória que o Planner propôs com as aulas aprovadas na entrada (a linha
+  -- PLANNER_AI da geração com lesson_basis e o student_memory_update do plano)
+  -- copia erros e próximo passo delas: sai junto. A de geração sem aula
+  -- aprovada fica.
+  insert into public.planner_ai_runs (id, tenant_id, teacher_id, student_id, task_mode, model_id, prompt_version, result, status) values
+    (v_run_basis, 'v3-termo-fixture', v_teacher, v_gone, 'progress_report', 'fixture/modelo', 'fixture',
+      jsonb_build_object('lesson_basis', jsonb_build_object('lesson_dates', jsonb_build_array('2026-06-01')),
+        'student_memory_update', jsonb_build_object('recurring_errors', jsonb_build_array('ERRO-DA-AULA-APROVADA'))), 'SAVED'),
+    (v_run_plain, 'v3-termo-fixture', v_teacher, v_gone, 'lesson_plan', 'fixture/modelo', 'fixture',
+      jsonb_build_object('lesson_basis', null,
+        'student_memory_update', jsonb_build_object('lesson_objective', 'Objetivo do Wolfie')), 'SAVED');
+  insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan, student_memory_update, planner_run_id) values
     ('v3-termo-fixture', v_teacher, v_gone, jsonb_build_object('title', 'Plano do que saiu',
-      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos')))),
+      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos')),
+      'student_memory_update', jsonb_build_object('recurring_errors', jsonb_build_array('ERRO-DA-AULA-APROVADA'))),
+      jsonb_build_object('recurring_errors', jsonb_build_array('ERRO-DA-AULA-APROVADA')), v_run_basis),
     ('v3-termo-fixture', v_teacher, v_keep, jsonb_build_object('title', 'Plano do que ficou',
-      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos'))));
-  insert into public.planner_ai_runs (tenant_id, teacher_id, student_id, task_mode, model_id, prompt_version, result) values
-    ('v3-termo-fixture', v_teacher, v_gone, 'lesson_plan', 'fixture/modelo', 'fixture',
-      jsonb_build_object('lesson_basis', jsonb_build_object('lesson_dates', jsonb_build_array('2026-06-01'))));
+      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos'))),
+      '{}'::jsonb, null);
+  insert into public.student_learning_memories (tenant_id, student_id, source_type, source_ref, occurred_at,
+    lesson_objective, recurring_errors, verification_status) values
+    ('v3-termo-fixture', v_gone, 'PLANNER_AI', v_run_basis::text, now() - interval '110 days', '',
+      array['ERRO-DA-AULA-APROVADA'], 'PROPOSED'),
+    ('v3-termo-fixture', v_gone, 'PLANNER_AI', v_run_plain::text, now() - interval '110 days', 'Objetivo do Wolfie',
+      '{}'::text[], 'PROPOSED');
+
+  -- Confirmação de leitura do dossiê: guarda o que foi lido por referência,
+  -- nunca o texto (nem a retenção nem a exclusão alcançam essa tabela).
+  select id into v_keep_memory from public.student_learning_memories
+   where student_id = v_keep and source_type = 'MEET_SESSION';
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
+  v_result := public.get_student_handover(v_keep, true);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  select snapshot into v_snapshot from private.student_handover_reads
+   where student_id = v_keep order by created_at desc limit 1;
+  perform pg_temp.v3_assert(
+    v_result -> 'memories' -> 0 ->> 'lesson_objective' = 'Present perfect'
+      and v_snapshot::text not like '%Present perfect%'
+      and jsonb_array_length(v_snapshot -> 'memories') = 1
+      and v_snapshot -> 'memories' -> 0 ->> 'id' = v_keep_memory::text
+      and v_snapshot -> 'memories' -> 0 ->> 'source_type' = 'MEET_SESSION'
+      and v_snapshot ? 'learning_card_version',
+    'confirmação de leitura do dossiê copiou o texto da memória (ou perdeu a referência): ' || coalesce(v_snapshot::text, 'sem linha'));
 
   -- Idade não comprovada = menor para o cartão: só objetivo e temas.
   insert into public.student_learning_cards (tenant_id, student_id, real_goal, engaging_topics) values
@@ -768,6 +925,10 @@ begin
   );
   perform pg_temp.v3_assert(
     not exists (select 1 from public.student_learning_memories where student_id = v_gone and source_type = 'MEET_SESSION')
+      and not exists (select 1 from public.student_learning_memories where student_id = v_gone
+        and source_type = 'PLANNER_AI' and source_ref = v_run_basis::text)
+      and exists (select 1 from public.student_learning_memories where student_id = v_gone
+        and source_type = 'PLANNER_AI' and source_ref = v_run_plain::text)
       and exists (select 1 from public.student_learning_memories where student_id = v_gone and source_type = 'MANUAL')
       and exists (select 1 from public.student_learning_memories where student_id = v_keep and source_type = 'MEET_SESSION')
       and exists (select 1 from public.student_learning_memories where student_id = v_recent and source_type = 'MEET_SESSION'),
@@ -786,8 +947,15 @@ begin
   );
   perform pg_temp.v3_assert(
     (select not (structured_plan ? 'lesson_basis') and structured_plan ->> 'title' = 'Plano do que saiu'
+        and not (structured_plan ? 'student_memory_update') and student_memory_update = '{}'::jsonb
+        and structured_plan ? 'approved_lessons_removed_at'
+        and position('ERRO-DA-AULA-APROVADA' in structured_plan::text || student_memory_update::text) = 0
       from public.lesson_plans where student_id = v_gone)
-    and not exists (select 1 from public.planner_ai_runs where student_id = v_gone and result ? 'lesson_basis')
+    and (select not (result ? 'lesson_basis') and not (result ? 'student_memory_update')
+        and result ? 'approved_lessons_removed_at'
+      from public.planner_ai_runs where id = v_run_basis)
+    and (select result -> 'student_memory_update' ->> 'lesson_objective' = 'Objetivo do Wolfie'
+      from public.planner_ai_runs where id = v_run_plain)
     and (select structured_plan ? 'lesson_basis' from public.lesson_plans where student_id = v_keep)
     and (v_result ->> 'planner_basis_cleared')::integer >= 1,
     'base das aulas aprovadas ficou no plano de quem deixou a escola (ou saiu do plano de quem ficou): ' || v_result::text
@@ -798,7 +966,7 @@ begin
    where tenant_id = 'v3-termo-fixture' and run_id = (v_result ->> 'run_id')::uuid;
   perform pg_temp.v3_assert(
     v_trail.drafts_cleared = 2 and v_trail.approved_excerpts_cleared = 2 and v_trail.summaries_cleared = 2
-      and v_trail.memories_deleted = 1 and v_trail.cards_deleted = 1 and v_trail.planner_basis_cleared = 1,
+      and v_trail.memories_deleted = 2 and v_trail.cards_deleted = 1 and v_trail.planner_basis_cleared = 1,
     'trilha da retenção com contagem errada: ' || coalesce(to_jsonb(v_trail)::text, 'sem linha')
   );
   perform pg_temp.v3_assert(

@@ -6,7 +6,15 @@
 -- Não depende de dado real nem da fila global: as conexões reais saem do ar e as
 -- outras escolas ficam pausadas só dentro desta transação (o rollback devolve).
 -- Horários relativos a now(); o gasto do mês usa linhas criadas agora (sempre no
--- mês corrente) e uma linha no mês anterior (sempre fora).
+-- mês corrente — nenhuma geração do mês tem created_at recuado, senão o teste
+-- reprovaria nas primeiras horas do dia 1º) e uma linha no mês anterior (sempre
+-- fora).
+--
+-- Correção da integração: a transcrição só vai à IA (automática e manual) com
+-- aceite de termo que declara a IA (v3 em diante), do aluno e do professor,
+-- valendo no fim da aula. Aula dada sob aceite da v2, aula marcada à mão para
+-- quem nunca respondeu no sistema e aula de professor sem aceite ficam fora —
+-- e aceitar a v3 depois da aula não muda o que valia nela.
 \set ON_ERROR_STOP on
 
 begin;
@@ -43,6 +51,8 @@ begin
     'RPCs da tela com privilégio errado');
   perform pg_temp.resumo_assert(
     not has_function_privilege('authenticated', 'private.meet_summary_auto_eligible(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'private.meet_summary_ai_consented(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'private.lesson_recording_ai_accepted_at(uuid,timestamptz)', 'EXECUTE')
     and not has_function_privilege('authenticated', 'private.meet_summary_review_items(text,uuid)', 'EXECUTE')
     and not has_function_privilege('authenticated', 'private.meet_summary_month_spend(text)', 'EXECUTE'),
     'régua interna executável pelo navegador');
@@ -78,6 +88,12 @@ declare
   v_stale uuid := gen_random_uuid();         -- rascunho parado há 4 dias
   v_expired_src uuid := gen_random_uuid();   -- rascunho cuja fonte venceu
   v_other_class uuid := gen_random_uuid();   -- aula do outro professor
+  v_v2_student uuid := gen_random_uuid();    -- aluno com aceite da v2 (sem IA no texto)
+  v_none_student uuid := gen_random_uuid();  -- aluno que nunca respondeu no sistema
+  v_under_v2 uuid := gen_random_uuid();      -- aula dada sob o aceite da v2
+  v_manual_none uuid := gen_random_uuid();   -- aula marcada à mão, aluno sem resposta no sistema
+  v_teacher_none uuid := gen_random_uuid();  -- aula do professor que não aceitou o termo
+  v_under_v2_src uuid;
   v_today date := (now() at time zone 'America/Sao_Paulo')::date;
   v_older_transcript uuid; v_older_notes uuid; v_older_notes_old uuid;
   v_ready_transcript uuid; v_foreign uuid; v_stale_src uuid; v_other_src uuid;
@@ -104,19 +120,34 @@ begin
     (v_teacher, 'resumo-teacher@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
     (v_other_teacher, 'resumo-teacher2@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
     (v_student, 'resumo-student@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
-    (v_revoker, 'resumo-revoker@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
+    (v_revoker, 'resumo-revoker@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_v2_student, 'resumo-v2@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_none_student, 'resumo-none@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
   update public.profiles
      set tenant_id = v_tenant, lifecycle_status = 'active', is_test_account = true,
          full_name = case when id = v_student then 'Aluna Resumo' when id = v_revoker then 'Aluno Revogou'
-           when id = v_teacher then 'Prof Resumo' when id = v_other_teacher then 'Prof Outro' else full_name end,
+           when id = v_teacher then 'Prof Resumo' when id = v_other_teacher then 'Prof Outro'
+           when id = v_v2_student then 'Aluno Termo V2' when id = v_none_student then 'Aluno Sem Resposta'
+           else full_name end,
          role = case when id = v_admin then 'SCHOOL_ADMIN' when id = v_coord then 'COORDINATOR'
            when id in (v_teacher, v_other_teacher) then 'TEACHER' else 'STUDENT' end
-   where id in (v_admin, v_coord, v_teacher, v_other_teacher, v_student, v_revoker);
-  update public.profiles set professor_id = v_teacher where id in (v_student, v_revoker);
+   where id in (v_admin, v_coord, v_teacher, v_other_teacher, v_student, v_revoker, v_v2_student, v_none_student);
+  update public.profiles set professor_id = v_teacher where id in (v_student, v_revoker, v_v2_student, v_none_student);
   insert into public.tenant_memberships (tenant_id, user_id, role, status)
     select tenant_id, id, role, 'ACTIVE' from public.profiles
-     where id in (v_admin, v_coord, v_teacher, v_other_teacher, v_student, v_revoker)
+     where id in (v_admin, v_coord, v_teacher, v_other_teacher, v_student, v_revoker, v_v2_student, v_none_student)
   on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
+  -- Aceites do termo (um dia antes das aulas): aluna e professor na v3, que
+  -- declara a IA; o outro aluno na v2, que não declara. O professor da outra
+  -- aula e o aluno sem resposta não têm decisão no sistema.
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, term_audience, term_version, source, verification, verified_phone, recorded_by, decided_at) values
+    (v_tenant, v_student, 'STUDENT', 'ACCEPTED', 'Aluna Resumo', 'SELF', 'STUDENT', 'v3', 'APP',
+      'WHATSAPP_CODE', '(11) •••••-1111', null, now() - interval '1 day'),
+    (v_tenant, v_v2_student, 'STUDENT', 'ACCEPTED', 'Aluno Termo V2', 'SELF', 'STUDENT', 'v2', 'APP',
+      'WHATSAPP_CODE', '(11) •••••-2222', null, now() - interval '1 day'),
+    (v_tenant, v_teacher, 'TEACHER', 'ACCEPTED', 'Prof Resumo', 'SELF', 'TEACHER', 'v3', 'APP',
+      null, null, v_teacher, now() - interval '1 day');
   -- Aluno que revogou há 3 h (antes do fim das aulas que terminaram há 2 h).
   insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
     signer_relation, source, recorded_by, reason, decided_at) values
@@ -138,7 +169,11 @@ begin
     -- saído depois da aula); sem aceite elas também não disputam a fila automática.
     (v_stale, v_tenant, v_student, v_teacher, v_today - 4, now() - interval '4 days' - interval '30 minutes', now() - interval '4 days', 'resumo-stale', false),
     (v_expired_src, v_tenant, v_student, v_teacher, v_today - 5, now() - interval '5 days' - interval '30 minutes', now() - interval '5 days', 'resumo-expired', false),
-    (v_other_class, v_tenant, v_student, v_other_teacher, v_today - 4, now() - interval '4 days' - interval '90 minutes', now() - interval '4 days' - interval '60 minutes', 'resumo-other', false);
+    (v_other_class, v_tenant, v_student, v_other_teacher, v_today - 4, now() - interval '4 days' - interval '90 minutes', now() - interval '4 days' - interval '60 minutes', 'resumo-other', false),
+    -- Aceite efetivo para a importação, mas sem termo que declare a IA.
+    (v_under_v2, v_tenant, v_v2_student, v_teacher, v_today, now() - interval '150 minutes', now() - interval '120 minutes', 'resumo-underv2', true),
+    (v_manual_none, v_tenant, v_none_student, v_teacher, v_today, now() - interval '150 minutes', now() - interval '120 minutes', 'resumo-manualnone', true),
+    (v_teacher_none, v_tenant, v_student, v_other_teacher, v_today, now() - interval '150 minutes', now() - interval '120 minutes', 'resumo-teachernone', true);
 
   -- Fontes: transcrição e anotações importadas há 1 h (a anotação teve uma
   -- revisão antiga, que não deve ser usada).
@@ -169,7 +204,17 @@ begin
   from (values (v_fresh, 'fresh', now() - interval '5 minutes'), (v_pending_doc, 'pending', now() - interval '60 minutes'),
     (v_no_consent, 'noconsent', now() - interval '60 minutes'), (v_blocked, 'blocked', now() - interval '60 minutes'),
     (v_has_ai, 'hasai', now() - interval '60 minutes'), (v_verified, 'verified', now() - interval '60 minutes'),
-    (v_week_old, 'weekold', now() - interval '8 days')) as fixture(session_id, tag, imported);
+    (v_week_old, 'weekold', now() - interval '8 days'), (v_manual_none, 'manualnone', now() - interval '60 minutes'),
+    (v_teacher_none, 'teachernone', now() - interval '60 minutes')) as fixture(session_id, tag, imported);
+  -- A marcação à mão da direção (comprovante por outro meio) para quem nunca
+  -- respondeu no sistema: vale para a transcrição, não para a IA.
+  insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
+  values (v_manual_none, v_admin, true, 'Autorização em papel arquivada na secretaria.', now() - interval '1 day');
+  insert into private.meeting_artifact_revisions (tenant_id, lesson_session_id, provider_name, kind, document_id,
+    content_sha256, source_text, imported_at, expires_at) values
+    (v_tenant, v_under_v2, 'conferenceRecords/underv2/transcripts/t1', 'TRANSCRIPT', 'docUnderV2',
+      encode(sha256('underv2'::bytea), 'hex'), 'fala da aula sob a v2', now() - interval '60 minutes', now() + interval '90 days')
+  returning id into v_under_v2_src;
   insert into private.meeting_artifact_revisions (tenant_id, lesson_session_id, provider_name, kind, document_id,
     content_sha256, source_text, imported_at, expires_at) values
     (v_tenant, v_stale, 'conferenceRecords/r9/smartNotes/n1', 'SMART_NOTES', 'docStaleN', encode(sha256('stale-n'::bytea), 'hex'),
@@ -209,6 +254,25 @@ begin
   perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_has_ai), 'aula com resumo de IA ganharia outro');
   perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_verified), 'aula já aprovada ganharia rascunho');
   perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_week_old), 'aula de 8 dias atrás na fila');
+  -- IA só com aceite de termo que a declara, valendo no fim da aula.
+  perform pg_temp.resumo_assert(private.meet_summary_ai_consented(v_older)
+    and not private.meet_summary_ai_consented(v_under_v2)
+    and not private.meet_summary_ai_consented(v_manual_none)
+    and not private.meet_summary_ai_consented(v_teacher_none), 'régua do aceite da IA errada');
+  perform pg_temp.resumo_assert(not private.lesson_session_documentation_blocked(v_under_v2)
+    and not private.meet_summary_auto_eligible(v_under_v2),
+    'aula dada sob a v2 (que não fala de IA) ficou elegível ao resumo por IA');
+  perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_manual_none),
+    'aula marcada para quem nunca respondeu ao termo no sistema foi à IA');
+  perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_teacher_none),
+    'aula de professor sem aceite do termo foi à IA');
+  -- Aceitar a v3 DEPOIS da aula não muda o que valia nela.
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, term_audience, term_version, source, verification, verified_phone, decided_at) values
+    (v_tenant, v_v2_student, 'STUDENT', 'ACCEPTED', 'Aluno Termo V2', 'SELF', 'STUDENT', 'v3', 'APP',
+      'WHATSAPP_CODE', '(11) •••••-2222', now() - interval '10 minutes');
+  perform pg_temp.resumo_assert(not private.meet_summary_auto_eligible(v_under_v2),
+    'aceite da v3 depois da aula liberou a IA para a aula dada sob a v2');
   -- Documento "sendo gerado" há mais de 6 h não segura mais.
   update private.google_meet_artifact_imports set updated_at = now() - interval '7 hours' where lesson_session_id = v_pending_doc;
   perform pg_temp.resumo_assert(private.meet_summary_auto_eligible(v_pending_doc), 'documento travado no Google segurou o resumo para sempre');
@@ -317,6 +381,15 @@ begin
       'source_artifact_ids', jsonb_build_array(v_ready_transcript)));
   exception when insufficient_privilege then v_blocked_flag := true; end;
   perform pg_temp.resumo_assert(v_blocked_flag, 'professor de outra aula pediu o resumo à mão');
+  -- Nem o botão manual leva à IA a aula dada sob a v2 (o aceite de custo da
+  -- tela é da escola, não da família).
+  v_result := public.google_meet_summary_backend('claim', v_tenant, v_teacher, v_under_v2, jsonb_build_object(
+    'trigger', 'MANUAL', 'model_id', 'google/gemini-3.6-flash', 'estimated_usd', 0.03,
+    'source_artifact_ids', jsonb_build_array(v_under_v2_src)));
+  perform pg_temp.resumo_assert(not (v_result ->> 'claimed')::boolean
+    and v_result ->> 'reason' = 'google_summary_ai_consent_required'
+    and not exists (select 1 from private.google_meet_summary_generations g where g.lesson_session_id = v_under_v2),
+    'o botão manual mandou à IA a aula dada sob a v2: ' || v_result::text);
 
   -- ===== 4. Teto mensal ===========================================================
   -- Gasto de outro mês não conta.
@@ -382,7 +455,6 @@ begin
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   perform public.set_meet_summary_monthly_cap(20);
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
-  update private.google_meet_summary_generations set created_at = now() - interval '2 hours' where id = v_gen2;
   v_result := public.google_meet_summary_backend('claim', v_tenant, null, v_pending_doc, jsonb_build_object(
     'trigger', 'AUTOMATIC', 'model_id', 'google/gemini-3.6-flash', 'estimated_usd', 0.05,
     'source_artifact_ids', jsonb_build_array((select id from private.meeting_artifact_revisions where lesson_session_id = v_pending_doc))));

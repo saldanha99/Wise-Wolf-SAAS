@@ -11,7 +11,12 @@
 --     rascunho da IA é PROPOSED e entra na fila "Aulas para revisar", com o prazo
 --     em que deixa de poder ser aprovado (fim da retenção das fontes);
 --   * resumos parados há 3+ dias viram pendência da direção
---     (director_pending_counts.resumos_para_revisar).
+--     (director_pending_counts.resumos_para_revisar);
+--   * (correção da integração) a transcrição só vai à IA — automática OU
+--     manual — com aceite de termo que declara a IA (v3 em diante), do aluno e
+--     do professor, valendo no fim da aula (private.meet_summary_ai_consented).
+--     Aula dada sob a v2, ou marcada à mão para quem não respondeu no sistema,
+--     fica só com as notas do Google para o professor revisar.
 --
 -- Peças:
 --   1. ai_usage_events.reasoning_tokens (tokens de raciocínio do modelo);
@@ -205,9 +210,29 @@ language sql stable security definer set search_path = '' as $$
   limit 6;
 $$;
 
+-- A transcrição da aula pode ir ao provedor de IA: o aceite que valia no FIM da
+-- aula — do aluno (ou responsável) e do professor da aula — é de uma versão do
+-- termo que declara a IA (v3 em diante, 20260927100000). Correção da
+-- integração: a régua do aceite efetivo aceita a aula que terminou sob a v2 (a
+-- versão nova não derruba a importação dela), e a v2 não fala de IA nem do
+-- OpenRouter — só do Google. Aula marcada à mão para quem nunca respondeu no
+-- sistema também fica fora: o comprovante que a direção registrou não diz que
+-- a pessoa leu um texto que fala de IA.
+create or replace function private.meet_summary_ai_consented(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select private.lesson_recording_ai_accepted_at(session.student_id, session.scheduled_end_at)
+      and private.lesson_recording_ai_accepted_at(session.teacher_id, session.scheduled_end_at)
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
+$$;
+
 -- A aula pode ganhar o rascunho automático agora:
 --   * aceite EFETIVO (a marca menos recusa/revogação antes do fim e o aceite do
---     termo que caiu — a mesma régua da importação);
+--     termo que caiu — a mesma régua da importação) E de termo que declara a IA
+--     (private.meet_summary_ai_consented);
 --   * terminou há 30+ min e há menos de 7 dias (a janela da importação);
 --   * tem fonte importada ainda na retenção, nenhuma chegou nos últimos 20 min e
 --     nenhum documento ainda "sendo gerado" pelo Google (há menos de 6 h) — o
@@ -225,6 +250,7 @@ language sql stable security definer set search_path = '' as $$
       and session.scheduled_end_at < pg_catalog.now() - interval '30 minutes'
       and session.scheduled_end_at > pg_catalog.now() - interval '7 days'
       and not private.lesson_session_documentation_blocked(session.id)
+      and private.meet_summary_ai_consented(session.id)
       and exists (select 1 from private.meeting_artifact_revisions as revision
         where revision.lesson_session_id = session.id and revision.expires_at > pg_catalog.now())
       and not exists (select 1 from private.meeting_artifact_revisions as revision
@@ -304,6 +330,7 @@ alter function private.meet_summary_cap(text) owner to postgres;
 alter function private.meet_summary_month_spend(text) owner to postgres;
 alter function private.meet_summary_auto_budget_ok(text) owner to postgres;
 alter function private.meet_summary_session_sources(uuid) owner to postgres;
+alter function private.meet_summary_ai_consented(uuid) owner to postgres;
 alter function private.meet_summary_auto_eligible(uuid) owner to postgres;
 alter function private.meet_summary_review_items(text, uuid) owner to postgres;
 alter function private.meet_summary_review_stale_count(text) owner to postgres;
@@ -312,6 +339,7 @@ revoke all on function private.meet_summary_cap(text) from public, anon, authent
 revoke all on function private.meet_summary_month_spend(text) from public, anon, authenticated;
 revoke all on function private.meet_summary_auto_budget_ok(text) from public, anon, authenticated;
 revoke all on function private.meet_summary_session_sources(uuid) from public, anon, authenticated;
+revoke all on function private.meet_summary_ai_consented(uuid) from public, anon, authenticated;
 revoke all on function private.meet_summary_auto_eligible(uuid) from public, anon, authenticated;
 revoke all on function private.meet_summary_review_items(text, uuid) from public, anon, authenticated;
 revoke all on function private.meet_summary_review_stale_count(text) from public, anon, authenticated;
@@ -422,6 +450,12 @@ begin
         and ((a.role in ('SCHOOL_ADMIN','COORDINATOR') and a.tenant_id = s.tenant_id)
           or (a.role = 'TEACHER' and s.teacher_id = a.id));
       if not v_raw then raise exception 'google_meet_raw_access_required' using errcode = '42501'; end if;
+    end if;
+    -- IA só com aceite de termo que a declara, valendo no fim da aula (aluno e
+    -- professor). Vale para o botão manual também: o aceite de custo da tela é
+    -- da escola, não da família.
+    if not private.meet_summary_ai_consented(s.id) then
+      return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'google_summary_ai_consent_required');
     end if;
     v_sources := array(select pg_catalog.jsonb_array_elements_text(coalesce(p_payload -> 'source_artifact_ids', '[]'::jsonb)))::uuid[];
     if coalesce(pg_catalog.cardinality(v_sources), 0) not between 1 and 6

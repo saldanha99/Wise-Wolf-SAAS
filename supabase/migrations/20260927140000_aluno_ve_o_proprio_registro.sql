@@ -148,25 +148,31 @@ begin
     raise exception 'somente_o_aluno' using errcode = '42501';
   end if;
 
-  -- Resumos aprovados: a última versão VERIFIED de cada sessão do aluno (a
-  -- mesma que está em student_learning_memories). Rejeição ou rascunho
-  -- posteriores não apagam o aprovado — o upsert da memória também não.
-  with approved as (
+  -- Resumos aprovados: a última decisão humana de cada sessão do aluno (a
+  -- versão revisada mais recente, VERIFIED ou REJECTED) — e só quando ela é
+  -- VERIFIED. É a régua da memória do aluno (20260927130000): o professor que
+  -- rejeita a versão aprovada (um erro, um dado pessoal que a IA pôs no
+  -- resumo) tira a aula da memória, do Planner e do dossiê, e tira daqui
+  -- também. Rascunho novo (PROPOSED) não é decisão: não apaga o aprovado.
+  with reviewed as (
     select distinct on (sess.id)
       sess.id as session_id,
       sess.class_date,
       sess.scheduled_start_at,
       sess.teacher_id,
+      sv.status,
       sv.created_at as approved_at,
       sv.content
     from public.lesson_sessions as sess
     join private.lesson_summary_versions as sv
       on sv.lesson_session_id = sess.id
      and sv.tenant_id = sess.tenant_id
-     and sv.status = 'VERIFIED'
+     and sv.status in ('VERIFIED', 'REJECTED')
     where sess.student_id = v_me.id
       and sess.tenant_id = v_me.tenant_id
     order by sess.id, sv.version desc
+  ), approved as (
+    select * from reviewed where reviewed.status = 'VERIFIED'
   ), recent as (
     select * from approved order by scheduled_start_at desc limit 300
   )
@@ -215,9 +221,10 @@ begin
 
   -- Aulas com transcrição/anotações guardadas esperando a revisão do
   -- professor: o aluno sabe que existem, sem ver o texto. Sem resumo aprovado
-  -- E sem rejeição como última palavra: aula cuja versão mais recente foi
-  -- REJEITADA já foi revisada e não vai ganhar resumo (rascunho novo depois
-  -- da rejeição volta a contar).
+  -- (a última decisão humana não é VERIFIED — a mesma régua de cima) E sem
+  -- rejeição como última palavra: aula cuja versão mais recente foi REJEITADA
+  -- já foi revisada e não vai ganhar resumo (rascunho novo depois da rejeição
+  -- volta a contar).
   select count(*)::integer into v_pending
   from public.lesson_sessions as sess
   where sess.student_id = v_me.id
@@ -228,12 +235,15 @@ begin
         and artifact.lesson_session_id = sess.id
         and artifact.expires_at > pg_catalog.now()
     )
-    and not exists (
-      select 1 from private.lesson_summary_versions as sv
-      where sv.tenant_id = sess.tenant_id
-        and sv.lesson_session_id = sess.id
-        and sv.status = 'VERIFIED'
-    )
+    and coalesce((
+      select last_review.status
+      from private.lesson_summary_versions as last_review
+      where last_review.tenant_id = sess.tenant_id
+        and last_review.lesson_session_id = sess.id
+        and last_review.status in ('VERIFIED', 'REJECTED')
+      order by last_review.version desc
+      limit 1
+    ), '') <> 'VERIFIED'
     and coalesce((
       select latest.status
       from private.lesson_summary_versions as latest

@@ -59,6 +59,24 @@
 --        aulas dele e a base das aulas aprovadas copiada nos planos do Planner
 --        (lesson_basis, 20260927130000 — integração da onda 2);
 --    (c) cada rodada deixa uma trilha só com contagens, por escola.
+-- 4. Correções da integração da onda 2 (revisão de 27/09/2026):
+--    * a IA só entra com aceite de termo que a declara (v3 em diante), do
+--      aluno e do professor, valendo no FIM da aula
+--      (private.lesson_recording_ai_accepted_at, usada pelo resumo automático
+--      e manual de 20260927110000);
+--    * a marcação manual da direção não liga aula de quem tem, no sistema,
+--      aceite de versão anterior à que vale na aula, e a marcada antes de a
+--      versão nova sair fica barrada na régua única do aceite efetivo
+--      (private.lesson_session_documentation_blocked);
+--    * a confirmação de leitura do dossiê guarda só referências (ids, datas e
+--      versões), nunca o texto das memórias e dos lançamentos lidos;
+--    * a retenção (b) apaga também a memória que o Planner propôs a partir das
+--      aulas aprovadas (PLANNER_AI da geração com lesson_basis e
+--      student_memory_update), e o plano fica marcado para não voltar ao
+--      modelo como continuidade;
+--    * as cópias brutas ficam no máximo 90 dias no banco
+--      (lesson_memory_retention_policy.raw_copies_days), qualquer que seja a
+--      variável da edge — antes o banco aceitava 365.
 --
 -- Em 26/09/2026 havia 0 aceites, 0 salas, 0 resumos e 0 memórias MEET_SESSION
 -- em produção: nada existente muda de estado com esta migration.
@@ -449,6 +467,145 @@ language sql stable security definer set search_path = '' as $$
   ), 'o aceite do termo deixou de valer.');
 $$;
 
+-- Correção da integração da onda 2 -------------------------------------------
+-- A IA (resumo automático e manual da aula, 20260927110000) só entra com o
+-- aceite de um texto que a declara. v1 e v2 falam só do Google ("O Google
+-- processa os dados como fornecedor da escola"); a v3 é a primeira que diz que
+-- um resumo é preparado com IA e que o provedor de IA contratado (OpenRouter)
+-- processa a aula. Versão nova é sempre texto novo (nunca update), e a direção
+-- decidiu o resumo por IA de vez: de v3 em diante, declara.
+create or replace function private.lesson_recording_term_declares_ai(p_version text)
+returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(pg_catalog.substring(p_version, '^v([0-9]+)$')::integer >= 3, false);
+$$;
+
+-- A decisão da pessoa que VALIA num instante (a última registrada até ele) é
+-- "autorizo" de uma versão que declara a IA. Aluno: com o código do WhatsApp,
+-- como o aceite que marca aula. É o instante do FIM da aula que conta: a
+-- transcrição de uma aula dada sob a v2 foi colhida sob um texto que não fala de
+-- IA, e aceitar a v3 depois não muda o que valia naquela aula (a v3 fala "depois
+-- de cada aula", daqui para a frente). Revogação depois do fim não retroage,
+-- como na importação.
+create or replace function private.lesson_recording_ai_accepted_at(p_subject uuid, p_at timestamptz)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select decision.decision = 'ACCEPTED'
+      and private.lesson_recording_term_declares_ai(decision.term_version)
+      and (decision.subject_role <> 'STUDENT' or decision.verification = 'WHATSAPP_CODE')
+    from private.lesson_recording_consents as decision
+    where decision.subject_id = p_subject
+      and decision.decided_at <= p_at
+    order by decision.decided_at desc, decision.seq desc
+    limit 1
+  ), false);
+$$;
+
+-- O aceite REGISTRADO no sistema não cobre a aula que termina em p_at: a última
+-- decisão da pessoa é "autorizo" de uma versão anterior à que valia no fim da
+-- aula (para aula futura, a vigente). Quem nunca respondeu no sistema (NONE) não
+-- entra aqui: a marcação manual da direção, com o comprovante no motivo, segue
+-- sendo o caminho dela — e essa aula não vai para a IA.
+create or replace function private.lesson_recording_acceptance_outdated_at(p_subject uuid, p_at timestamptz)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select last_decision.decision = 'ACCEPTED'
+      and not private.lesson_recording_term_covers(
+        last_decision.term_audience, last_decision.term_version, p_at)
+    from (
+      select consent.decision, consent.term_audience, consent.term_version
+      from private.lesson_recording_consents as consent
+      where consent.subject_id = p_subject
+      order by consent.seq desc
+      limit 1
+    ) as last_decision
+  ), false);
+$$;
+
+-- Sessão marcada À MÃO pela direção (o último evento é um "ligar" que não é do
+-- termo) cujo aluno ou professor tem, no sistema, aceite de versão anterior à
+-- que vale na aula. O termo vigente promete: "Quando este termo mudar ... Até
+-- lá, as próximas aulas não são transcritas". A marcação manual não passa por
+-- cima disso — nem a feita antes de a versão nova sair.
+create or replace function private.lesson_session_manual_mark_outdated(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select coalesce((
+        select event.allowed and event.reason not like 'Termo de registro das aulas%'
+        from private.lesson_documentation_consent_events as event
+        where event.session_id = session.id
+        order by event.created_at desc
+        limit 1
+      ), false)
+      and (private.lesson_recording_acceptance_outdated_at(session.student_id, session.scheduled_end_at)
+        or private.lesson_recording_acceptance_outdated_at(session.teacher_id, session.scheduled_end_at))
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
+$$;
+
+-- Partindo da definição viva (20260926180000): a régua única do aceite efetivo
+-- (porta do servidor, fila, link do app, lembrete, presença, resumo) ganha a
+-- marcação manual que ficou para trás de uma versão nova do termo.
+create or replace function private.lesson_session_documentation_blocked(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select private.lesson_recording_said_no_before(session.student_id, session.scheduled_end_at)
+      or private.lesson_recording_said_no_before(session.teacher_id, session.scheduled_end_at)
+      or private.lesson_session_term_consent_lapsed(session.id)
+      or private.lesson_session_manual_mark_outdated(session.id)
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
+$$;
+
+-- Marcação manual (definição viva de 20260926180000 + a recusa do aceite que
+-- ficou para trás). Antes: quem aceitou a v2 e ainda não respondeu à v3 podia
+-- ter a aula marcada à mão com qualquer motivo de 10 caracteres — e, com o
+-- resumo automático, a transcrição ia para a IA. Agora a direção pede o aceite
+-- da versão vigente (link ou app). Quem nunca respondeu no sistema continua
+-- podendo ser marcado com o comprovante no motivo (autorização por outro meio),
+-- e a aula dele não vai para a IA (private.lesson_recording_ai_accepted_at).
+create or replace function public.set_lesson_documentation_consent(p_session_id uuid,p_allowed boolean,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare
+  s public.lesson_sessions;
+  v_me public.profiles;
+begin
+  select * into s from public.lesson_sessions where id=p_session_id for update;
+  if not found or not private.can_manage_lesson_quality(s.tenant_id) then
+    raise exception 'sem_permissao' using errcode='42501'; end if;
+  select * into v_me from public.profiles where id=(select auth.uid());
+  if v_me.id is null or v_me.role<>'SCHOOL_ADMIN' or v_me.tenant_id is distinct from s.tenant_id
+    or lower(coalesce(v_me.lifecycle_status,''))<>'active' then
+    raise exception 'somente_a_direcao' using errcode='42501'; end if;
+  if p_allowed is null or length(btrim(coalesce(p_reason,'')))<10 then
+    raise exception 'registre_a_base_e_o_comprovante_da_autorizacao' using errcode='22023'; end if;
+  -- Ligar a documentação não passa por cima de quem disse não.
+  if p_allowed and private.lesson_recording_consent_state(s.student_id) in ('REFUSED','REVOKED') then
+    raise exception 'termo_recusado_ou_revogado_pelo_aluno' using errcode='42501'; end if;
+  if p_allowed and private.lesson_recording_consent_state(s.teacher_id) in ('REFUSED','REVOKED') then
+    raise exception 'termo_recusado_ou_revogado_pelo_professor' using errcode='42501'; end if;
+  -- Nem por cima de um aceite do sistema que ficou para trás de uma versão nova.
+  if p_allowed and private.lesson_recording_acceptance_outdated_at(s.student_id, s.scheduled_end_at) then
+    raise exception 'termo_mudou_aceite_do_aluno_pendente' using errcode='42501'; end if;
+  if p_allowed and private.lesson_recording_acceptance_outdated_at(s.teacher_id, s.scheduled_end_at) then
+    raise exception 'termo_mudou_aceite_do_professor_pendente' using errcode='42501'; end if;
+  -- clock_timestamp: o job decide pelo ÚLTIMO evento da sessão (desligar manual
+  -- segura o termo; o desmarque do próprio termo não), e dois eventos na mesma
+  -- transação teriam o mesmo now().
+  insert into private.lesson_documentation_consent_events(session_id,actor_id,allowed,reason,created_at)
+  values(s.id,v_me.id,p_allowed,left(btrim(p_reason),2000),pg_catalog.clock_timestamp());
+  update public.lesson_sessions set documentation_consent=p_allowed,updated_at=now() where id=s.id;
+  return jsonb_build_object('ok',true);
+end $$;
+revoke all on function public.set_lesson_documentation_consent(uuid,boolean,text) from public,anon;
+grant execute on function public.set_lesson_documentation_consent(uuid,boolean,text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 4. Página pública: "o termo mudou" e quem é a escola
 -- ---------------------------------------------------------------------------
@@ -825,15 +982,59 @@ $patches$;
 -- 7. Retenção da memória das aulas (lado do banco)
 -- ---------------------------------------------------------------------------
 
--- Prazos num lugar só (o termo v3 promete estes números).
+-- Prazos num lugar só (o termo v3 promete estes números). raw_copies_days é o
+-- TETO das cópias brutas no sistema (transcrição, anotações e relatório de
+-- presença): a variável GOOGLE_MEET_RAW_RETENTION_DAYS da edge pode encurtar,
+-- nunca passar dele — antes o banco aceitava até 365 (correção da integração).
 create or replace function private.lesson_memory_retention_policy()
 returns jsonb
 language sql immutable set search_path = '' as $$
   select jsonb_build_object(
     'lesson_excerpts_days', 90,
-    'after_leaving_days', 90
+    'after_leaving_days', 90,
+    'raw_copies_days', 90
   );
 $$;
+
+-- As cópias brutas ficam no máximo raw_copies_days. Remendo por âncora nas
+-- definições vivas (20260926180000) da gravação da transcrição/anotações
+-- (google_meet_backend, artifact_save) e da planilha de presença
+-- (google_meet_attendance_backend, attendance_save), com o mesmo mecanismo da
+-- seção 6: âncora uma vez só, pula se já aplicado, para com erro se sumiu.
+do $raw_cap$
+declare
+  v_patch record;
+  v_definition text;
+  v_occurrences integer;
+begin
+  for v_patch in
+    select * from (values
+      (1, 'public.google_meet_backend(text,text,uuid,uuid,jsonb)',
+        $done$least((private.lesson_memory_retention_policy()->>'raw_copies_days')::integer,(p_payload->>'retention_days')::integer)$done$,
+        $anchor$least(365,(p_payload->>'retention_days')::integer)$anchor$,
+        $new$least((private.lesson_memory_retention_policy()->>'raw_copies_days')::integer,(p_payload->>'retention_days')::integer)$new$),
+      (2, 'public.google_meet_attendance_backend(text,text,uuid,jsonb)',
+        $done$least((private.lesson_memory_retention_policy() ->> 'raw_copies_days')::integer, coalesce($done$,
+        $anchor$least(365, coalesce((p_payload ->> 'retention_days')::integer, 90))$anchor$,
+        $new$least((private.lesson_memory_retention_policy() ->> 'raw_copies_days')::integer, coalesce((p_payload ->> 'retention_days')::integer, 90))$new$)
+    ) as patch(position, signature, done_marker, anchor, replacement)
+    order by patch.position
+  loop
+    v_definition := pg_catalog.pg_get_functiondef(v_patch.signature::pg_catalog.regprocedure);
+    if pg_catalog.strpos(v_definition, v_patch.done_marker) > 0 then
+      continue;
+    end if;
+    v_occurrences := (pg_catalog.length(v_definition)
+      - pg_catalog.length(pg_catalog.replace(v_definition, v_patch.anchor, '')))
+      / pg_catalog.length(v_patch.anchor);
+    if v_occurrences <> 1 then
+      raise exception 'termo_v3_ancora_mudou: % (teto das cópias, remendo %, % ocorrências)',
+        v_patch.signature, v_patch.position, v_occurrences;
+    end if;
+    execute pg_catalog.replace(v_definition, v_patch.anchor, v_patch.replacement);
+  end loop;
+end
+$raw_cap$;
 
 -- Quando o aluno DEIXOU a escola; nulo enquanto ele é aluno. "Deixou" é o
 -- desligamento concluído (lifecycle_status = 'offboarded' e
@@ -892,6 +1093,94 @@ alter table private.lesson_memory_retention_runs owner to postgres;
 alter table private.lesson_memory_retention_runs enable row level security;
 revoke all on private.lesson_memory_retention_runs from public, anon, authenticated, service_role;
 
+-- Rodadas do Planner que tiveram as aulas aprovadas do aluno na entrada do
+-- modelo: o rascunho (planner_ai_runs.result) ou o plano salvo dele
+-- (lesson_plans.structured_plan) guarda a base das aulas aprovadas
+-- (lesson_basis, 20260927130000 — nula quando não havia aula aprovada). É a
+-- proveniência do que o Planner COPIA do resumo aprovado para fora do plano: a
+-- memória proposta (student_memory_update no rascunho e no plano, e a linha
+-- PLANNER_AI em student_learning_memories que o salvamento cria) traz os erros,
+-- o próximo passo e a tarefa das aulas aprovadas, e volta ao modelo nas
+-- gerações seguintes. O plano (material do professor) não é memória.
+create or replace function private.planner_runs_from_approved_lessons(p_tenant text, p_student uuid)
+returns table (run_id uuid)
+language sql stable security definer set search_path = '' as $$
+  select run.id
+  from public.planner_ai_runs as run
+  where run.tenant_id = p_tenant and run.student_id = p_student
+    and pg_catalog.jsonb_typeof(run.result -> 'lesson_basis') = 'object'
+  union
+  select plan.planner_run_id
+  from public.lesson_plans as plan
+  where plan.tenant_id = p_tenant and plan.student_id = p_student
+    and plan.planner_run_id is not null
+    and pg_catalog.jsonb_typeof(plan.structured_plan -> 'lesson_basis') = 'object';
+$$;
+
+-- Confirmação de leitura do dossiê SEM o texto (correção da integração). A
+-- definição de 20260926220000 gravava em private.student_handover_reads.snapshot
+-- o dossiê inteiro menos o cartão: até 30 memórias VERIFIED — inclusive as
+-- MEET_SESSION, com objetivo, conteúdos, erros, tarefa e próximo passo do
+-- resumo aprovado — e os lançamentos. Nem a exclusão a pedido nem a retenção
+-- alcançam essa tabela, e o texto ficaria lá para sempre, uma cópia por
+-- leitura. Agora a confirmação guarda o que foi lido por referência: id, origem
+-- e data de cada memória (e a versão do resumo que a originou), id e data de
+-- cada lançamento e a versão do cartão — o mesmo princípio que o cartão já
+-- seguia. A resposta à tela não muda.
+create or replace function public.get_student_handover(p_student_id uuid, p_acknowledge boolean default false)
+returns jsonb
+language plpgsql security definer set search_path = '' as $function$
+declare t text:=public._my_tenant_id(); result jsonb; begin
+  if not private.can_read_student_pedagogy(t,p_student_id) then raise exception 'sem_permissao'; end if;
+  select jsonb_build_object('ok',true,'student_name',p.full_name,
+    'memories',(select coalesce(jsonb_agg(to_jsonb(m) order by m.occurred_at desc),'[]'::jsonb) from
+      (select id,source_type,occurred_at,lesson_objective,content_practiced,recurring_errors,homework_assigned,recommended_next_step,verification_status
+       from public.student_learning_memories where tenant_id=t and student_id=p_student_id and verification_status='VERIFIED' order by occurred_at desc limit 30) m),
+    'logs',(select coalesce(jsonb_agg(to_jsonb(l) order by l.class_date desc,l.start_time desc),'[]'::jsonb) from
+      (select id,class_date,start_time,lesson_objective,content_covered,student_difficulties,homework_assigned,recommended_next_step,lesson_session_id
+       from public.class_logs where tenant_id=t and student_id=p_student_id order by class_date desc,start_time desc limit 30) l),
+    'learning_card',private.student_learning_card_view(t,p_student_id))
+    into result from public.profiles p where p.id=p_student_id and p.tenant_id=t;
+  if p_acknowledge then insert into private.student_handover_reads(tenant_id,student_id,actor_id,snapshot)
+    values(t,p_student_id,auth.uid(),jsonb_build_object(
+      'memories',(select coalesce(jsonb_agg(jsonb_build_object('id',memory.id,'source_type',memory.source_type,
+          'occurred_at',memory.occurred_at,'summary_version_id',memory.metadata->'summary_version_id')
+          order by memory.occurred_at desc),'[]'::jsonb)
+        from public.student_learning_memories as memory
+        where memory.tenant_id=t and memory.student_id=p_student_id
+          and memory.id in (select (item->>'id')::uuid from jsonb_array_elements(result->'memories') as item)),
+      'logs',(select coalesce(jsonb_agg(jsonb_build_object('id',item->'id','class_date',item->'class_date',
+          'lesson_session_id',item->'lesson_session_id')),'[]'::jsonb)
+        from jsonb_array_elements(result->'logs') as item),
+      'learning_card_version',result->'learning_card'->'version')); end if;
+  return result;
+end $function$;
+
+-- Confirmações gravadas antes desta correção perdem o texto (0 em produção em
+-- 26/09/2026). Uma vez só, como todo ajuste de dado em migration.
+do $handover_reads$
+begin
+  if exists (select 1 from public.schema_one_shots
+              where key = 'dossie_confirmacao_de_leitura_sem_texto_20260927') then
+    return;
+  end if;
+  update private.student_handover_reads as read_row
+     set snapshot = jsonb_build_object(
+       'memories', (select coalesce(jsonb_agg(jsonb_build_object('id', item -> 'id',
+           'source_type', item -> 'source_type', 'occurred_at', item -> 'occurred_at')), '[]'::jsonb)
+         from jsonb_array_elements(case when jsonb_typeof(read_row.snapshot -> 'memories') = 'array'
+           then read_row.snapshot -> 'memories' else '[]'::jsonb end) as item),
+       'logs', (select coalesce(jsonb_agg(jsonb_build_object('id', item -> 'id',
+           'class_date', item -> 'class_date', 'lesson_session_id', item -> 'lesson_session_id')), '[]'::jsonb)
+         from jsonb_array_elements(case when jsonb_typeof(read_row.snapshot -> 'logs') = 'array'
+           then read_row.snapshot -> 'logs' else '[]'::jsonb end) as item),
+       'learning_card_version', read_row.snapshot -> 'learning_card_version');
+  insert into public.schema_one_shots (key, nota)
+  values ('dossie_confirmacao_de_leitura_sem_texto_20260927',
+          'student_handover_reads.snapshot passou a guardar só ids e datas das memórias e lançamentos lidos');
+end
+$handover_reads$;
+
 -- A função de retenção (dono postgres) atualiza o conteúdo do resumo; a tabela
 -- é do supabase_admin. Só as colunas que ela precisa.
 grant select (id, tenant_id, lesson_session_id, status, content),
@@ -910,11 +1199,14 @@ grant select (id, tenant_id, lesson_session_id, status, content),
 -- (b) Aluno que deixou a escola há mais de 90 dias: apaga a memória de origem
 --     MEET_SESSION, o cartão do aluno e o conteúdo de todos os resumos das
 --     aulas dele (a linha da versão fica, sem conteúdo, para a trilha de quem
---     aprovou e quando). Memória de outras origens não é tocada. A base das
---     aulas aprovadas copiada nos planos do Planner (lesson_plans e
---     planner_ai_runs: datas, próximo passo e erros do resumo aprovado) sai
---     também — é o próximo passo do resumo aprovado, que o termo promete
---     apagar; o plano, material do professor, fica.
+--     aprovou e quando). A base das aulas aprovadas copiada nos planos do
+--     Planner (lesson_plans e planner_ai_runs: datas, próximo passo e erros do
+--     resumo aprovado) sai também — é o próximo passo do resumo aprovado, que
+--     o termo promete apagar —, com a memória que o Planner propôs a partir
+--     delas (student_memory_update no plano e no rascunho, e a linha PLANNER_AI
+--     da geração que tinha as aulas aprovadas na entrada); o plano, material do
+--     professor, fica, e o Planner não o relê como continuidade. Memória de
+--     outras origens (e PLANNER_AI de geração sem aula aprovada) não é tocada.
 -- (c) Uma linha de contagens por escola afetada.
 -- Re-executável: o que já foi limpo não casa de novo.
 create or replace function private.purge_lesson_memory_retention()
@@ -985,7 +1277,11 @@ begin
   select coalesce(jsonb_object_agg(counted.tenant_id, counted.total), '{}'::jsonb) into v_summaries
   from (select cleared.tenant_id, count(*)::integer as total from cleared group by cleared.tenant_id) as counted;
 
-  -- (b2) Memória de origem MEET_SESSION de quem deixou a escola.
+  -- (b2) Memória de origem MEET_SESSION de quem deixou a escola e a memória
+  --      PLANNER_AI proposta por uma geração do Planner que tinha as aulas
+  --      aprovadas na entrada (private.planner_runs_from_approved_lessons —
+  --      copia erros, próximo passo e tarefa do resumo aprovado). Antes da (b4),
+  --      que apaga a proveniência (lesson_basis).
   with gone as (
     select student.id, student.tenant_id
     from public.profiles as student
@@ -996,7 +1292,10 @@ begin
      using gone
      where memory.student_id = gone.id
        and memory.tenant_id = gone.tenant_id
-       and memory.source_type = 'MEET_SESSION'
+       and (memory.source_type = 'MEET_SESSION'
+         or (memory.source_type = 'PLANNER_AI'
+           and memory.source_ref in (select basis.run_id::text
+             from private.planner_runs_from_approved_lessons(gone.tenant_id, gone.id) as basis)))
     returning memory.tenant_id
   )
   select coalesce(jsonb_object_agg(counted.tenant_id, counted.total), '{}'::jsonb) into v_memories
@@ -1028,8 +1327,10 @@ begin
   from (select logged.tenant_id, count(*)::integer as total from logged group by logged.tenant_id) as counted;
 
   -- (b4) Base das aulas aprovadas nos planos do Planner de quem deixou a
-  --      escola (20260927130000). Conta os planos salvos; o rascunho do Planner
-  --      (planner_ai_runs) perde a mesma base.
+  --      escola (20260927130000) e a memória proposta que veio junto
+  --      (student_memory_update). Conta os planos salvos; o rascunho do Planner
+  --      (planner_ai_runs) perde a mesma base. O plano fica, marcado
+  --      (approved_lessons_removed_at): o Planner não o relê como continuidade.
   with gone as (
     select student.id, student.tenant_id
     from public.profiles as student
@@ -1037,7 +1338,8 @@ begin
       and private.student_left_school_at(student.id) < v_left_cutoff
   ), cleared_runs as (
     update public.planner_ai_runs as run
-       set result = run.result - 'lesson_basis'
+       set result = (run.result - 'lesson_basis' - 'student_memory_update')
+             || jsonb_build_object('approved_lessons_removed_at', v_now)
       from gone
      where run.student_id = gone.id
        and run.tenant_id = gone.tenant_id
@@ -1045,7 +1347,9 @@ begin
     returning run.tenant_id
   ), cleared_plans as (
     update public.lesson_plans as plan
-       set structured_plan = plan.structured_plan - 'lesson_basis'
+       set structured_plan = (plan.structured_plan - 'lesson_basis' - 'student_memory_update')
+             || jsonb_build_object('approved_lessons_removed_at', v_now),
+           student_memory_update = '{}'::jsonb
       from gone
      where plan.student_id = gone.id
        and plan.tenant_id = gone.tenant_id
@@ -1113,6 +1417,12 @@ begin
     'private.lesson_recording_active(uuid,uuid)',
     'private.lesson_session_term_consent_lapsed(uuid)',
     'private.lesson_session_term_lapse_text(uuid)',
+    'private.lesson_recording_term_declares_ai(text)',
+    'private.lesson_recording_ai_accepted_at(uuid,timestamptz)',
+    'private.lesson_recording_acceptance_outdated_at(uuid,timestamptz)',
+    'private.lesson_session_manual_mark_outdated(uuid)',
+    'private.lesson_session_documentation_blocked(uuid)',
+    'private.planner_runs_from_approved_lessons(text,uuid)',
     'private.lesson_recording_public_link_fields(uuid)',
     'private.lesson_memory_retention_policy()',
     'private.student_left_school_at(uuid)',

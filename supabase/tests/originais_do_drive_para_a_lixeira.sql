@@ -375,7 +375,9 @@ begin
   insert into public.planner_ai_runs (tenant_id, teacher_id, student_id, task_mode, model_id, prompt_version,
     result, status) values
     (v_tenant, v_teacher, v_student, 'lesson_plan', 'fixture/modelo', 'fixture',
-      jsonb_build_object('title', 'PLANO-DO-PROFESSOR', 'lesson_basis', jsonb_build_object(
+      jsonb_build_object('title', 'PLANO-DO-PROFESSOR',
+        'student_memory_update', jsonb_build_object('recurring_errors', jsonb_build_array('ERRO-APROVADO-NA-MEMORIA')),
+        'lesson_basis', jsonb_build_object(
         'source', 'MEET_APPROVED_SUMMARIES', 'lesson_dates', jsonb_build_array((v_today - 10)::text),
         'continued_from', jsonb_build_object('lesson_date', (v_today - 10)::text,
           'recommended_next_step', 'PASSO-APROVADO-COPIADO'),
@@ -389,6 +391,13 @@ begin
    where run.tenant_id = v_tenant and run.prompt_version = 'fixture';
   insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan) values
     (v_tenant, v_teacher, v_student, jsonb_build_object('title', 'PLANO-SEM-BASE', 'lesson_basis', null));
+  -- A memória que o Planner propôs na geração com as aulas aprovadas na entrada
+  -- (PLANNER_AI com o id dessa geração) copia os erros delas: sai com o pedido.
+  -- A de uma geração sem aula aprovada fica.
+  insert into public.student_learning_memories (tenant_id, student_id, source_type, source_ref, recurring_errors) values
+    (v_tenant, v_student, 'PLANNER_AI', (select run.id::text from public.planner_ai_runs as run
+      where run.student_id = v_student and run.prompt_version = 'fixture'), array['ERRO-APROVADO-NA-MEMORIA']),
+    (v_tenant, v_student, 'PLANNER_AI', 'geracao-sem-aula-aprovada', array['Erro visto no Wolfie']);
 
   -- Só a direção DA ESCOLA do aluno.
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_coord, 'role', 'authenticated')::text, true);
@@ -420,7 +429,7 @@ begin
     and (v_result ->> 'attendance_reports')::integer = 1
     and (v_result ->> 'drafts')::integer = 1
     and (v_result ->> 'approved_summaries')::integer = 1
-    and (v_result ->> 'memories')::integer = 2
+    and (v_result ->> 'memories')::integer = 3            -- 2 MEET_SESSION + a PLANNER_AI da geração com base
     and (v_result ->> 'card')::boolean
     and (v_result ->> 'planner_basis')::integer = 1        -- o plano com base; o sem base não conta
     and (v_result ->> 'originals_pending')::integer = 2   -- sheetOld1 (falhou) e docRecentT
@@ -447,7 +456,7 @@ begin
     and (v_result ->> 'raw_copies_deleted')::integer = 1
     and (v_result ->> 'attendance_reports_deleted')::integer = 1
     and (v_result ->> 'summary_versions_deleted')::integer = 2
-    and (v_result ->> 'memories_deleted')::integer = 2
+    and (v_result ->> 'memories_deleted')::integer = 3
     and (v_result ->> 'card_deleted')::boolean
     and (v_result ->> 'planner_basis_cleared')::integer = 1
     and (v_result ->> 'originals_queued')::integer = 2
@@ -481,6 +490,10 @@ begin
     'cópias brutas, planilha ou rascunhos ficaram (ou o outro aluno perdeu dados)');
   perform pg_temp.originais_assert(
     not exists (select 1 from public.student_learning_memories where student_id = v_student and source_type = 'MEET_SESSION')
+    and not exists (select 1 from public.student_learning_memories where student_id = v_student
+      and 'ERRO-APROVADO-NA-MEMORIA' = any (recurring_errors))
+    and exists (select 1 from public.student_learning_memories where student_id = v_student
+      and source_type = 'PLANNER_AI' and source_ref = 'geracao-sem-aula-aprovada')
     and exists (select 1 from public.student_learning_memories where student_id = v_student and source_type = 'CLASS_LOG')
     and exists (select 1 from public.student_learning_memories where student_id = v_other_student and source_type = 'MEET_SESSION'),
     'memória errada apagada');
@@ -500,6 +513,16 @@ begin
     and exists (select 1 from public.planner_ai_runs where student_id = v_other_student and result ? 'lesson_basis')
     and position('PASSO-APROVADO-COPIADO' in (select string_agg(structured_plan::text, ' ') from public.lesson_plans
       where student_id = v_student)) = 0
+    and position('ERRO-APROVADO-NA-MEMORIA' in (select string_agg(structured_plan::text || student_memory_update::text, ' ')
+      from public.lesson_plans where student_id = v_student)) = 0
+    and not exists (select 1 from public.planner_ai_runs where student_id = v_student and result ? 'student_memory_update')
+    -- O rascunho leva a marca: salvo depois do pedido, o plano nasce marcado.
+    and (select result ? 'approved_lessons_removed_at' from public.planner_ai_runs
+      where student_id = v_student and prompt_version = 'fixture')
+    and (select structured_plan ? 'approved_lessons_removed_at' from public.lesson_plans
+      where student_id = v_student and structured_plan ->> 'title' = 'PLANO-DO-PROFESSOR')
+    and (select not (structured_plan ? 'approved_lessons_removed_at') from public.lesson_plans
+      where student_id = v_student and structured_plan ->> 'title' = 'PLANO-SEM-BASE')
     and (select planner_basis_cleared from private.student_lesson_record_erasures
       where student_id = v_student order by requested_at desc limit 1) = 1,
     'a base das aulas aprovadas ficou no plano do Planner do aluno (ou o plano/outro aluno perdeu dados)');
@@ -522,7 +545,7 @@ begin
       and records_erased_at is not null),
     'aulas marcadas erradas (a de amanhã ou a do outro aluno)');
   perform pg_temp.originais_assert(
-    (select sessions = 4 and raw_copies_deleted = 1 and summary_versions_deleted = 2 and memories_deleted = 2
+    (select sessions = 4 and raw_copies_deleted = 1 and summary_versions_deleted = 2 and memories_deleted = 3
       and card_deleted and requested_by = v_admin from private.student_lesson_record_erasures where student_id = v_student)
     and exists (select 1 from private.google_meet_access_events where tenant_id = v_tenant and actor_id = v_admin
       and action = 'STUDENT_LESSON_RECORDS_ERASED'),

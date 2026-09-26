@@ -55,7 +55,14 @@
 -- (structured_plan.lesson_basis — datas, o próximo passo e os erros copiados do
 -- resumo aprovado), e o rascunho do Planner guarda o mesmo em
 -- planner_ai_runs.result. A exclusão a pedido tira essa base dos planos do
--- aluno; o plano, material do professor, fica (ver o runbook).
+-- aluno; o plano, material do professor, fica (ver o runbook). Correção da
+-- integração: sai também a memória que o Planner propôs com as aulas aprovadas
+-- na entrada — student_memory_update no plano e no rascunho, e a linha
+-- PLANNER_AI em student_learning_memories dessas gerações
+-- (private.planner_runs_from_approved_lessons, 20260927100000), que copiava
+-- erros, próximo passo e tarefa e voltava ao modelo como hipótese —, e o plano
+-- fica marcado (approved_lessons_removed_at) para não voltar ao modelo como
+-- continuidade.
 --
 -- ⚠️ A Meet API guarda a conferência e os documentos dela por ~30 dias: a lista
 -- de documentos de uma aula só pode ser conferida nesse prazo (28 dias, com
@@ -362,8 +369,15 @@ language sql stable security definer set search_path = '' as $$
     'approved_summaries', (select pg_catalog.count(*) from private.lesson_summary_versions as version
       join scope on scope.id = version.lesson_session_id
       where version.tenant_id = p_tenant and version.status = 'VERIFIED'),
+    -- Memória vinda das aulas no Meet: a do resumo aprovado (MEET_SESSION) e a
+    -- que o Planner propôs com as aulas aprovadas na entrada (PLANNER_AI da
+    -- geração com lesson_basis — private.planner_runs_from_approved_lessons,
+    -- 20260927100000), que copia erros, próximo passo e tarefa delas.
     'memories', (select pg_catalog.count(*) from public.student_learning_memories as memory
-      where memory.tenant_id = p_tenant and memory.student_id = p_student and memory.source_type = 'MEET_SESSION'),
+      where memory.tenant_id = p_tenant and memory.student_id = p_student
+        and (memory.source_type = 'MEET_SESSION'
+          or (memory.source_type = 'PLANNER_AI' and memory.source_ref in (select basis.run_id::text
+            from private.planner_runs_from_approved_lessons(p_tenant, p_student) as basis)))),
     'card', exists (select 1 from public.student_learning_cards as card
       where card.tenant_id = p_tenant and card.student_id = p_student),
     -- Planos do Planner com a base das aulas aprovadas copiada (datas, próximo
@@ -731,11 +745,14 @@ $$;
 --     guardadas e a situação de cada documento;
 --   * rascunhos e resumos de todas as versões (o aprovado também: é o mesmo
 --     texto que alimentava a memória);
---   * memória de origem MEET_SESSION e o cartão do aluno (o histórico do cartão
---     ganha a linha da remoção, sem texto, com o papel DIRECTION_ERASURE);
+--   * memória de origem MEET_SESSION, a memória PLANNER_AI que o Planner
+--     propôs com as aulas aprovadas na entrada, e o cartão do aluno (o
+--     histórico do cartão ganha a linha da remoção, sem texto, com o papel
+--     DIRECTION_ERASURE);
 --   * a base das aulas aprovadas copiada nos planos do Planner
---     (lesson_plans.structured_plan.lesson_basis e planner_ai_runs.result) — o
---     plano, material do professor, fica;
+--     (lesson_plans.structured_plan.lesson_basis e planner_ai_runs.result) e a
+--     memória proposta junto (student_memory_update) — o plano, material do
+--     professor, fica, marcado para o Planner não relê-lo como continuidade;
 --   * os originais no Drive vencem NA HORA (a fila manda para a lixeira) e as
 --     salas ainda na janela da Meet API têm a lista de documentos conferida;
 --   * as aulas ficam marcadas: nada delas volta a ser importado nem resumido.
@@ -757,6 +774,7 @@ declare
   v_memories integer := 0;
   v_card_version integer;
   v_plans integer := 0;
+  v_basis_runs text[];
   v_queued integer := 0;
   v_discover integer := 0;
   v_counts jsonb;
@@ -776,6 +794,10 @@ begin
   from public.lesson_sessions as session
   where session.tenant_id = v_tenant and session.student_id = v_student.id
     and session.scheduled_start_at <= v_now;
+  -- Gerações do Planner que tinham as aulas aprovadas na entrada, lidas antes
+  -- de a base sair dos planos (ela é a proveniência).
+  select coalesce(pg_catalog.array_agg(basis.run_id::text), '{}'::text[]) into v_basis_runs
+  from private.planner_runs_from_approved_lessons(v_tenant, v_student.id) as basis;
 
   -- Marca antes de apagar: nada dessas aulas volta pela importação.
   insert into private.google_meet_original_sessions as state
@@ -807,8 +829,14 @@ begin
   delete from private.lesson_summary_versions as version
    where version.tenant_id = v_tenant and version.lesson_session_id = any (v_sessions);
   get diagnostics v_versions = row_count;
+  -- Memória do resumo aprovado (MEET_SESSION) e a que o Planner propôs com as
+  -- aulas aprovadas na entrada (PLANNER_AI dessas gerações): copia os erros, o
+  -- próximo passo e a tarefa delas e voltava ao modelo nas gerações seguintes.
+  -- Antes de tirar lesson_basis dos planos, que é a proveniência.
   delete from public.student_learning_memories as memory
-   where memory.tenant_id = v_tenant and memory.student_id = v_student.id and memory.source_type = 'MEET_SESSION';
+   where memory.tenant_id = v_tenant and memory.student_id = v_student.id
+     and (memory.source_type = 'MEET_SESSION'
+       or (memory.source_type = 'PLANNER_AI' and memory.source_ref = any (v_basis_runs)));
   get diagnostics v_memories = row_count;
   delete from public.student_learning_cards as card
    where card.tenant_id = v_tenant and card.student_id = v_student.id
@@ -820,15 +848,23 @@ begin
       array['real_goal', 'engaging_topics', 'correction_style', 'avoid_topics', 'notes']::text[]);
   end if;
   -- A base das aulas aprovadas copiada nos planos do Planner (20260927130000)
-  -- é texto do resumo aprovado (o próximo passo, os erros): sai com o pedido.
-  -- O plano salvo e o rascunho do Planner ficam, sem ela.
+  -- é texto do resumo aprovado (o próximo passo, os erros): sai com o pedido,
+  -- junto com a memória que o Planner propôs a partir dela
+  -- (student_memory_update, que o salvamento de um rascunho ainda viraria linha
+  -- PLANNER_AI). O plano salvo e o rascunho do Planner ficam, sem elas; o plano
+  -- fica marcado (approved_lessons_removed_at) e o Planner não o relê como
+  -- continuidade (planner-input.ts).
   update public.lesson_plans as plan
-     set structured_plan = plan.structured_plan - 'lesson_basis'
+     set structured_plan = (plan.structured_plan - 'lesson_basis' - 'student_memory_update')
+           || pg_catalog.jsonb_build_object('approved_lessons_removed_at', v_now),
+         student_memory_update = '{}'::jsonb
    where plan.tenant_id = v_tenant and plan.student_id = v_student.id
      and pg_catalog.jsonb_typeof(plan.structured_plan -> 'lesson_basis') = 'object';
   get diagnostics v_plans = row_count;
+  -- O rascunho leva a mesma marca: salvo depois, o plano nasce marcado.
   update public.planner_ai_runs as run
-     set result = run.result - 'lesson_basis'
+     set result = (run.result - 'lesson_basis' - 'student_memory_update')
+           || pg_catalog.jsonb_build_object('approved_lessons_removed_at', v_now)
    where run.tenant_id = v_tenant and run.student_id = v_student.id
      and pg_catalog.jsonb_typeof(run.result -> 'lesson_basis') = 'object';
 

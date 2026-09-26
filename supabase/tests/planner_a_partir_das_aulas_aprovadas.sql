@@ -9,7 +9,8 @@
 --
 -- E a última decisão humana sobre o resumo da aula vale: resumo aprovado e
 -- depois REJEITADO sai da memória do aluno (e portanto do Planner, que lê só
--- MEET_SESSION VERIFIED) — antes a memória ficava VERIFIED para sempre.
+-- MEET_SESSION VERIFIED) — antes a memória ficava VERIFIED para sempre — e da
+-- tela "Sala e resumo" de quem não vê a fonte (segundo professor, suporte).
 --
 -- Reprova contra o código anterior: sem a migration as funções não existem, a
 -- regra de leitura de perfis (_teacher_can_access_student) dá resposta
@@ -431,10 +432,39 @@ select pg_temp.assert_true(
   'a memória rejeitada não guarda qual versão a rejeitou'
 );
 
+-- A tela "Sala e resumo" segue a mesma régua (correção da integração): quem
+-- não vê a fonte — o segundo professor do aluno, aqui — deixa de receber a
+-- versão aprovada e depois rejeitada como resumo aprovado. Quem vê a fonte (o
+-- professor da aula) continua com o histórico inteiro, cada versão com o status.
+set local session_replication_role = replica;
+update public.profiles set professor_id2 = '00000000-0000-4000-8000-00000000fa02'
+ where id = '00000000-0000-4000-8000-00000000fb15';
+set local session_replication_role = origin;
+create or replace function pg_temp.versoes_na_tela(p_actor uuid) returns text[]
+language sql as $$
+  select coalesce(array_agg(v.step order by v.step collate "C"), '{}'::text[])
+  from jsonb_array_elements(public.google_meet_backend('session_detail', 'planner-aulas-school', p_actor,
+      '00000000-0000-4000-8000-00000000fc01') -> 'summaries') as summary
+  join meet_versions as v on v.id = (summary ->> 'id')::uuid;
+$$;
+select pg_temp.assert_true(
+  pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa02') = '{}'::text[],
+  'o segundo professor continua vendo como aprovado o resumo que o professor rejeitou: '
+    || pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa02')::text);
+select pg_temp.assert_true(
+  pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa06')
+    = array['aprovado', 'rascunho', 'rascunho-novo', 'rejeitado'],
+  'o professor da aula perdeu o histórico das versões: '
+    || pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa06')::text);
+
 -- Aprovou de novo: a última decisão volta a valer.
 select pg_temp.salvar_resumo('reaprovado', 'VERIFIED', 'rejeitado', 'HUMAN_REVIEW');
 select pg_temp.assert_true(pg_temp.planner_ve_a_aula(),
   'resumo aprovado de novo depois da rejeição não voltou para a memória do aluno');
+select pg_temp.assert_true(
+  pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa02') = array['reaprovado'],
+  'o segundo professor não vê a reaprovação, ou vê a versão rejeitada depois: '
+    || pg_temp.versoes_na_tela('00000000-0000-4000-8000-00000000fa02')::text);
 select pg_temp.assert_true(
   (select count(*) from public.student_learning_memories m
     where m.source_type = 'MEET_SESSION'
