@@ -183,7 +183,6 @@ const ERRORS: Record<string, string> = {
   telefone_nao_cadastrado: 'A escola não tem este WhatsApp no cadastro. Peça à escola para cadastrar e mandar um link novo.',
   whatsapp_indisponivel: 'O WhatsApp da escola está fora do ar agora. Tente de novo mais tarde ou fale com a escola.',
   whatsapp_recusou: 'O WhatsApp não aceitou a mensagem para este número. Fale com a escola.',
-  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
   kids_classification_requires_direction: 'Só a direção ou a coordenação classifica o aluno como infantil.',
   data_de_nascimento_invalida: 'Data de nascimento inválida.',
   link_expirado: 'Este link expirou ou foi substituído. Peça um novo à escola.',
