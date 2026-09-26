@@ -267,6 +267,38 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-27-resumo-automatico',
+    title: 'Resumo da aula por IA',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'meet-summary-budget',
+        view: 'google-meet',
+        title: 'O rascunho da aula sai sozinho 🤖',
+        text: 'Depois de cada aula documentada, a IA escreve o rascunho — objetivo, o que foi praticado, dificuldades e próximo passo, citando a transcrição — num fornecedor pago que não usa o conteúdo para treinar. Aqui você vê o gasto do mês e define o teto (padrão: US$ 20). Atingido o teto, o automático para; o botão manual da aula continua, com aviso de custo.',
+      },
+      {
+        target: 'meet-review-queue',
+        view: 'lesson-sessions',
+        title: 'Aulas para revisar',
+        text: 'Os rascunhos esperam o professor revisar e aprovar: só o aprovado vai para a memória do aluno. A lista mostra até quando cada um pode ser aprovado (depois disso as fontes são apagadas), e rascunho parado há 3 dias ou mais aparece nas suas pendências.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-27-resumo-automatico-professor',
+    title: 'Aulas para revisar',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'meet-review-queue',
+        view: 'lesson-sessions',
+        title: 'Revise o rascunho das suas aulas 📝',
+        text: 'Depois de cada aula documentada chegam as notas do Gemini (com o próximo passo e a lição já preenchidos) e um rascunho da IA com trechos da transcrição. Confira, complete o objetivo e aprove: só o que você aprova vai para a memória do aluno. Cada aula mostra até quando dá para aprovar.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

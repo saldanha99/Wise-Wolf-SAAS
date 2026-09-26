@@ -390,6 +390,16 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
   a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
   `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
+- **Resumo por IA automático depois da aula** (migration `20260927110000`, runbook seção própria): fila
+  `GENERATE_SUMMARY` (uma por rodada) → OpenRouter com `provider.data_collection = "deny"` e JSON estrito →
+  rascunho `PROPOSED`; só o aprovado pelo professor vai para a memória. Teto mensal por escola (padrão US$ 20,
+  "Conta central Google"); atingido, o automático para e o manual segue com aceite de custo. Idempotência pelo
+  hash das fontes calculado NO BANCO (o mesmo conteúdo nunca é pago duas vezes, nem pelo botão). Fila "Aulas
+  para revisar" em "Salas e continuidade" com o prazo de aprovação (fim da retenção das fontes) e
+  `director_pending_counts.resumos_para_revisar` (3+ dias). ⚠️ A fila e as pendências foram remendadas **por
+  âncora**: quem recriar `get_pending_google_meet_sync_sessions` ou `director_pending_counts` mantém o ramo
+  `GENERATE_SUMMARY` e a chave `resumos_para_revisar` (o teste reprova sem eles). ⚠️ `greatest`/`least` são
+  formas especiais como `nullif`: `pg_catalog.greatest(...)` não existe.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

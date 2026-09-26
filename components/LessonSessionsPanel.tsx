@@ -4,6 +4,7 @@ import { googleMeetErrorMessage } from '../lib/googleMeet';
 import LessonPedagogicalSummary from './LessonPedagogicalSummary';
 import StudentHandover from './StudentHandover';
 import LessonRecordingTeacherCard from './LessonRecordingTeacherCard';
+import LessonReviewQueue from './LessonReviewQueue';
 
 export type QualitySession = { id: string; student_id: string; student_name: string; teacher_name: string; scheduled_start_at: string; scheduled_end_at: string; class_date: string; status: string; documentation_consent: boolean };
 // canMarkDocumentation: só a direção registra ou retira a autorização de
@@ -56,6 +57,8 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
   return <section className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Salas e continuidade das aulas</h2><button disabled={busy} onClick={() => void load()} className="rounded-lg border px-3 py-2 text-sm">Atualizar</button></div>
     {!manager && <LessonRecordingTeacherCard />}
+    {/* Rascunhos (IA e notas do Gemini) esperando revisão: o professor vê os dele; coordenação e direção, os da escola. */}
+    {!studentId && <LessonReviewQueue tenantId={tenantId} showTeacher={manager} />}
     <p className="text-sm text-slate-500">Últimos 7 dias e próximos 7 dias. Blocos consecutivos formam uma sessão pedagógica; os créditos financeiros continuam separados.</p>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {busy && <p className="text-sm">Carregando…</p>}

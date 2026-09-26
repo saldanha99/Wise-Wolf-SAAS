@@ -97,7 +97,7 @@ export const ADMIN_NAV: NavGroup[] = [
     { id: 'lesson-quality', label: 'Acompanhamento' },
     { id: 'schedule-requests', label: 'Aceites de horário' },
     { id: 'quality-contacts', label: 'Contatos verificados' },
-    { id: 'lesson-sessions', label: 'Salas e continuidade' },
+    { id: 'lesson-sessions', label: 'Salas e continuidade', badgeKey: 'resumos_para_revisar' },
     { id: 'recording-consents', label: 'Autorizações de registro' },
     { id: 'google-meet', label: 'Conta central Google' },
   ] },
