@@ -35,6 +35,7 @@ import {
 import {
   looksLikeAttendanceReport,
   meetingCodeFromUri,
+  namesOtherMeeting,
   parseAttendanceReport,
   pickAttendanceReport,
   summarizeAttendance,
@@ -444,18 +445,24 @@ async function syncAttendance(
     end: detail.session.scheduled_end_at,
   });
   let reportFound = false;
-  if (conferences.length) {
+  // Conferência ainda aberta: o relatório dela não existe; o que estiver no Drive
+  // é de outra aula. Espera o próximo ciclo (a avaliação só abre caso sem
+  // conferência nenhuma, então "sem relatório ainda" não acusa ninguém).
+  const stillOpen = conferences.some((c) => !c.endTime);
+  if (conferences.length && !stillOpen) {
     const starts = conferences.map((c) => c.startTime).filter(Boolean).sort();
     const ends = conferences.map((c) => c.endTime || c.startTime).filter(
       Boolean,
     ).sort();
     const first = starts[0] || detail.session.scheduled_start_at;
     const last = ends[ends.length - 1] || detail.session.scheduled_end_at;
-    // O Google gera a planilha depois que a reunião acaba: janela de 3 h.
-    const candidates = (await provider.attendanceReportCandidates(
-      first,
+    // O Google gera a planilha depois que a reunião acaba (medido: 2 s depois):
+    // janela do fim da última conferência desta sala até 3 h depois, com 2 min
+    // de folga para relógio. Planilha criada antes disso é de outra aula.
+    const candidates = await provider.attendanceReportCandidates(
+      new Date(Date.parse(last) - 2 * 60000).toISOString(),
       new Date(Date.parse(last) + 3 * 3600000).toISOString(),
-    )).slice(0, 10);
+    );
     const code = meetingCodeFromUri(detail.room.meeting_uri);
     let picked = pickAttendanceReport(candidates, code, null) as
       | (typeof candidates[number] & { csv?: string })
@@ -466,8 +473,8 @@ async function syncAttendance(
       const withCsv = [];
       for (
         const candidate of candidates.filter((c) =>
-          looksLikeAttendanceReport(c.name)
-        )
+          looksLikeAttendanceReport(c.name) && !namesOtherMeeting(c.name, code)
+        ).slice(0, 10)
       ) {
         withCsv.push({
           ...candidate,

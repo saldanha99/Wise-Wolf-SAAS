@@ -329,6 +329,21 @@ export function summarizeAttendance(
   };
 }
 
+const MEETING_CODE = /[a-z]{3,4}-[a-z]{3,4}-[a-z]{3,4}/gi;
+
+/**
+ * O nome traz o código de OUTRA sala? O relatório real se chama "Relatório de
+ * participação em <código> (...)": com código diferente, é a planilha de outra
+ * aula — muitas vezes a anterior do mesmo professor, que cita o mesmo e-mail.
+ */
+export const namesOtherMeeting = (
+  name: string,
+  meetingCode: string | null,
+): boolean =>
+  (name.match(MEETING_CODE) || []).some((found) =>
+    found.toLowerCase() !== (meetingCode || "").toLowerCase()
+  );
+
 /** Planilha da reunião certa: nome com o código da sala; senão, a que cita o professor. */
 export function pickAttendanceReport<T extends { name: string; csv?: string }>(
   candidates: T[],
@@ -341,6 +356,8 @@ export function pickAttendanceReport<T extends { name: string; csv?: string }>(
       c.name.toLowerCase().includes(code)
     );
     if (byName.length === 1) return byName[0];
+    // Plano B nunca escolhe planilha com código de outra sala.
+    candidates = candidates.filter((c) => !namesOtherMeeting(c.name, code));
   }
   if (teacherEmail) {
     const email = teacherEmail.toLowerCase();

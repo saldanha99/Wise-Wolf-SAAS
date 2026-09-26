@@ -3,6 +3,7 @@ import {
   findHeader,
   looksLikeAttendanceReport,
   meetingCodeFromUri,
+  namesOtherMeeting,
   parseAttendanceReport,
   parseCsv,
   parseDuration,
@@ -197,4 +198,32 @@ Deno.test("plano B só abre planilha com nome de relatório de presença", () =>
     false,
   );
   assertEquals(looksLikeAttendanceReport("Folha dos professores"), false);
+});
+
+Deno.test("aulas seguidas do mesmo professor: plano B não pega o relatório da aula anterior", () => {
+  // 14:00 na sala abc-defg-hij, 14:30 na fxj-hykv-jev; o relatório das 14:30
+  // ainda não saiu e o das 14:00 cita o mesmo professor.
+  const anterior = {
+    id: "anterior",
+    name: "Relatório de participação em abc-defg-hij (2026-09-26 14:00)",
+    csv: "Nome,E-mail\nProf,prof@example.com\nAluno A,aluno.a@example.com",
+  };
+  assertEquals(
+    pickAttendanceReport([anterior], "fxj-hykv-jev", "prof@example.com"),
+    null,
+  );
+  // Quando o relatório certo chega, é ele.
+  const certo = {
+    id: "certo",
+    name: "Relatório de participação em fxj-hykv-jev (2026-09-26 14:30)",
+    csv: "Nome,E-mail\nProf,prof@example.com",
+  };
+  assertEquals(
+    pickAttendanceReport([anterior, certo], "fxj-hykv-jev", "prof@example.com")
+      ?.id,
+    "certo",
+  );
+  assertEquals(namesOtherMeeting(anterior.name, "fxj-hykv-jev"), true);
+  assertEquals(namesOtherMeeting(certo.name, "fxj-hykv-jev"), false);
+  assertEquals(namesOtherMeeting("Relatório", "fxj-hykv-jev"), false);
 });
