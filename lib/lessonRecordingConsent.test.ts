@@ -5,8 +5,10 @@ import {
   codeErrorMessage,
   consentErrorMessage,
   formatSendTime,
+  manualLinkHoldUntil,
   missingContactLabel,
   notSentReasonLabel,
+  queuedSendAt,
   resendAllowed,
   sendWindowText,
   consentLink,
@@ -122,7 +124,27 @@ describe('envio em lote', () => {
     expect(missingContactLabel(undefined)).toContain('Sem telefone');
   });
 
+  it('mostra quando sai a mensagem adiada (janela, ritmo ou teto)', () => {
+    expect(queuedSendAt('2026-09-26T22:50:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:00:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', null)).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt(null, null)).toBeNull();
+  });
+
+  it('link gerado à mão segura o envio em lote por 3 dias', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(manualLinkHoldUntil('2026-09-27T12:00:00Z', now)).toBe('2026-09-30T12:00:00.000Z');
+    expect(manualLinkHoldUntil('2026-09-24T12:00:00Z', now)).toBeNull();
+    expect(manualLinkHoldUntil(null, now)).toBeNull();
+    expect(manualLinkHoldUntil('não é data', now)).toBeNull();
+  });
+
+  it('explica o responsável que a escola ainda não confirmou', () => {
+    expect(missingContactLabel('responsavel_nao_confirmado')).toContain('Qualidade dos contatos');
+  });
+
   it('traduz o motivo de mensagem que não saiu', () => {
+    expect(notSentReasonLabel('pedido_vencido')).toContain('2 dias');
     expect(notSentReasonLabel('aluno_ja_decidiu')).toBe('respondeu antes do envio');
     expect(notSentReasonLabel('provider_http_400')).toBe('o WhatsApp recusou o envio');
     expect(notSentReasonLabel('qualquer')).toBe('não saiu');
@@ -131,6 +153,7 @@ describe('envio em lote', () => {
   it('traduz os erros do envio', () => {
     expect(consentErrorMessage('contagem_mudou')).toContain('Confira de novo');
     expect(consentErrorMessage('ERROR: reenvio_so_depois_de_3_dias')).toContain('3 dias');
+    expect(consentErrorMessage('portal_da_escola_indefinido')).toContain('portal');
   });
 });
 

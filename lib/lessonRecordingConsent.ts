@@ -128,6 +128,8 @@ const ERRORS: Record<string, string> = {
   aluno_ja_decidiu: 'Este aluno já respondeu ao termo.',
   sem_contato: 'Sem telefone para enviar. Complete o cadastro do aluno.',
   avisos_de_aluno_desligados: 'Os avisos a alunos estão desligados nas configurações da escola.',
+  portal_da_escola_indefinido:
+    'A escola ainda não tem um endereço do portal confirmado para o link do termo. Fale com o suporte da plataforma.',
   nome_completo_obrigatorio: 'Digite nome e sobrenome.',
   responsavel_obrigatorio: 'Quem autoriza é o responsável: o aluno é menor de idade ou a escola ainda não cadastrou a data de nascimento.',
   codigo_incorreto: 'Código incorreto. Confira a mensagem no WhatsApp e digite de novo.',
@@ -206,8 +208,10 @@ export const REQUEST_STATE_LABEL: Record<RequestState, string> = {
 
 const MISSING_CONTACT: Record<string, string> = {
   idade_nao_cadastrada:
-    'Idade não cadastrada e sem telefone do responsável. Cadastre a data de nascimento (maior de idade recebe no próprio número) ou o telefone do responsável.',
+    'Idade não confirmada pela escola e sem telefone do responsável. Cadastre a data de nascimento (maior de idade recebe no próprio número) ou o telefone do responsável.',
   menor_sem_telefone_do_responsavel: 'Menor de idade sem telefone do responsável no cadastro.',
+  responsavel_nao_confirmado:
+    'O telefone do responsável no cadastro não foi confirmado pela escola (foi gravado pelo próprio aluno, é o número dele ou de um responsável de fora). Confirme o contato em Qualidade dos contatos.',
   sem_telefone: 'Sem telefone no cadastro.',
 };
 
@@ -228,6 +232,10 @@ const NOT_SENT: Record<string, string> = {
   invalid_phone: 'telefone inválido',
   removido_da_fila: 'removido da fila',
   test_fixture_suppressed: 'conta de teste',
+  pedido_vencido: 'ficou mais de 2 dias na fila sem sair',
+  portal_da_escola_indefinido: 'a escola está sem endereço do portal',
+  portal_mudou: 'o endereço do portal mudou antes do envio',
+  link_sem_telefone_do_pedido: 'o link não tinha o telefone da mensagem',
 };
 
 /** Motivo de uma mensagem que não saiu, em português. */
@@ -237,6 +245,35 @@ export function notSentReasonLabel(reason: string | null | undefined): string {
   if (raw.startsWith('provider_http_')) return 'o WhatsApp recusou o envio';
   if (raw.includes('attempts_exhausted')) return 'tentativas esgotadas';
   return 'não saiu';
+}
+
+/**
+ * Quando a mensagem na fila deve sair: o horário marcado ou o adiamento (fora
+ * da janela, ritmo ou teto do WhatsApp), o que for mais tarde.
+ */
+export function queuedSendAt(
+  scheduledFor: string | null | undefined,
+  nextAttemptAt?: string | null,
+): string | null {
+  const times = [scheduledFor, nextAttemptAt]
+    .map(value => (value ? new Date(value).getTime() : Number.NaN))
+    .filter(time => !Number.isNaN(time));
+  return times.length ? new Date(Math.max(...times)).toISOString() : null;
+}
+
+/**
+ * Até quando o envio em lote pula o aluno que recebeu link gerado à mão (3
+ * dias, a mesma regra do banco). Nulo quando não pula mais.
+ */
+export function manualLinkHoldUntil(
+  manualLinkAt: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!manualLinkAt) return null;
+  const created = new Date(manualLinkAt).getTime();
+  if (Number.isNaN(created)) return null;
+  const until = created + 3 * 24 * 60 * 60 * 1000;
+  return until > now.getTime() ? new Date(until).toISOString() : null;
 }
 
 /** "Reenviar" liberado? Quem decide é o servidor; a tela só espelha a data. */

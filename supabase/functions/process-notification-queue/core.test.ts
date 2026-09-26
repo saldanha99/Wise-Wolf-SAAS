@@ -299,17 +299,31 @@ Deno.test("pedido do termo de registro sai só pela central, com audiência alun
   });
 });
 
-Deno.test("revalidação do termo autoriza só destino de pessoa com o link do termo", () => {
+Deno.test("revalidação do termo autoriza só destino de pessoa com o link do termo no portal da escola", () => {
   const token = "a".repeat(64);
+  const portal = "https://system.wisewolflanguage.com.br";
   const message =
-    `Olá, Ana! Aqui é da Escola.\n\nTermo completo e resposta (leva 1 minuto): https://system.wisewolflanguage.com.br/registro-das-aulas?token=${token}`;
+    `Olá, Ana! Aqui é da Escola.\n\nTermo completo e resposta (leva 1 minuto): ${portal}/registro-das-aulas?token=${token}`;
   assertEquals(
     lessonRecordingConsentDelivery({
       ok: true,
       destination: "11 98888-0001",
       message,
+      portal,
     }),
     { ok: true, destination: "5511988880001", message },
+  );
+  // Escola com domínio próprio verificado: o link é o do portal dela.
+  const customPortal = "https://escola.exemplo.com.br";
+  const customMessage = message.replace(portal, customPortal);
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: customMessage,
+      portal: customPortal,
+    }).ok,
+    true,
   );
   // Grupo nunca recebe o termo de um aluno.
   assertEquals(
@@ -317,18 +331,17 @@ Deno.test("revalidação do termo autoriza só destino de pessoa com o link do t
       ok: true,
       destination: "120363000000000000@g.us",
       message,
+      portal,
     }).ok,
     false,
   );
-  // Mensagem sem o link do termo (ou com outro domínio) não sai.
+  // Link de outro domínio que o portal da escola não sai.
   assertEquals(
     lessonRecordingConsentDelivery({
       ok: true,
       destination: "5511988880001",
-      message: message.replace(
-        "system.wisewolflanguage.com.br",
-        "exemplo.invalid",
-      ),
+      message: message.replace(portal, "https://exemplo.invalid"),
+      portal,
     }),
     {
       ok: false,
@@ -336,11 +349,32 @@ Deno.test("revalidação do termo autoriza só destino de pessoa com o link do t
       reason: "lesson_recording_consent_payload_invalid",
     },
   );
+  // Sem portal (ou portal que não é https://host) não sai.
+  for (
+    const badPortal of [
+      undefined,
+      "",
+      "http://system.wisewolflanguage.com.br",
+      "https://x.com/caminho",
+    ]
+  ) {
+    assertEquals(
+      lessonRecordingConsentDelivery({
+        ok: true,
+        destination: "5511988880001",
+        message,
+        portal: badPortal,
+      }).ok,
+      false,
+    );
+  }
+  // Token com um caractere a mais não é o link do termo.
   assertEquals(
     lessonRecordingConsentDelivery({
       ok: true,
       destination: "5511988880001",
       message: `${message}0`,
+      portal,
     }).ok,
     false,
   );
@@ -359,10 +393,64 @@ Deno.test("revalidação do termo recusada cancela sem nova tentativa", () => {
       reason: "lesson_recording_consent_no_longer_valid",
     },
   );
+  // Pedido parado dias na fila é cancelado, não adiado.
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false, reason: "pedido_vencido" }),
+    { ok: false, retryable: false, reason: "pedido_vencido" },
+  );
   // Resposta ilegível do banco é indisponibilidade: tenta de novo depois.
   assertEquals(lessonRecordingConsentDelivery(null), {
     ok: false,
     retryable: true,
     reason: "lesson_recording_consent_snapshot_unavailable",
   });
+});
+
+Deno.test("fora da janela ou do ritmo o termo é adiado, sem gastar tentativa", () => {
+  // Sábado 21h -> segunda 9h: o adiamento de uma vez vai até 1 h (teto do
+  // defer_notification_delivery); o banco manda adiar de novo na próxima.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      retryable: true,
+      reason: "fora_da_janela_de_envio",
+      defer_seconds: 36 * 3600,
+    }),
+    {
+      ok: false,
+      retryable: true,
+      reason: "fora_da_janela_de_envio",
+      deferSeconds: 3600,
+    },
+  );
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      retryable: true,
+      reason: "ritmo_do_termo",
+      defer_seconds: 89.2,
+    }),
+    { ok: false, retryable: true, reason: "ritmo_do_termo", deferSeconds: 90 },
+  );
+  // Adiamento sem número válido vira nova tentativa comum, não envio.
+  for (const bad of [0, -5, "x", null]) {
+    assertEquals(
+      lessonRecordingConsentDelivery({
+        ok: false,
+        retryable: true,
+        reason: "ritmo_do_termo",
+        defer_seconds: bad,
+      }),
+      { ok: false, retryable: true, reason: "ritmo_do_termo" },
+    );
+  }
+  // Recusa definitiva nunca vira adiamento, mesmo com número.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      reason: "contato_mudou",
+      defer_seconds: 60,
+    }),
+    { ok: false, retryable: false, reason: "contato_mudou" },
+  );
 });

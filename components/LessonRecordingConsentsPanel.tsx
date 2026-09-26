@@ -11,8 +11,10 @@ import {
   DECISION_LABEL,
   formatDecisionDate,
   formatSendTime,
+  manualLinkHoldUntil,
   missingContactLabel,
   notSentReasonLabel,
+  queuedSendAt,
   RECIPIENT_LABEL,
   GUARDIAN_REASON_LABEL,
   RELATION_LABEL,
@@ -53,6 +55,7 @@ type RequestInfo = {
   attempt: number;
   requested_at: string;
   scheduled_for: string;
+  next_attempt_at?: string | null;
   recipient: ConsentRecipient;
   contact_last4: string | null;
   state: RequestState;
@@ -68,19 +71,24 @@ type SendRow = {
   decision: string;
   decided_at: string | null;
   eligible: boolean;
+  reconfirm?: boolean;
   recipient: ConsentRecipient | null;
   contact_last4: string | null;
   missing_reason: string | null;
+  manual_link_at?: string | null;
   request: RequestInfo | null;
   resend_available_at: string | null;
 };
-type SendOverview = { can_send: boolean; term_version: string; students: SendRow[] };
+type SendOverview = { can_send: boolean; portal_ok?: boolean; term_version: string; students: SendRow[] };
 type BatchPreview = {
   to_send: number;
   to_guardians: number;
   term_updated: number;
+  reconfirm?: number;
   no_contact: number;
+  manual_link_recent?: number;
   left_for_next_batch: number;
+  portal_ok?: boolean;
   first_at: string | null;
   last_at: string | null;
   student_notifications_enabled: boolean;
@@ -103,7 +111,7 @@ function sendFilterMatches(row: SendRow, filter: SendFilter): boolean {
 
 function requestStatusText(request: RequestInfo): string {
   if (request.state === 'SENT') return `Enviado ${formatSendTime(request.sent_at)}`;
-  if (request.state === 'QUEUED') return `Na fila · sai ${formatSendTime(request.scheduled_for)}`;
+  if (request.state === 'QUEUED') return `Na fila · sai ${formatSendTime(queuedSendAt(request.scheduled_for, request.next_attempt_at))}`;
   if (request.state === 'UNCERTAIN') return `${REQUEST_STATE_LABEL.UNCERTAIN} (pode ter chegado)`;
   return `${REQUEST_STATE_LABEL.NOT_SENT}: ${notSentReasonLabel(request.not_sent_reason)}`;
 }
@@ -180,9 +188,13 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
 
   async function resend(row: SendRow) {
     const who = row.recipient ? RECIPIENT_LABEL[row.recipient] : 'aluno';
+    const replaces = row.request || row.manual_link_at
+      ? '\n\nO link enviado antes deixa de valer: só o desta mensagem responde ao termo.'
+      : '';
     const ok = window.confirm(
       `Enviar o termo para ${row.name} (${who}, número terminado em ${row.contact_last4})?\n\n` +
-      'A mensagem entra na fila da escola e sai no próximo horário livre (segunda a sábado, das 9h às 20h).',
+      'A mensagem entra na fila da escola e sai no próximo horário livre (segunda a sábado, das 9h às 20h).' +
+      replaces,
     );
     if (!ok) return;
     setBusy(`resend:${row.student_id}`); setError(''); setNotice('');
@@ -276,6 +288,9 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
             {waitingCount} aguardando resposta · {inQueueCount} na fila · {noContactCount} sem contato.
             Menor de idade ou idade não cadastrada: vai ao responsável.
           </p>
+          {sending.can_send && sending.portal_ok === false && <p className="mt-1 text-sm font-semibold text-red-700">
+            {consentErrorMessage('portal_da_escola_indefinido')}
+          </p>}
         </div>
         {sending.can_send && <button type="button" disabled={!!busy} onClick={() => void openBatchPreview()}
           className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
@@ -306,8 +321,14 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
                 {preview.term_updated > 0 && <li>
                   {preview.term_updated} já {preview.term_updated === 1 ? 'tinha' : 'tinham'} aceitado uma versão anterior e {preview.term_updated === 1 ? 'recebe' : 'recebem'} o texto novo.
                 </li>}
+                {(preview.reconfirm || 0) > 0 && <li>
+                  {preview.reconfirm} {preview.reconfirm === 1 ? 'aceite não vale' : 'aceites não valem'} para transcrever (sem o código ou sem o responsável) e {preview.reconfirm === 1 ? 'precisa' : 'precisam'} ser confirmado{preview.reconfirm === 1 ? '' : 's'}.
+                </li>}
                 {preview.no_contact > 0 && <li>
                   {preview.no_contact} {preview.no_contact === 1 ? 'fica' : 'ficam'} de fora por falta de contato.
+                </li>}
+                {(preview.manual_link_recent || 0) > 0 && <li>
+                  {preview.manual_link_recent} {preview.manual_link_recent === 1 ? 'recebeu' : 'receberam'} link gerado à mão há menos de 3 dias e {preview.manual_link_recent === 1 ? 'fica' : 'ficam'} de fora (use "Enviar" na lista, se quiser).
                 </li>}
                 {preview.left_for_next_batch > 0 && <li>
                   {preview.left_for_next_batch} {preview.left_for_next_batch === 1 ? 'fica' : 'ficam'} para o próximo envio (até 60 por vez).
@@ -317,8 +338,11 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
               {!preview.student_notifications_enabled && <p className="font-semibold text-red-700">
                 Os avisos a alunos estão desligados nas configurações da escola — o envio será recusado.
               </p>}
+              {preview.portal_ok === false && <p className="font-semibold text-red-700">
+                {consentErrorMessage('portal_da_escola_indefinido')}
+              </p>}
               <div className="flex flex-wrap gap-3 pt-1">
-                <button type="button" disabled={!!busy} onClick={() => void confirmBatch()}
+                <button type="button" disabled={!!busy || preview.portal_ok === false} onClick={() => void confirmBatch()}
                   className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-40">
                   {busy === 'batch' ? 'Enfileirando…' : `Confirmar envio de ${preview.to_send}`}
                 </button>
@@ -344,6 +368,7 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
           const decision = asDecision(row.decision);
           const hasContact = !!row.contact_last4;
           const canResend = sending.can_send && row.eligible && hasContact && resendAllowed(row.resend_available_at);
+          const manualHold = manualLinkHoldUntil(row.manual_link_at);
           return <li key={row.student_id} className="flex flex-wrap items-start justify-between gap-3 py-3">
             <div className="min-w-0 space-y-1 text-sm">
               <p className="font-semibold">{row.name}</p>
@@ -358,11 +383,16 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
               {request && request.state !== 'NOT_SENT' && <p className="text-xs text-slate-500">
                 {request.opened_at ? `Abriu o link em ${formatDecisionDate(request.opened_at)}` : 'Ainda não abriu o link'}
               </p>}
+              {!request && row.eligible && manualHold && <p className="text-xs text-slate-500">
+                Link gerado à mão em {formatDecisionDate(row.manual_link_at)} — o envio em lote pula este aluno até {formatSendTime(manualHold)}.
+              </p>}
             </div>
             <div className="flex flex-col items-end gap-1 text-xs">
               <Badge decision={row.decision} />
               {decision !== 'NONE' && row.decided_at && <span className="text-slate-500">{formatDecisionDate(row.decided_at)}</span>}
-              {row.eligible && decision === 'ACCEPTED' && <span className="text-slate-500">aceitou versão anterior</span>}
+              {row.eligible && decision === 'ACCEPTED' && <span className="text-slate-500">
+                {row.reconfirm ? 'aceite precisa ser confirmado' : 'aceitou versão anterior'}
+              </span>}
               {sending.can_send && row.eligible && hasContact && (canResend
                 ? <button type="button" disabled={!!busy} onClick={() => void resend(row)} className="font-semibold text-blue-600 disabled:opacity-40">
                     {busy === `resend:${row.student_id}` ? 'Enviando…' : request ? 'Reenviar' : 'Enviar'}

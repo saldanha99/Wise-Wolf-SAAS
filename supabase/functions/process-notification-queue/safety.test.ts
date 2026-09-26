@@ -38,6 +38,23 @@ Deno.test("queue worker seals delivery before its only provider POST", () => {
   );
 });
 
+Deno.test("termo fora da janela ou do ritmo é adiado antes da cerca, sem gastar tentativa", () => {
+  // O banco manda adiar (janela seg–sáb 9h–20h, 5 a cada 15 min); o worker
+  // devolve a vaga por defer_notification_delivery em vez de marcar pending
+  // com backoff (que gastaria tentativa e ignoraria a janela).
+  const branch = source.indexOf(
+    "notificationKind === LESSON_RECORDING_CONSENT_KIND",
+  );
+  const deferCall = source.indexOf(
+    "deferred(delivery.reason, delivery.deferSeconds)",
+  );
+  const catchDefer = source.indexOf("if (error.deferSeconds !== null) {");
+  const genericFence = source.lastIndexOf("beginNotificationSubmission(");
+  assert(branch >= 0 && deferCall > branch, "o ramo do termo não adia");
+  assert(catchDefer > deferCall && catchDefer < genericFence);
+  assertStringIncludes(source, '"defer_notification_delivery"');
+});
+
 Deno.test("payment and lesson transitions use purpose-built atomic bridges", () => {
   assertStringIncludes(
     source,

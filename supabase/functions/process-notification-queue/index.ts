@@ -137,6 +137,8 @@ class QueueRevalidationError extends Error {
   constructor(
     readonly queueStatus: "pending" | "failed" | "skipped",
     readonly reason: string,
+    // Adiar sem gastar tentativa (defer_notification_delivery), em segundos.
+    readonly deferSeconds: number | null = null,
   ) {
     super(reason);
   }
@@ -148,6 +150,29 @@ function invalid(reason: string): never {
 
 function unavailable(reason: string): never {
   throw new QueueRevalidationError("pending", reason);
+}
+
+function deferred(reason: string, seconds: number): never {
+  throw new QueueRevalidationError("pending", reason, seconds);
+}
+
+/** Devolve a vaga do claim para depois, sem contar como tentativa. */
+async function deferClaim(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  delaySeconds: number,
+  reason: string,
+): Promise<boolean> {
+  const { data } = await supabase.rpc("defer_notification_delivery", {
+    p_notification_id: item.id,
+    p_claim_token: item.claim_token,
+    p_delay_seconds: delaySeconds,
+    p_reason: reason.slice(0, 120),
+  });
+  return Boolean(
+    data && typeof data === "object" &&
+      (data as Record<string, unknown>).ok === true,
+  );
 }
 
 function relationOne<T>(value: QueueRelation<T>): T | null {
@@ -1196,7 +1221,8 @@ serve(async (req) => {
           prepared = { teacherId: null, destination, message };
         } else if (notificationKind === LESSON_RECORDING_CONSENT_KIND) {
           // Termo de registro das aulas: o banco revalida aluno, decisão,
-          // contato, link e texto na hora de mandar.
+          // contato, link e texto na hora de mandar — e a janela (seg–sáb,
+          // 9h–20h) e o ritmo (5 a cada 15 min), que só adiam.
           const { data: snapshot, error: snapshotError } = await supabaseClient
             .rpc("get_lesson_recording_consent_request_snapshot", {
               p_notification_id: item.id,
@@ -1206,6 +1232,9 @@ serve(async (req) => {
           }
           const delivery = lessonRecordingConsentDelivery(snapshot);
           if (delivery.ok === false) {
+            if (delivery.deferSeconds) {
+              deferred(delivery.reason, delivery.deferSeconds);
+            }
             if (delivery.retryable) unavailable(delivery.reason);
             invalid(delivery.reason);
           }
@@ -1306,6 +1335,21 @@ serve(async (req) => {
         }
       } catch (error) {
         if (!(error instanceof QueueRevalidationError)) throw error;
+        if (error.deferSeconds !== null) {
+          const ok = await deferClaim(
+            supabaseClient,
+            item,
+            error.deferSeconds,
+            error.reason,
+          );
+          persistenceFailed ||= !ok;
+          results.push({
+            id,
+            status: ok ? "deferred" : "marker_failed",
+            error: error.reason,
+          });
+          continue;
+        }
         const marked = await markClaim(
           supabaseClient,
           item,
@@ -1414,20 +1458,13 @@ serve(async (req) => {
           30,
           Math.ceil(Number(throttlePeek.wait_ms || 60_000) / 1000),
         );
-        const { data: deferred } = await supabaseClient.rpc(
-          "defer_notification_delivery",
-          {
-            p_notification_id: item.id,
-            p_claim_token: item.claim_token,
-            p_delay_seconds: delaySeconds,
-            p_reason: `throttled_${throttlePeek.kind || "outbound"}_${
-              throttlePeek.reason || ""
-            }`.slice(0, 120),
-          },
-        );
-        const ok = Boolean(
-          deferred && typeof deferred === "object" &&
-            (deferred as Record<string, unknown>).ok === true,
+        const ok = await deferClaim(
+          supabaseClient,
+          item,
+          delaySeconds,
+          `throttled_${throttlePeek.kind || "outbound"}_${
+            throttlePeek.reason || ""
+          }`,
         );
         persistenceFailed ||= !ok;
         results.push({

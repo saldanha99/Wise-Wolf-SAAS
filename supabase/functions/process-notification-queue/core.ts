@@ -234,17 +234,44 @@ export const LESSON_RECORDING_CONSENT_KIND = "LESSON_RECORDING_CONSENT_REQUEST";
 
 export type LessonRecordingConsentDelivery =
   | { ok: true; destination: string; message: string }
-  | { ok: false; retryable: boolean; reason: string };
+  | {
+    ok: false;
+    retryable: boolean;
+    reason: string;
+    /**
+     * Adiar (janela seg–sáb 9h–20h ou ritmo de 5 a cada 15 min) sem gastar
+     * tentativa: o processador devolve a vaga por `defer_notification_delivery`.
+     */
+    deferSeconds?: number;
+  };
 
-const CONSENT_LINK_PATTERN =
-  /https:\/\/system\.wisewolflanguage\.com\.br\/registro-das-aulas\?token=[a-f0-9]{64}(?![a-f0-9])/;
+/** Portal da escola que o banco devolve (`https://host`, sem caminho). */
+const PORTAL_PATTERN =
+  /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
+/** O adiamento de uma vez só vai até 1 h (teto de `defer_notification_delivery`). */
+const MAX_DEFER_SECONDS = 3600;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** O link do termo, no portal da escola, com um token de 64 hex. */
+function hasConsentLink(message: string, portal: string): boolean {
+  return new RegExp(
+    `${
+      escapeRegExp(portal)
+    }/registro-das-aulas\\?token=[a-f0-9]{64}(?![a-f0-9])`,
+  ).test(message);
+}
 
 /**
  * Lê a revalidação do banco (`get_lesson_recording_consent_request_snapshot`).
  * Só autoriza o envio com destino de pessoa (nunca grupo), mensagem dentro do
- * limite e o link do termo nela. Qualquer outra resposta cancela a mensagem:
- * quem respondeu, revogou, trocou de contato ou teve o link substituído não
- * recebe o pedido.
+ * limite e o link do termo no portal da escola. Fora da janela ou do ritmo, o
+ * banco manda adiar (`defer_seconds`). Qualquer outra recusa cancela a
+ * mensagem: quem respondeu, revogou, trocou de contato ou teve o link
+ * substituído não recebe o pedido.
  */
 export function lessonRecordingConsentDelivery(
   snapshot: unknown,
@@ -261,14 +288,24 @@ export function lessonRecordingConsentDelivery(
     const reason = typeof record.reason === "string" && record.reason.trim()
       ? record.reason.trim().slice(0, 120)
       : "lesson_recording_consent_no_longer_valid";
+    const defer = Number(record.defer_seconds);
+    if (record.retryable === true && Number.isFinite(defer) && defer > 0) {
+      return {
+        ok: false,
+        retryable: true,
+        reason,
+        deferSeconds: Math.min(MAX_DEFER_SECONDS, Math.ceil(defer)),
+      };
+    }
     return { ok: false, retryable: record.retryable === true, reason };
   }
   const destination = normalizeQueueDestination(record.destination);
   const message = typeof record.message === "string" ? record.message : "";
+  const portal = typeof record.portal === "string" ? record.portal : "";
   if (
     !destination || destination.endsWith("@g.us") || !message.trim() ||
     message !== message.trim() || message.length > 4096 ||
-    !CONSENT_LINK_PATTERN.test(message)
+    !PORTAL_PATTERN.test(portal) || !hasConsentLink(message, portal)
   ) {
     return {
       ok: false,

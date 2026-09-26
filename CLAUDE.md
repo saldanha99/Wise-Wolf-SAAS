@@ -264,12 +264,16 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas, 3 envios/h por link, telefone
   congelado quando o link é gerado) e grava `verification`/`verified_phone`. Aceite sem código ou "como
   aluno" de quem hoje exige responsável **não marca aula**.
-- **Envio do termo em lote** (migration `20260926210000`, seção própria no runbook): a direção confirma
-  na tela quantas mensagens e quando saem; fila `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a
-  cada 3 min, seg–sáb 9h–20h; menor **ou idade não cadastrada** → responsável, sem telefone dele = "sem
-  contato"; recusa/revogação nunca recebe de novo; reenvio só 3 dias depois; o processador revalida na
-  hora de mandar. ⚠️ `get_lesson_recording_consent_public` agora grava a abertura do link (VOLATILE) —
-  recriá-la sem `lesson_recording_note_link_opened` reprova `termo_de_registro_envio_em_lote.sql`.
+- **Envio do termo em lote** (migration `20260926210000`, **depois** de `20260926200000` e no mesmo release;
+  seção própria no runbook): a direção confirma na tela quantas mensagens e quando saem; fila
+  `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a cada 3 min, seg–sáb 9h–20h — **também na hora de
+  mandar** (o processador adia sem gastar tentativa; 5 por 15 min; pedido com 2 dias na fila é cancelado).
+  Quem responde é a regra de `20260926200000`; telefone do responsável só vale verificado pela escola ou
+  não gravado pelo próprio aluno (trilha `audit_logs`) e diferente do número dele. O link guarda os
+  telefones: mensagem e código vão ao mesmo número. Um link vivo por aluno; reenvio 3 dias depois (na hora
+  se o número mudou); link no portal da escola (`lesson_recording_portal_url`, sem portal = recusa).
+  ⚠️ `get_lesson_recording_consent_public` é remendada **por âncora** (registro de abertura + VOLATILE) —
+  não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
