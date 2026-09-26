@@ -128,3 +128,57 @@ Deno.test("usage nulo não tenta gravar nada", async () => {
   });
   assert(!tentou, "sem usage não deve haver escrita no banco");
 });
+
+Deno.test("tokens de raciocínio do OpenRouter vão para reasoning_tokens (já dentro da saída)", async () => {
+  const usage = parseAiUsage({
+    usage: {
+      prompt_tokens: 3000,
+      completion_tokens: 900,
+      completion_tokens_details: { reasoning_tokens: 400 },
+    },
+  });
+  assert(usage !== null, "usage com raciocínio precisa ser lido");
+  assert(
+    usage.outputTokens === 900 && usage.reasoningTokens === 400,
+    `raciocínio errado: ${JSON.stringify(usage)}`,
+  );
+  const gravado: Record<string, unknown>[] = [];
+  const espiao = {
+    from: () => ({
+      insert: (row: Record<string, unknown>) => {
+        gravado.push(row);
+        return Promise.resolve({ error: null });
+      },
+    }),
+  };
+  await recordAiUsage(espiao, {
+    tenantId: "t",
+    userId: null,
+    feature: "meet_pedagogical_summary",
+    model: "google/gemini-3.6-flash",
+    usage,
+  });
+  assert(gravado[0].reasoning_tokens === 400, "reasoning_tokens não gravado");
+  // Sem raciocínio a coluna nem aparece: function publicada antes da migration
+  // continua gravando.
+  await recordAiUsage(espiao, {
+    tenantId: "t",
+    userId: null,
+    feature: "wolfie_brain",
+    model: "m",
+    usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 },
+  });
+  assert(!("reasoning_tokens" in gravado[1]), "coluna nova sem necessidade");
+  // O thoughtsTokenCount do Gemini direto fica fora (não está na saída).
+  const gemini = parseAiUsage({
+    usageMetadata: {
+      promptTokenCount: 10,
+      candidatesTokenCount: 5,
+      thoughtsTokenCount: 50,
+    },
+  });
+  assert(
+    gemini !== null && gemini.reasoningTokens === undefined,
+    "thoughtsTokenCount do Gemini virou raciocínio dentro da saída",
+  );
+});

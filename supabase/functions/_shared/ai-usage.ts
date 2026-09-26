@@ -10,6 +10,11 @@ export interface AiUsageTokens {
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
+  /**
+   * Tokens de raciocínio (OpenAI/OpenRouter). Já estão DENTRO de outputTokens —
+   * são cobrados como saída; é só a quebra. Opcional: quem não informa grava 0.
+   */
+  reasoningTokens?: number;
 }
 
 /**
@@ -57,8 +62,20 @@ export function parseAiUsage(payload: unknown): AiUsageTokens | null {
     wholeNumber(promptDetails?.cached_tokens) ||
     wholeNumber(usage.cachedContentTokenCount);
 
+  // Só os formatos em que o raciocínio já está dentro da saída
+  // (completion_tokens_details / output_tokens_details). O thoughtsTokenCount
+  // do Gemini direto fica de fora: lá ele NÃO está em candidatesTokenCount.
+  const completionDetails = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : isRecord(usage.output_tokens_details)
+    ? usage.output_tokens_details
+    : null;
+  const reasoningTokens = wholeNumber(completionDetails?.reasoning_tokens);
+
   if (!inputTokens && !outputTokens && !cachedTokens) return null;
-  return { inputTokens, outputTokens, cachedTokens };
+  return reasoningTokens
+    ? { inputTokens, outputTokens, cachedTokens, reasoningTokens }
+    : { inputTokens, outputTokens, cachedTokens };
 }
 
 /**
@@ -87,6 +104,11 @@ export async function recordAiUsage(
       input_tokens: event.usage.inputTokens,
       output_tokens: event.usage.outputTokens,
       cached_tokens: event.usage.cachedTokens,
+      // Só quando existe: a coluna nasceu em 20260927110000, e uma function
+      // publicada antes da migration continua gravando.
+      ...(event.usage.reasoningTokens
+        ? { reasoning_tokens: event.usage.reasoningTokens }
+        : {}),
     });
     if (error) {
       console.error("AI usage record failed", { feature: event.feature });
