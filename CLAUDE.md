@@ -287,6 +287,20 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   ⚠️ `get_lesson_recording_consent_public` é remendada **por âncora** (registro de abertura + VOLATILE) —
   não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada, sem o
   `|| private.lesson_recording_public_link_fields(v_link.id)` e sem o caso `blocked`.
+- **Termo v3, aceite por versão e retenção** (migration `20260927100000`, runbook seção própria, teste
+  `supabase/tests/termo_v3_versao_e_retencao.sql`, RIPD em `docs/lgpd/ripd-memoria-das-aulas.md` — **rascunho
+  para o jurídico**): o texto v3 diz o que o sistema faz depois das ondas 1–3 (IA com aprovação do professor,
+  dossiê por link com login, cartão sem dado sensível, extrato de pontualidade sem ranking, OpenRouter pago sem
+  treino, prazos de 90 dias) e identifica a escola **só por marcadores** (`{escola_nome}`, `{escola_documento}`,
+  `{escola_contato_privacidade}`) que a página e o cartão preenchem com `school_identity` (dados de
+  Configurações → Escola e legal, com o campo novo "Encarregado de dados"). **Aceite de versão anterior não
+  vale** (aluno E professor — `lesson_recording_teacher_consent_effective`): o job desmarca a aula que o termo
+  antigo marcou, com o motivo "o termo mudou de versão". Retenção própria (`private.purge_lesson_memory_retention`,
+  cron diário): rascunho não aprovado perde o texto bruto 90 dias depois da aula; quem **deixou a escola**
+  (`lifecycle_status = 'offboarded'` + `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão e resumos
+  90 dias depois; trilha só com contagens. ⚠️ Publicar versão nova do termo derruba todos os aceites na hora —
+  é o comportamento certo, mas avise a direção antes. ⚠️ `list_lesson_recording_consents` e
+  `apply_standing_lesson_recording_consent` foram remendadas por âncora: não recrie a partir de texto antigo.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
