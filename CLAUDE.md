@@ -304,10 +304,13 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   a vigente (a página não gasta o código); recusar vale sempre. Assinaturas antigas derrubadas. Retenção própria
   (`private.purge_lesson_memory_retention`, cron diário): **toda versão de resumo** (rascunho e aprovada) perde
   `narrative`/`evidence` 90 dias depois da aula; quem **deixou a escola** (`lifecycle_status = 'offboarded'` +
-  `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão e resumos 90 dias depois; trilha só com
+  `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão, resumos e a base das aulas aprovadas
+  copiada nos planos do Planner (`lesson_basis`, integração da onda 2) 90 dias depois; trilha só com
   contagens. ⚠️ Publicar versão nova do termo derruba os aceites na hora — avise a direção antes. ⚠️ Os
-  **originais no Drive** que o termo promete apagar dependem de `wave2/retencao-drive` (escopo de escrita; hoje
-  `drive.readonly`): o primeiro vence 90 dias depois da primeira aula transcrita. ⚠️ `list_lesson_recording_consents`,
+  **originais no Drive** que o termo promete apagar dependem da lixeira de `20260927120000` **ligada**
+  (`GOOGLE_MEET_DELETE_ORIGINALS_ENABLED=true` + reconectar a conta central com o escopo `drive`; em 26/09 ela
+  tinha só `drive.readonly`): o primeiro vence 90 dias depois da primeira aula transcrita sob a v3 — até lá a
+  flag tem de estar ligada, ou a direção apaga à mão. ⚠️ `list_lesson_recording_consents`,
   `apply_standing_lesson_recording_consent` e `get_lesson_recording_consent_public` foram remendadas por âncora:
   não recrie a partir de texto antigo.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
@@ -439,7 +442,9 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   aula (a Meet API guarda ~30), e presa ao `drive` ela nunca rodava com a lixeira desligada (correção da
   revisão). Revogação desliga também o relatório de presença da sala (2º `PATCH`, não fatal). Exclusão a pedido
   (`erase_student_lesson_records`, só `SCHOOL_ADMIN`, ficha → Continuidade pedagógica): apaga cópias brutas,
-  planilhas, todas as versões de resumo, memória `MEET_SESSION` e cartão; originais vencem na hora; a aula
+  planilhas, todas as versões de resumo, memória `MEET_SESSION` e cartão, e tira dos planos do Planner a base das
+  aulas aprovadas (`lesson_plans.structured_plan.lesson_basis` e `planner_ai_runs.result`: o próximo passo e os
+  erros copiados do resumo — o plano fica); originais vencem na hora; a aula
   fica marcada, a importação da sala é encerrada (`sync_status = EXPIRED`, `last_error_code =
   lesson_records_erased`, mantido por gatilho em `google_meet_rooms` mesmo com importação em andamento) e um
   gatilho recusa nova cópia, planilha ou rascunho dela. Não mexe em presença, pagamento nem na trilha do aceite.
@@ -453,15 +458,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   DELE na escola dele — objetivo, praticado, próximo passo, lição, com os tetos da aprovação —, o prazo de
   CADA cópia bruta pelo nome (`transcript_until`, `notes_until`, `attendance_until`), quantas esperam revisão
   (a rejeitada por último não conta), a situação do próprio termo (sem token; validade do link só se ele
-  CHEGOU — aberto ou mensagem aceita) e o WhatsApp da instância central para pedir exclusão. ⚠️ Nunca texto
+  CHEGOU — aberto ou mensagem aceita; aceite que não vale com o motivo, `not_effective_reason`:
+  `TERM_UPDATED` — o caso de todos depois do termo v3 —, `UNVERIFIED` ou `GUARDIAN_REQUIRED`), o texto do termo
+  **preenchido** (`lesson_recording_fill_term`) e o WhatsApp da instância central para pedir exclusão. ⚠️ Nunca texto
   bruto, citação de evidência, "dificuldades", narrativa do professor nem cartão do aluno; outros papéis
   recebem `somente_o_aluno`. Campo novo no resumo que deva chegar ao aluno entra **na RPC** (lista fechada de
   chaves; o teste reprova chave a mais).
   ⚠️ **A tela não diz "fica só o resumo"**: a versão aprovada guarda `narrative` (em aula aprovada das notas
-  nativas, o texto das anotações do Google revisado) e `evidence` (citações literais) sem prazo, e outros
-  professores do aluno a leem por `session_detail`. ⚠️ **Exclusão pedida pelo aluno é MANUAL** (runbook,
-  "Pedido de exclusão"): não há RPC; `get_my_lesson_records` lê `lesson_summary_versions`, então apagar só
-  `student_learning_memories` deixa o resumo na tela dele. A tela só promete apagar os originais do Google.
+  nativas, o texto das anotações do Google revisado) e `evidence` (citações literais) até 90 dias depois da aula
+  (`purge_lesson_memory_retention`), e outros professores do aluno e o suporte a leem por `session_detail` — a
+  tela diz esses prazos, os do termo v3. **Exclusão pedida pelo aluno:** ele pede pelo WhatsApp da escola e a
+  direção usa "Apagar registros das aulas deste aluno" na ficha (`erase_student_lesson_records`, acima); a tela
+  do aluno lista o que aquela RPC apaga e o que fica. ⚠️ Não apague "à mão" só `student_learning_memories`:
+  `get_my_lesson_records` lê `lesson_summary_versions`, e o resumo continuaria na tela dele.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 
@@ -1980,6 +1989,11 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   erros recorrentes que a lição ataca) sai de `approvedLessonBasis`, vai na resposta, no
   plano salvo (`structured_plan.lesson_basis`) e na primeira linha do `content`. A tela
   mostra em "Base do plano" (`data-tour="planner-lesson-basis"`).
+  ⚠️ A base COPIA texto do resumo aprovado (próximo passo, erros): a exclusão a pedido
+  (`erase_student_lesson_records`) e a retenção de quem deixou a escola
+  (`purge_lesson_memory_retention`) tiram `lesson_basis` do plano salvo e do
+  `planner_ai_runs.result` (integração da onda 2); o plano fica. Campo novo que copie o
+  resumo aprovado para o plano entra nessas duas limpezas.
   ⚠️ O mesmo `data-tour` mora num cartão do estado vazio (sem plano gerado): o tour abre
   no primeiro acesso, sem plano, e um alvo que só existe depois de gerar faz o motor
   **pular o passo e marcar o tour como visto**. `featureTours.test.ts` só confere que o
