@@ -284,7 +284,9 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: null,
         view: 'lesson-sessions',
         title: 'Onde achar o cartão',
-        text: 'Pelo "Dossiê do aluno" de qualquer aula dos últimos ou dos próximos 7 dias, aqui em "Salas e continuidade", ou pela ficha do aluno em "Alunos" → "Continuidade pedagógica". Aluno menor de idade (ou sem idade confirmada pela escola) guarda só objetivo e temas. Saúde, religião, política, família e dinheiro nunca entram no cartão.',
+        // Mesma regra do tour 2026-09-26-cartao-do-aluno: o servidor só limita
+        // tamanho (não filtra assunto) e trata responsável cadastrado como menor.
+        text: 'Pelo "Dossiê do aluno" de qualquer aula dos últimos ou dos próximos 7 dias, aqui em "Salas e continuidade", ou pela ficha do aluno em "Alunos" → "Continuidade pedagógica". Aluno menor de idade, com responsável cadastrado ou sem idade comprovada guarda só objetivo e temas. Não registre saúde, religião, política, família ou dinheiro.',
       },
     ],
   },
@@ -297,7 +299,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'student-lesson-records',
         view: 'lesson-records',
         title: 'Novidade: o registro das suas aulas 📒',
-        text: 'Aqui aparecem os resumos que o seu professor aprovou depois das aulas na sala da escola no Google Meet: objetivo, o que foi praticado, próximo passo e lição. A transcrição não aparece — ela fica só com o professor da aula, a coordenação e a direção. Nesta tela você também vê o que é guardado e por quanto tempo, a situação da sua autorização, como revogar e como pedir a exclusão pelo WhatsApp da escola.',
+        text: 'Aqui aparece o que o seu professor aprovou de cada aula na sala da escola no Google Meet: objetivo, o que foi praticado, próximo passo e lição. A transcrição completa não aparece — ela é vista só pelo professor da aula, pela coordenação e pela direção. Nesta tela você também vê o que é guardado e por quanto tempo, a situação da sua autorização, como revogar e como pedir a exclusão pelo WhatsApp da escola.',
       },
     ],
   },

@@ -392,11 +392,18 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
 - **O aluno vê o próprio registro** (migration `20260927140000`, tela "Minhas aulas registradas", aba
   `lesson-records` do aluno): `get_my_lesson_records()` devolve só a última versão `VERIFIED` de cada aula
-  DELE na escola dele — objetivo, praticado, próximo passo, lição —, até quando a cópia bruta fica no sistema
-  (`raw_copy_until`, o `expires_at` real), a situação do próprio termo (sem token do link) e o WhatsApp da
-  instância central para pedir exclusão. ⚠️ Nunca texto bruto, citação de evidência, "dificuldades",
-  narrativa do professor nem cartão do aluno; outros papéis recebem `somente_o_aluno`. Campo novo no resumo
-  que deva chegar ao aluno entra **na RPC** (lista fechada de chaves; o teste reprova chave a mais).
+  DELE na escola dele — objetivo, praticado, próximo passo, lição, com os tetos da aprovação —, o prazo de
+  CADA cópia bruta pelo nome (`transcript_until`, `notes_until`, `attendance_until`), quantas esperam revisão
+  (a rejeitada por último não conta), a situação do próprio termo (sem token; validade do link só se ele
+  CHEGOU — aberto ou mensagem aceita) e o WhatsApp da instância central para pedir exclusão. ⚠️ Nunca texto
+  bruto, citação de evidência, "dificuldades", narrativa do professor nem cartão do aluno; outros papéis
+  recebem `somente_o_aluno`. Campo novo no resumo que deva chegar ao aluno entra **na RPC** (lista fechada de
+  chaves; o teste reprova chave a mais).
+  ⚠️ **A tela não diz "fica só o resumo"**: a versão aprovada guarda `narrative` (em aula aprovada das notas
+  nativas, o texto das anotações do Google revisado) e `evidence` (citações literais) sem prazo, e outros
+  professores do aluno a leem por `session_detail`. ⚠️ **Exclusão pedida pelo aluno é MANUAL** (runbook,
+  "Pedido de exclusão"): não há RPC; `get_my_lesson_records` lê `lesson_summary_versions`, então apagar só
+  `student_learning_memories` deixa o resumo na tela dele. A tela só promete apagar os originais do Google.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

@@ -26,9 +26,19 @@ export interface StudentLessonRecord {
   practiced: string[];
   nextStep: string | null;
   homework: string | null;
-  /** Até quando alguma cópia bruta desta aula fica no sistema; nulo = já apagada. */
-  rawCopyUntil: string | null;
+  /**
+   * Até quando cada cópia bruta desta aula fica no sistema da escola, pelo
+   * tipo (nulo = nenhuma cópia viva daquele tipo). Separadas porque o
+   * relatório de presença pode durar mais que a transcrição, e aula aprovada
+   * só a partir das anotações não tem transcrição.
+   */
+  transcriptUntil: string | null;
+  notesUntil: string | null;
+  attendanceUntil: string | null;
 }
+
+/** Os prazos das cópias brutas de uma aula. */
+export type RawCopies = Pick<StudentLessonRecord, 'transcriptUntil' | 'notesUntil' | 'attendanceUntil'>;
 
 export interface StudentRecordConsent {
   status: StudentConsentStatus;
@@ -36,7 +46,11 @@ export interface StudentRecordConsent {
   signerRelation: SignerRelation | null;
   requiresGuardian: boolean;
   guardianReason: GuardianReason | null;
-  /** Validade do link vivo do termo (o token não sai do servidor). */
+  /**
+   * Validade do link vivo do termo (o token não sai do servidor) — só quando
+   * se sabe que ele CHEGOU (aberto pela família ou mensagem aceita pelo
+   * provedor). Link na fila ou que não saiu vem nulo.
+   */
   linkExpiresAt: string | null;
 }
 
@@ -45,7 +59,10 @@ export interface StudentLessonRecordsView {
   schoolWhatsapp: string | null;
   consent: StudentRecordConsent;
   term: { version: string; body: string } | null;
-  /** Aulas com transcrição guardada que o professor ainda não aprovou. */
+  /**
+   * Aulas com transcrição/anotações guardadas esperando a revisão do
+   * professor (a que ele rejeitou por último não conta).
+   */
   pendingReview: number;
   records: StudentLessonRecord[];
 }
@@ -85,7 +102,9 @@ function parseRecord(value: unknown): StudentLessonRecord | null {
     practiced,
     nextStep: asText(row.recommended_next_step),
     homework: asText(row.homework_assigned),
-    rawCopyUntil: asText(row.raw_copy_until),
+    transcriptUntil: asText(row.transcript_until),
+    notesUntil: asText(row.notes_until),
+    attendanceUntil: asText(row.attendance_until),
   };
 }
 
@@ -133,19 +152,37 @@ export function formatClassTime(startsAt: string | null): string {
   return date.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 }
 
-/** O que ainda existe desta aula além do resumo. */
-export function rawCopyText(rawCopyUntil: string | null): string {
-  const until = formatDecisionDate(rawCopyUntil);
-  return until
-    ? `A transcrição desta aula fica no sistema da escola até ${until}; depois fica só este resumo.`
-    : 'A transcrição desta aula já foi apagada do sistema da escola; fica só este resumo.';
+/** "a", "a e b", "a, b e c". */
+function joinPt(parts: string[]): string {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}`;
+}
+
+/**
+ * As cópias brutas desta aula que ainda estão no sistema da escola, cada uma
+ * com o nome e o prazo dela. Não diz que "fica só o resumo": o resumo
+ * aprovado (inclusive o texto das anotações revisado pelo professor) fica,
+ * e a tela explica isso na seção "O que é guardado".
+ */
+export function rawCopyText(copies: RawCopies): string {
+  const parts: string[] = [];
+  const transcript = formatDecisionDate(copies.transcriptUntil);
+  const notes = formatDecisionDate(copies.notesUntil);
+  const attendance = formatDecisionDate(copies.attendanceUntil);
+  if (transcript) parts.push(`transcrição até ${transcript}`);
+  if (notes) parts.push(`anotações do Google até ${notes}`);
+  if (attendance) parts.push(`relatório de presença até ${attendance}`);
+  if (parts.length === 0) {
+    return 'Nenhuma cópia da transcrição, das anotações ou da presença desta aula está guardada no sistema da escola.';
+  }
+  return `Cópias desta aula no sistema da escola: ${joinPt(parts)}. Depois disso, são apagadas.`;
 }
 
 export function pendingReviewText(count: number): string {
   if (count <= 0) return '';
   return count === 1
-    ? '1 aula tem transcrição guardada esperando a revisão do professor. O resumo aparece aqui quando ele aprovar — a transcrição, não.'
-    : `${count} aulas têm transcrição guardada esperando a revisão do professor. Os resumos aparecem aqui quando ele aprovar — as transcrições, não.`;
+    ? '1 aula registrada está esperando a revisão do professor (a transcrição ou as anotações dela estão guardadas). O resumo aparece aqui se ele aprovar — o texto bruto, não.'
+    : `${count} aulas registradas estão esperando a revisão do professor (a transcrição ou as anotações delas estão guardadas). Os resumos aparecem aqui se ele aprovar — o texto bruto, não.`;
 }
 
 export const CONSENT_STATUS_LABEL: Record<StudentConsentStatus, string> = {
@@ -176,7 +213,10 @@ export function consentStatusText(consent: StudentRecordConsent): string {
   }
 }
 
-/** Como revogar: pelo link do termo (se houver um vivo) ou pela escola. */
+/**
+ * Como revogar: pelo link do termo — só quando o servidor sabe que ele chegou
+ * (aberto ou mensagem aceita) — ou pela escola.
+ */
 export function revokeHowToText(consent: StudentRecordConsent): string {
   const whose = consent.requiresGuardian ? 'do seu responsável' : 'do seu cadastro';
   const until = formatDecisionDate(consent.linkExpiresAt);
@@ -186,10 +226,14 @@ export function revokeHowToText(consent: StudentRecordConsent): string {
   return `Para revogar, peça à escola pelo WhatsApp: ela registra a revogação ou manda um link novo do termo para o WhatsApp ${whose}.`;
 }
 
-/** Mensagem pronta para pedir a exclusão do registro. */
+/**
+ * Mensagem pronta para pedir a exclusão do registro. Genérica de propósito:
+ * o aluno diz o que quer apagar, e a tela não promete o que o sistema ainda
+ * não faz sozinho (a exclusão do que está no sistema é feita pela escola).
+ */
 export function exclusionRequestMessage(schoolName: string | null): string {
   const school = schoolName || 'escola';
-  return `Olá! Sou aluno(a) da ${school} e quero pedir a exclusão do registro das minhas aulas (resumos aprovados, transcrições e arquivos do Google).`;
+  return `Olá! Sou aluno(a) da ${school} e quero pedir a exclusão do registro das minhas aulas.`;
 }
 
 /** Link do WhatsApp da escola com o pedido já escrito; sem número, nulo. */

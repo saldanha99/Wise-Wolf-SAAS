@@ -52,6 +52,19 @@ describe('catálogo de tours de novidade', () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
+  it('tour do cartão do aluno não promete filtro que o servidor não faz e diz a régua inteira de menor', () => {
+    // O servidor só limita tamanho (migration 20260926220000): assunto proibido
+    // é aviso ao professor, não bloqueio. E responsável cadastrado conta como
+    // menor (private.student_learning_card_minor_reason).
+    const cardSteps = FEATURE_TOURS.flatMap(tour => tour.steps.map(step => ({ id: tour.id, text: step.text })))
+      .filter(step => /cart[ãa]o/i.test(step.text) && /menor de idade/i.test(step.text));
+    expect(cardSteps.length).toBeGreaterThan(0);
+    for (const step of cardSteps) {
+      expect(step.text, step.id).toMatch(/responsável cadastrado/);
+      expect(step.text, step.id).not.toMatch(/nunca entram/i);
+    }
+  });
+
   it('todo tour tem papel, título e ao menos um passo com view', () => {
     for (const tour of FEATURE_TOURS) {
       expect(tour.roles.length, tour.id).toBeGreaterThan(0);

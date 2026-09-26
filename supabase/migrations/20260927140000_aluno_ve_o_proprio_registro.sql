@@ -15,16 +15,31 @@
 --   * nada do cartão do aluno (student_learning_cards) nem das observações do
 --     professor: o cartão é ferramenta de quem dá a aula;
 --   * o que é guardado e por quanto tempo sai do próprio dado: para cada aula,
---     até quando a cópia bruta (transcrição/anotações/presença) fica no sistema
---     (`raw_copy_until`, o expires_at real) e quantas aulas têm transcrição
---     guardada ainda sem resumo aprovado (`pending_review`). O texto do termo
---     vigente vai junto — é ele que diz os prazos que o aluno aceitou;
+--     até quando CADA cópia bruta fica no sistema, com o nome certo
+--     (`transcript_until`, `notes_until`, `attendance_until`: o maior
+--     expires_at vivo de cada tipo; nulo = não há cópia daquele tipo) — um
+--     prazo só misturava a presença (que pode durar mais) com a transcrição —,
+--     e quantas aulas têm transcrição/anotações guardadas esperando a revisão
+--     do professor (`pending_review`; aula cuja última versão foi REJEITADA já
+--     foi revisada e fica fora). O texto do termo vigente vai junto — é ele
+--     que diz os prazos que o aluno aceitou;
+--   * os campos do resumo saem com os MESMOS tetos da aprovação (objetivo
+--     2000, próximo passo e lição 3000, até 20 conteúdos de 1200 —
+--     normalizeSummary da edge google-meet): o que o professor aprovou chega
+--     inteiro; se algo escrito por fora passar do teto, o corte leva "…";
 --   * como revogar: a situação do termo do próprio aluno (vale, não vale,
 --     recusado, revogado) e a validade do link vivo — SEM o token (o banco só
---     guarda o hash; o link está no WhatsApp de quem responde);
+--     guarda o hash; o link está no WhatsApp de quem responde). Só link que
+--     se sabe ter CHEGADO: aberto pela família (first_opened_at) ou com a
+--     mensagem aceita pelo provedor (notification_queue.accepted_at, o "SENT"
+--     do painel). Link na fila, pedido que não saiu ou link gerado à mão que
+--     ninguém abriu não viram "o link que a escola mandou";
 --   * como pedir exclusão: o nome da escola e o WhatsApp da instância central,
 --     pelo mesmo critério de teacher_support_contacts (SCHOOL_ADMIN ativo dono
 --     da instância). Sem número, a tela diz "fale com a escola pelo WhatsApp".
+--     ⚠️ Não há RPC de exclusão: o pedido se cumpre à mão (runbook do Meet,
+--     "Pedido de exclusão"). Esta RPC lê lesson_summary_versions, não
+--     student_learning_memories — apagar só a memória deixa o resumo aqui.
 --
 -- Só o próprio aluno (profiles.role = STUDENT, auth.uid()) e só as sessões dele
 -- na escola dele. Professor, coordenação e direção recebem `somente_o_aluno`:
@@ -32,7 +47,22 @@
 --
 -- Re-executável: create or replace; nada de begin/commit.
 
--- Texto de um campo do resumo: string aparada, limitada, vazia vira nulo.
+-- Corte com aviso: acima do teto o texto termina em "…", para o aluno não ler
+-- uma frase cortada no meio como se fosse o texto aprovado. Vazio vira nulo.
+create or replace function private.lesson_record_clip(p_text text, p_limit integer)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_text is null or p_text = '' then null
+    when pg_catalog.length(p_text) <= p_limit then p_text
+    else pg_catalog.rtrim(pg_catalog.left(p_text, greatest(p_limit - 1, 1))) || '…'
+  end;
+$$;
+
+-- Texto de um campo do resumo: string aparada, com teto, vazia vira nulo.
 -- Objeto, número ou lista no lugar de texto não vaza para a tela do aluno.
 create or replace function private.lesson_record_text(p_value jsonb, p_limit integer)
 returns text
@@ -42,7 +72,7 @@ set search_path = ''
 as $$
   select case
     when p_value is null or pg_catalog.jsonb_typeof(p_value) <> 'string' then null
-    else nullif(pg_catalog.left(pg_catalog.btrim(p_value #>> '{}'), p_limit), '')
+    else private.lesson_record_clip(pg_catalog.btrim(p_value #>> '{}'), p_limit)
   end;
 $$;
 
@@ -58,7 +88,7 @@ as $$
     when 'array' then coalesce((
       select pg_catalog.jsonb_agg(item.text_value order by item.position)
       from (
-        select pg_catalog.left(pg_catalog.btrim(element.value #>> '{}'), p_limit) as text_value,
+        select private.lesson_record_clip(pg_catalog.btrim(element.value #>> '{}'), p_limit) as text_value,
                element.position
         from pg_catalog.jsonb_array_elements(p_value) with ordinality as element(value, position)
         where pg_catalog.jsonb_typeof(element.value) = 'string'
@@ -69,14 +99,16 @@ as $$
     ), '[]'::jsonb)
     when 'string' then case
       when pg_catalog.btrim(p_value #>> '{}') = '' then '[]'::jsonb
-      else pg_catalog.jsonb_build_array(pg_catalog.left(pg_catalog.btrim(p_value #>> '{}'), p_limit))
+      else pg_catalog.jsonb_build_array(private.lesson_record_clip(pg_catalog.btrim(p_value #>> '{}'), p_limit))
     end
     else '[]'::jsonb
   end;
 $$;
 
+alter function private.lesson_record_clip(text, integer) owner to postgres;
 alter function private.lesson_record_text(jsonb, integer) owner to postgres;
 alter function private.lesson_record_list(jsonb, integer, integer) owner to postgres;
+revoke all on function private.lesson_record_clip(text, integer) from public, anon, authenticated, service_role;
 revoke all on function private.lesson_record_text(jsonb, integer) from public, anon, authenticated, service_role;
 revoke all on function private.lesson_record_list(jsonb, integer, integer) from public, anon, authenticated, service_role;
 
@@ -134,35 +166,48 @@ begin
       'scheduled_start_at', recent.scheduled_start_at,
       'teacher_name', nullif(pg_catalog.btrim(coalesce(teacher.full_name, '')), ''),
       'approved_at', recent.approved_at,
-      'lesson_objective', private.lesson_record_text(recent.content -> 'lesson_objective', 600),
-      'content_practiced', private.lesson_record_list(recent.content -> 'content_practiced', 12, 300),
-      'recommended_next_step', private.lesson_record_text(recent.content -> 'recommended_next_step', 600),
-      'homework_assigned', private.lesson_record_text(recent.content -> 'homework_assigned', 600),
-      -- Até quando alguma cópia bruta desta aula (transcrição, anotações,
-      -- relatório de presença) continua no sistema; nulo = já apagada.
-      'raw_copy_until', (
-        select max(copy.until)
-        from (
-          select artifact.expires_at as until
-          from private.meeting_artifact_revisions as artifact
-          where artifact.tenant_id = v_me.tenant_id
-            and artifact.lesson_session_id = recent.session_id
-            and artifact.expires_at > pg_catalog.now()
-          union all
-          select report.expires_at
-          from private.meeting_attendance_reports as report
-          where report.tenant_id = v_me.tenant_id
-            and report.lesson_session_id = recent.session_id
-            and report.expires_at > pg_catalog.now()
-        ) as copy
+      -- Tetos iguais aos da aprovação (normalizeSummary): nada do que o
+      -- professor aprovou chega cortado.
+      'lesson_objective', private.lesson_record_text(recent.content -> 'lesson_objective', 2000),
+      'content_practiced', private.lesson_record_list(recent.content -> 'content_practiced', 20, 1200),
+      'recommended_next_step', private.lesson_record_text(recent.content -> 'recommended_next_step', 3000),
+      'homework_assigned', private.lesson_record_text(recent.content -> 'homework_assigned', 3000),
+      -- Até quando CADA cópia bruta desta aula continua no sistema, pelo tipo
+      -- (a tela diz "transcrição", "anotações" ou "presença" com o prazo de
+      -- cada uma); nulo = nenhuma cópia viva daquele tipo.
+      'transcript_until', (
+        select max(artifact.expires_at)
+        from private.meeting_artifact_revisions as artifact
+        where artifact.tenant_id = v_me.tenant_id
+          and artifact.lesson_session_id = recent.session_id
+          and artifact.kind = 'TRANSCRIPT'
+          and artifact.expires_at > pg_catalog.now()
+      ),
+      'notes_until', (
+        select max(artifact.expires_at)
+        from private.meeting_artifact_revisions as artifact
+        where artifact.tenant_id = v_me.tenant_id
+          and artifact.lesson_session_id = recent.session_id
+          and artifact.kind = 'SMART_NOTES'
+          and artifact.expires_at > pg_catalog.now()
+      ),
+      'attendance_until', (
+        select max(report.expires_at)
+        from private.meeting_attendance_reports as report
+        where report.tenant_id = v_me.tenant_id
+          and report.lesson_session_id = recent.session_id
+          and report.expires_at > pg_catalog.now()
       )
     ) order by recent.scheduled_start_at desc), '[]'::jsonb)
   into v_records
   from recent
   left join public.profiles as teacher on teacher.id = recent.teacher_id;
 
-  -- Aulas com transcrição guardada que o professor ainda não aprovou: o aluno
-  -- sabe que existem, sem ver o texto.
+  -- Aulas com transcrição/anotações guardadas esperando a revisão do
+  -- professor: o aluno sabe que existem, sem ver o texto. Sem resumo aprovado
+  -- E sem rejeição como última palavra: aula cuja versão mais recente foi
+  -- REJEITADA já foi revisada e não vai ganhar resumo (rascunho novo depois
+  -- da rejeição volta a contar).
   select count(*)::integer into v_pending
   from public.lesson_sessions as sess
   where sess.student_id = v_me.id
@@ -178,7 +223,15 @@ begin
       where sv.tenant_id = sess.tenant_id
         and sv.lesson_session_id = sess.id
         and sv.status = 'VERIFIED'
-    );
+    )
+    and coalesce((
+      select latest.status
+      from private.lesson_summary_versions as latest
+      where latest.tenant_id = sess.tenant_id
+        and latest.lesson_session_id = sess.id
+      order by latest.version desc
+      limit 1
+    ), '') <> 'REJECTED';
 
   -- Situação do termo do próprio aluno (a mesma régua que marca as aulas).
   select consent.decision, consent.signer_relation, consent.decided_at
@@ -197,7 +250,16 @@ begin
 
   -- Link vivo do termo (é por ele que se revoga sem falar com ninguém). Só a
   -- validade: o token não existe no banco, e o link fica no WhatsApp de quem
-  -- responde (o responsável, quando o cadastro exige).
+  -- responde (o responsável, quando o cadastro exige). E só link que se sabe
+  -- ter CHEGADO, porque a tela diz "o link que a escola mandou para o
+  -- WhatsApp":
+  --   * aberto pela família (first_opened_at, gravado pela página pública); ou
+  --   * mensagem do envio em lote aceita pelo provedor (accepted_at, o "SENT"
+  --     da lista da direção).
+  -- O lote cria o link quando ENFILEIRA (vale 30 dias a partir do horário
+  -- marcado), a mensagem pode nem sair (NOT_SENT não revoga o link) e o link
+  -- gerado à mão pode nunca ter sido mandado: nesses casos, nulo, e a tela
+  -- manda pedir à escola.
   select link.expires_at into v_link_expires
   from private.lesson_recording_consent_links as link
   where link.student_id = v_me.id
@@ -205,6 +267,17 @@ begin
     and link.revoked_at is null
     and link.blocked_at is null
     and link.expires_at > pg_catalog.now()
+    and (
+      link.first_opened_at is not null
+      or exists (
+        select 1
+        from private.lesson_recording_consent_requests as request
+        join public.notification_queue as queue on queue.id = request.notification_id
+        where request.link_id = link.id
+          and request.student_id = v_me.id
+          and queue.accepted_at is not null
+      )
+    )
   order by link.created_at desc
   limit 1;
 
@@ -255,4 +328,4 @@ revoke all on function public.get_my_lesson_records() from public, anon, service
 grant execute on function public.get_my_lesson_records() to authenticated;
 
 comment on function public.get_my_lesson_records() is
-  'Aluno autenticado: os próprios resumos APROVADOS do registro das aulas (sem texto bruto, sem cartão), até quando a cópia bruta fica no sistema, a situação do próprio termo e o contato da escola. Outros papéis: somente_o_aluno.';
+  'Aluno autenticado: os próprios resumos APROVADOS do registro das aulas (sem texto bruto, sem cartão), até quando cada cópia bruta (transcrição, anotações, presença) fica no sistema, a situação do próprio termo (validade do link só se ele chegou) e o contato da escola. Outros papéis: somente_o_aluno.';

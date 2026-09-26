@@ -49,7 +49,7 @@ export default function StudentLessonRecords() {
           <FileText size={24} className="text-brand-accent" /> Minhas aulas registradas
         </h1>
         <p className="mt-2 text-sm text-brand-muted">
-          Aqui ficam os resumos que o seu professor revisou e aprovou depois das aulas na sala da escola no Google Meet:
+          Aqui aparece, de cada aula registrada na sala da escola no Google Meet, o que o seu professor revisou e aprovou:
           o objetivo, o que foi praticado, o próximo passo e a lição combinada.
         </p>
       </div>
@@ -77,10 +77,15 @@ export default function StudentLessonRecords() {
 
       <section aria-labelledby="lesson-records-storage" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
         <h2 id="lesson-records-storage" className="text-lg font-bold text-brand-text">O que é guardado e por quanto tempo</h2>
+        {/* Cada frase aqui tem de ser verdade no sistema: o resumo aprovado
+            guarda mais do que a tela mostra (texto das anotações revisado,
+            dificuldades, trechos da aula) e é lido por outros professores do
+            aluno; só a transcrição e a presença brutas são exclusivas. */}
         <ul className="list-disc space-y-2 pl-5 text-sm text-brand-text">
-          <li><b>Resumo aprovado</b> (o que aparece nesta tela): fica no seu histórico enquanto você estudar na escola, para dar continuidade às aulas — inclusive se você trocar de professor.</li>
-          <li><b>Transcrição e anotações da aula</b>: a cópia no sistema da escola é apagada no prazo mostrado em cada aula (até 90 dias). Só o professor da aula, a coordenação e a direção têm acesso a ela — nem aqui ela aparece.</li>
-          <li><b>Arquivos originais do Google</b>: ficam na conta Google da escola, pelo prazo descrito no termo.</li>
+          <li><b>Resumo aprovado</b>: nesta tela aparecem o objetivo, o que foi praticado, o próximo passo e a lição. O resumo completo que o professor aprovou também pode trazer o texto das anotações da aula revisado por ele, as dificuldades e evoluções que ele observou e trechos da aula que sustentam o resumo. Ele fica no seu histórico enquanto você estudar na escola e é visto pelos seus professores, pela coordenação e pela direção — é o que dá continuidade às aulas, inclusive se você trocar de professor.</li>
+          <li><b>Rascunhos do resumo</b> (antes da aprovação ou recusados pelo professor): são vistos só pelo professor da aula, pela coordenação e pela direção, e não aparecem aqui.</li>
+          <li><b>Cópias da transcrição, das anotações do Google e do relatório de presença</b>: ficam no sistema da escola até a data mostrada em cada aula e depois são apagadas. A transcrição completa e a presença são vistas só pelo professor da aula, pela coordenação e pela direção. As anotações podem virar o texto do resumo aprovado depois da revisão do professor — aí seguem a regra do resumo.</li>
+          <li><b>Arquivos originais no Google</b>: ficam na conta Google da escola, que só a direção acessa, e a escola os apaga quando você pede. Se o termo (logo abaixo) marca um prazo para apagá-los, vale o prazo do termo.</li>
           <li>A aula não é gravada em vídeo.</li>
         </ul>
         {view.term && <details className="rounded-xl border border-brand-border p-3">
@@ -95,13 +100,16 @@ export default function StudentLessonRecords() {
         </h2>
         <p className="text-sm text-brand-text">{consentStatusText(view.consent)}</p>
         <p className="text-sm text-brand-muted">{revokeHowToText(view.consent)}</p>
-        <p className="text-sm text-brand-muted">Revogar vale para as aulas seguintes; o que já foi aprovado continua aqui, a menos que você peça a exclusão.</p>
+        <p className="text-sm text-brand-muted">Revogar vale para as aulas seguintes; o que já foi aprovado continua aqui. Para pedir que seja apagado, veja abaixo.</p>
       </section>
 
       <section aria-labelledby="lesson-records-exclusion" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
         <h2 id="lesson-records-exclusion" className="text-lg font-bold text-brand-text">Pedir a exclusão</h2>
+        {/* Só o que existe hoje: apagar os originais do Google a pedido é o que
+            o termo promete; o que está no sistema da escola (resumos, cópias)
+            ainda não tem porta própria — a escola responde ao pedido. */}
         <p className="text-sm text-brand-text">
-          Você pode pedir a qualquer momento que a escola{view.schoolName ? ` (${view.schoolName})` : ''} apague o registro das suas aulas: resumos aprovados, transcrições e os arquivos originais no Google.
+          Você pode pedir a exclusão do registro das suas aulas a qualquer momento, pelo WhatsApp da escola{view.schoolName ? ` (${view.schoolName})` : ''}. Os arquivos originais na conta Google da escola são apagados a seu pedido. Sobre o que está no sistema da escola — os resumos aprovados e as cópias ainda guardadas —, a escola responde ao seu pedido e diz o que foi apagado.
         </p>
         {exclusionUrl
           ? <a href={exclusionUrl} target="_blank" rel="noopener noreferrer"
@@ -127,6 +135,6 @@ const RecordCard: React.FC<{ record: StudentLessonRecord }> = ({ record }) => {
     </div>}
     {record.nextStep && <p className="text-sm text-brand-text"><span className="font-semibold">Próximo passo:</span> {record.nextStep}</p>}
     {record.homework && <p className="text-sm text-brand-text"><span className="font-semibold">Lição:</span> {record.homework}</p>}
-    <p className="text-xs text-brand-muted">{rawCopyText(record.rawCopyUntil)}</p>
+    <p className="text-xs text-brand-muted">{rawCopyText(record)}</p>
   </li>;
 };

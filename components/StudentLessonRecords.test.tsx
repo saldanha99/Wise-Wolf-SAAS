@@ -23,12 +23,13 @@ const response = {
       teacher_name: 'Teacher Lais', approved_at: '2026-09-23T19:00:00Z',
       lesson_objective: 'Pedir comida no restaurante', content_practiced: ['would like', 'menu vocabulary'],
       recommended_next_step: 'Praticar reclamação educada', homework_assigned: 'Gravar um áudio',
-      raw_copy_until: '2026-12-22T17:30:00Z',
+      transcript_until: '2026-12-12T17:30:00Z', notes_until: null, attendance_until: '2026-12-22T17:30:00Z',
     },
     {
       session_id: 's2', class_date: '2026-09-16', scheduled_start_at: '2026-09-16T17:00:00Z',
       teacher_name: 'Teacher Lais', lesson_objective: 'Past simple', content_practiced: [],
-      recommended_next_step: 'Verbos irregulares', homework_assigned: null, raw_copy_until: null,
+      recommended_next_step: 'Verbos irregulares', homework_assigned: null,
+      transcript_until: null, notes_until: null, attendance_until: null,
     },
   ],
 };
@@ -48,15 +49,34 @@ describe('<StudentLessonRecords />', () => {
     expect(within(first).getByText('would like')).toBeInTheDocument();
     expect(within(first).getByText('Praticar reclamação educada')).toBeInTheDocument();
     expect(within(first).getByText('Gravar um áudio')).toBeInTheDocument();
-    expect(within(first).getByText(/fica no sistema da escola até 22\/12\/2026/)).toBeInTheDocument();
+    expect(within(first).getByText(/transcrição até 12\/12\/2026 e relatório de presença até 22\/12\/2026/)).toBeInTheDocument();
 
     const second = screen.getByText('Past simple').closest('li')!;
     expect(within(second).queryByText(/Lição:/)).toBeNull();
-    expect(within(second).getByText(/já foi apagada do sistema/)).toBeInTheDocument();
+    expect(within(second).getByText(/Nenhuma cópia da transcrição, das anotações ou da presença/)).toBeInTheDocument();
 
-    expect(screen.getByText(/1 aula tem transcrição guardada esperando a revisão/)).toBeInTheDocument();
-    expect(screen.getByText(/Só o professor da aula, a coordenação e a direção/)).toBeInTheDocument();
+    expect(screen.getByText(/1 aula registrada está esperando a revisão do professor/)).toBeInTheDocument();
     expect(screen.getByText('Texto do termo vigente.')).toBeInTheDocument();
+  });
+
+  it('o que é guardado: não promete que "fica só o resumo" nem acesso exclusivo às anotações', async () => {
+    rpc.mockResolvedValue({ data: response, error: null });
+    const { container } = render(<StudentLessonRecords />);
+    await screen.findByText('Pedir comida no restaurante');
+    const text = container.textContent || '';
+
+    // O resumo aprovado guarda mais do que a tela mostra e é lido pelos
+    // professores do aluno — a tela diz isso.
+    expect(text).toMatch(/pode trazer o texto das anotações da aula revisado por ele/);
+    expect(text).toMatch(/visto pelos seus professores, pela coordenação e pela direção/);
+    expect(text).toMatch(/A transcrição completa e a presença são vistas só pelo professor da aula/);
+    expect(text).not.toMatch(/fica só (este|o) resumo/);
+    expect(text).not.toMatch(/pelo prazo descrito no termo/);
+    // Exclusão: só o que existe (originais do Google a pedido); o resto a
+    // escola responde. Nada de prometer apagar resumos e transcrições.
+    expect(text).toMatch(/Os arquivos originais na conta Google da escola são apagados a seu pedido/);
+    expect(text).toMatch(/a escola responde ao seu pedido/);
+    expect(text).not.toMatch(/apague o registro das suas aulas: resumos aprovados, transcrições/);
   });
 
   it('diz como revogar e leva o pedido de exclusão pronto ao WhatsApp da escola', async () => {
