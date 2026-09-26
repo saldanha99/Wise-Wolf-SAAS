@@ -208,6 +208,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-26-termo-em-lote',
+    title: 'Termo enviado pela escola',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'recording-consents-send',
+        view: 'recording-consents',
+        title: 'O termo sai pelo WhatsApp da escola 📨',
+        text: 'Um clique em "Enviar termo aos alunos pendentes" mostra quantas mensagens saem e em que horário — uma a cada 3 minutos, de segunda a sábado, das 9h às 20h — e só envia depois que você confirma. Menor de idade ou idade não cadastrada recebe pelo responsável. A lista mostra quem recebeu, abriu o link e respondeu; o reenvio libera 3 dias depois.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

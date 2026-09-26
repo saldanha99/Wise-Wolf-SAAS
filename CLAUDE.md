@@ -256,6 +256,12 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
   próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
   `security_definer_authorization_hardening.sql`.
+- **Envio do termo em lote** (migration `20260926210000`, seção própria no runbook): a direção confirma
+  na tela quantas mensagens e quando saem; fila `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a
+  cada 3 min, seg–sáb 9h–20h; menor **ou idade não cadastrada** → responsável, sem telefone dele = "sem
+  contato"; recusa/revogação nunca recebe de novo; reenvio só 3 dias depois; o processador revalida na
+  hora de mandar. ⚠️ `get_lesson_recording_consent_public` agora grava a abertura do link (VOLATILE) —
+  recriá-la sem `lesson_recording_note_link_opened` reprova `termo_de_registro_envio_em_lote.sql`.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.

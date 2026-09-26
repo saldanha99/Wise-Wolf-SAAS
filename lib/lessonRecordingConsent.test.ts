@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   asDecision,
   consentErrorMessage,
+  formatSendTime,
+  missingContactLabel,
+  notSentReasonLabel,
+  resendAllowed,
+  sendWindowText,
   consentLink,
   consentWhatsAppMessage,
   isFullName,
@@ -78,5 +83,45 @@ describe('respostas do servidor', () => {
     expect(asDecision('REVOKED')).toBe('REVOKED');
     expect(asDecision('outra')).toBe('NONE');
     expect(asDecision(null)).toBe('NONE');
+  });
+});
+
+describe('envio em lote', () => {
+  it('mostra o horário de Brasília com o dia da semana', () => {
+    // 26/09/2026 é sábado; 22:50 UTC = 19:50 em Brasília.
+    expect(formatSendTime('2026-09-26T22:50:00Z')).toBe('sáb 26/09 às 19:50');
+    expect(formatSendTime(null)).toBe('');
+    expect(formatSendTime('não é data')).toBe('');
+  });
+
+  it('descreve a janela do lote no mesmo dia e atravessando o domingo', () => {
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:38:00Z')).toBe('seg 28/09, das 14:05 às 14:38');
+    expect(sendWindowText('2026-09-26T22:50:00Z', '2026-09-28T12:12:00Z'))
+      .toBe('de sáb 26/09 às 19:50 até seg 28/09 às 09:12');
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:05:00Z')).toBe('seg 28/09 às 14:05');
+  });
+
+  it('reenvio só depois da data que o servidor liberou', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(resendAllowed('2026-09-28T11:59:00Z', now)).toBe(true);
+    expect(resendAllowed('2026-09-29T12:00:00Z', now)).toBe(false);
+    expect(resendAllowed(null, now)).toBe(false);
+  });
+
+  it('diz o que falta cadastrar para quem está sem contato', () => {
+    expect(missingContactLabel('idade_nao_cadastrada')).toContain('data de nascimento');
+    expect(missingContactLabel('menor_sem_telefone_do_responsavel')).toContain('responsável');
+    expect(missingContactLabel(undefined)).toContain('Sem telefone');
+  });
+
+  it('traduz o motivo de mensagem que não saiu', () => {
+    expect(notSentReasonLabel('aluno_ja_decidiu')).toBe('respondeu antes do envio');
+    expect(notSentReasonLabel('provider_http_400')).toBe('o WhatsApp recusou o envio');
+    expect(notSentReasonLabel('qualquer')).toBe('não saiu');
+  });
+
+  it('traduz os erros do envio', () => {
+    expect(consentErrorMessage('contagem_mudou')).toContain('Confira de novo');
+    expect(consentErrorMessage('ERROR: reenvio_so_depois_de_3_dias')).toContain('3 dias');
   });
 });
