@@ -460,6 +460,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.ts \
   supabase/functions/google-meet/provider.test.ts \
+  supabase/functions/google-meet/summary.ts \
+  supabase/functions/google-meet/summary.test.ts \
+  supabase/functions/google-meet/originals.ts \
+  supabase/functions/google-meet/originals.test.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/lesson-recording-code/core.ts \
   supabase/functions/lesson-recording-code/core.test.ts \
@@ -467,6 +471,12 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/lesson-planner/teacher-card.ts \
   supabase/functions/lesson-planner/teacher-card.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/lesson-planner/approved-lessons.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -727,8 +737,13 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.test.ts \
+  supabase/functions/google-meet/summary.test.ts \
+  supabase/functions/google-meet/originals.test.ts \
   supabase/functions/lesson-recording-code/core.test.ts \
   supabase/functions/lesson-planner/teacher-card.test.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
@@ -877,6 +892,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/student-renewal-billing/index.ts \
   scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
+  supabase/functions/google-meet/summary.ts \
+  supabase/functions/google-meet/originals.ts \
   supabase/functions/lesson-recording-code/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
@@ -908,6 +925,12 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/create-wolfie-topup/provider-safety.ts \
   supabase/functions/create-wolfie-topup/index.ts \
   supabase/functions/lesson-planner/index.ts \
+  supabase/functions/lesson-planner/approved-lessons.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/student-context/index.ts \
@@ -1439,6 +1462,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260926200000_termo_seguro_do_aluno.sql"
   "supabase/migrations/20260926210000_termo_de_registro_envio_em_lote.sql"
   "supabase/migrations/20260926220000_cartao_do_aluno_pelo_professor.sql"
+  "supabase/migrations/20260927100000_termo_v3_versao_e_retencao.sql"
+  "supabase/migrations/20260927110000_resumo_automatico_depois_da_aula.sql"
+  "supabase/migrations/20260927120000_originais_do_drive_para_a_lixeira.sql"
+  "supabase/migrations/20260927130000_planner_a_partir_das_aulas_aprovadas.sql"
+  "supabase/migrations/20260927140000_aluno_ve_o_proprio_registro.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
@@ -1450,6 +1478,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/termo_seguro_do_aluno.sql"
   "supabase/tests/termo_de_registro_envio_em_lote.sql"
   "supabase/tests/cartao_do_aluno_pelo_professor.sql"
+  "supabase/tests/termo_v3_versao_e_retencao.sql"
+  "supabase/tests/resumo_automatico_depois_da_aula.sql"
+  "supabase/tests/originais_do_drive_para_a_lixeira.sql"
+  "supabase/tests/planner_a_partir_das_aulas_aprovadas.sql"
+  "supabase/tests/aluno_ve_o_proprio_registro.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"
