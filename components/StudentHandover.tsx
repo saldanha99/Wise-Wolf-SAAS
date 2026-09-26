@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { readLearningCard } from '../lib/studentLearningCard';
+import StudentLearningCard from './StudentLearningCard';
 
 type Evidence = { id: string; occurred_at?: string; class_date?: string; lesson_objective?: string; content_practiced?: string[]; content_covered?: string; recurring_errors?: string[]; student_difficulties?: string; homework_assigned?: string; recommended_next_step?: string };
 export default function StudentHandover({ studentId }: { studentId: string }) {
-  const [data, setData] = useState<{ memories: Evidence[]; logs: Evidence[] } | null>(null);
+  const [data, setData] = useState<{ memories: Evidence[]; logs: Evidence[]; learning_card?: unknown } | null>(null);
   const [error, setError] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -17,6 +19,8 @@ export default function StudentHandover({ studentId }: { studentId: string }) {
     finally { setBusy(false); }
   }, [studentId]);
   useEffect(() => { setAcknowledged(false); void load(); }, [load]);
+  // Cartão preenchido pelo professor (get_student_handover → learning_card).
+  const learningCard = readLearningCard(data?.learning_card);
   const evidence = (entry: Evidence, kind: string) => <article key={entry.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
     <p className="text-xs text-slate-500">{kind} · {(entry.class_date || entry.occurred_at || '').slice(0, 10)}</p>
     <h4 className="mt-1 font-semibold">{entry.lesson_objective || 'Objetivo não registrado'}</h4>
@@ -33,6 +37,9 @@ export default function StudentHandover({ studentId }: { studentId: string }) {
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {!data && busy && <p>Carregando dossiê…</p>}
     {data && <>
+      {learningCard && <StudentLearningCard studentId={studentId} card={learningCard}
+        onSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)}
+        onReload={() => void load()} />}
       <h4 className="font-semibold">Memória revisada</h4>
       {data.memories.length ? data.memories.map(m => evidence(m, 'Memória revisada')) : <p className="text-sm text-slate-500">Ainda não há memória revisada.</p>}
       <h4 className="font-semibold">Lançamentos recentes — relato docente</h4>

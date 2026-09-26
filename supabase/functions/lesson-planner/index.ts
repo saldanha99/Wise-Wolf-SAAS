@@ -40,6 +40,12 @@ import {
   WISE_WOLF_PROMPT_VERSION,
   WISE_WOLF_TRAINING_ENGINE_PROMPT,
 } from "./wise-wolf-training-engine.ts";
+import {
+  plannerSignalsFor,
+  type ResolvedStudentSignals,
+  saoPauloTodayIso,
+  studentProfileSignalFields,
+} from "./teacher-card.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +89,10 @@ interface StudentProfileRow {
   occupation: string | null;
   personality: string | null;
   is_kids: boolean | null;
+  birth_date: string | null;
+  // Só para a régua de menor do cartão (nunca vão para o modelo).
+  guardian_id: string | null;
+  guardian_name: string | null;
   student_category: string | null;
   interests: unknown;
   preferred_topics: unknown;
@@ -157,6 +167,7 @@ function buildRetrievalQuery(
   const settings: Record<string, unknown> = isRecord(student.wolfie_settings)
     ? student.wolfie_settings
     : {};
+  const signals = plannerStudentSignals(student, context);
   return redactDirectIdentifiers(JSON.stringify({
     school: "Wise Wolf Language",
     artifact: request.taskMode,
@@ -172,13 +183,7 @@ function buildRetrievalQuery(
         (student.is_kids ? "child_8_11" : student.student_category),
       60,
     ),
-    primary_goal: boundedText(
-      intelligence.primary_goal ??
-        student.short_term_goal ??
-        student.english_for ??
-        student.learning_objective,
-      800,
-    ),
+    primary_goal: signals.primaryGoal,
     recurring_needs: [
       ...safeArray(intelligence.recurring_grammar_errors, 5),
       ...safeArray(intelligence.recurring_pronunciation_issues, 5),
@@ -212,6 +217,9 @@ async function requireStudentAccess(
         "occupation",
         "personality",
         "is_kids",
+        "birth_date",
+        "guardian_id",
+        "guardian_name",
         "student_category",
         "interests",
         "preferred_topics",
@@ -366,6 +374,7 @@ async function loadPlannerContext(
     previousPlansResult,
     materialsResult,
     knowledgeBaseResult,
+    teacherCardResult,
   ] = await Promise.all([
     db.from("wolf_intelligence").select(
       [
@@ -425,6 +434,12 @@ async function loadPlannerContext(
     ).eq("tenant_id", tenantId).eq("purpose", "WISE_WOLF_PLANNER")
       .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
       .order("version", { ascending: false }).limit(1).maybeSingle(),
+    // Cartão do aluno preenchido pelo professor (migration 20260926220000),
+    // pela RPC que já aplica a regra de menor do banco.
+    db.rpc("student_learning_card_for_planner", {
+      p_tenant: tenantId,
+      p_student: studentId,
+    }),
   ]);
 
   const namedResults = [
@@ -448,8 +463,18 @@ async function loadPlannerContext(
     }
   }
 
+  // O cartão melhora o plano, mas não pode derrubá-lo: o Planner já ficou
+  // meses fora do ar. Sem o cartão, o plano sai com o que o Wolfie inferiu.
+  if (teacherCardResult.error) {
+    console.error("Planner teacher card lookup failed", {
+      requestId,
+      code: teacherCardResult.error.code,
+    });
+  }
+
   return {
     intelligence: intelligenceResult.data,
+    teacherCard: teacherCardResult.error ? null : teacherCardResult.data,
     memoryItems: memoryItemsResult.data,
     reports: reportsResult.data,
     learningMemories: learningMemoriesResult.data,
@@ -458,6 +483,22 @@ async function loadPlannerContext(
     materials: materialsResult.data,
     knowledgeBase: knowledgeBaseResult.data as KnowledgeBaseRow | null,
   };
+}
+
+/**
+ * Objetivo, temas, o que evitar e estilo de correção: o cartão do professor
+ * vence o que o Wolfie inferiu (wolf_intelligence) e as colunas de profiles.
+ */
+function plannerStudentSignals(
+  student: StudentProfileRow,
+  context: Awaited<ReturnType<typeof loadPlannerContext>>,
+): ResolvedStudentSignals {
+  return plannerSignalsFor(
+    student,
+    context.intelligence,
+    context.teacherCard,
+    saoPauloTodayIso(),
+  );
 }
 
 function buildModelInput(
@@ -472,6 +513,7 @@ function buildModelInput(
   const settings: Record<string, unknown> = isRecord(student.wolfie_settings)
     ? student.wolfie_settings
     : {};
+  const signals = plannerStudentSignals(student, context);
 
   const studentProfile = {
     student_reference: "selected_student",
@@ -486,13 +528,9 @@ function buildModelInput(
       60,
       "não informado",
     ),
-    primary_goal: boundedText(
-      intelligence.primary_goal ??
-        student.short_term_goal ??
-        student.english_for ??
-        student.learning_objective,
-      800,
-    ),
+    // Objetivo, temas, o que evitar, estilo de correção e observação do
+    // professor: o cartão vence (teacher-card.ts).
+    ...studentProfileSignalFields(signals),
     secondary_goals: safeArray(intelligence.secondary_goals),
     profession_or_context: boundedText(
       intelligence.job_role ??
@@ -501,16 +539,8 @@ function buildModelInput(
       400,
     ),
     industry: boundedText(intelligence.industry, 300),
-    preferred_topics: safeArray(
-      intelligence.interests ?? student.preferred_topics ?? student.interests,
-    ),
-    topics_to_avoid: safeArray(student.avoided_topics),
     long_term_goal: boundedText(student.long_term_goal, 800),
     learning_style_note: boundedText(student.personality, 500),
-    preferred_correction_mode: boundedText(
-      intelligence.preferred_correction_mode,
-      60,
-    ),
     preferred_language_mode: boundedText(
       intelligence.preferred_language_mode,
       60,
