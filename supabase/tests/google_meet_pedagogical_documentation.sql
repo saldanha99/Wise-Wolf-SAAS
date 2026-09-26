@@ -10,6 +10,11 @@ declare
   today date:=(now() at time zone 'America/Sao_Paulo')::date;
 begin
   perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+  -- A fila do Meet é global (todas as escolas, 30 por vez) e este teste confere a
+  -- ORDEM dela. No release ele roda no banco de produção: um job real vencido na
+  -- frente (sala urgente, re-consulta) reprovaria o teste sem defeito nenhum. As
+  -- conexões reais saem do ar só dentro desta transação (o rollback devolve).
+  update private.google_workspace_connections set status='REAUTH_REQUIRED' where status='CONNECTED';
   insert into public.tenants(id,name) values('meet-docs-fixture','Meet docs fixture'),('meet-other-fixture','Meet other fixture');
   insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
     (admin_id,'meet-admin@example.invalid','{"provider":"email"}','{"test_fixture":true}'),

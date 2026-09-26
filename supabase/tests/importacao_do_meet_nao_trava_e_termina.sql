@@ -61,6 +61,12 @@ declare
   v_attempt integer;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  -- A fila do Meet é global (todas as escolas, 30 por vez). No release este teste
+  -- roda no banco de produção: com 30 jobs reais vencidos na frente (re-consultas
+  -- depois de uma queda, primeiras importações do dia), as sessões de teste
+  -- sumiriam da lista e o teste reprovaria sem defeito nenhum. As conexões reais
+  -- saem do ar só dentro desta transação (o rollback devolve).
+  update private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED';
   insert into public.tenants (id, name) values ('meet-fila-fixture', 'Fila do Meet fixture');
   insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data) values
     (v_admin, 'fila-admin@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
