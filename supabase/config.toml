@@ -60,3 +60,8 @@ entrypoint = "./functions/cancel-prepaid-invoice/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/student-card-notify/index.ts"
+
+[functions.gamma-book-generator]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/gamma-book-generator/index.ts"

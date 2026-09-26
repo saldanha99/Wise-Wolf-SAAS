@@ -274,6 +274,7 @@ docker inspect supabase-auth --format '{{.State.Running}}' | grep -qx true
 docker exec supabase-edge-functions sh -lc \
   'test -n "${OPENAI_API_KEY:-}" &&
    test -n "${OPENROUTER_API_KEY:-}" &&
+   test -n "${GAMMA_API_KEY:-}" &&
    test -n "${EVOLUTION_API_URL:-}" &&
    test -n "${EVOLUTION_API_KEY:-}" &&
    test -n "${WHATSAPP_INBOUND_TOKEN:-}" &&
@@ -645,6 +646,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/gamma-book-generator/book-spec.ts \
+  supabase/functions/gamma-book-generator/book-spec.test.ts \
+  supabase/functions/gamma-book-generator/index.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -815,6 +819,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/gamma-book-generator/book-spec.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1403,6 +1408,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923194310_notify_enrollment_completion_and_persist_terms.sql"
   "supabase/migrations/20260923200000_allow_enrollment_before_trial_feedback.sql"
   "supabase/migrations/20260924194214_affiliate_coupon_commission_settlement.sql"
+  "supabase/migrations/20260925022856_gamma_school_book_generator.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
@@ -1537,6 +1543,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
   "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
   "supabase/tests/gerador_de_material_do_hub.sql"
+  "supabase/tests/gamma_school_book_generator.sql"
   "supabase/tests/assentos_de_aluno_no_hub.sql"
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
   "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
@@ -1693,6 +1700,7 @@ HARDENED_FUNCTIONS=(
   whatsapp-notificacao-matricula
   whatsapp-notificacao-wise
   wolfie-healthcheck
+  gamma-book-generator
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -4400,6 +4408,12 @@ wait_for_http_status 401 "autenticação da IA do Hub" \
   -X POST "$api_url/functions/v1/pedagogical-content" \
   -H 'Content-Type: application/json' \
   --data '{"hubMode":true,"prompt":"teste de autenticação sem credenciais"}'
+wait_for_http_status 200 "preflight do gerador de livros" \
+  -X OPTIONS "$api_url/functions/v1/gamma-book-generator"
+wait_for_http_status 401 "autenticação do gerador de livros" \
+  -X POST "$api_url/functions/v1/gamma-book-generator" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"create"}'
 wait_for_http_status 200 "preflight do Wolfie do Hub" \
   -X OPTIONS "$api_url/functions/v1/wolf-tutor-api"
 wait_for_http_status 401 "autenticação do Wolfie do Hub" \

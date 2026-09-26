@@ -6,6 +6,7 @@ import confetti from 'canvas-confetti';
 import { PROFILE_SAFE_COLS } from '../constants';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import MaterialsLibrary from './MaterialsLibrary';
+import SchoolBookGenerator from './SchoolBookGenerator';
 
 interface PedagogicalConfigProps {
   user: User;
@@ -13,7 +14,7 @@ interface PedagogicalConfigProps {
 }
 
 const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId }) => {
-  const [activeTab, setActiveTab] = useState<'allocation' | 'materials'>('allocation');
+  const [activeTab, setActiveTab] = useState<'allocation' | 'materials' | 'book-generator'>('allocation');
   const [loading, setLoading] = useState(true);
 
   // Allocation State
@@ -65,6 +66,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
   const isTeacher = user.role === UserRole.TEACHER;
   const canUpload = isTeacher || user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canGenerateBook = isTeacher || user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
   const canRequestHubPublication = user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
   const canApproveHubPublication = user.role === UserRole.SUPER_ADMIN;
 
@@ -488,6 +490,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         <div className="flex overflow-x-auto gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
           <button onClick={() => setActiveTab('allocation')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
           <button onClick={() => setActiveTab('materials')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
+          {canGenerateBook && <button onClick={() => setActiveTab('book-generator')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'book-generator' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Gerar livro</button>}
         </div>
       </div>
 
@@ -667,6 +670,17 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'book-generator' && canGenerateBook && (
+        <SchoolBookGenerator
+          user={user}
+          tenantId={tenantId || user.tenantId}
+          niches={nicheOptions}
+          onLibraryChanged={async () => {
+            await Promise.all([fetchMaterials(), loadCollections()]);
+          }}
+        />
       )}
 
       {/* Modal de edição de material (diretor) */}
