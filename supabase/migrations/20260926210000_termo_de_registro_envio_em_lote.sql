@@ -16,14 +16,18 @@
 --   próprio e uma linha na notification_queue (kind
 --   LESSON_RECORDING_CONSENT_REQUEST), idempotente por aluno + versão do termo
 --   (+ número da tentativa, para o reenvio);
--- - o link guarda os telefones do cadastro (student_phone/guardian_phone, as
---   colunas de 20260926200000): a mensagem e o código de confirmação vão para
---   o MESMO número;
--- - para quem vai é a regra de 20260926200000: sem data de nascimento atestada
---   pela escola, responde o responsável. O telefone do responsável só vale se
---   a escola verificou o contato, ou se quem gravou por último não foi o
---   próprio aluno e não é o número dele (o aluno pode editar o próprio
---   cadastro pela API). Sem isso, o aluno aparece como "sem contato";
+-- - o link guarda os telefones atestados (student_phone/guardian_phone, as
+--   colunas que o trigger de 20260926200000 congela): a mensagem e o código de
+--   confirmação vão para o MESMO número;
+-- - para quem vai e em que número é a regra de 20260926200000, sem régua
+--   própria: sem data de nascimento atestada pela escola, responde o
+--   responsável, no telefone ATESTADO (private.lesson_recording_guardian_phone:
+--   contato verificado pela escola, ou telefone/vínculo cuja última gravação
+--   na trilha foi da direção, da coordenação ou da matrícula). É o mesmo
+--   número que o trigger congela no link e para onde o código vai. Número do
+--   responsável igual ao do aluno NÃO bloqueia (família que divide o celular);
+--   o painel só pede para conferir. Sem telefone atestado, o aluno aparece
+--   como "sem contato";
 -- - o envio é ESPALHADO: uma mensagem a cada 3 minutos (no máximo 5 a cada
 --   15 min), só de segunda a sábado, das 9h às 20h (horário de Brasília). A
 --   janela e o ritmo valem NA HORA DE MANDAR, não só no agendamento: o
@@ -118,93 +122,24 @@ language sql stable security definer set search_path = '' as $$
   where tenant.id = p_tenant;
 $$;
 
--- O último valor do campo foi gravado pelo próprio aluno? Lê a trilha genérica
--- de profiles (audit_logs, trigger trg_audit_profiles, com o auth.uid() de
--- quem gravou). Sem trilha (valor antigo, cadastro pela escola ou por service
--- role), não.
-create or replace function private.lesson_recording_field_written_by_student(p_student uuid, p_field text)
-returns boolean
-language sql stable security definer set search_path = '' as $$
-  select coalesce((
-    select log.user_id = p_student
-    from public.audit_logs as log
-    where log.resource_type = 'profiles'
-      and log.resource_id = p_student::text
-      and (
-        (log.action = 'UPDATE' and log.diff ? p_field)
-        or (log.action = 'INSERT' and log.new_values ->> p_field is not null)
-      )
-    order by log.created_at desc
-    limit 1
-  ), false);
-$$;
-
--- Telefone do responsável em que a escola pode confiar para mandar o termo e
--- o código: (1) contato GUARDIAN verificado pela escola; (2) guardian_phone
--- do cadastro, se quem gravou por último não foi o próprio aluno e não é o
--- número dele; (3) telefone do perfil de guardian_id, da MESMA escola, ativo,
--- vínculo não gravado pelo próprio aluno e diferente do número dele.
-create or replace function private.lesson_recording_trusted_guardian_phone(p_student uuid)
-returns text
-language plpgsql stable security definer set search_path = '' as $$
-declare
-  v_student public.profiles;
-  v_own text[];
-  v_phone text;
-begin
-  select * into v_student from public.profiles where id = p_student;
-  if not found then
-    return null;
-  end if;
-  v_own := array_remove(array[
-    private.lesson_recording_normalize_phone(v_student.phone),
-    private.lesson_recording_normalize_phone(v_student.attendance_phone)
-  ], null);
-
-  select private.lesson_recording_normalize_phone(contact.phone) into v_phone
-  from public.student_quality_contacts as contact
-  where contact.student_id = p_student
-    and contact.tenant_id = v_student.tenant_id
-    and contact.relationship = 'GUARDIAN'
-    and contact.active and contact.verified_at is not null
-  order by contact.verified_at desc
-  limit 1;
-  if v_phone is not null then
-    return v_phone;
-  end if;
-
-  v_phone := private.lesson_recording_normalize_phone(v_student.guardian_phone);
-  if v_phone is not null
-     and not exists (
-       select 1 from unnest(v_own) as own(phone)
-       where private.notification_phones_same_recipient(own.phone, v_phone)
-     )
-     and not private.lesson_recording_field_written_by_student(p_student, 'guardian_phone') then
-    return v_phone;
-  end if;
-
-  select private.lesson_recording_normalize_phone(guardian.phone) into v_phone
-  from public.profiles as guardian
-  where guardian.id = v_student.guardian_id
-    and guardian.id <> v_student.id
-    and guardian.tenant_id = v_student.tenant_id
-    and pg_catalog.lower(pg_catalog.btrim(coalesce(guardian.lifecycle_status, ''))) = 'active';
-  if v_phone is not null
-     and not exists (
-       select 1 from unnest(v_own) as own(phone)
-       where private.notification_phones_same_recipient(own.phone, v_phone)
-     )
-     and not private.lesson_recording_field_written_by_student(p_student, 'guardian_id') then
-    return v_phone;
-  end if;
-  return null;
-end;
-$$;
+-- Telefone do responsável: a régua é UMA só, a de 20260926200000
+-- (private.lesson_recording_guardian_phone — contato verificado pela escola,
+-- ou guardian_phone/guardian_id cuja última gravação na trilha
+-- profile_audit_log foi da direção, da coordenação ou da matrícula). É ela que
+-- o trigger congela no link e para onde o código vai; o lote usa a mesma para
+-- a mensagem sair no número do código. Número igual ao do aluno não bloqueia
+-- (família que divide o celular: a escola atestou) — list_lesson_recording_consents
+-- marca guardian_phone_same_as_student para o painel pedir conferência.
+-- A régua paralela que esta migration tinha (trilha audit_logs e "diferente do
+-- número do aluno") nunca foi publicada; se sobrou num banco de teste, sai.
+drop function if exists private.lesson_recording_trusted_guardian_phone(uuid);
+drop function if exists private.lesson_recording_field_written_by_student(uuid, text);
 
 -- Para quem vai o termo do aluno e em que número, e os dois telefones que o
 -- link guarda para o código. Quem responde é a regra de 20260926200000
 -- (lesson_recording_guardian_reason: sem idade atestada pela escola, o
--- responsável); o telefone do aluno é o mesmo helper do link manual.
+-- responsável); os telefones são os mesmos helpers que congelam o link
+-- (lesson_recording_student_phone / lesson_recording_guardian_phone).
 create or replace function private.lesson_recording_request_target(p_student uuid)
 returns table (
   recipient text,
@@ -226,15 +161,16 @@ begin
 
   v_reason := private.lesson_recording_guardian_reason(p_student);
   v_student_phone := private.lesson_recording_student_phone(p_student);
-  v_guardian_phone := private.lesson_recording_trusted_guardian_phone(p_student);
+  v_guardian_phone := private.lesson_recording_guardian_phone(p_student);
 
   if v_reason is not null then
     return query select 'GUARDIAN'::text, v_guardian_phone,
       case
         when v_guardian_phone is not null then null
-        -- Há telefone de responsável no cadastro, mas foi o próprio aluno que
-        -- gravou (ou é o número dele): a escola confirma antes.
-        when private.lesson_recording_guardian_phone(p_student) is not null then 'responsavel_nao_confirmado'
+        -- Há telefone ou vínculo de responsável no cadastro, mas nenhum
+        -- atestado pela escola (gravado pelo próprio aluno, sem trilha, ou
+        -- responsável de outra escola): a escola confirma antes.
+        when private.lesson_recording_guardian_phone_unconfirmed(p_student) then 'responsavel_nao_confirmado'
         when v_reason = 'AGE_UNKNOWN' then 'idade_nao_cadastrada'
         else 'menor_sem_telefone_do_responsavel'
       end,
@@ -473,9 +409,10 @@ end;
 $$;
 
 -- Cria o link e a mensagem de UM aluno e põe na fila. Chamado pelo lote e pelo
--- reenvio, já com a trava da escola. O link guarda os telefones do cadastro
--- (o código de confirmação vai para o telefone do destinatário, o mesmo desta
--- mensagem) e passa a ser o ÚNICO vivo do aluno: os anteriores (outro envio,
+-- reenvio, já com a trava da escola. O link guarda os telefones atestados
+-- (congelados pelo trigger de 20260926200000; o código de confirmação vai para
+-- o telefone do destinatário, o mesmo desta mensagem — conferido depois do
+-- insert) e passa a ser o ÚNICO vivo do aluno: os anteriores (outro envio,
 -- link gerado à mão) são revogados — um número errado corrigido não continua
 -- com um link que decide pelo aluno.
 create or replace function private.lesson_recording_enqueue_request(
@@ -502,6 +439,7 @@ declare
   v_key text := 'lesson-recording-consent:' || p_student::text || ':' || p_term_version || ':' || p_attempt::text;
   v_token text := encode(extensions.gen_random_bytes(32), 'hex');
   v_link uuid;
+  v_link_phone text;
   v_message text;
   v_notification uuid;
 begin
@@ -520,13 +458,22 @@ begin
     return null;
   end if;
 
+  -- Os telefones do link são congelados pelo trigger de 20260926200000
+  -- (lesson_recording_freeze_link_phones), que ignora o que o criador manda.
+  -- A mensagem tem de ir para o MESMO número em que o código vai chegar: se o
+  -- congelado não é o destino desta mensagem, nada entra (fail-closed).
   insert into private.lesson_recording_consent_links (
-    tenant_id, student_id, token_hash, created_by, expires_at, student_phone, guardian_phone
+    tenant_id, student_id, token_hash, created_by, expires_at
   ) values (
     p_tenant, p_student, encode(extensions.digest(v_token, 'sha256'), 'hex'), p_actor,
-    p_slot + interval '30 days', p_student_phone, p_guardian_phone
+    p_slot + interval '30 days'
   )
-  returning id into v_link;
+  returning id,
+    case p_recipient when 'GUARDIAN' then guardian_phone else student_phone end
+    into v_link, v_link_phone;
+  if v_link_phone is distinct from p_destination then
+    raise exception 'destino_diferente_do_link' using errcode = '22023';
+  end if;
 
   v_message := private.lesson_recording_request_message(
     p_student_name, p_school_name, p_portal, v_token, p_recipient, p_context
@@ -1106,8 +1053,6 @@ begin
   foreach v_signature in array array[
     'private.lesson_recording_is_direction(text)',
     'private.lesson_recording_portal_url(text)',
-    'private.lesson_recording_field_written_by_student(uuid,text)',
-    'private.lesson_recording_trusted_guardian_phone(uuid)',
     'private.lesson_recording_request_target(uuid)',
     'private.lesson_recording_request_roster(text)',
     'private.lesson_recording_send_slot(timestamp with time zone)',

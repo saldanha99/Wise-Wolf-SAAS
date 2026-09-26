@@ -255,7 +255,7 @@ const MISSING_CONTACT: Record<string, string> = {
     'Idade não confirmada pela escola e sem telefone do responsável. Cadastre a data de nascimento (maior de idade recebe no próprio número) ou o telefone do responsável.',
   menor_sem_telefone_do_responsavel: 'Menor de idade sem telefone do responsável no cadastro.',
   responsavel_nao_confirmado:
-    'O telefone do responsável no cadastro não foi confirmado pela escola (foi gravado pelo próprio aluno, é o número dele ou de um responsável de fora). Confirme o contato em Qualidade dos contatos.',
+    'O telefone do responsável no cadastro não foi confirmado pela escola (foi gravado pelo próprio aluno, não tem registro de quem gravou ou é de um responsável de fora da escola). Confirme o contato em Qualidade dos contatos.',
   sem_telefone: 'Sem telefone no cadastro.',
 };
 

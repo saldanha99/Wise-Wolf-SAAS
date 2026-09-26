@@ -1,7 +1,8 @@
 -- Envio do termo de registro em lote (migration 20260926210000, sobre
 -- 20260926200000): quem entra, para quem vai (idade não atestada pela escola
--- e menor -> responsável; telefone do responsável gravado pelo próprio aluno,
--- igual ao dele ou de outra escola não vale), idempotência por aluno + versão,
+-- e menor -> responsável; telefone do responsável só o ATESTADO, a régua de
+-- 20260926200000: gravado pelo próprio aluno ou de outra escola não vale, igual
+-- ao do aluno vale e só pede conferência), idempotência por aluno + versão,
 -- espaçamento no agendamento E na hora de mandar (janela, ritmo, validade),
 -- link com os telefones do código (a família consegue responder), um link
 -- vivo por aluno, reenvio só depois de 3 dias (na hora se o contato mudou),
@@ -83,13 +84,13 @@ begin
     'enfileiramento ou revalidação crus expostos'
   );
   -- A página pública grava a abertura E continua sendo a de 20260926200000
-  -- (motivo do responsável e telefones mascarados): recriar a partir do texto
-  -- antigo apagaria o fluxo do código.
+  -- (campos do código em lesson_recording_public_link_fields e o link
+  -- bloqueado): recriar a partir do texto antigo apagaria o fluxo do código.
   perform pg_temp.lot_assert(
     has_function_privilege('anon', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE')
     and v_public like '%lesson_recording_note_link_opened%'
-    and v_public like '%guardian_reason%'
-    and v_public like '%guardian_phone_masked%'
+    and v_public like '%|| private.lesson_recording_public_link_fields(v_link.id)%'
+    and v_public like '%''blocked'', true%'
     and (select provolatile = 'v' from pg_proc
       where oid = 'public.get_lesson_recording_consent_public(text)'::regprocedure),
     'a página pública não registra a abertura, perdeu a rota anônima ou perdeu o que 20260926200000 pôs nela'
@@ -328,20 +329,26 @@ begin
   update public.profiles set guardian_phone = '5511988880021' where id = v_selfguardian;
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
-  -- Para quem vai: responsável de confiança, ou sem contato.
+  -- Para quem vai: o responsável ATESTADO (a mesma régua do código), ou sem contato.
   perform pg_temp.lot_assert(
     (select target.recipient = 'GUARDIAN' and target.destination is null
         and target.missing_reason = 'responsavel_nao_confirmado'
       from private.lesson_recording_request_target(v_selfguardian) as target),
     'mandaria o termo ao telefone de responsável gravado pelo próprio aluno'
   );
+  -- Responsável com o MESMO número do aluno, gravado pela escola: vale (família
+  -- que divide o celular) — o painel só pede conferência. É o número do código.
   perform pg_temp.lot_assert(
-    (select target.destination is null and target.missing_reason = 'responsavel_nao_confirmado'
+    (select target.recipient = 'GUARDIAN' and target.destination = '5511988880023'
+        and target.missing_reason is null
+        and target.destination = private.lesson_recording_guardian_phone(v_ownphone_guardian)
+        and private.lesson_recording_same_phone(target.destination,
+          (select phone from public.profiles where id = v_ownphone_guardian))
       from private.lesson_recording_request_target(v_ownphone_guardian) as target),
-    'mandaria o termo ao próprio número do aluno cadastrado como responsável'
+    'responsável atestado com o mesmo número do aluno ficou sem o termo (ou fora do número do código)'
   );
   perform pg_temp.lot_assert(
-    (select target.destination is null and target.missing_reason = 'idade_nao_cadastrada'
+    (select target.destination is null and target.missing_reason = 'responsavel_nao_confirmado'
       from private.lesson_recording_request_target(v_foreign_guardian) as target),
     'responsável de outra escola recebeu o termo'
   );
@@ -388,20 +395,20 @@ begin
   -- Prévia da direção.
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   v_preview := public.preview_lesson_recording_consent_batch();
-  perform pg_temp.lot_assert((v_preview ->> 'to_send')::integer = 12,
+  perform pg_temp.lot_assert((v_preview ->> 'to_send')::integer = 13,
     'prévia contou errado quem recebe: ' || v_preview::text);
-  perform pg_temp.lot_assert((v_preview ->> 'to_guardians')::integer = 3, 'prévia contou errado os responsáveis');
+  perform pg_temp.lot_assert((v_preview ->> 'to_guardians')::integer = 4, 'prévia contou errado os responsáveis');
   perform pg_temp.lot_assert((v_preview ->> 'term_updated')::integer = 1, 'prévia não viu quem aceitou versão antiga');
   perform pg_temp.lot_assert((v_preview ->> 'reconfirm')::integer = 1, 'prévia não viu o aceite que deixou de valer');
-  perform pg_temp.lot_assert((v_preview ->> 'no_contact')::integer = 5,
+  perform pg_temp.lot_assert((v_preview ->> 'no_contact')::integer = 4,
     'prévia não contou os sem contato: ' || v_preview::text);
   perform pg_temp.lot_assert((v_preview ->> 'manual_link_recent')::integer = 1,
     'prévia não separou quem recebeu link à mão agora');
   perform pg_temp.lot_assert((v_preview ->> 'portal_ok')::boolean, 'escola com portal apareceu sem portal');
   perform pg_temp.lot_assert((v_preview ->> 'first_at')::timestamptz > now(), 'lote começaria no passado');
   perform pg_temp.lot_assert(
-    (v_preview ->> 'last_at')::timestamptz - (v_preview ->> 'first_at')::timestamptz >= interval '33 minutes',
-    '12 mensagens caberiam em menos de 33 minutos'
+    (v_preview ->> 'last_at')::timestamptz - (v_preview ->> 'first_at')::timestamptz >= interval '36 minutes',
+    '13 mensagens caberiam em menos de 36 minutos'
   );
   perform pg_temp.lot_assert(
     not exists (select 1 from public.notification_queue where tenant_id = 'rec-lot-fixture'),
@@ -410,7 +417,7 @@ begin
 
   -- Contagem diferente da mostrada: nada entra.
   v_blocked := false;
-  begin perform public.enqueue_lesson_recording_consent_batch(11);
+  begin perform public.enqueue_lesson_recording_consent_batch(12);
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.lot_assert(v_blocked, 'aceitou lote com contagem diferente da prévia');
   perform pg_temp.lot_assert(
@@ -418,24 +425,24 @@ begin
     'lote recusado deixou pedido para trás'
   );
 
-  v_result := public.enqueue_lesson_recording_consent_batch(12);
-  perform pg_temp.lot_assert((v_result ->> 'queued')::integer = 12, 'lote não enfileirou os 12');
+  v_result := public.enqueue_lesson_recording_consent_batch(13);
+  perform pg_temp.lot_assert((v_result ->> 'queued')::integer = 13, 'lote não enfileirou os 13');
   perform pg_temp.lot_assert(
     (select count(*) from public.notification_queue
       where tenant_id = 'rec-lot-fixture' and notification_kind = 'LESSON_RECORDING_CONSENT_REQUEST'
-        and status = 'pending' and teacher_id is null and scheduled_for > now()) = 12,
-    'fila não recebeu 12 mensagens agendadas da escola'
+        and status = 'pending' and teacher_id is null and scheduled_for > now()) = 13,
+    'fila não recebeu 13 mensagens agendadas da escola'
   );
   perform pg_temp.lot_assert(
     (select count(*) from public.notification_queue
       where tenant_id = 'rec-lot-fixture'
-        and idempotency_key = 'lesson-recording-consent:' || student_id::text || ':' || v_version || ':1') = 12,
+        and idempotency_key = 'lesson-recording-consent:' || student_id::text || ':' || v_version || ':1') = 13,
     'chave de idempotência fora do padrão aluno + versão'
   );
   perform pg_temp.lot_assert(
     not exists (select 1 from public.notification_queue where student_id in
       (v_unknown_nocontact, v_minor_nocontact, v_refused, v_revoked, v_accepted_current, v_inactive,
-       v_test_account, v_late, v_selfguardian, v_ownphone_guardian, v_foreign_guardian, v_manual)),
+       v_test_account, v_late, v_selfguardian, v_foreign_guardian, v_manual)),
     'mandou para quem já decidiu, está inativo, é teste, não tem contato confiável ou acabou de receber à mão'
   );
 
@@ -450,7 +457,7 @@ begin
       where request.tenant_id = 'rec-lot-fixture'
         and request.destination = queue.student_phone
         and request.destination = case request.recipient
-          when 'GUARDIAN' then link.guardian_phone else link.student_phone end) = 12,
+          when 'GUARDIAN' then link.guardian_phone else link.student_phone end) = 13,
     'link do lote sem o telefone do destinatário'
   );
   perform pg_temp.lot_assert(
@@ -471,6 +478,10 @@ begin
   perform pg_temp.lot_assert(
     (select student_phone from public.notification_queue where student_id = v_reconfirm) = '5511988880020',
     'aceite que deixou de valer não pediu ao responsável'
+  );
+  perform pg_temp.lot_assert(
+    (select student_phone from public.notification_queue where student_id = v_ownphone_guardian) = '5511988880023',
+    'responsável atestado com o mesmo número do aluno não recebeu'
   );
   perform pg_temp.lot_assert(
     (select student_phone from public.notification_queue where student_id = v_adult) = '5511988880001',
@@ -551,11 +562,11 @@ begin
   v_result := public.enqueue_lesson_recording_consent_batch(0);
   perform pg_temp.lot_assert((v_result ->> 'queued')::integer = 0, 'segundo lote enfileirou algo');
   v_blocked := false;
-  begin perform public.enqueue_lesson_recording_consent_batch(12);
+  begin perform public.enqueue_lesson_recording_consent_batch(13);
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.lot_assert(v_blocked, 'repetir a contagem antiga passou');
   perform pg_temp.lot_assert(
-    (select count(*) from public.notification_queue where tenant_id = 'rec-lot-fixture') = 12,
+    (select count(*) from public.notification_queue where tenant_id = 'rec-lot-fixture') = 13,
     'fila duplicou mensagens'
   );
 
