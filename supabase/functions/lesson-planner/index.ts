@@ -37,9 +37,24 @@ import {
 } from "./core.ts";
 import {
   PLANNER_RESULT_JSON_SCHEMA,
-  WISE_WOLF_PROMPT_VERSION,
   WISE_WOLF_TRAINING_ENGINE_PROMPT,
 } from "./wise-wolf-training-engine.ts";
+import {
+  APPROVED_LESSON_COLUMNS,
+  APPROVED_LESSONS_SYSTEM_PROMPT,
+  approvedLessonBasis,
+  approvedLessonsPromptBlock,
+  continueFrom,
+  legacyContentWithBasis,
+  LESSON_PLANNER_PROMPT_VERSION,
+  MEET_APPROVED_LESSON_LIMIT,
+  normalizeApprovedMeetLessons,
+  recurringErrorsToTarget,
+} from "./approved-lessons.ts";
+import {
+  PLANNER_ACCESS_DENIED_MESSAGE,
+  teacherPlannerAccess,
+} from "./access.ts";
 import {
   plannerSignalsFor,
   type ResolvedStudentSignals,
@@ -168,6 +183,9 @@ function buildRetrievalQuery(
     ? student.wolfie_settings
     : {};
   const signals = plannerStudentSignals(student, context);
+  // O próximo passo e os erros aprovados pelo professor vencem o que o Wolfie
+  // inferiu: é deles que o plano continua.
+  const approvedNextStep = continueFrom(context.approvedLessons);
   return redactDirectIdentifiers(JSON.stringify({
     school: "Wise Wolf Language",
     artifact: request.taskMode,
@@ -185,14 +203,13 @@ function buildRetrievalQuery(
     ),
     primary_goal: signals.primaryGoal,
     recurring_needs: [
+      ...recurringErrorsToTarget(context.approvedLessons, 5),
       ...safeArray(intelligence.recurring_grammar_errors, 5),
       ...safeArray(intelligence.recurring_pronunciation_issues, 5),
       ...safeArray(intelligence.recurring_vocabulary_gaps, 5),
     ],
-    recommended_next_step: boundedText(
-      intelligence.recommended_next_step,
-      800,
-    ),
+    recommended_next_step: approvedNextStep?.recommended_next_step ||
+      boundedText(intelligence.recommended_next_step, 800),
   })).slice(0, 4_000);
 }
 
@@ -267,20 +284,22 @@ async function requireStudentAccess(
   }
 
   if (context.profile?.role === "TEACHER") {
-    const { data: assignment, error: assignmentError } = await context.admin
-      .from("bookings")
-      .select("id")
-      .eq("tenant_id", student.tenant_id)
-      .eq("teacher_id", context.userId)
-      .eq("student_id", student.id)
-      .or("status.eq.SCHEDULED,status.is.null")
-      .limit(1)
-      .maybeSingle();
+    // A regra mora no banco (planner_teacher_can_access_student): agenda viva,
+    // segundo professor, titular sem agenda e — do dia anterior ao seguinte da
+    // aula — cobertura confirmada e reposição com data.
+    const access = await teacherPlannerAccess(
+      (fn, args) => context.admin.rpc(fn, args),
+      {
+        teacherId: context.userId ?? "",
+        studentId: student.id,
+        tenantId: student.tenant_id,
+      },
+    );
 
-    if (assignmentError) {
+    if (access.kind === "error") {
       console.error("Planner assignment lookup failed", {
         requestId,
-        code: assignmentError.code,
+        code: access.code,
       });
       return {
         ok: false,
@@ -291,12 +310,12 @@ async function requireStudentAccess(
         ),
       };
     }
-    if (!assignment) {
+    if (access.kind === "denied") {
       return {
         ok: false,
         response: errorResponse(
           403,
-          "Este aluno não está vinculado ao seu calendário.",
+          PLANNER_ACCESS_DENIED_MESSAGE,
           requestId,
         ),
       };
@@ -370,6 +389,7 @@ async function loadPlannerContext(
     memoryItemsResult,
     reportsResult,
     learningMemoriesResult,
+    approvedLessonsResult,
     classLogsResult,
     previousPlansResult,
     materialsResult,
@@ -412,11 +432,22 @@ async function loadPlannerContext(
       "topic,objective,difficulty,accomplishments,primary_corrections,new_vocabulary,recurring_error,best_phrase,review_point,next_step,practice_mission,rubric_scores,generated_at",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
       .order("generated_at", { ascending: false }).limit(3),
+    // Memórias de outras origens (plano salvo, Wolfie, lançamento). As do Meet
+    // entram só pela consulta de baixo, aprovadas pelo professor.
     db.from("student_learning_memories").select(
       "source_type,occurred_at,lesson_objective,content_practiced,new_vocabulary,recurring_errors,corrections_mastered,strengths_observed,homework_assigned,recommended_next_step,confidence_level,notes_to_verify,verification_status",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
+      .neq("source_type", "MEET_SESSION")
       .neq("verification_status", "REJECTED")
       .order("occurred_at", { ascending: false }).limit(12),
+    // Aulas do Meet com resumo aprovado pelo professor, com a data da aula.
+    db.from("student_learning_memories").select(
+      APPROVED_LESSON_COLUMNS.join(","),
+    ).eq("tenant_id", tenantId).eq("student_id", studentId)
+      .eq("source_type", "MEET_SESSION")
+      .eq("verification_status", "VERIFIED")
+      .order("occurred_at", { ascending: false })
+      .limit(MEET_APPROVED_LESSON_LIMIT),
     db.from("class_logs").select(
       "class_date,created_at,presence,content_covered,student_difficulties,homework_assigned,observations",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
@@ -447,6 +478,7 @@ async function loadPlannerContext(
     ["wolfie_memory_items", memoryItemsResult],
     ["wolfie_session_reports", reportsResult],
     ["student_learning_memories", learningMemoriesResult],
+    ["student_learning_memories:meet_verified", approvedLessonsResult],
     ["class_logs", classLogsResult],
     ["lesson_plans", previousPlansResult],
     ["pedagogical_materials", materialsResult],
@@ -478,6 +510,7 @@ async function loadPlannerContext(
     memoryItems: memoryItemsResult.data,
     reports: reportsResult.data,
     learningMemories: learningMemoriesResult.data,
+    approvedLessons: normalizeApprovedMeetLessons(approvedLessonsResult.data),
     classLogs: classLogsResult.data,
     previousPlans: previousPlansResult.data,
     materials: materialsResult.data,
@@ -684,6 +717,11 @@ function buildModelInput(
     duration_minutes: request.durationMinutes,
     student_profile: studentProfile,
     wolf_intelligence: compactIntelligence,
+    // Aulas do Meet aprovadas pelo professor: o plano continua delas.
+    approved_lessons: approvedLessonsPromptBlock(
+      context.approvedLessons,
+      request.taskMode,
+    ),
     recent_lesson_memory: recentLessonMemory,
     retrieved_materials: retrievedMaterials,
     retrieved_knowledge: reusableKnowledge,
@@ -905,6 +943,7 @@ async function callOpenRouter(
 
   const messages: Array<Record<string, string>> = [
     { role: "system", content: WISE_WOLF_TRAINING_ENGINE_PROMPT },
+    { role: "system", content: APPROVED_LESSONS_SYSTEM_PROMPT },
   ];
   if (qualityGaps.length) {
     messages.push({
@@ -1209,9 +1248,20 @@ async function generatePlan(
     ];
   }
 
+  // A base do plano sai das aulas aprovadas, calculada pelo código — não é o
+  // modelo quem diz em quais aulas o plano se baseou.
+  const lessonBasis = approvedLessonBasis(
+    plannerContext.approvedLessons,
+    request.taskMode,
+  );
+  const legacyContent = legacyContentWithBasis(
+    lessonBasis,
+    renderLegacyContent(plan),
+  );
+  const planWithBasis = { ...plan, lesson_basis: lessonBasis };
   const persistedResult = {
-    ...plan,
-    legacy_content: renderLegacyContent(plan),
+    ...planWithBasis,
+    legacy_content: legacyContent,
   };
   // Além do planner_ai_runs (que já registrava usage), alimenta o relatório
   // unificado de custo de IA para o Planner aparecer ao lado das demais.
@@ -1234,7 +1284,7 @@ async function generatePlan(
       bilingual: request.bilingual,
       teacher_request: request.teacherRequest,
       model_id: openRouter.model,
-      prompt_version: WISE_WOLF_PROMPT_VERSION,
+      prompt_version: LESSON_PLANNER_PROMPT_VERSION,
       response_id: boundedText(openRouter.payload.id, 200) || null,
       usage: combinedOpenRouterUsage(generationAttempts),
       latency_ms: generationAttempts.reduce(
@@ -1264,7 +1314,8 @@ async function generatePlan(
   return jsonResponse({
     run_id: run.id,
     student_id: request.studentId,
-    plan,
+    plan: planWithBasis,
+    lesson_basis: lessonBasis,
     knowledge: {
       mode: openRouter.ragUsed ? "RAG" : "STRUCTURED_MEMORY_ONLY",
       sources: retrievedSources,
@@ -1278,7 +1329,7 @@ async function generatePlan(
       : "EMPTY",
     // Compatibility fields for older clients during rollout.
     objectives: plan.objective,
-    content: renderLegacyContent(plan),
+    content: legacyContent,
     materials: plan.materials.map((material) => material.title).join(", "),
     ai_memory_reflection: plan.ai_memory_reflection,
     weak_points: safeArray(
