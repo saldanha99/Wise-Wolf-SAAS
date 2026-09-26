@@ -21,7 +21,7 @@ do $privileges$
 begin
   perform pg_temp.rec_assert(
     has_function_privilege('anon', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE')
-    and has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text)', 'EXECUTE')
+    and has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE'),
     'o link público perdeu a rota anônima'
   );
@@ -29,7 +29,7 @@ begin
     not has_function_privilege('anon', 'public.create_lesson_recording_consent_link(uuid)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.list_lesson_recording_consents()', 'EXECUTE')
     and not has_function_privilege('anon', 'public.revoke_lesson_recording_consent(uuid,text)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.set_my_lesson_recording_consent(boolean)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.set_my_lesson_recording_consent(boolean,text)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.get_my_lesson_recording_consent()', 'EXECUTE'),
     'anon alcança rota da escola ou do professor'
   );
@@ -180,7 +180,9 @@ begin
   v_issue := public.issue_lesson_recording_consent_code(v_token, 'SELF');
   perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
-  v_result := public.decide_lesson_recording_consent_public(v_token, '  Aluno   Adulto  Fixture ', 'SELF', true, v_issue ->> 'code');
+  -- O aceite leva a versão que a página mostrou (20260927100000).
+  v_result := public.decide_lesson_recording_consent_public(v_token, '  Aluno   Adulto  Fixture ', 'SELF', true, v_issue ->> 'code',
+    (private.lesson_recording_current_term('STUDENT')).version);
   perform pg_temp.rec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do adulto não registrado');
   perform pg_temp.rec_assert(
     (select signer_name from private.lesson_recording_consents where subject_id = v_adult order by seq desc limit 1)
@@ -198,7 +200,8 @@ begin
   v_issue := public.issue_lesson_recording_consent_code(v_kid_token, 'GUARDIAN');
   perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
-  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_issue ->> 'code');
+  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_issue ->> 'code',
+    (private.lesson_recording_current_term('STUDENT')).version);
   perform pg_temp.rec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do responsável não registrado');
 
   -- Professor no app. Autorizar exige a conta Google confirmada por login
@@ -207,7 +210,8 @@ begin
   values (v_teacher, 'rec-consent-fixture', 'rec-teacher-sub', 'rec-teacher@example.com', true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
   perform pg_temp.rec_assert(public.get_my_lesson_recording_consent() ->> 'decision' = 'NONE', 'professor começou com decisão');
-  perform pg_temp.rec_assert(public.set_my_lesson_recording_consent(true) ->> 'decision' = 'ACCEPTED', 'aceite do professor falhou');
+  perform pg_temp.rec_assert(public.set_my_lesson_recording_consent(true,
+    (private.lesson_recording_current_term('TEACHER')).version) ->> 'decision' = 'ACCEPTED', 'aceite do professor falhou');
 
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_adult, 'role', 'authenticated')::text, true);
   v_blocked := false;

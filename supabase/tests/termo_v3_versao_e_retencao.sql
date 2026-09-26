@@ -3,23 +3,36 @@
 --
 -- 1. O texto v3 (aluno e professor) existe, identifica o controlador só por
 --    marcadores ({escola_nome}, {escola_documento},
---    {escola_contato_privacidade}) e não carrega dado da escola no código.
--- 2. Os marcadores são preenchidos com os dados da própria escola
---    (tenants.school_info), com texto neutro quando falta algo, e chegam à
---    página pública, ao cartão do professor e ao painel da direção.
--- 3. Aceite de versão anterior à vigente não vale (aluno E professor): a
---    página e o cartão dizem "o termo mudou", o painel mostra, o envio em lote
---    trata como pendente, o job desmarca a aula que ele tinha marcado com o
---    motivo certo — e o aceite da versão nova volta a marcar.
--- 4. Retenção: rascunho não aprovado perde o texto bruto 90 dias depois da
---    aula; quem deixou a escola há mais de 90 dias perde a memória
---    MEET_SESSION, o cartão e o conteúdo dos resumos; a trilha só tem
---    contagens; a segunda rodada não apaga nada.
+--    {escola_contato_privacidade}), não carrega dado da escola no código e diz
+--    quem vê (inclusive o suporte técnico do fornecedor do sistema), quem
+--    processa e por quanto tempo ficam os trechos da aula no resumo.
+-- 2. O SERVIDOR preenche os marcadores com os dados da própria escola
+--    (tenants.school_info), com texto neutro quando falta algo: nenhuma rota
+--    pública devolve o texto com o marcador cru — nem a página, nem o cartão,
+--    nem rota nova de outra frente (auditoria do código-fonte).
+-- 3. Aceite por versão:
+--    * aceite de versão anterior à vigente não vale (aluno E professor): a
+--      página e o cartão dizem "o termo mudou", o painel mostra, o envio em
+--      lote trata como pendente, o job desmarca a aula futura que ele tinha
+--      marcado com o motivo certo — e o aceite da versão nova volta a marcar;
+--    * o aceite grava a versão LIDA: a página e o cartão mandam a versão
+--      exibida e o servidor recusa ("termo_mudou") a que não é a vigente — sem
+--      gastar o código do WhatsApp; sem versão (PWA antigo), também recusa;
+--      recusar vale sempre e guarda a versão lida;
+--    * a versão é a que valia no FIM da aula: aula que terminou antes da
+--      versão nova continua importável; a futura e a que estava em andamento
+--      na publicação ficam barradas.
+-- 4. Retenção: toda versão de resumo (rascunho E aprovada) perde os trechos
+--    da aula (narrative, evidence) 90 dias depois dela; quem deixou a escola
+--    há mais de 90 dias perde a memória MEET_SESSION, o cartão e o conteúdo dos
+--    resumos; a trilha só tem contagens; a segunda rodada não apaga nada.
 --
--- Reprova contra o código anterior: sem a v3 (bloco 1), sem a identidade da
--- escola (bloco 2), com o aceite de versão antiga ainda valendo (bloco 3) e sem
--- a função de retenção (bloco 4). Não depende de dado real, da fila global nem
--- do horário do dia (as datas são relativas a now()).
+-- Reprova contra o código anterior: sem a v3 (bloco 1), sem o texto preenchido
+-- no servidor (bloco 2), com o aceite de versão antiga valendo, com o aceite
+-- gravando a versão do clique ou com a aula já dada barrada pela versão nova
+-- (bloco 3), e com o resumo aprovado guardando os trechos para sempre (bloco
+-- 4). Não depende de dado real, da fila global nem do horário do dia (as datas
+-- são relativas a now()).
 \set ON_ERROR_STOP on
 
 begin;
@@ -58,14 +71,40 @@ begin
 end;
 $$;
 
--- Decisão do professor como o cartão grava.
-create or replace function pg_temp.v3_teacher_decision(
-  p_tenant text, p_teacher uuid, p_decision text, p_version text
-) returns void language plpgsql as $$
+-- Decisão do professor pelo cartão (a RPC de verdade, como o professor logado).
+-- Devolve o código do erro quando o servidor recusa.
+create or replace function pg_temp.v3_teacher_rpc(p_teacher uuid, p_accept boolean, p_version text)
+returns text language plpgsql as $$
+declare
+  v_claims text := current_setting('request.jwt.claims', true);
+  v_result jsonb;
 begin
-  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
-    signer_relation, term_audience, term_version, source, recorded_by)
-  values (p_tenant, p_teacher, 'TEACHER', p_decision, 'Professora Fixture', 'SELF', 'TEACHER', p_version, 'APP', p_teacher);
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', p_teacher, 'role', 'authenticated')::text, true);
+  begin
+    v_result := public.set_my_lesson_recording_consent(p_accept, p_version);
+  exception when others then
+    perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);
+    return sqlerrm;
+  end;
+  perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);
+  return (v_result ->> 'decision') || ':' || (v_result ->> 'term_version');
+end;
+$$;
+
+-- Código do termo pelo fluxo real: emitido para a edge (service_role) e
+-- "entregue". Devolve o código em claro (só o teste o conhece).
+create or replace function pg_temp.v3_issue_code(p_token text, p_relation text)
+returns jsonb language plpgsql as $$
+declare
+  v_issue jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_issue := public.issue_lesson_recording_consent_code(p_token, p_relation);
+  if not coalesce((v_issue ->> 'ok')::boolean, false) then
+    raise exception 'termo v3: código do termo não saiu: %', v_issue;
+  end if;
+  perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
+  return v_issue;
 end;
 $$;
 
@@ -99,7 +138,7 @@ begin
         select 1 from regexp_matches(v_row.body, '\{([^}]*)\}', 'g') as marker(parts)
         where marker.parts[1] not in ('escola_nome', 'escola_documento', 'escola_contato_privacidade')
       ),
-      v_row.audience || ' v3 tem marcador que a página não sabe preencher'
+      v_row.audience || ' v3 tem marcador que o servidor não sabe preencher'
     );
     -- Dado da escola nunca no código: nem CNPJ, nem e-mail, nem telefone.
     perform pg_temp.v3_assert(
@@ -123,6 +162,22 @@ begin
         and v_row.body like '%deixar a escola%'
         and v_row.body like '%WhatsApp da escola%',
       v_row.audience || ' v3 não cobre o que o sistema faz (IA, dossiê, cartão, fornecedores, prazos ou direitos)'
+    );
+    -- O suporte da plataforma lê resumo aprovado e cartão de qualquer escola
+    -- (google_meet_backend, cartão do aluno): o termo diz, e lista o
+    -- fornecedor do sistema entre quem processa.
+    perform pg_temp.v3_assert(
+      v_row.body like '%suporte técnico do fornecedor do sistema pode ver o resumo aprovado e o cartão do aluno%'
+        and v_row.body like '%Fornecedor do sistema que a escola usa%',
+      v_row.audience || ' v3 não diz que o suporte da plataforma vê o resumo aprovado e o cartão'
+    );
+    -- O resumo aprovado guarda trechos das anotações e da transcrição por até
+    -- 90 dias (a retenção apaga), e o termo diz.
+    perform pg_temp.v3_assert(
+      v_row.body like '%trechos das anotações e da transcrição%'
+        and v_row.body like '%apagados 90 dias depois da aula, no rascunho e no resumo aprovado%'
+        and v_row.body like '%Quando este termo mudar%',
+      v_row.audience || ' v3 não diz o prazo dos trechos da aula no resumo aprovado ou o que acontece quando o termo muda'
     );
   end loop;
   perform pg_temp.v3_assert(
@@ -156,6 +211,9 @@ declare
   v_full jsonb;
   v_empty jsonb;
   v_markers text[];
+  v_filled text;
+  v_braces text;
+  v_offenders text;
 begin
   insert into public.tenants (id, name, saas_status, school_info) values
     ('v3-termo-fixture', 'Escola Fixture', 'active', jsonb_build_object(
@@ -164,7 +222,9 @@ begin
       'cnpj', '11222333000181',
       'privacyContactEmail', 'privacidade@escola-fixture.invalid',
       'privacyOfficerName', 'Encarregada Fixture')),
-    ('v3-termo-vazia', 'Escola Sem Dados', 'active', null);
+    ('v3-termo-vazia', 'Escola Sem Dados', 'active', null),
+    ('v3-termo-chaves', 'Escola {escola_nome}', 'active', jsonb_build_object(
+      'legalName', '{escola_documento} Idiomas {x}'));
 
   v_full := private.lesson_recording_school_identity('v3-termo-fixture');
   perform pg_temp.v3_assert(
@@ -191,10 +251,48 @@ begin
     v_markers = (select array_agg(key order by key) from jsonb_object_keys(v_full - 'missing') as key),
     'marcadores do texto e valores da escola não batem'
   );
-  -- Função interna: navegador não chama.
+
+  -- O servidor preenche o texto: nenhum marcador sobra, e sai o controlador.
+  v_filled := private.lesson_recording_fill_term(
+    (select body from private.lesson_recording_terms where audience = 'STUDENT' and version = 'v3'),
+    'v3-termo-fixture');
+  perform pg_temp.v3_assert(
+    v_filled not like '%{escola_%'
+      and v_filled like '%A escola: Escola Fixture Idiomas LTDA, CNPJ 11.222.333/0001-81. Contato para assuntos de privacidade: Encarregada Fixture — privacidade@escola-fixture.invalid.%',
+    'texto do termo preenchido no servidor saiu com marcador ou sem o controlador'
+  );
+  -- Nome da escola com chaves não vira (nem parece) marcador.
+  v_braces := private.lesson_recording_fill_term(
+    (select body from private.lesson_recording_terms where audience = 'TEACHER' and version = 'v3'),
+    'v3-termo-chaves');
+  perform pg_temp.v3_assert(
+    v_braces not like '%{%' and v_braces not like '%}%'
+      and v_braces like '%A escola: escola_documento Idiomas x, CNPJ não informado pela escola.%',
+    'dado da escola com chaves virou marcador no texto preenchido'
+  );
+
+  -- Auditoria: toda rota do app/página (schema public) que devolve o texto do
+  -- termo passa por lesson_recording_fill_term. Rota nova que ler
+  -- lesson_recording_current_term(...).body sem preencher (a tela do aluno com o
+  -- próprio registro, por exemplo) reprova aqui — o aluno veria {escola_nome}
+  -- no lugar do controlador.
+  select string_agg(procedure.oid::regprocedure::text, ', ' order by procedure.oid::regprocedure::text)
+    into v_offenders
+  from pg_proc as procedure
+  join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'public'
+    and procedure.prosrc ~ 'lesson_recording_(current_term|terms)'
+    and procedure.prosrc ~ '\mbody\M'
+    and procedure.prosrc !~ 'lesson_recording_fill_term';
+  perform pg_temp.v3_assert(v_offenders is null,
+    'rota devolve o texto do termo sem preencher a escola (use private.lesson_recording_fill_term): ' || coalesce(v_offenders, ''));
+
+  -- Funções internas: navegador não chama.
   perform pg_temp.v3_assert(
     not has_function_privilege('anon', 'private.lesson_recording_school_identity(text)', 'EXECUTE')
-    and not has_function_privilege('authenticated', 'private.lesson_recording_school_identity(text)', 'EXECUTE'),
+    and not has_function_privilege('authenticated', 'private.lesson_recording_school_identity(text)', 'EXECUTE')
+    and not has_function_privilege('anon', 'private.lesson_recording_fill_term(text,text)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'private.lesson_recording_fill_term(text,text)', 'EXECUTE'),
     'identidade da escola exposta como rota'
   );
 end
@@ -207,55 +305,127 @@ declare
   v_teacher uuid := gen_random_uuid();
   v_student uuid := gen_random_uuid();
   v_refused uuid := gen_random_uuid();
+  v_adult uuid := gen_random_uuid();
   v_session uuid := gen_random_uuid();
+  v_past uuid := gen_random_uuid();
+  v_ongoing uuid := gen_random_uuid();
   v_old_student text := (private.lesson_recording_current_term('STUDENT')).version;
   v_old_teacher text := (private.lesson_recording_current_term('TEACHER')).version;
   v_token text := encode(extensions.gen_random_bytes(32), 'hex');
+  v_adult_token text;
   v_today date := (now() at time zone 'America/Sao_Paulo')::date;
   v_result jsonb;
+  v_issue jsonb;
   v_row jsonb;
   v_roster record;
   v_reason text;
+  v_consents integer;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data) values
     (v_admin, 'v3-admin@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
     (v_teacher, 'v3-teacher@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
     (v_student, 'v3-student@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
-    (v_refused, 'v3-refused@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
+    (v_refused, 'v3-refused@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_adult, 'v3-adult@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
   update public.profiles
      set tenant_id = 'v3-termo-fixture', lifecycle_status = 'active', status = 'Ativo',
          is_test_account = false,
          role = case when id = v_admin then 'SCHOOL_ADMIN' when id = v_teacher then 'TEACHER' else 'STUDENT' end,
          full_name = case when id = v_admin then 'Direcao Fixture' when id = v_teacher then 'Professora Fixture'
-           when id = v_student then 'Aluna Fixture' else 'Aluno Recusou Fixture' end,
-         phone = case when id in (v_student, v_refused) then '5511977771234' end,
-         professor_id = case when id in (v_student, v_refused) then v_teacher end,
+           when id = v_student then 'Aluna Fixture' when id = v_adult then 'Adulta Fixture Silva'
+           else 'Aluno Recusou Fixture' end,
+         phone = case when id in (v_student, v_refused) then '5511977771234'
+           when id = v_adult then '5511955550077' end,
+         professor_id = case when id in (v_student, v_refused, v_adult) then v_teacher end,
          birth_date = null, is_kids = false
-   where id in (v_admin, v_teacher, v_student, v_refused);
+   where id in (v_admin, v_teacher, v_student, v_refused, v_adult);
   insert into public.tenant_memberships (tenant_id, user_id, role, status)
-    select tenant_id, id, role, 'ACTIVE' from public.profiles where id in (v_admin, v_teacher, v_student, v_refused)
+    select tenant_id, id, role, 'ACTIVE' from public.profiles where id in (v_admin, v_teacher, v_student, v_refused, v_adult)
   on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
   insert into private.google_workspace_connections (tenant_id, organizer_sub, organizer_email, status, connected_by)
   values ('v3-termo-fixture', 'v3-sub-central', 'central@escola-fixture.invalid', 'CONNECTED', v_admin);
+  -- O professor só autoriza com a conta Google confirmada (20260926180000).
+  insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+  values (v_teacher, 'v3-termo-fixture', 'v3-sub-professora', 'professora.fixture@example.com', true);
   insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
     scheduled_start_at, scheduled_end_at, source_key) values
     (v_session, 'v3-termo-fixture', v_student, v_teacher, v_today,
-      now() + interval '2 hours', now() + interval '150 minutes', 'v3-future');
+      now() + interval '2 hours', now() + interval '150 minutes', 'v3-future'),
+    -- Aula que já terminou (ainda não importada) e aula em andamento.
+    (v_past, 'v3-termo-fixture', v_student, v_teacher, v_today,
+      now() - interval '90 minutes', now() - interval '60 minutes', 'v3-past'),
+    (v_ongoing, 'v3-termo-fixture', v_student, v_teacher, v_today,
+      now() - interval '10 minutes', now() + interval '20 minutes', 'v3-ongoing');
   -- Link vivo para a página pública.
   insert into private.lesson_recording_consent_links (tenant_id, student_id, token_hash, created_by, expires_at)
   values ('v3-termo-fixture', v_student, encode(extensions.digest(v_token, 'sha256'), 'hex'), v_admin,
     now() + interval '30 days');
 
-  -- Os dois aceitam a versão vigente: vale, e o job marca a aula.
+  -- O cartão manda a versão que mostrou: sem versão (PWA antigo) ou com uma
+  -- que não é a vigente, o aceite é recusado e nada é gravado.
+  perform pg_temp.v3_assert(pg_temp.v3_teacher_rpc(v_teacher, true, null) = 'termo_mudou',
+    'aceite do professor sem a versão lida foi gravado');
+  perform pg_temp.v3_assert(pg_temp.v3_teacher_rpc(v_teacher, true, 'v2') = 'termo_mudou',
+    'aceite do professor de versão que não é a vigente foi gravado');
+  perform pg_temp.v3_assert(
+    not exists (select 1 from private.lesson_recording_consents where subject_id = v_teacher),
+    'aceite recusado deixou decisão gravada');
+  perform pg_temp.v3_assert(
+    pg_temp.v3_teacher_rpc(v_teacher, true, v_old_teacher) = 'ACCEPTED:' || v_old_teacher,
+    'aceite do professor com a versão vigente não gravou a versão lida');
+
+  -- Aluno maior (data atestada pela escola) pela página: código de verdade.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_student_birth_date(v_adult, date '1990-05-10', 'Documento conferido (fixture)');
+  v_adult_token := public.create_lesson_recording_consent_link(v_adult) ->> 'token';
+  v_issue := pg_temp.v3_issue_code(v_adult_token, 'SELF');
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.decide_lesson_recording_consent_public(v_adult_token, 'Adulta Fixture Silva', 'SELF', true,
+    v_issue ->> 'code', 'v2');
+  perform pg_temp.v3_assert(
+    v_result ->> 'error' = 'termo_mudou' and v_result ->> 'term_version' = v_old_student,
+    'aceite pela página de versão que não é a vigente não voltou "termo_mudou": ' || v_result::text);
+  v_result := public.decide_lesson_recording_consent_public(v_adult_token, 'Adulta Fixture Silva', 'SELF', true,
+    v_issue ->> 'code');
+  perform pg_temp.v3_assert(v_result ->> 'error' = 'termo_mudou',
+    'aceite pela página sem a versão lida (PWA antigo) não foi recusado: ' || v_result::text);
+  perform pg_temp.v3_assert(
+    not exists (select 1 from private.lesson_recording_consents where subject_id = v_adult)
+      and (select consumed_at is null and attempts = 0 from private.lesson_recording_consent_challenges
+        where id = (v_issue ->> 'challenge_id')::uuid),
+    '"termo_mudou" gravou decisão, gastou o código ou contou tentativa');
+  -- Relendo o texto vigente, o mesmo código confirma.
+  v_result := public.decide_lesson_recording_consent_public(v_adult_token, 'Adulta Fixture Silva', 'SELF', true,
+    v_issue ->> 'code', v_old_student);
+  perform pg_temp.v3_assert(
+    (v_result ->> 'ok')::boolean and v_result ->> 'term_version' = v_old_student
+      and private.lesson_recording_decided_term_version(v_adult) = v_old_student
+      and private.lesson_recording_student_consent_effective(v_adult),
+    'aceite pela página com a versão vigente não valeu: ' || v_result::text);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- Os dois aceitam a versão vigente: vale, e o job marca a aula futura. As
+  -- aulas já em curso ou dadas são marcadas à parte (o job só marca as
+  -- próximas 24 h), como o termo as teria marcado antes.
   perform pg_temp.v3_student_decision('v3-termo-fixture', v_student, v_admin, 'ACCEPTED', v_old_student);
   perform pg_temp.v3_student_decision('v3-termo-fixture', v_refused, v_admin, 'REFUSED', v_old_student);
-  perform pg_temp.v3_teacher_decision('v3-termo-fixture', v_teacher, 'ACCEPTED', v_old_teacher);
   perform pg_temp.v3_assert(private.lesson_recording_active(v_student, v_teacher),
     'aceite da versão vigente não valeu');
   perform private.apply_standing_lesson_recording_consent('v3-termo-fixture');
   perform pg_temp.v3_assert((select documentation_consent from public.lesson_sessions where id = v_session),
     'os dois aceites não marcaram a aula');
+  insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
+  select session_id, v_admin, true,
+    'Termo de registro das aulas: aluno (ou responsável) e professor aceitaram o registro permanente.',
+    now() - interval '3 hours'
+  from unnest(array[v_past, v_ongoing]) as marked(session_id);
+  update public.lesson_sessions set documentation_consent = true where id in (v_past, v_ongoing);
+  perform pg_temp.v3_assert(
+    not private.lesson_session_documentation_blocked(v_past)
+      and not private.lesson_session_documentation_blocked(v_ongoing)
+      and not private.lesson_session_documentation_blocked(v_session),
+    'aula marcada pelo termo barrada antes de a versão mudar');
 
   -- Sai uma versão nova (aluno e professor).
   insert into private.lesson_recording_terms (audience, version, body, published_at) values
@@ -284,11 +454,26 @@ begin
       and not private.lesson_recording_accepted_outdated_term(v_refused),
     'aula seguiu marcável com aceites de versão anterior'
   );
-  -- Na hora, sem esperar o job: a sessão marcada pelo termo fica sem aceite efetivo.
-  perform pg_temp.v3_assert(private.lesson_session_documentation_blocked(v_session),
-    'sessão marcada pelo termo antigo seguiu com aceite efetivo');
+  -- Na hora, sem esperar o job: a aula futura e a que estava em andamento na
+  -- publicação ficam sem aceite efetivo...
+  perform pg_temp.v3_assert(
+    private.lesson_session_documentation_blocked(v_session)
+      and private.lesson_session_documentation_blocked(v_ongoing),
+    'aula futura ou em andamento, marcada pelo termo antigo, seguiu com aceite efetivo');
+  -- ...mas a que TERMINOU sob o aceite válido continua importável: a versão
+  -- nova não cega a importação (transcrição, presença) da aula já dada.
+  perform pg_temp.v3_assert(not private.lesson_session_documentation_blocked(v_past),
+    'versão nova do termo barrou a importação de aula que terminou sob aceite válido');
 
-  -- Página pública: "o termo mudou", a versão aceita e quem é a escola.
+  -- O cartão aberto na versão anterior não grava aceite da versão nova.
+  select count(*) into v_consents from private.lesson_recording_consents where subject_id = v_teacher;
+  v_reason := pg_temp.v3_teacher_rpc(v_teacher, true, v_old_teacher);
+  perform pg_temp.v3_assert(v_reason = 'termo_mudou'
+      and (select count(*) from private.lesson_recording_consents where subject_id = v_teacher) = v_consents,
+    'aceite do cartão aberto na versão anterior foi gravado como aceite da versão nova: ' || coalesce(v_reason, ''));
+
+  -- Página pública: "o termo mudou", a versão aceita e quem é a escola — com o
+  -- texto já preenchido pelo servidor.
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   v_result := public.get_lesson_recording_consent_public(v_token);
   perform pg_temp.v3_assert(
@@ -300,6 +485,11 @@ begin
       and v_result -> 'school_identity' ->> 'escola_documento' = 'CNPJ 11.222.333/0001-81',
     'página pública não disse que o termo mudou: ' || v_result::text
   );
+  perform pg_temp.v3_assert(
+    v_result ->> 'term_body' not like '%{escola_%'
+      and v_result ->> 'term_body' like '%Escola Fixture Idiomas LTDA, CNPJ 11.222.333/0001-81. Contato: Encarregada Fixture%',
+    'página pública devolveu o texto com marcador cru: ' || coalesce(v_result ->> 'term_body', 'sem texto')
+  );
 
   -- Cartão do professor.
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
@@ -310,8 +500,10 @@ begin
       and not (v_result ->> 'effective')::boolean
       and v_result ->> 'decided_term_version' = v_old_teacher
       and v_result ->> 'term_version' = 'v98'
-      and v_result -> 'school_identity' ->> 'escola_nome' = 'Escola Fixture Idiomas LTDA',
-    'cartão do professor não disse que o termo mudou: ' || v_result::text
+      and v_result -> 'school_identity' ->> 'escola_nome' = 'Escola Fixture Idiomas LTDA'
+      and v_result ->> 'term_body' not like '%{escola_%'
+      and v_result ->> 'term_body' like '%Escola Fixture Idiomas LTDA%',
+    'cartão do professor não disse que o termo mudou ou devolveu marcador cru: ' || v_result::text
   );
 
   -- Painel da direção.
@@ -349,7 +541,8 @@ begin
   perform pg_temp.v3_assert(v_roster.student_id is not null and not v_roster.eligible,
     'quem recusou a versão anterior voltou a receber pedido');
 
-  -- O job desmarca o que ele tinha marcado, com o motivo certo.
+  -- O job desmarca o que ele tinha marcado e ainda não terminou, com o motivo
+  -- certo; a aula já dada fica marcada (a importação dela segue).
   perform private.apply_standing_lesson_recording_consent('v3-termo-fixture');
   select event.reason into v_reason from private.lesson_documentation_consent_events as event
    where event.session_id = v_session order by event.created_at desc limit 1;
@@ -358,17 +551,23 @@ begin
       and v_reason like 'Termo de registro das aulas: o termo mudou de versão e o aluno (ou o responsável) e o professor%',
     'o job não desmarcou a aula do termo antigo, ou registrou o motivo errado: ' || coalesce(v_reason, 'sem evento')
   );
+  perform pg_temp.v3_assert(
+    not (select documentation_consent from public.lesson_sessions where id = v_ongoing)
+      and (select documentation_consent from public.lesson_sessions where id = v_past),
+    'o job não desmarcou a aula em andamento ou desmarcou a aula já dada');
 
   -- Aceitam a versão nova: vale de novo e o job remarca.
   perform pg_temp.v3_student_decision('v3-termo-fixture', v_student, v_admin, 'ACCEPTED', 'v98');
-  perform pg_temp.v3_teacher_decision('v3-termo-fixture', v_teacher, 'ACCEPTED', 'v98');
+  perform pg_temp.v3_assert(pg_temp.v3_teacher_rpc(v_teacher, true, 'v98') = 'ACCEPTED:v98',
+    'aceite do professor da versão nova não foi gravado');
   perform pg_temp.v3_assert(private.lesson_recording_active(v_student, v_teacher),
     'aceite da versão nova não valeu');
   perform private.apply_standing_lesson_recording_consent('v3-termo-fixture');
   perform pg_temp.v3_assert(
     (select documentation_consent from public.lesson_sessions where id = v_session)
-      and not private.lesson_session_documentation_blocked(v_session),
-    'aceite da versão nova não remarcou a aula'
+      and not private.lesson_session_documentation_blocked(v_session)
+      and not private.lesson_session_documentation_blocked(v_past),
+    'aceite da versão nova não remarcou a aula (ou barrou a aula já dada)'
   );
 
   -- Só o termo do professor muda: o motivo diz que falta o professor.
@@ -386,6 +585,33 @@ begin
       and v_reason = 'Termo de registro das aulas: o termo mudou de versão e o professor ainda não aceitou a versão vigente.',
     'motivo do desmarque pela versão do professor errado: ' || coalesce(v_reason, 'sem evento')
   );
+
+  -- Recusar vale sempre, mesmo da versão anterior, e guarda a versão lida.
+  -- (A conferência vai noutro comando: o SELECT não enxerga o que a função
+  -- chamada nele gravou.)
+  v_reason := pg_temp.v3_teacher_rpc(v_teacher, false, 'v98');
+  perform pg_temp.v3_assert(v_reason = 'REFUSED:v98'
+      and private.lesson_recording_consent_state(v_teacher) = 'REFUSED'
+      and private.lesson_recording_decided_term_version(v_teacher) = 'v98',
+    'recusa do professor na versão anterior não foi gravada com a versão lida: ' || coalesce(v_reason, ''));
+  v_issue := pg_temp.v3_issue_code(v_adult_token, 'SELF');
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.decide_lesson_recording_consent_public(v_adult_token, 'Adulta Fixture Silva', 'SELF', false,
+    v_issue ->> 'code', v_old_student);
+  perform pg_temp.v3_assert(
+    v_result ->> 'decision' = 'REFUSED' and v_result ->> 'term_version' = v_old_student
+      and private.lesson_recording_consent_state(v_adult) = 'REFUSED',
+    'recusa pela página na versão anterior não valeu: ' || v_result::text);
+
+  -- A rota antiga, que gravava a versão do clique, não existe mais.
+  perform pg_temp.v3_assert(
+    to_regprocedure('public.set_my_lesson_recording_consent(boolean)') is null
+      and to_regprocedure('public.decide_lesson_recording_consent_public(text,text,text,boolean,text)') is null
+      and has_function_privilege('authenticated', 'public.set_my_lesson_recording_consent(boolean,text)', 'EXECUTE')
+      and not has_function_privilege('anon', 'public.set_my_lesson_recording_consent(boolean,text)', 'EXECUTE')
+      and has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)', 'EXECUTE'),
+    'rotas de decisão com a assinatura antiga ainda existem, ou as novas sem os grants certos');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
 end
 $version$;
 
@@ -411,6 +637,7 @@ declare
     'narrative', 'Texto copiado da transcrição da aula.',
     'evidence', jsonb_build_array(jsonb_build_object('artifact_id', 'x', 'quote', 'trecho literal')),
     'lesson_objective', 'Present perfect',
+    'content_practiced', jsonb_build_array('have been'),
     'recommended_next_step', 'Revisar os verbos');
   v_left timestamptz := now() - interval '100 days';
   v_result jsonb;
@@ -490,7 +717,7 @@ begin
 
   v_result := private.purge_lesson_memory_retention();
 
-  -- (a) Rascunho não aprovado de aula com mais de 90 dias perde o texto bruto.
+  -- (a) Aula com mais de 90 dias: o rascunho perde os trechos da aula...
   perform pg_temp.v3_assert(
     (select not (content ? 'narrative') and not (content ? 'evidence')
         and content ->> 'lesson_objective' = 'Present perfect'
@@ -498,10 +725,27 @@ begin
       from private.lesson_summary_versions where id = v_keep_old_draft),
     'rascunho não aprovado de aula antiga manteve o texto copiado da aula'
   );
+  -- ...e o resumo APROVADO também (as anotações do Google na íntegra e as
+  -- citações da transcrição), mesmo com o aluno ainda na escola; objetivo,
+  -- conteúdos e próximo passo ficam.
   perform pg_temp.v3_assert(
-    (select content = v_content from private.lesson_summary_versions where id = v_keep_old_verified)
-      and (select content = v_content from private.lesson_summary_versions where id = v_keep_new_draft),
-    'retenção mexeu no resumo aprovado de aluno ativo ou no rascunho de aula recente'
+    (select not (content ? 'narrative') and not (content ? 'evidence')
+        and content ->> 'lesson_objective' = 'Present perfect'
+        and content ->> 'recommended_next_step' = 'Revisar os verbos'
+        and content -> 'content_practiced' = '["have been"]'::jsonb
+        and content ? 'retention_raw_text_removed_at'
+      from private.lesson_summary_versions where id = v_keep_old_verified),
+    'resumo aprovado de aula com mais de 90 dias guardou os trechos da aula para sempre'
+  );
+  perform pg_temp.v3_assert(
+    (select content = v_content from private.lesson_summary_versions where id = v_keep_new_draft)
+      and (select content = v_content from private.lesson_summary_versions where id = v_recent_verified),
+    'retenção mexeu em resumo de aula com menos de 90 dias'
+  );
+  perform pg_temp.v3_assert(
+    exists (select 1 from public.student_learning_memories
+      where student_id = v_keep and source_type = 'MEET_SESSION' and lesson_objective = 'Present perfect'),
+    'retenção dos trechos apagou a memória do aluno que continua na escola'
   );
   -- (b) Quem deixou a escola há mais de 90 dias.
   perform pg_temp.v3_assert(
@@ -524,10 +768,6 @@ begin
     'cartão do aluno apagado de quem não devia ou mantido de quem deixou a escola há mais de 90 dias'
   );
   perform pg_temp.v3_assert(
-    (select content = v_content from private.lesson_summary_versions where id = v_recent_verified),
-    'resumo de quem saiu há menos de 90 dias foi apagado'
-  );
-  perform pg_temp.v3_assert(
     exists (select 1 from private.student_learning_card_events
       where student_id = v_gone and actor_role = 'SYSTEM_RETENTION'),
     'histórico do cartão sem a remoção pela retenção'
@@ -537,7 +777,7 @@ begin
   select * into v_trail from private.lesson_memory_retention_runs
    where tenant_id = 'v3-termo-fixture' and run_id = (v_result ->> 'run_id')::uuid;
   perform pg_temp.v3_assert(
-    v_trail.drafts_cleared = 2 and v_trail.summaries_cleared = 2
+    v_trail.drafts_cleared = 2 and v_trail.approved_excerpts_cleared = 2 and v_trail.summaries_cleared = 2
       and v_trail.memories_deleted = 1 and v_trail.cards_deleted = 1,
     'trilha da retenção com contagem errada: ' || coalesce(to_jsonb(v_trail)::text, 'sem linha')
   );
@@ -555,7 +795,8 @@ begin
   select count(*) into v_trails from private.lesson_memory_retention_runs where tenant_id = 'v3-termo-fixture';
   v_result := private.purge_lesson_memory_retention();
   perform pg_temp.v3_assert(
-    (v_result ->> 'drafts_cleared')::integer = 0 and (v_result ->> 'summaries_cleared')::integer = 0
+    (v_result ->> 'drafts_cleared')::integer = 0 and (v_result ->> 'approved_excerpts_cleared')::integer = 0
+      and (v_result ->> 'summaries_cleared')::integer = 0
       and (v_result ->> 'memories_deleted')::integer = 0 and (v_result ->> 'cards_deleted')::integer = 0
       and (select count(*) from private.lesson_memory_retention_runs where tenant_id = 'v3-termo-fixture') = v_trails,
     'segunda rodada da retenção apagou de novo: ' || v_result::text

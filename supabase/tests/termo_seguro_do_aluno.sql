@@ -24,6 +24,13 @@ end;
 $$;
 grant execute on function pg_temp.sec_assert(boolean, text) to public;
 
+-- O aceite pela página leva a versão do termo que ela mostrou (20260927100000):
+-- aqui, a vigente.
+create or replace function pg_temp.sec_term_version()
+returns text language sql as $$
+  select (private.lesson_recording_current_term('STUDENT')).version;
+$$;
+
 -- Fixture: escola, direção, coordenação, dois professores, alunos e uma
 -- escola de fora. Os ids ficam em configurações da transação para os blocos
 -- seguintes (inclusive o que roda com o papel authenticated).
@@ -145,7 +152,7 @@ begin
     'a decisão sem código continua existindo'
   );
   perform pg_temp.sec_assert(
-    has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text)', 'EXECUTE')
+    has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)', 'EXECUTE')
     and has_function_privilege('anon', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE'),
     'a página pública perdeu a rota anônima'
   );
@@ -507,7 +514,7 @@ begin
   -- Enquanto o envio não é confirmado (ISSUED) o código não decide nada.
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   perform pg_temp.sec_assert(
-    public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_code) ->> 'error'
+    public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_code, pg_temp.sec_term_version()) ->> 'error'
       = 'codigo_expirado',
     'código ainda não enviado já decidiu'
   );
@@ -516,12 +523,12 @@ begin
 
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   v_blocked := false;
-  begin perform public.decide_lesson_recording_consent_public(v_kid_token, 'Crianca Fixture', 'SELF', true, v_code);
+  begin perform public.decide_lesson_recording_consent_public(v_kid_token, 'Crianca Fixture', 'SELF', true, v_code, pg_temp.sec_term_version());
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.sec_assert(v_blocked, 'menor decidiu sozinho com o código do responsável');
 
   v_wrong := lpad(((v_code::integer + 1) % 1000000)::text, 6, '0');
-  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_wrong);
+  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_wrong, pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'error' = 'codigo_incorreto' and (v_result ->> 'attempts_left')::integer = 4,
     'código errado não foi recusado com as tentativas restantes');
   perform pg_temp.sec_assert(
@@ -530,7 +537,7 @@ begin
     'tentativa errada não ficou gravada'
   );
   perform pg_temp.sec_assert(
-    public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, 'abc') ->> 'error'
+    public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, 'abc', pg_temp.sec_term_version()) ->> 'error'
       = 'codigo_invalido',
     'código fora do formato aceito'
   );
@@ -539,7 +546,7 @@ begin
     'decisão gravada sem código válido'
   );
 
-  v_result := public.decide_lesson_recording_consent_public(v_kid_token, ' Responsavel   Fixture ', 'GUARDIAN', true, v_code);
+  v_result := public.decide_lesson_recording_consent_public(v_kid_token, ' Responsavel   Fixture ', 'GUARDIAN', true, v_code, pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do responsável com código certo falhou');
   perform pg_temp.sec_assert(v_result ->> 'verified_phone' = '(11) •••••-0001', 'resposta sem o telefone verificado');
   perform pg_temp.sec_assert(
@@ -564,7 +571,7 @@ begin
    where id = (v_issue ->> 'challenge_id')::uuid;
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   perform pg_temp.sec_assert(
-    public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code') ->> 'error'
+    public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code', pg_temp.sec_term_version()) ->> 'error'
       = 'codigo_expirado',
     'código vencido foi aceito'
   );
@@ -576,12 +583,12 @@ begin
   v_wrong := lpad(((v_code::integer + 7) % 1000000)::text, 6, '0');
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   for i in 1..4 loop
-    perform public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_wrong);
+    perform public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_wrong, pg_temp.sec_term_version());
   end loop;
-  v_result := public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_wrong);
+  v_result := public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_wrong, pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'error' = 'codigo_bloqueado', 'quinta tentativa errada não bloqueou');
   perform pg_temp.sec_assert(
-    public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_code) ->> 'ok'
+    public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_code, pg_temp.sec_term_version()) ->> 'ok'
       = 'false',
     'código certo passou depois do bloqueio'
   );
@@ -618,10 +625,10 @@ begin
     'NOT_SENT', null);
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   v_blocked := false;
-  begin perform public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code');
+  begin perform public.decide_lesson_recording_consent_public(v_token, 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code', pg_temp.sec_term_version());
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.sec_assert(v_blocked, 'link substituído ainda decidiu');
-  v_result := public.decide_lesson_recording_consent_public(v_link ->> 'token', 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code');
+  v_result := public.decide_lesson_recording_consent_public(v_link ->> 'token', 'Adulta Sem Data Fixture', 'SELF', true, v_issue ->> 'code', pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do adulto com código falhou');
   v_challenge := (v_issue ->> 'challenge_id')::uuid;
 
@@ -694,7 +701,7 @@ begin
     'o envio mais antigo, confirmado por último, derrubou o código mais novo'
   );
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
-  v_result := public.decide_lesson_recording_consent_public(v_token, 'Mae Titular Fixture', 'GUARDIAN', true, v_second ->> 'code');
+  v_result := public.decide_lesson_recording_consent_public(v_token, 'Mae Titular Fixture', 'GUARDIAN', true, v_second ->> 'code', pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'decision' = 'ACCEPTED',
     'código mais novo não valeu depois de dois pedidos simultâneos: ' || v_result::text);
 end
@@ -756,7 +763,7 @@ begin
     'página não disse que o link foi bloqueado'
   );
   v_blocked := false;
-  begin perform public.decide_lesson_recording_consent_public(v_token, 'Mae Titular Fixture', 'GUARDIAN', true, '123456');
+  begin perform public.decide_lesson_recording_consent_public(v_token, 'Mae Titular Fixture', 'GUARDIAN', true, '123456', pg_temp.sec_term_version());
   exception when invalid_parameter_value then v_blocked := sqlerrm = 'link_bloqueado'; end;
   perform pg_temp.sec_assert(v_blocked, 'link bloqueado ainda aceitou decisão');
 
@@ -777,7 +784,7 @@ begin
   perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   v_result := public.decide_lesson_recording_consent_public(v_token, 'Mae Titular Fixture', 'GUARDIAN', true,
-    lpad((((v_issue ->> 'code')::integer + 1) % 1000000)::text, 6, '0'));
+    lpad((((v_issue ->> 'code')::integer + 1) % 1000000)::text, 6, '0'), pg_temp.sec_term_version());
   perform pg_temp.sec_assert(v_result ->> 'error' = 'link_bloqueado',
     'décima quinta tentativa errada no link não fechou o link: ' || v_result::text);
   perform pg_temp.sec_assert(

@@ -336,9 +336,10 @@ select pg_temp.assert_true(
           -- dias; a leitura devolve só o primeiro nome do aluno, o texto do
           -- termo e telefones mascarados (migration 20260926120000). A decisão
           -- exige o código de 6 dígitos do WhatsApp, com 5 tentativas
-          -- (20260926200000, suíte termo_seguro_do_aluno.sql).
+          -- (20260926200000, suíte termo_seguro_do_aluno.sql) e a versão do termo
+          -- que a página mostrou (20260927100000, termo_v3_versao_e_retencao.sql).
           'public.get_lesson_recording_consent_public(text)',
-          'public.decide_lesson_recording_consent_public(text,text,text,boolean,text)',
+          'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)',
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
@@ -369,7 +370,7 @@ begin
     'public.hub_get_public_settings()',
     'public.hub_learner_invite_preview(text)',
     'public.get_lesson_recording_consent_public(text)',
-    'public.decide_lesson_recording_consent_public(text,text,text,boolean,text)'
+    'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)'
   ]
   loop
     perform pg_temp.assert_true(

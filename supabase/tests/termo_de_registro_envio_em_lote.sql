@@ -599,7 +599,9 @@ begin
   );
   perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', 'msg-lote-1');
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
-  v_result := public.decide_lesson_recording_consent_public(v_token, 'Responsavel Fixture', 'GUARDIAN', true, v_issue ->> 'code');
+  -- O aceite leva a versão do termo que a página mostrou (20260927100000).
+  v_result := public.decide_lesson_recording_consent_public(v_token, 'Responsavel Fixture', 'GUARDIAN', true, v_issue ->> 'code',
+    (private.lesson_recording_current_term('STUDENT')).version);
   perform pg_temp.lot_assert(v_result ->> 'decision' = 'ACCEPTED', 'responsável não conseguiu aceitar pelo link do lote');
   perform pg_temp.lot_assert(private.lesson_recording_student_consent_effective(v_kid),
     'aceite pelo link do lote não vale para marcar aula');

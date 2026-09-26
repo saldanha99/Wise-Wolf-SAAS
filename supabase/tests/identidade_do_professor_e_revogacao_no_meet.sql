@@ -42,7 +42,9 @@ begin
   end if;
   perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
-  v_result := public.decide_lesson_recording_consent_public(p_token, p_signer, 'SELF', true, v_issue ->> 'code');
+  -- O aceite leva a versão do termo que a página mostrou (20260927100000).
+  v_result := public.decide_lesson_recording_consent_public(p_token, p_signer, 'SELF', true, v_issue ->> 'code',
+    (private.lesson_recording_current_term('STUDENT')).version);
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   return v_result ->> 'decision';
 end;
@@ -269,7 +271,9 @@ begin
   exception when others then v_message := sqlerrm; v_blocked := v_message = 'teacher_google_identity_required'; end;
   perform pg_temp.p2_assert(v_blocked, 'professor autorizou o termo sem conta Google confirmada');
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
-  perform pg_temp.p2_assert(public.set_my_lesson_recording_consent(true) ->> 'decision' = 'ACCEPTED',
+  -- O cartão manda a versão do termo que mostrou (20260927100000).
+  perform pg_temp.p2_assert(public.set_my_lesson_recording_consent(true,
+      (private.lesson_recording_current_term('TEACHER')).version) ->> 'decision' = 'ACCEPTED',
     'professor com conta confirmada não conseguiu autorizar');
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
