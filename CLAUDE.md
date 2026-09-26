@@ -270,9 +270,16 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   altera nascimento, `is_kids`, `guardian_phone` nem `guardian_id` pela API — antes, um menor apontava o
   "telefone do responsável" para si e assinava pela família. Quem recriar
   `get_lesson_recording_consent_public` termina com `|| private.lesson_recording_public_link_fields(link)`.
-- ⚠️ **O cartão do professor depende do backend de identidade Google** (`get_my_google_identity`,
-  `teacher_identity_connect`, trava `teacher_google_identity_required`), que em 26/09 não existe em branch
-  nenhuma: sem ele nenhum professor aceita pela tela. Publicar os dois juntos.
+- **Envio do termo em lote** (migration `20260926210000`, **depois** de `20260926200000` e no mesmo release;
+  seção própria no runbook): a direção confirma na tela quantas mensagens e quando saem; fila
+  `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a cada 3 min, seg–sáb 9h–20h — **também na hora de
+  mandar** (o processador adia sem gastar tentativa; 5 por 15 min; pedido com 2 dias na fila é cancelado).
+  Quem responde é a regra de `20260926200000`; telefone do responsável só vale verificado pela escola ou
+  não gravado pelo próprio aluno (trilha `audit_logs`) e diferente do número dele. O link guarda os
+  telefones: mensagem e código vão ao mesmo número. Um link vivo por aluno; reenvio 3 dias depois (na hora
+  se o número mudou); link no portal da escola (`lesson_recording_portal_url`, sem portal = recusa).
+  ⚠️ `get_lesson_recording_consent_public` é remendada **por âncora** (registro de abertura + VOLATILE) —
+  não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.

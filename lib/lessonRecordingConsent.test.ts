@@ -6,6 +6,13 @@ import {
   asNotEffectiveReason,
   codeErrorMessage,
   consentErrorMessage,
+  formatSendTime,
+  manualLinkHoldUntil,
+  missingContactLabel,
+  notSentReasonLabel,
+  queuedSendAt,
+  resendAllowed,
+  sendWindowText,
   consentLink,
   consentWhatsAppMessage,
   formatWait,
@@ -89,6 +96,67 @@ describe('respostas do servidor', () => {
     expect(asDecision('REVOKED')).toBe('REVOKED');
     expect(asDecision('outra')).toBe('NONE');
     expect(asDecision(null)).toBe('NONE');
+  });
+});
+
+describe('envio em lote', () => {
+  it('mostra o horário de Brasília com o dia da semana', () => {
+    // 26/09/2026 é sábado; 22:50 UTC = 19:50 em Brasília.
+    expect(formatSendTime('2026-09-26T22:50:00Z')).toBe('sáb 26/09 às 19:50');
+    expect(formatSendTime(null)).toBe('');
+    expect(formatSendTime('não é data')).toBe('');
+  });
+
+  it('descreve a janela do lote no mesmo dia e atravessando o domingo', () => {
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:38:00Z')).toBe('seg 28/09, das 14:05 às 14:38');
+    expect(sendWindowText('2026-09-26T22:50:00Z', '2026-09-28T12:12:00Z'))
+      .toBe('de sáb 26/09 às 19:50 até seg 28/09 às 09:12');
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:05:00Z')).toBe('seg 28/09 às 14:05');
+  });
+
+  it('reenvio só depois da data que o servidor liberou', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(resendAllowed('2026-09-28T11:59:00Z', now)).toBe(true);
+    expect(resendAllowed('2026-09-29T12:00:00Z', now)).toBe(false);
+    expect(resendAllowed(null, now)).toBe(false);
+  });
+
+  it('diz o que falta cadastrar para quem está sem contato', () => {
+    expect(missingContactLabel('idade_nao_cadastrada')).toContain('data de nascimento');
+    expect(missingContactLabel('menor_sem_telefone_do_responsavel')).toContain('responsável');
+    expect(missingContactLabel(undefined)).toContain('Sem telefone');
+  });
+
+  it('mostra quando sai a mensagem adiada (janela, ritmo ou teto)', () => {
+    expect(queuedSendAt('2026-09-26T22:50:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:00:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', null)).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt(null, null)).toBeNull();
+  });
+
+  it('link gerado à mão segura o envio em lote por 3 dias', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(manualLinkHoldUntil('2026-09-27T12:00:00Z', now)).toBe('2026-09-30T12:00:00.000Z');
+    expect(manualLinkHoldUntil('2026-09-24T12:00:00Z', now)).toBeNull();
+    expect(manualLinkHoldUntil(null, now)).toBeNull();
+    expect(manualLinkHoldUntil('não é data', now)).toBeNull();
+  });
+
+  it('explica o responsável que a escola ainda não confirmou', () => {
+    expect(missingContactLabel('responsavel_nao_confirmado')).toContain('Qualidade dos contatos');
+  });
+
+  it('traduz o motivo de mensagem que não saiu', () => {
+    expect(notSentReasonLabel('pedido_vencido')).toContain('2 dias');
+    expect(notSentReasonLabel('aluno_ja_decidiu')).toBe('respondeu antes do envio');
+    expect(notSentReasonLabel('provider_http_400')).toBe('o WhatsApp recusou o envio');
+    expect(notSentReasonLabel('qualquer')).toBe('não saiu');
+  });
+
+  it('traduz os erros do envio', () => {
+    expect(consentErrorMessage('contagem_mudou')).toContain('Confira de novo');
+    expect(consentErrorMessage('ERROR: reenvio_so_depois_de_3_dias')).toContain('3 dias');
+    expect(consentErrorMessage('portal_da_escola_indefinido')).toContain('portal');
   });
 });
 

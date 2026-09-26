@@ -162,6 +162,14 @@ export function whatsappUrl(phone: string | null | undefined, message: string): 
 }
 
 const ERRORS: Record<string, string> = {
+  contagem_mudou: 'A lista mudou desde a conferência. Confira de novo antes de enviar.',
+  envio_em_andamento: 'Já há uma mensagem deste aluno na fila.',
+  reenvio_so_depois_de_3_dias: 'O reenvio só é liberado 3 dias depois do último envio.',
+  aluno_ja_decidiu: 'Este aluno já respondeu ao termo.',
+  sem_contato: 'Sem telefone para enviar. Complete o cadastro do aluno.',
+  avisos_de_aluno_desligados: 'Os avisos a alunos estão desligados nas configurações da escola.',
+  portal_da_escola_indefinido:
+    'A escola ainda não tem um endereço do portal confirmado para o link do termo. Fale com o suporte da plataforma.',
   nome_completo_obrigatorio: 'Digite nome e sobrenome.',
   responsavel_obrigatorio: 'Quem autoriza é o responsável: o aluno é menor de idade ou a escola ainda não cadastrou a data de nascimento.',
   codigo_incorreto: 'Código incorreto. Confira a mensagem no WhatsApp e digite de novo.',
@@ -222,6 +230,137 @@ export function formatDecisionDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+// ---------------------------------------------------------------------------
+// Envio em lote (migration 20260926210000). As regras valem no banco; aqui só
+// os rótulos e as contas que a tela mostra.
+
+export type ConsentRecipient = 'STUDENT' | 'GUARDIAN';
+export type RequestState = 'QUEUED' | 'SENT' | 'UNCERTAIN' | 'NOT_SENT';
+
+export const RECIPIENT_LABEL: Record<ConsentRecipient, string> = {
+  STUDENT: 'aluno',
+  GUARDIAN: 'responsável',
+};
+
+export const REQUEST_STATE_LABEL: Record<RequestState, string> = {
+  QUEUED: 'Na fila',
+  SENT: 'Enviado',
+  UNCERTAIN: 'Envio incerto',
+  NOT_SENT: 'Não enviado',
+};
+
+const MISSING_CONTACT: Record<string, string> = {
+  idade_nao_cadastrada:
+    'Idade não confirmada pela escola e sem telefone do responsável. Cadastre a data de nascimento (maior de idade recebe no próprio número) ou o telefone do responsável.',
+  menor_sem_telefone_do_responsavel: 'Menor de idade sem telefone do responsável no cadastro.',
+  responsavel_nao_confirmado:
+    'O telefone do responsável no cadastro não foi confirmado pela escola (foi gravado pelo próprio aluno, é o número dele ou de um responsável de fora). Confirme o contato em Qualidade dos contatos.',
+  sem_telefone: 'Sem telefone no cadastro.',
+};
+
+/** Por que o aluno está "sem contato" — com o que falta cadastrar. */
+export function missingContactLabel(reason: string | null | undefined): string {
+  return MISSING_CONTACT[String(reason || '')] || 'Sem telefone para enviar.';
+}
+
+const NOT_SENT: Record<string, string> = {
+  aluno_ja_decidiu: 'respondeu antes do envio',
+  contato_mudou: 'o contato mudou antes do envio',
+  link_substituido_ou_vencido: 'o link foi substituído antes do envio',
+  mensagem_alterada: 'a mensagem foi alterada na fila',
+  aluno_nao_esta_ativo: 'o aluno deixou de estar ativo',
+  termo_mudou_de_versao: 'o termo mudou de versão antes do envio',
+  avisos_de_aluno_desligados: 'avisos a alunos desligados',
+  no_whatsapp_instance: 'WhatsApp da escola desconectado',
+  invalid_phone: 'telefone inválido',
+  removido_da_fila: 'removido da fila',
+  test_fixture_suppressed: 'conta de teste',
+  pedido_vencido: 'ficou mais de 2 dias na fila sem sair',
+  portal_da_escola_indefinido: 'a escola está sem endereço do portal',
+  portal_mudou: 'o endereço do portal mudou antes do envio',
+  link_sem_telefone_do_pedido: 'o link não tinha o telefone da mensagem',
+};
+
+/** Motivo de uma mensagem que não saiu, em português. */
+export function notSentReasonLabel(reason: string | null | undefined): string {
+  const raw = String(reason || '');
+  if (NOT_SENT[raw]) return NOT_SENT[raw];
+  if (raw.startsWith('provider_http_')) return 'o WhatsApp recusou o envio';
+  if (raw.includes('attempts_exhausted')) return 'tentativas esgotadas';
+  return 'não saiu';
+}
+
+/**
+ * Quando a mensagem na fila deve sair: o horário marcado ou o adiamento (fora
+ * da janela, ritmo ou teto do WhatsApp), o que for mais tarde.
+ */
+export function queuedSendAt(
+  scheduledFor: string | null | undefined,
+  nextAttemptAt?: string | null,
+): string | null {
+  const times = [scheduledFor, nextAttemptAt]
+    .map(value => (value ? new Date(value).getTime() : Number.NaN))
+    .filter(time => !Number.isNaN(time));
+  return times.length ? new Date(Math.max(...times)).toISOString() : null;
+}
+
+/**
+ * Até quando o envio em lote pula o aluno que recebeu link gerado à mão (3
+ * dias, a mesma regra do banco). Nulo quando não pula mais.
+ */
+export function manualLinkHoldUntil(
+  manualLinkAt: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!manualLinkAt) return null;
+  const created = new Date(manualLinkAt).getTime();
+  if (Number.isNaN(created)) return null;
+  const until = created + 3 * 24 * 60 * 60 * 1000;
+  return until > now.getTime() ? new Date(until).toISOString() : null;
+}
+
+/** "Reenviar" liberado? Quem decide é o servidor; a tela só espelha a data. */
+export function resendAllowed(availableAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!availableAt) return false;
+  const date = new Date(availableAt);
+  return !Number.isNaN(date.getTime()) && date.getTime() <= now.getTime();
+}
+
+const TZ = 'America/Sao_Paulo';
+
+function dayKey(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { timeZone: TZ });
+}
+
+function weekdayAndDay(date: Date): string {
+  const weekday = date.toLocaleDateString('pt-BR', { timeZone: TZ, weekday: 'short' }).replace(/\.$/, '');
+  const day = date.toLocaleDateString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+  return `${weekday} ${day}`;
+}
+
+function clock(date: Date): string {
+  return date.toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** "sáb 26/09 às 19:50" no horário de Brasília. */
+export function formatSendTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${weekdayAndDay(date)} às ${clock(date)}`;
+}
+
+/** Janela do lote: "sáb 26/09, das 14:05 às 14:38" ou "de sáb 26/09 às 19:50 até seg 28/09 às 09:12". */
+export function sendWindowText(first: string | null | undefined, last: string | null | undefined): string {
+  if (!first) return '';
+  const start = new Date(first);
+  const end = new Date(last || first);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+  if (start.getTime() === end.getTime()) return formatSendTime(first);
+  if (dayKey(start) === dayKey(end)) return `${weekdayAndDay(start)}, das ${clock(start)} às ${clock(end)}`;
+  return `de ${formatSendTime(first)} até ${formatSendTime(last)}`;
 }
 
 type RpcErrorLike = { code?: string | null; message?: string | null } | null | undefined;
