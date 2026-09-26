@@ -6,6 +6,7 @@ import {
   asDecision,
   asGuardianReason,
   asLinkBlockedReason,
+  asTermSchoolIdentity,
   consentErrorMessage,
   consentLink,
   consentWhatsAppMessage,
@@ -23,6 +24,7 @@ import {
   LINK_BLOCKED_LABEL,
   RELATION_LABEL,
   REQUEST_STATE_LABEL,
+  SCHOOL_IDENTITY_GAP_LABEL,
   resendAllowed,
   sendWindowText,
   whatsappUrl,
@@ -53,10 +55,29 @@ type StudentRow = {
   guardian_phone_unconfirmed?: boolean;
   guardian_phone_same_as_student?: boolean;
   link_blocked_reason?: string | null;
+  /** Aceitou versão anterior à vigente (20260927100000): não vale até aceitar de novo. */
+  term_updated?: boolean;
+  decided_term_version?: string | null;
 };
 type GeneratedLink = { url: string; codePhone: string | null; guardianUnconfirmed: boolean };
-type TeacherRow = { teacher_id: string; name: string; decision: string; decided_at: string | null };
-type Overview = { google_connected: boolean; students: StudentRow[]; teachers: TeacherRow[] };
+type TeacherRow = {
+  teacher_id: string;
+  name: string;
+  decision: string;
+  decided_at: string | null;
+  /** Só o aceite da versão vigente vale. Ausente = servidor antigo, vale a decisão. */
+  effective?: boolean;
+  term_updated?: boolean;
+  decided_term_version?: string | null;
+};
+type Overview = {
+  google_connected: boolean;
+  students: StudentRow[];
+  teachers: TeacherRow[];
+  /** Como a escola aparece no termo (marcadores preenchidos) e o que falta. */
+  term_identity?: unknown;
+  term_versions?: { STUDENT?: string | null; TEACHER?: string | null };
+};
 
 // Envio em lote (list_lesson_recording_consent_requests).
 type RequestInfo = {
@@ -251,7 +272,10 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
   const teachers = data?.teachers || [];
   // Conta só o aceite que vale: com código e, se o cadastro exige, do responsável.
   const acceptedStudents = students.filter(s => asDecision(s.decision) === 'ACCEPTED' && s.effective !== false).length;
-  const acceptedTeachers = teachers.filter(t => asDecision(t.decision) === 'ACCEPTED').length;
+  // Professor também: aceite de versão anterior do termo não vale.
+  const acceptedTeachers = teachers.filter(t => asDecision(t.decision) === 'ACCEPTED' && t.effective !== false).length;
+  // Servidor anterior à v3 não manda a identidade: o bloco não aparece.
+  const termIdentity = data?.term_identity ? asTermSchoolIdentity(data.term_identity, schoolName) : null;
   const sendRows = sending?.students || [];
   const waitingCount = sendRows.filter(row => sendFilterMatches(row, 'pending')).length;
   const noContactCount = sendRows.filter(row => sendFilterMatches(row, 'no_contact')).length;
@@ -280,6 +304,22 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
       A conta Google da escola ainda não está conectada. As autorizações ficam guardadas e passam a valer assim que ela for conectada.
     </p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
+
+    {data && termIdentity && <section data-tour="recording-term-identity" aria-label="A escola no termo"
+      className={`rounded-xl border p-4 text-sm ${termIdentity.missing.length
+        ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-slate-900 dark:text-amber-200'
+        : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>
+      <p>
+        No termo, quem responde pelos dados é a escola: <b>{termIdentity.escola_nome}</b>, {termIdentity.escola_documento}.
+        {' '}Contato para assuntos de privacidade: {termIdentity.escola_contato_privacidade}.
+      </p>
+      {termIdentity.missing.length > 0 && <p className="mt-2 font-semibold">
+        Falta {termIdentity.missing.map(gap => SCHOOL_IDENTITY_GAP_LABEL[gap]).join(', ')}: complete em Configurações → Escola e legal para o termo identificar a escola.
+      </p>}
+      {(data.term_versions?.STUDENT || data.term_versions?.TEACHER) && <p className="mt-2 text-xs">
+        Termo vigente: aluno {data.term_versions?.STUDENT || '—'} · professor {data.term_versions?.TEACHER || '—'}. Aceite de versão anterior não vale até a pessoa aceitar o texto novo.
+      </p>}
+    </section>}
 
     {data && <div className="grid grid-cols-2 gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -429,6 +469,7 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
         const message = link ? consentWhatsAppMessage({ studentName: student.name, schoolName, link, forGuardian: !!reason, guardianReason: reason }) : '';
         const whatsapp = link ? whatsappUrl(student.contact_phone, message) : null;
         const ineffective = decision === 'ACCEPTED' && student.effective === false;
+        const oldTerm = ineffective && student.term_updated === true;
         const blockedReason = asLinkBlockedReason(student.link_blocked_reason);
         return <article key={student.student_id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -445,7 +486,9 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
             {student.verified_phone ? ` · confirmado pelo WhatsApp ${student.verified_phone}` : ''}
           </p>}
           {ineffective && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
-            {student.verification
+            {oldTerm
+              ? `Este aceite é da versão ${student.decided_term_version || 'anterior'} do termo e o texto mudou: não vale para transcrever até ${reason ? 'o responsável' : 'o aluno'} aceitar a versão vigente. O envio em lote manda o texto novo (ou gere um link novo).`
+              : student.verification
               ? 'Este aceite foi dado pelo próprio aluno e hoje o cadastro exige o responsável: não vale para transcrever. Gere um link novo para o responsável.'
               : 'Este aceite foi dado sem o código de confirmação e não vale para transcrever. Gere um link novo.'}
           </p>}
@@ -509,6 +552,9 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
         <div>
           <h3 className="font-semibold">{teacher.name}</h3>
           {teacher.decided_at && <p className="text-xs text-slate-500">{formatDecisionDate(teacher.decided_at)}</p>}
+          {asDecision(teacher.decision) === 'ACCEPTED' && teacher.effective === false && <p className="mt-1 text-xs text-amber-800">
+            Aceitou a versão {teacher.decided_term_version || 'anterior'} do termo; precisa aceitar a versão vigente em “Salas e continuidade”. Até lá, as aulas não são transcritas.
+          </p>}
         </div>
         <div className="flex items-center gap-3">
           <Badge decision={teacher.decision} />

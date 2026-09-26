@@ -57,6 +57,8 @@ export interface Tenant {
     legalRepresentativeSignaturePath?: string;
     legalRepresentativeSignatureUrl?: string;
     privacyContactEmail?: string;
+    /** Encarregado de dados (LGPD): aparece no termo de registro das aulas. */
+    privacyOfficerName?: string;
   } | null;
 }
 

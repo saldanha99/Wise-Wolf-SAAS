@@ -4,6 +4,7 @@ import {
   asGuardianReason,
   asLinkBlockedReason,
   asNotEffectiveReason,
+  asTermSchoolIdentity,
   codeErrorMessage,
   consentErrorMessage,
   formatSendTime,
@@ -15,6 +16,7 @@ import {
   sendWindowText,
   consentLink,
   consentWhatsAppMessage,
+  fillTermMarkers,
   formatWait,
   googleIdentityState,
   guardianReasonText,
@@ -26,6 +28,8 @@ import {
   onlyDigits,
   whatsappDigits,
   whatsappUrl,
+  SCHOOL_IDENTITY_GAP_LABEL,
+  TERM_MARKERS,
 } from './lessonRecordingConsent';
 
 describe('nome de quem autoriza', () => {
@@ -252,5 +256,48 @@ describe('aceite que não vale e link bloqueado', () => {
     expect(asLinkBlockedReason('CODE_ATTEMPTS')).toBe('CODE_ATTEMPTS');
     expect(asLinkBlockedReason('CODE_SENDS')).toBe('CODE_SENDS');
     expect(asLinkBlockedReason(null)).toBeNull();
+  });
+});
+
+describe('termo v3: a escola no texto e o aceite por versão', () => {
+  const identity = asTermSchoolIdentity({
+    escola_nome: 'Escola Fixture Idiomas LTDA',
+    escola_documento: 'CNPJ 11.222.333/0001-81',
+    escola_contato_privacidade: 'Encarregada Fixture — privacidade@escola.invalid',
+    missing: [],
+  });
+
+  it('troca os três marcadores pelos dados da escola', () => {
+    const body = 'A escola: {escola_nome}, {escola_documento}. Contato para assuntos de privacidade: {escola_contato_privacidade}.';
+    expect(fillTermMarkers(body, identity)).toBe(
+      'A escola: Escola Fixture Idiomas LTDA, CNPJ 11.222.333/0001-81. Contato para assuntos de privacidade: Encarregada Fixture — privacidade@escola.invalid.',
+    );
+    expect(TERM_MARKERS).toEqual(['escola_nome', 'escola_documento', 'escola_contato_privacidade']);
+  });
+
+  it('valor que parece marcador não é trocado de novo, e marcador desconhecido fica como está', () => {
+    const tricky = asTermSchoolIdentity({ escola_nome: '{escola_documento}', escola_documento: 'CNPJ 1', escola_contato_privacidade: 'x@y.z' });
+    expect(fillTermMarkers('{escola_nome} / {outro_marcador}', tricky)).toBe('{escola_documento} / {outro_marcador}');
+    expect(fillTermMarkers(null, identity)).toBe('');
+  });
+
+  it('servidor antigo ou dado faltando: texto neutro, nunca o marcador cru', () => {
+    const empty = asTermSchoolIdentity(undefined, 'Escola Exibida');
+    expect(fillTermMarkers('{escola_nome}, {escola_documento}. Contato: {escola_contato_privacidade}.', empty)).toBe(
+      'Escola Exibida, CNPJ não informado pela escola. Contato: a direção da escola, pelo WhatsApp da escola.',
+    );
+    expect(asTermSchoolIdentity(undefined).escola_nome).toBe('a escola');
+  });
+
+  it('diz o que a direção precisa completar, ignorando lacuna desconhecida', () => {
+    const gaps = asTermSchoolIdentity({ missing: ['cnpj', 'contato_privacidade', 'outra_coisa'] }).missing;
+    expect(gaps).toEqual(['cnpj', 'contato_privacidade']);
+    expect(gaps.map(gap => SCHOOL_IDENTITY_GAP_LABEL[gap])).toEqual(['CNPJ', 'contato de privacidade (LGPD)']);
+  });
+
+  it('aceite de versão anterior: a página diz que o termo mudou', () => {
+    expect(asNotEffectiveReason('TERM_UPDATED')).toBe('TERM_UPDATED');
+    expect(notEffectiveText('TERM_UPDATED', 'Pedro', 'v2')).toMatch(/O termo mudou.*\(a versão v2\).*Leia a nova versão/);
+    expect(notEffectiveText('TERM_UPDATED', 'Pedro')).not.toMatch(/versão v/);
   });
 });

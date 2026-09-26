@@ -5,11 +5,13 @@ import {
   asDecision,
   asGuardianReason,
   asNotEffectiveReason,
+  asTermSchoolIdentity,
   CODE_FUNCTION,
   CODE_LENGTH,
   codeErrorMessage,
   consentErrorMessage,
   DECISION_LABEL,
+  fillTermMarkers,
   guardianReasonText,
   isFullName,
   isSixDigitCode,
@@ -23,6 +25,10 @@ import {
 // login). Fica no SPA, como a troca de plano e a confirmação de presença.
 // Desde 26/09/2026 a decisão só é gravada com o código de 6 dígitos mandado
 // pelo WhatsApp da escola ao telefone cadastrado (migration 20260926200000).
+// Desde 27/09/2026 (migration 20260927100000) o texto identifica a escola por
+// marcadores que esta página preenche com os dados da própria escola, e o
+// aceite de uma versão anterior do termo não vale: a página diz que o termo
+// mudou e pede a resposta de novo.
 
 type Relation = 'SELF' | 'GUARDIAN';
 
@@ -43,6 +49,10 @@ interface ConsentPublic {
   /** A última resposta vale para transcrever? (falso: sem código, ou do aluno quando é o responsável quem responde). */
   current_effective?: boolean;
   current_not_effective_reason?: string | null;
+  /** Versão do termo da última resposta (a que a pessoa leu). */
+  decided_term_version?: string | null;
+  /** Valores dos marcadores {escola_nome}, {escola_documento} e {escola_contato_privacidade}. */
+  school_identity?: unknown;
 }
 
 interface CodeResponse {
@@ -201,6 +211,7 @@ export default function LessonRecordingConsentPage() {
     ? asNotEffectiveReason(data.current_not_effective_reason) || 'GUARDIAN_REQUIRED'
     : null;
   const whoLabel = relation === 'SELF' ? 'do aluno' : 'do responsável';
+  const termText = fillTermMarkers(data.term_body, asTermSchoolIdentity(data.school_identity, data.school_name));
 
   return <div className="min-h-screen bg-slate-100 px-4 py-8">
     <div className="mx-auto max-w-lg space-y-4">
@@ -216,14 +227,14 @@ export default function LessonRecordingConsentPage() {
         </p>
         {notEffective
           ? <p role="status" className="rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-              {notEffectiveText(notEffective, firstName)}
+              {notEffectiveText(notEffective, firstName, data.decided_term_version)}
             </p>
           : current !== 'NONE' && <p className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
               Situação atual: <b>{DECISION_LABEL[current]}</b>. Você pode responder de novo; vale a resposta mais recente.
             </p>}
 
         <div className="max-h-[50vh] overflow-y-auto whitespace-pre-line rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
-          {data.term_body}
+          {termText}
         </div>
 
         {guardianReason

@@ -143,4 +143,32 @@ describe('<LessonRecordingConsentPage />', () => {
     expect(await screen.findByText(/não tem o WhatsApp do responsável no cadastro/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar código/i })).not.toBeInTheDocument();
   });
+
+  it('termo v3: preenche a escola nos marcadores e diz que o termo mudou para quem aceitou a versão anterior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: page({
+        term_version: 'v3',
+        term_body: 'Quem é responsável pelos dados\n• A escola: {escola_nome}, {escola_documento}. Contato para assuntos de privacidade: {escola_contato_privacidade}.',
+        current_decision: 'ACCEPTED',
+        current_effective: false,
+        current_not_effective_reason: 'TERM_UPDATED',
+        decided_term_version: 'v2',
+        school_identity: {
+          escola_nome: 'Escola Fixture Idiomas LTDA',
+          escola_documento: 'CNPJ 11.222.333/0001-81',
+          escola_contato_privacidade: 'privacidade@escola.invalid',
+          missing: [],
+        },
+      }),
+      error: null,
+    });
+    render(<LessonRecordingConsentPage />);
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/O termo mudou.*\(a versão v2\).*Leia a nova versão abaixo e responda de novo/);
+    expect(screen.getByText(/A escola: Escola Fixture Idiomas LTDA, CNPJ 11\.222\.333\/0001-81\. Contato para assuntos de privacidade: privacidade@escola\.invalid\./)).toBeInTheDocument();
+    expect(screen.queryByText(/\{escola_/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Situação atual/)).not.toBeInTheDocument();
+    // Dá para responder de novo (com código).
+    expect(screen.getByRole('button', { name: /enviar código pelo whatsapp/i })).toBeEnabled();
+  });
 });

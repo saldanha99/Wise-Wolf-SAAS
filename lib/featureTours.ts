@@ -266,6 +266,37 @@ export const FEATURE_TOURS: FeatureTour[] = [
         text: 'Antes de autorizar o registro das aulas, entre com a conta Google que você usa nas aulas. É ela que a escola coloca como coanfitriã da sala — sem essa confirmação o botão de autorizar fica desligado.',
       },
     ],
+  },  {
+    id: '2026-09-27-termo-v3',
+    title: 'Termo das aulas, versão 3',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'recording-term-identity',
+        view: 'recording-consents',
+        title: 'O termo das aulas mudou 📄',
+        text: 'A versão 3 conta tudo o que o sistema faz com o registro: resumo por IA que o professor aprova, planejamento, dossiê por link com login na troca de professor, cartão do aluno, prazos de 90 dias e direitos. A escola aparece no termo como responsável pelos dados — confira aqui como ela aparece; se faltar razão social, CNPJ ou contato de privacidade, complete em Configurações → Escola e legal.',
+      },
+      {
+        target: 'recording-consents',
+        view: 'recording-consents',
+        title: 'Aceite antigo não vale mais',
+        text: 'Quem autorizou uma versão anterior precisa aceitar o texto novo: até lá as aulas dessa pessoa não são transcritas, e as aulas que o termo antigo tinha marcado são desmarcadas sozinhas. O envio em lote já conta esses alunos como pendentes; os professores respondem de novo na tela deles.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-27-termo-v3-professor',
+    title: 'Termo das aulas, versão 3',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'recording-teacher-consent',
+        view: 'lesson-sessions',
+        title: 'O termo do registro das aulas mudou 📄',
+        text: 'A versão 3 explica o resumo por IA que você revisa antes de entrar na ficha, o planejamento com IA, o dossiê por link na troca de professor, o cartão do aluno e o extrato de pontualidade — sem nota, sem ranking e sem mexer no seu pagamento. Quem autorizou a versão anterior precisa ler e autorizar de novo: até lá suas aulas não são transcritas.',
+      },
+    ],
   },
 ];
 

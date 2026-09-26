@@ -4,14 +4,29 @@ import { supabase } from '../lib/supabase';
 import { googleMeetAction } from '../lib/googleMeet';
 import {
   asDecision,
+  asTermSchoolIdentity,
   consentErrorMessage,
   DECISION_LABEL,
+  fillTermMarkers,
   formatDecisionDate,
   googleIdentityState,
   type GoogleIdentityState,
 } from '../lib/lessonRecordingConsent';
 
-type MyConsent = { applies: boolean; decision?: string; decided_at?: string | null; term_version?: string; term_body?: string };
+type MyConsent = {
+  applies: boolean;
+  decision?: string;
+  decided_at?: string | null;
+  term_version?: string;
+  term_body?: string;
+  /** Versão que o professor aceitou (20260927100000). */
+  decided_term_version?: string | null;
+  /** O aceite vale: é da versão vigente. Ausente = servidor antigo, vale a decisão. */
+  effective?: boolean;
+  /** Aceitou uma versão anterior à vigente: precisa aceitar de novo. */
+  term_updated?: boolean;
+  school_identity?: unknown;
+};
 
 // Aceite do professor ao termo de registro das aulas. Sem ele, nenhuma aula
 // dele é transcrita, mesmo que o aluno tenha autorizado. Antes do aceite, o
@@ -23,6 +38,9 @@ type MyConsent = { applies: boolean; decision?: string; decided_at?: string | nu
 // teacher_google_identity_required em set_my_lesson_recording_consent), de
 // outra frente: sem ele o estado é "indisponível" e ninguém aceita pela tela.
 // Os dois sobem juntos (runbook, "Conta Google do professor antes do aceite").
+// Termo v3 (20260927100000): o texto identifica a escola por marcadores que o
+// cartão preenche com os dados dela, e o aceite de uma versão anterior não vale
+// — o cartão diz que o termo mudou e volta a oferecer "Li e autorizo".
 export default function LessonRecordingTeacherCard() {
   const [data, setData] = useState<MyConsent | null>(null);
   const [identity, setIdentity] = useState<GoogleIdentityState | null>(null);
@@ -76,15 +94,20 @@ export default function LessonRecordingTeacherCard() {
 
   if (!data?.applies) return null;
   const decision = asDecision(data.decision);
-  const accepted = decision === 'ACCEPTED';
+  // Aceite de versão anterior não vale: o professor lê o texto novo e responde de novo.
+  const termUpdated = decision === 'ACCEPTED' && (data.term_updated === true || data.effective === false);
+  const accepted = decision === 'ACCEPTED' && !termUpdated;
   const identityVerified = identity?.status === 'verified';
+  const termText = fillTermMarkers(data.term_body, asTermSchoolIdentity(data.school_identity));
 
   return <section data-tour="recording-teacher-consent" className={`rounded-2xl border p-4 ${accepted ? 'border-emerald-200 bg-emerald-50 dark:bg-slate-900' : 'border-amber-200 bg-amber-50 dark:bg-slate-900'}`}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100"><ShieldCheck size={18} /> Registro das suas aulas</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          {accepted
+          {termUpdated
+            ? `O termo mudou${data.decided_term_version ? `: você autorizou a versão ${data.decided_term_version}` : ''} e a vigente é a ${data.term_version || 'nova'}. Leia a nova versão e autorize de novo — até lá suas aulas não são transcritas.`
+            : accepted
             ? `Você autorizou em ${formatDecisionDate(data.decided_at)}. As aulas dos alunos que também autorizaram passam a ser transcritas.`
             : decision === 'NONE'
               ? 'As aulas na sala da escola podem ser transcritas para registrar o que foi trabalhado. Confirme sua conta Google, leia o termo e responda.'
@@ -92,7 +115,7 @@ export default function LessonRecordingTeacherCard() {
         </p>
       </div>
       <button type="button" onClick={() => setOpen(value => !value)} className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-        {open ? 'Fechar termo' : accepted ? 'Ver termo' : 'Ler e responder'}
+        {open ? 'Fechar termo' : accepted ? 'Ver termo' : termUpdated ? 'Ler a nova versão' : 'Ler e responder'}
       </button>
     </div>
 
@@ -132,7 +155,7 @@ export default function LessonRecordingTeacherCard() {
 
     {open && <div className="mt-3 space-y-3">
       <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-        {data.term_body}
+        {termText}
       </div>
       {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
       <div className="flex flex-wrap gap-3">

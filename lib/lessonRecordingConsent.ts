@@ -1,7 +1,7 @@
 // Termo de registro das aulas (Meet): regras de tela e textos.
-// As regras que valem estão no banco (migrations 20260926120000 e
-// 20260926200000); aqui ficam só o espelho para a tela avisar antes de chamar
-// o servidor.
+// As regras que valem estão no banco (migrations 20260926120000,
+// 20260926200000 e 20260927100000 — termo v3, aceite por versão); aqui ficam
+// só o espelho para a tela avisar antes de chamar o servidor.
 
 export type RecordingDecision = 'NONE' | 'ACCEPTED' | 'REFUSED' | 'REVOKED';
 export type SignerRelation = 'SELF' | 'GUARDIAN' | 'SCHOOL';
@@ -45,11 +45,15 @@ export function guardianReasonText(reason: GuardianReason, firstName: string): s
   return `Como ${firstName} é menor de idade, quem responde é o responsável legal.`;
 }
 
-/** Por que um aceite gravado não vale para transcrever (servidor decide). */
-export type NotEffectiveReason = 'GUARDIAN_REQUIRED' | 'UNVERIFIED';
+/**
+ * Por que um aceite gravado não vale para transcrever (servidor decide).
+ * TERM_UPDATED: a pessoa autorizou uma versão anterior à vigente (migration
+ * 20260927100000) — só vale depois de aceitar o texto novo.
+ */
+export type NotEffectiveReason = 'GUARDIAN_REQUIRED' | 'UNVERIFIED' | 'TERM_UPDATED';
 
 export function asNotEffectiveReason(value: unknown): NotEffectiveReason | null {
-  return value === 'GUARDIAN_REQUIRED' || value === 'UNVERIFIED' ? value : null;
+  return value === 'GUARDIAN_REQUIRED' || value === 'UNVERIFIED' || value === 'TERM_UPDATED' ? value : null;
 }
 
 /**
@@ -57,12 +61,72 @@ export function asNotEffectiveReason(value: unknown): NotEffectiveReason | null 
  * vale mais — em vez de "Situação atual: Autorizado", que faria o responsável
  * fechar a página achando que está resolvido.
  */
-export function notEffectiveText(reason: NotEffectiveReason, firstName: string): string {
+export function notEffectiveText(reason: NotEffectiveReason, firstName: string, decidedVersion?: string | null): string {
+  if (reason === 'TERM_UPDATED') {
+    const which = decidedVersion ? ` (a versão ${decidedVersion})` : '';
+    return `O termo mudou desde a última resposta: a autorização anterior${which} não vale para as próximas aulas de ${firstName}. Leia a nova versão abaixo e responda de novo.`;
+  }
   if (reason === 'UNVERIFIED') {
     return `A autorização anterior foi registrada sem a confirmação pelo WhatsApp e não vale mais. Responda de novo abaixo para as aulas de ${firstName} serem registradas.`;
   }
   return `A autorização anterior foi dada pelo próprio aluno e não vale: ${firstName} é menor de idade (ou a escola não confirmou a idade). O responsável precisa responder abaixo.`;
 }
+
+// ---------------------------------------------------------------------------
+// Quem é a escola no termo (migration 20260927100000). O texto guarda só
+// marcadores; o servidor devolve os valores lidos dos dados da própria escola
+// (Configurações → Escola e legal) e a tela troca. Dado da Wise Wolf nunca
+// fica escrito no código.
+
+export const TERM_MARKERS = ['escola_nome', 'escola_documento', 'escola_contato_privacidade'] as const;
+export type TermMarker = typeof TERM_MARKERS[number];
+
+/** Valores dos marcadores e o que falta a escola preencher. */
+export type TermSchoolIdentity = Record<TermMarker, string> & { missing: SchoolIdentityGap[] };
+export type SchoolIdentityGap = 'razao_social' | 'cnpj' | 'contato_privacidade';
+
+/** Texto neutro quando o servidor não mandou o valor (versão anterior do banco). */
+const MARKER_FALLBACK: Record<TermMarker, string> = {
+  escola_nome: 'a escola',
+  escola_documento: 'CNPJ não informado pela escola',
+  escola_contato_privacidade: 'a direção da escola, pelo WhatsApp da escola',
+};
+
+const GAPS: SchoolIdentityGap[] = ['razao_social', 'cnpj', 'contato_privacidade'];
+
+/** Lê `school_identity` do servidor; nada aproveitável vira os textos neutros. */
+export function asTermSchoolIdentity(value: unknown, schoolName?: string | null): TermSchoolIdentity {
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const text = (key: TermMarker): string => {
+    const raw = record[key];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : '';
+  };
+  const missing = Array.isArray(record.missing)
+    ? record.missing.filter((gap): gap is SchoolIdentityGap => GAPS.includes(gap as SchoolIdentityGap))
+    : [];
+  return {
+    escola_nome: text('escola_nome') || schoolName?.trim() || MARKER_FALLBACK.escola_nome,
+    escola_documento: text('escola_documento') || MARKER_FALLBACK.escola_documento,
+    escola_contato_privacidade: text('escola_contato_privacidade') || MARKER_FALLBACK.escola_contato_privacidade,
+    missing,
+  };
+}
+
+/**
+ * Troca os marcadores do termo pelos dados da escola, numa passada só (o valor
+ * trocado nunca é relido como marcador). Marcador desconhecido fica como está.
+ */
+export function fillTermMarkers(body: string | null | undefined, identity: TermSchoolIdentity): string {
+  return String(body || '').replace(/\{([a-z_]+)\}/g, (whole, key: string) =>
+    (TERM_MARKERS as readonly string[]).includes(key) ? identity[key as TermMarker] : whole);
+}
+
+/** O que a direção precisa completar para o termo identificar a escola. */
+export const SCHOOL_IDENTITY_GAP_LABEL: Record<SchoolIdentityGap, string> = {
+  razao_social: 'razão social',
+  cnpj: 'CNPJ',
+  contato_privacidade: 'contato de privacidade (LGPD)',
+};
 
 /** Por que o link foi fechado pelo servidor. */
 export type LinkBlockedReason = 'CODE_ATTEMPTS' | 'CODE_SENDS';
