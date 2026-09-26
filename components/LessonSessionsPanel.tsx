@@ -70,7 +70,7 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
         <p className="mt-2 text-xs">{session.status === 'LOGGED' ? 'Com lançamento' : 'Prevista'} · Documentação {session.documentation_consent ? 'autorizada' : 'sem autorização registrada'}</p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <button className="font-semibold text-blue-600" onClick={() => { setSelected(session); setHandover(null); }}>Sala e resumo</button>
-          <button className="text-blue-600" onClick={() => { setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
+          <button data-tour="lesson-session-handover" className="text-blue-600" onClick={() => { setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
           {canMarkDocumentation && <button disabled={busy} onClick={() => void consent(session)} className="text-slate-600">{session.documentation_consent ? 'Revogar autorização' : 'Registrar autorização'}</button>}
           {manager && <button disabled={busy} onClick={() => void report(session)} className="text-slate-600">Registrar ocorrência</button>}
           {manager && new Date(session.scheduled_start_at).getTime() > Date.now() && <button disabled={busy} onClick={() => void replan(session)} className="text-slate-600">Replanejar sessão futura</button>}

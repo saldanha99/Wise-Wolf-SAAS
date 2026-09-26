@@ -51,6 +51,7 @@ const LessonPlannerAI = lazy(() => import('./components/LessonPlannerAI'));
 const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
 const StudentPracticeHub = lazy(() => import('./components/StudentPracticeHub'));
 const StudentSchedule = lazy(() => import('./components/StudentSchedule'));
+const StudentLessonRecords = lazy(() => import('./components/StudentLessonRecords'));
 const EvolutionView = lazy(() => import('./components/EvolutionView'));
 const TeacherProfile = lazy(() => import('./components/TeacherProfile'));
 const TeacherReschedules = lazy(() => import('./components/TeacherReschedules'));
@@ -244,6 +245,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'ai-tutor', label: 'Praticar com o Wolfie', group: 'Aluno' },
     { tab: 'practice', label: 'Minhas Trilhas', group: 'Aluno' },
     { tab: 'schedule', label: 'Aulas', group: 'Aluno' },
+    { tab: 'lesson-records', label: 'Minhas aulas registradas', group: 'Aluno', keywords: 'resumo registro transcrição termo exclusão' },
     { tab: 'meeting_links', label: 'Links', group: 'Aluno' },
     { tab: 'materials', label: 'Materiais', group: 'Aluno' },
     { tab: 'financial', label: 'Financeiro', group: 'Aluno' },
@@ -1195,7 +1197,7 @@ const App: React.FC = () => {
 
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
-      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'practice', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
+      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'practice', 'schedule', 'lesson-records', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
       if (!allowedStudentTabs.includes(activeTab)) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-red-100 dark:border-red-900/30 shadow-xl overflow-hidden relative">
@@ -1372,6 +1374,8 @@ const App: React.FC = () => {
         }}
       />,
       'evolution': <EvolutionView user={user} />,
+      // Só o aluno: a RPC recusa outros papéis (eles têm o dossiê e "Sala e resumo").
+      'lesson-records': user.role === UserRole.STUDENT ? <StudentLessonRecords /> : null,
       'profile': <TeacherProfile />,
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
@@ -1555,6 +1559,7 @@ const App: React.FC = () => {
                       'automation': 'Conexão do WhatsApp',
                       'automations': 'Disparos do WhatsApp',
                       'evolution': 'Evolução',
+                      'lesson-records': 'Minhas aulas registradas',
                       'teachers': 'Professores',
                       'oral-tests': 'Testes Orais',
                       'schedule_explorer': 'Explorador de Agenda',

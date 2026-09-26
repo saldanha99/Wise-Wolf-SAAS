@@ -80,6 +80,9 @@ export const studentMenuItems: NavItem[] = [
   { id: 'ai-tutor', label: 'Praticar com o Wolfie', icon: Sparkles, badge: 'NOVO' },
   { id: 'practice', label: 'Minhas Trilhas', icon: Target },
   { id: 'schedule', label: 'Aulas', icon: Calendar },
+  // O próprio registro das aulas: só resumos aprovados pelo professor
+  // (get_my_lesson_records). Decisão da direção, onda 2 do Meet.
+  { id: 'lesson-records', label: 'Aulas registradas', icon: FileText },
   { id: 'meeting_links', label: 'Links', icon: Video },
   { id: 'materials', label: 'Materiais', icon: Book },
   { id: 'financial', label: 'Financeiro', icon: CreditCard },
