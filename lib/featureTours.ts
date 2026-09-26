@@ -268,6 +268,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-27-planner-aulas-aprovadas',
+    title: 'Planner a partir das aulas aprovadas',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'planner-student-select',
+        view: 'lesson-planner-ai',
+        title: 'O aluno da cobertura também está aqui 🐺',
+        text: 'Além dos seus alunos, a lista traz o aluno de quem você é segundo professor e, do dia anterior ao dia seguinte da aula, o aluno da cobertura confirmada ou da reposição marcada com você — com "cobertura até dd/mm" ao lado do nome. Depois disso ele sai da lista. O botão de planejar em Aulas de Hoje já abre o Planner com ele escolhido.',
+      },
+      {
+        target: 'planner-lesson-basis',
+        view: 'lesson-planner-ai',
+        title: 'O plano diz de quais aulas saiu',
+        text: 'Ao gerar, o Planner lê os resumos das aulas no Meet que o professor aprovou — até as 6 mais recentes — e mostra neste quadro: "Baseado nas aulas de 20/09 e 23/09". O plano continua do próximo passo aprovado, e a tarefa de casa ataca os erros recorrentes confirmados. Resumo que ninguém aprovou (ou que foi rejeitado depois) não entra, e se houve aula lançada depois da última aprovada, o plano parte dos lançamentos.',
+      },
+    ],
+  },
+  {
     id: '2026-09-27-resumo-automatico',
     title: 'Resumo da aula por IA',
     roles: ['SCHOOL_ADMIN'],

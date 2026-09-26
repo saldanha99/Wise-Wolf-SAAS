@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { takePlannerIntent } from '../lib/plannerIntent';
+import { parsePlannerLessonBasis, plannerDayMonth, type PlannerLessonBasis } from '../lib/plannerLessonBasis';
+import { parsePlannerStudentRows, plannerAccessNote, type PlannerAccessReason } from '../lib/plannerStudents';
 import { User as UserType, UserRole } from '../types';
 
 export interface LessonPlannerAIProps {
@@ -39,6 +41,10 @@ export interface StudentOption {
     id: string;
     full_name: string | null;
     module: string | null;
+    /** Só na lista do professor: por que ele pode planejar para este aluno. */
+    access_reason?: PlannerAccessReason | null;
+    /** AAAA-MM-DD — até quando vale (cobertura e reposição). */
+    valid_until?: string | null;
 }
 
 interface BookingStudentRow {
@@ -164,6 +170,8 @@ interface GeneratedPlanState {
     studentId: string;
     plan: PlannerPlan;
     knowledge: PlannerKnowledgeStatus;
+    /** Aulas aprovadas de onde o plano saiu (calculado no servidor). */
+    lessonBasis: PlannerLessonBasis | null;
     saved: boolean;
 }
 
@@ -273,6 +281,7 @@ const parseGenerateResponse = (value: unknown): Omit<GeneratedPlanState, 'studen
         runId: value.run_id,
         plan: value.plan,
         knowledge: parseKnowledgeStatus(value.knowledge),
+        lessonBasis: parsePlannerLessonBasis(value),
     };
 };
 
@@ -350,6 +359,13 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
 
                     if (queryError) throw queryError;
                     nextStudents = (data || []) as StudentOption[];
+                } else if (user.role === UserRole.TEACHER) {
+                    // A mesma regra que a edge aplica: agenda viva, segundo
+                    // professor e — do dia anterior ao seguinte da aula — o
+                    // aluno da cobertura confirmada ou da reposição marcada.
+                    const { data, error: queryError } = await supabase.rpc('my_planner_students');
+                    if (queryError) throw queryError;
+                    nextStudents = parsePlannerStudentRows(data);
                 } else {
                     const { data, error: queryError } = await supabase
                         .from('bookings')
@@ -442,7 +458,10 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                     if (profileRes.error) throw profileRes.error;
                     if (wolfRes.error) throw wolfRes.error;
                     if (historyRes.error) throw historyRes.error;
-                    if (!profileRes.data) throw new Error('Aluno não encontrado nesta escola.');
+                    // Segundo professor pode não ler a ficha pela regra de
+                    // perfis (o aluno tem agenda viva com o titular): o painel
+                    // fica sem perfil e o plano sai igual — quem decide o
+                    // acesso ao planejamento é o servidor.
 
                     if (active) {
                         setStudentProfile(profileRes.data as StudentProfile);
@@ -611,6 +630,11 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
     );
     const knowledge = generatedPlan?.knowledge;
     const knowledgeReady = Boolean(knowledge?.rag_used || knowledge?.sources.length);
+    const selectedStudentOption = students.find((student) => student.id === selectedStudent);
+    const selectedStudentAccessNote = selectedStudentOption?.valid_until
+        ? plannerAccessNote(selectedStudentOption)
+        : '';
+    const lessonBasis = generatedPlan?.lessonBasis ?? null;
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700 pb-20">
@@ -655,18 +679,27 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     Selecionar aluno
                                 </label>
                                 <select
+                                    data-tour="planner-student-select"
                                     className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all"
                                     value={selectedStudent}
                                     onChange={(event) => handleStudentChange(event.target.value)}
                                     disabled={loading}
                                 >
                                     <option value="">{loading ? 'Carregando alunos...' : 'Escolha um aluno...'}</option>
-                                    {students.map((student) => (
-                                        <option key={student.id} value={student.id}>
-                                            {student.full_name || 'Aluno sem nome'}{student.module ? ` · ${student.module}` : ''}
-                                        </option>
-                                    ))}
+                                    {students.map((student) => {
+                                        const accessNote = plannerAccessNote(student);
+                                        return (
+                                            <option key={student.id} value={student.id}>
+                                                {student.full_name || 'Aluno sem nome'}{student.module ? ` · ${student.module}` : ''}{accessNote ? ` · ${accessNote}` : ''}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
+                                {selectedStudentAccessNote && (
+                                    <p className="text-[10px] text-brand-muted mt-2 ml-1">
+                                        Acesso de {selectedStudentAccessNote}: o aluno sai da lista depois do dia seguinte à aula.
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -886,6 +919,50 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                         </button>
                                     )}
                                 </div>
+
+                                {(lessonBasis || !adapter) && (
+                                    <section
+                                        data-tour="planner-lesson-basis"
+                                        className="p-4 md:p-5 bg-tenant-primary/5 rounded-2xl border border-tenant-primary/15 space-y-2"
+                                    >
+                                        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-tenant-primary">
+                                            <History size={12} /> Base do plano
+                                        </p>
+                                        {lessonBasis ? (
+                                            <>
+                                                <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                                                    {lessonBasis.label}
+                                                    <span className="font-semibold text-brand-muted"> · resumos aprovados no Meet</span>
+                                                </p>
+                                                {lessonBasis.continuedFrom && (
+                                                    <p className="text-xs text-brand-text dark:text-slate-200 leading-relaxed">
+                                                        <span className="font-black">Continua do próximo passo aprovado em {plannerDayMonth(lessonBasis.continuedFrom.lessonDate)}:</span>{' '}
+                                                        {lessonBasis.continuedFrom.recommendedNextStep}
+                                                    </p>
+                                                )}
+                                                {lessonBasis.newerLoggedLessonDate && (
+                                                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                                                        Houve aula lançada em {plannerDayMonth(lessonBasis.newerLoggedLessonDate)}, depois da última aula aprovada: o plano parte dos lançamentos mais recentes, e as aulas aprovadas entram só como histórico.
+                                                    </p>
+                                                )}
+                                                {lessonBasis.homeworkTargets.length > 0 && (
+                                                    <div className="text-xs text-brand-text dark:text-slate-200">
+                                                        <p className="font-black">A lição ataca os erros recorrentes:</p>
+                                                        <ul className="mt-1 space-y-0.5">
+                                                            {lessonBasis.homeworkTargets.map((target) => (
+                                                                <li key={target}>• {target}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <p className="text-xs text-brand-muted leading-relaxed">
+                                                Ainda não há resumo de aula aprovado para este aluno: o plano usou os lançamentos, o cartão do aluno e a memória do Wolfie.
+                                            </p>
+                                        )}
+                                    </section>
+                                )}
 
                                 <section>
                                     <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-brand-muted mb-4">
@@ -1165,6 +1242,22 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     <p className="text-[10px] font-black text-blue-500 uppercase">Base Wise Wolf</p>
                                     <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Fontes verificáveis</p>
                                 </div>
+                                {!adapter && (
+                                    // Alvo do tour sem plano gerado: o motor usa o primeiro
+                                    // [data-tour] visível, e a seção "Base do plano" só existe
+                                    // depois de gerar. Mesmo alvo, mesmo assunto.
+                                    <div
+                                        data-tour="planner-lesson-basis"
+                                        className="col-span-2 p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm text-left"
+                                    >
+                                        <p className="flex items-center gap-2 text-[10px] font-black text-tenant-primary uppercase">
+                                            <History size={12} /> Base do plano
+                                        </p>
+                                        <p className="text-[11px] text-brand-muted mt-1 leading-relaxed">
+                                            O plano diz de quais aulas saiu: os resumos do Meet que o professor aprovou (até 6) — ou, se houve aula lançada depois deles, os lançamentos mais recentes.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

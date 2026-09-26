@@ -1892,7 +1892,7 @@ experimentais, fechamentos e reconciliação, e **ignorava reposição por compl
 
 > Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.
 
-- Edge `lesson-planner` (OpenRouter, Gemini free + fallback) monta plano PERSONALIZADO juntando: perfil (nível/CEFR, personalidade, KIDS, interesses, objetivos), **pontos fracos recorrentes** (`wolfie_corrections.error_type` das sessões do aluno), **histórico** (`class_logs` últimas 5 — continuidade), plano anterior (`lesson_plans`), e **materiais APROVADOS** do tenant (sugere só desses). Retorna `{objectives, content, materials, ai_memory_reflection, weak_points}` — o `content` traz seções com tempos (aquecimento/principal/prática/lição/evitar/continuidade).
+- Edge `lesson-planner` (OpenRouter, Gemini free + fallback) monta plano PERSONALIZADO juntando: perfil (nível/CEFR, KIDS, e objetivo/temas pelo cartão do aluno — desde 27/09 sem personalidade, profissão nem observação livre; ver "Planner a partir das aulas aprovadas"), **pontos fracos recorrentes** (`wolfie_corrections.error_type` das sessões do aluno), **histórico** (`class_logs` últimas 5 — continuidade), plano anterior (`lesson_plans`), e **materiais APROVADOS** do tenant (sugere só desses). Retorna `{objectives, content, materials, ai_memory_reflection, weak_points}` — o `content` traz seções com tempos (aquecimento/principal/prática/lição/evitar/continuidade).
 - `LessonPlannerAI.handleGeneratePlan` chama `supabase.functions.invoke('lesson-planner', { student_id, custom_prompt })` (não mais template). Salva em `lesson_plans` (memória p/ continuidade).
 - Guardrails: só sugere materiais da lista fornecida; usa dados reais (anti-genérico). Auth: TEACHER/admin.
 
@@ -1951,6 +1951,71 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   Planner, histórico sem texto — passa com e sem `20260926200000`),
   `lesson-planner/teacher-card.test.ts` e `lesson-planner/source.test.ts` (amarra o
   `index.ts` à RPC e ao `plannerSignalsFor`; precisa de `--allow-read`).
+
+### Planner a partir das aulas aprovadas (migration `20260927130000`)
+
+- **Memória do Meet só aprovada:** o Planner lê à parte até **6** memórias
+  `MEET_SESSION` + `VERIFIED` (as que o professor aprovou na revisão do resumo), com a
+  DATA da aula no fuso da escola; a consulta geral de memórias passou a excluir
+  `MEET_SESSION` — resumo do Meet sem aprovação não chega ao modelo nem como hipótese.
+  Regra pura em `lesson-planner/approved-lessons.ts`: só campos pedagógicos
+  (`APPROVED_LESSON_COLUMNS` — nada de `metadata`, `notes_to_verify`, `source_ref`,
+  revisor), texto passa por `redactDirectIdentifiers`.
+- **A base é do código, não do modelo:** `lesson_basis` ("Baseado nas aulas de 20/09 e
+  23/09", o próximo passo aprovado de onde o plano continua e, no modo `homework`, os
+  erros recorrentes que a lição ataca) sai de `approvedLessonBasis`, vai na resposta, no
+  plano salvo (`structured_plan.lesson_basis`) e na primeira linha do `content`. A tela
+  mostra em "Base do plano" (`data-tour="planner-lesson-basis"`).
+  ⚠️ O mesmo `data-tour` mora num cartão do estado vazio (sem plano gerado): o tour abre
+  no primeiro acesso, sem plano, e um alvo que só existe depois de gerar faz o motor
+  **pular o passo e marcar o tour como visto**. `featureTours.test.ts` só confere que o
+  alvo existe no código — quem prova que ele aparece sem plano é
+  `LessonPlannerAI.teacher.test.tsx`.
+- ⚠️ **Aula aprovada só é ponto de partida se for a aula DADA mais recente.** O Meet é
+  piloto: aceite revogado, sala não criada ou resumo não aprovado deixam aulas só em
+  `class_logs`. Com `class_logs` COMPLETED posterior à última aprovada
+  (`latestGivenLessonDate` → `approvedLessonsContext`), `task_focus` vira
+  `use_as_evidence`, `continue_from` e os alvos da lição somem, o rótulo diz "Aulas
+  aprovadas de dd/mm usadas como histórico: houve aula lançada depois, em dd/mm" e a
+  tela avisa. Lançamento no MESMO dia da aprovada é a própria aula. Toda conta de base
+  passa por `ApprovedLessonsContext` — não existe caminho que use as aprovadas sem saber
+  se houve aula depois.
+- ⚠️ **A última decisão humana sobre o resumo vale:** rejeitar depois de aprovar tira a
+  memória (gatilho `trg_zz_meet_summary_rejection_revokes_memory`, na tabela das
+  versões — não no `google_meet_backend`, para valer para qualquer escritor). Antes a
+  memória ficava VERIFIED para sempre e ia ao Planner do substituto.
+- ⚠️ **Nada de dado pessoal fora do cartão no prompt — para TODO professor** (titular,
+  segundo, substituto, reposição recebem a MESMA entrada; o motivo do acesso nem é
+  parâmetro). A montagem é pura em `lesson-planner/planner-input.ts` (as listas de
+  colunas lidas e o prompt), testada de verdade em `planner-input.test.ts`: fora
+  `personality`, `occupation`, `long_term_goal`, `profession`/`job_role`/`industry`/
+  `secondary_goals` do Wolfie, `class_logs.observations` e `notes_to_verify` das
+  memórias (inclusive a nota que o próprio Planner propôs). Os lançamentos entram com o
+  recorte do dossiê do substituto (`lesson_objective`, `content_covered`,
+  `student_difficulties`, `homework_assigned`, `recommended_next_step`). Não volte a
+  montar prompt no `index.ts` — `source.test.ts` recusa.
+- **Regra das aulas para o modelo** numa mensagem de sistema PRÓPRIA do lesson-planner
+  (`APPROVED_LESSONS_SYSTEM_PROMPT`): o prompt base é compartilhado com o planner do Hub,
+  que não tem aula do Meet. `prompt_version` vira `<base>+aulas-aprovadas-2026-09-27`.
+- **Quem planeja** (`private.planner_student_access`, variante com `p_teacher_id` da regra
+  de `_teacher_can_access_student`, que NÃO foi alterada): agenda viva, **segundo
+  professor** (`professor_id2`, sempre), titular sem agenda (o fallback de sempre) e — só
+  **do dia anterior ao seguinte da aula** — cobertura **confirmada** e reposição **com
+  data** (a encerrada pela direção, `closed_reason`, não conta; a dada por lançamento vale
+  até o dia seguinte). A edge pergunta por `planner_teacher_can_access_student` (só
+  service_role; motivo ou nulo, `lesson-planner/access.ts` fecha em resposta estranha); a
+  tela lista por `my_planner_students()` com "cobertura até dd/mm" ao lado do nome
+  (`lib/plannerStudents.ts`). ⚠️ A regra de leitura de perfis aceita cobertura de 7 dias
+  atrás e **qualquer** data futura — o Planner não: acesso acaba.
+- ⚠️ O segundo professor pode não ler a ficha pela RLS (o aluno tem agenda viva com o
+  titular): o painel de perfil some, o plano sai igual. A tela não trata mais ficha
+  ausente como erro.
+- Testes: `supabase/tests/planner_a_partir_das_aulas_aprovadas.sql` (cada motivo, cada
+  borda da janela, fantasma, encerrada, inativo, outra escola, lista por pessoa,
+  privilégios; aprovar → rascunho → rejeitar → reaprovar pelo `google_meet_backend`),
+  `lesson-planner/approved-lessons.test.ts`, `lesson-planner/access.test.ts`,
+  `lesson-planner/planner-input.test.ts`, `lesson-planner/source.test.ts`,
+  `components/LessonPlannerAI.teacher.test.tsx`.
 
 ---
 
