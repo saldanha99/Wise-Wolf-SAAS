@@ -17,6 +17,7 @@ const baseConsent: StudentRecordConsent = {
   signerRelation: 'GUARDIAN',
   requiresGuardian: true,
   guardianReason: 'AGE_UNKNOWN',
+  notEffectiveReason: null,
   linkExpiresAt: null,
 };
 
@@ -47,7 +48,7 @@ describe('parseStudentLessonRecords', () => {
       transcriptUntil: '2026-12-22T17:30:00Z', notesUntil: null, attendanceUntil: null,
     });
     // Motivo fora da lista com responsável exigido conta como idade desconhecida.
-    expect(view!.consent).toMatchObject({ status: 'NOT_EFFECTIVE', requiresGuardian: true, guardianReason: 'AGE_UNKNOWN' });
+    expect(view!.consent).toMatchObject({ status: 'NOT_EFFECTIVE', requiresGuardian: true, guardianReason: 'AGE_UNKNOWN', notEffectiveReason: null });
     expect(view!.pendingReview).toBe(2);
     expect(view!.term).toEqual({ version: 'v2', body: 'Texto do termo.' });
   });
@@ -103,6 +104,18 @@ describe('textos da tela', () => {
   it('situação do termo é dita sem prometer transcrição que não acontece', () => {
     expect(consentStatusText(baseConsent)).toContain('pelo seu responsável');
     expect(consentStatusText({ ...baseConsent, status: 'NOT_EFFECTIVE' })).toContain('não vale');
+    // Termo v3: quem aceitou a versão anterior lê que o termo mudou — não que
+    // falta o código do WhatsApp (era o texto que sobrava sem o motivo).
+    const updated = consentStatusText({ ...baseConsent, status: 'NOT_EFFECTIVE', notEffectiveReason: 'TERM_UPDATED' });
+    expect(updated).toContain('O termo mudou depois da autorização de 20/09/2026');
+    expect(updated).toContain('o seu responsável ler e aceitar a versão nova');
+    expect(updated).not.toContain('código do WhatsApp');
+    expect(consentStatusText({ ...baseConsent, status: 'NOT_EFFECTIVE', requiresGuardian: false, notEffectiveReason: 'TERM_UPDATED' }))
+      .toContain('você ler e aceitar a versão nova');
+    expect(consentStatusText({ ...baseConsent, status: 'NOT_EFFECTIVE', requiresGuardian: false, notEffectiveReason: 'UNVERIFIED' }))
+      .toContain('código do WhatsApp');
+    expect(consentStatusText({ ...baseConsent, status: 'NOT_EFFECTIVE', requiresGuardian: false, notEffectiveReason: 'GUARDIAN_REQUIRED' }))
+      .toContain('seu responsável');
     expect(consentStatusText({ ...baseConsent, status: 'REVOKED' })).toContain('revogada');
     expect(consentStatusText({ ...baseConsent, status: 'NONE', decidedAt: null })).toContain('Ainda não há resposta');
   });

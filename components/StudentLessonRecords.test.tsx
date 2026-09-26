@@ -66,17 +66,24 @@ describe('<StudentLessonRecords />', () => {
     const text = container.textContent || '';
 
     // O resumo aprovado guarda mais do que a tela mostra e é lido pelos
-    // professores do aluno — a tela diz isso.
-    expect(text).toMatch(/pode trazer o texto das anotações da aula revisado por ele/);
+    // professores do aluno — a tela diz isso, com os prazos do termo v3 que a
+    // retenção do banco cumpre (trechos em 90 dias; o resto até 90 dias
+    // depois de sair da escola).
+    expect(text).toMatch(/até 90 dias depois da aula, pode trazer o texto das anotações da aula revisado por ele/);
     expect(text).toMatch(/visto pelos seus professores, pela coordenação e pela direção/);
+    expect(text).toMatch(/suporte do fornecedor do sistema/);
+    expect(text).toMatch(/apagado 90 dias depois que você deixar a escola/);
     expect(text).toMatch(/A transcrição completa e a presença são vistas só pelo professor da aula/);
     expect(text).not.toMatch(/fica só (este|o) resumo/);
     expect(text).not.toMatch(/pelo prazo descrito no termo/);
-    // Exclusão: só o que existe (originais do Google a pedido); o resto a
-    // escola responde. Nada de prometer apagar resumos e transcrições.
-    expect(text).toMatch(/Os arquivos originais na conta Google da escola são apagados a seu pedido/);
-    expect(text).toMatch(/a escola responde ao seu pedido/);
-    expect(text).not.toMatch(/apague o registro das suas aulas: resumos aprovados, transcrições/);
+    // Exclusão: o fluxo real — o aluno pede pelo WhatsApp e a direção apaga
+    // pelo botão da ficha (erase_student_lesson_records). A tela lista o que
+    // aquela RPC apaga e o que fica; nada de "a escola responde".
+    expect(text).toMatch(/A direção confere o pedido e apaga, de uma vez/);
+    expect(text).toMatch(/os resumos \(aprovados e rascunhos\), as cópias da transcrição, das anotações e da presença, a memória das aulas usada para planejar e o seu cartão de aluno/);
+    expect(text).toMatch(/Os arquivos originais na conta Google da escola também são apagados/);
+    expect(text).toMatch(/Continuam a presença e os pagamentos lançados e o registro das suas respostas ao termo/);
+    expect(text).not.toMatch(/a escola responde ao seu pedido/);
   });
 
   it('diz como revogar e leva o pedido de exclusão pronto ao WhatsApp da escola', async () => {

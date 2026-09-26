@@ -37,9 +37,17 @@
 --   * como pedir exclusão: o nome da escola e o WhatsApp da instância central,
 --     pelo mesmo critério de teacher_support_contacts (SCHOOL_ADMIN ativo dono
 --     da instância). Sem número, a tela diz "fale com a escola pelo WhatsApp".
---     ⚠️ Não há RPC de exclusão: o pedido se cumpre à mão (runbook do Meet,
---     "Pedido de exclusão"). Esta RPC lê lesson_summary_versions, não
---     student_learning_memories — apagar só a memória deixa o resumo aqui.
+--     Quem cumpre o pedido é a direção, pelo botão da ficha do aluno
+--     (public.erase_student_lesson_records, 20260927120000): apaga as versões
+--     do resumo (é o que esta RPC lê), as cópias brutas, a memória MEET_SESSION
+--     e o cartão, e manda os originais do Drive para a lixeira;
+--   * o texto do termo sai PREENCHIDO com os dados da escola
+--     (private.lesson_recording_fill_term, 20260927100000): o termo v3 traz
+--     marcadores ({escola_nome}…) que tela nenhuma pode mostrar crus;
+--   * aceite que não vale diz o motivo (not_effective_reason, a mesma régua da
+--     página pública): TERM_UPDATED (aceitou versão anterior à vigente — o caso
+--     de todo mundo quando sai uma versão nova), UNVERIFIED (sem o código do
+--     WhatsApp) ou GUARDIAN_REQUIRED (hoje a escola exige o responsável).
 --
 -- Só o próprio aluno (profiles.role = STUDENT, auth.uid()) e só as sessões dele
 -- na escola dele. Professor, coordenação e direção recebem `somente_o_aluno`:
@@ -127,6 +135,8 @@ declare
   v_decided_at timestamptz;
   v_status text;
   v_reason text;
+  v_verification text;
+  v_not_effective text;
   v_link_expires timestamptz;
   v_records jsonb;
   v_pending integer;
@@ -234,8 +244,8 @@ begin
     ), '') <> 'REJECTED';
 
   -- Situação do termo do próprio aluno (a mesma régua que marca as aulas).
-  select consent.decision, consent.signer_relation, consent.decided_at
-    into v_decision, v_relation, v_decided_at
+  select consent.decision, consent.signer_relation, consent.decided_at, consent.verification
+    into v_decision, v_relation, v_decided_at, v_verification
   from private.lesson_recording_consents as consent
   where consent.subject_id = v_me.id
   order by consent.seq desc
@@ -247,6 +257,16 @@ begin
     else v_decision
   end;
   v_reason := private.lesson_recording_guardian_reason(v_me.id);
+  -- Por que o aceite gravado não vale — a mesma ordem da página pública
+  -- (private.lesson_recording_public_link_fields): versão desatualizada
+  -- primeiro, porque quem aceitou a anterior precisa ler a vigente de qualquer
+  -- jeito; depois o código do WhatsApp; senão, o responsável.
+  v_not_effective := case
+    when v_status <> 'NOT_EFFECTIVE' then null
+    when private.lesson_recording_accepted_outdated_term(v_me.id) then 'TERM_UPDATED'
+    when v_verification is distinct from 'WHATSAPP_CODE' then 'UNVERIFIED'
+    else 'GUARDIAN_REQUIRED'
+  end;
 
   -- Link vivo do termo (é por ele que se revoga sem falar com ninguém). Só a
   -- validade: o token não existe no banco, e o link fica no WhatsApp de quem
@@ -313,10 +333,14 @@ begin
       'signer_relation', v_relation,
       'requires_guardian', v_reason is not null,
       'guardian_reason', v_reason,
+      'not_effective_reason', v_not_effective,
       'link_expires_at', v_link_expires
     ),
+    -- Texto com a escola preenchida (controlador, documento e contato de
+    -- privacidade): o termo v3 guarda só marcadores.
     'term', case when v_term.version is null then null
-      else pg_catalog.jsonb_build_object('version', v_term.version, 'body', v_term.body) end,
+      else pg_catalog.jsonb_build_object('version', v_term.version,
+        'body', private.lesson_recording_fill_term(v_term.body, v_me.tenant_id)) end,
     'pending_review', coalesce(v_pending, 0),
     'records', v_records
   );

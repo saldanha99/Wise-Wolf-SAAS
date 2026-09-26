@@ -375,12 +375,21 @@ begin
     and v_r -> 'consent' ->> 'signer_relation' = 'GUARDIAN'
     and (v_r -> 'consent' ->> 'requires_guardian')::boolean
     and v_r -> 'consent' ->> 'guardian_reason' = private.lesson_recording_guardian_reason(v_student)
-    and v_r -> 'consent' -> 'link_expires_at' = 'null'::jsonb,
+    and v_r -> 'consent' -> 'link_expires_at' = 'null'::jsonb
+    and v_r -> 'consent' -> 'not_effective_reason' = 'null'::jsonb,
     'situação do termo do aluno errada (link não aberto apareceu como enviado?): ' || (v_r -> 'consent')::text);
   perform pg_temp.rec_assert(
     v_r -> 'term' ->> 'version' = v_term_version
     and length(v_r -> 'term' ->> 'body') > 100,
     'termo vigente não veio junto');
+  -- O termo sai com a escola PREENCHIDA (o termo v3 guarda marcadores:
+  -- private.lesson_recording_fill_term, 20260927100000). Marcador cru na tela
+  -- do aluno era o defeito da integração da onda 2.
+  perform pg_temp.rec_assert(
+    position('{escola_' in (v_r -> 'term' ->> 'body')) = 0
+    and (position('{escola_nome}' in (private.lesson_recording_current_term('STUDENT')).body) = 0
+      or position('Escola Registro Fixture' in (v_r -> 'term' ->> 'body')) > 0),
+    'termo do aluno saiu com marcador cru ou sem o nome da escola: ' || left(v_r -> 'term' ->> 'body', 300));
   perform pg_temp.rec_assert(
     v_r ->> 'school_name' = 'Escola Registro Fixture'
     and v_r ->> 'school_whatsapp' = '11988887777',
@@ -423,6 +432,7 @@ begin
     'colega viu o resumo do aluno');
   perform pg_temp.rec_assert(
     v_r -> 'consent' ->> 'status' = 'NOT_EFFECTIVE'
+    and v_r -> 'consent' ->> 'not_effective_reason' = 'UNVERIFIED'
     and v_r -> 'consent' -> 'link_expires_at' = 'null'::jsonb,
     'aceite sem código apareceu como válido para o colega: ' || (v_r -> 'consent')::text);
 
@@ -464,6 +474,26 @@ begin
   perform pg_temp.rec_assert(
     (v_r -> 'consent' ->> 'link_expires_at')::timestamptz = v_batch_expires,
     'link de mensagem aceita pelo provedor não apareceu: ' || (v_r -> 'consent')::text);
+
+  -- ---------------------------------------------------------------------
+  -- Termo que mudou: aceite com código, pelo responsável, de uma versão
+  -- ANTERIOR à vigente não vale — e o motivo dito é a versão, não "falta o
+  -- código" (era o que a tela diria a todo mundo depois do termo v3).
+  -- ---------------------------------------------------------------------
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into private.lesson_recording_terms (audience, version, body, published_at)
+  values ('STUDENT', 'v0', repeat('Versão anterior do termo (teste do registro do aluno). ', 6),
+          now() - interval '400 days')
+  on conflict (audience, version) do nothing;
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision,
+    signer_name, signer_relation, term_audience, term_version, source, verification, verified_phone)
+  values (v_tid, v_student, 'STUDENT', 'ACCEPTED', 'Responsável Registro', 'GUARDIAN',
+    'STUDENT', 'v0', 'APP', 'WHATSAPP_CODE', '(11) •••••-7777');
+  v_r := pg_temp.rec_read(v_student);
+  perform pg_temp.rec_assert(
+    v_r -> 'consent' ->> 'status' = 'NOT_EFFECTIVE'
+    and v_r -> 'consent' ->> 'not_effective_reason' = 'TERM_UPDATED',
+    'aceite de versão anterior do termo não apareceu como "o termo mudou": ' || (v_r -> 'consent')::text);
 
   -- ---------------------------------------------------------------------
   -- Aluno de outra escola: só a escola dele, sem o WhatsApp da escola A

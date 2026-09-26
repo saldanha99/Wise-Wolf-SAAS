@@ -5,10 +5,12 @@
 
 import {
   asGuardianReason,
+  asNotEffectiveReason,
   formatDecisionDate,
   isMissingRpcError,
   whatsappUrl,
   type GuardianReason,
+  type NotEffectiveReason,
   type SignerRelation,
 } from './lessonRecordingConsent';
 
@@ -46,6 +48,12 @@ export interface StudentRecordConsent {
   signerRelation: SignerRelation | null;
   requiresGuardian: boolean;
   guardianReason: GuardianReason | null;
+  /**
+   * Por que o aceite gravado não vale (só com NOT_EFFECTIVE): versão anterior
+   * à vigente do termo, sem o código do WhatsApp ou dado pelo aluno quando a
+   * escola exige o responsável — a mesma régua da página pública.
+   */
+  notEffectiveReason: NotEffectiveReason | null;
   /**
    * Validade do link vivo do termo (o token não sai do servidor) — só quando
    * se sabe que ele CHEGOU (aberto pela família ou mensagem aceita pelo
@@ -127,6 +135,7 @@ export function parseStudentLessonRecords(data: unknown): StudentLessonRecordsVi
       signerRelation: asRelation(consent.signer_relation),
       requiresGuardian,
       guardianReason: asGuardianReason(consent.guardian_reason, requiresGuardian),
+      notEffectiveReason: asNotEffectiveReason(consent.not_effective_reason),
       linkExpiresAt: asText(consent.link_expires_at),
     },
     term: termVersion && termBody ? { version: termVersion, body: termBody } : null,
@@ -201,7 +210,15 @@ export function consentStatusText(consent: StudentRecordConsent): string {
     case 'AUTHORIZED':
       return `Registro autorizado${since}${consent.signerRelation === 'GUARDIAN' ? ' pelo seu responsável' : ''}: as aulas na sala da escola no Google Meet podem ser transcritas (quando o professor da aula também autorizou).`;
     case 'NOT_EFFECTIVE':
-      return consent.requiresGuardian
+      // O motivo vem do servidor. Sem ele (resposta antiga), cai na régua de
+      // antes: responsável exigido ou falta do código.
+      if (consent.notEffectiveReason === 'TERM_UPDATED') {
+        return `O termo mudou depois da autorização${when ? ` de ${when}` : ''}: ela não vale para as próximas aulas até ${consent.requiresGuardian ? 'o seu responsável ler e aceitar' : 'você ler e aceitar'} a versão nova. Enquanto isso, as aulas não são transcritas.`;
+      }
+      if (consent.notEffectiveReason === 'UNVERIFIED') {
+        return 'Existe uma autorização gravada, mas ela ainda não foi confirmada pelo código do WhatsApp. Enquanto isso, as aulas não são transcritas.';
+      }
+      return consent.notEffectiveReason === 'GUARDIAN_REQUIRED' || consent.requiresGuardian
         ? 'Existe uma autorização gravada, mas ela não vale: quem precisa responder é o seu responsável. Enquanto isso, as aulas não são transcritas.'
         : 'Existe uma autorização gravada, mas ela ainda não foi confirmada pelo código do WhatsApp. Enquanto isso, as aulas não são transcritas.';
     case 'REFUSED':
@@ -228,8 +245,8 @@ export function revokeHowToText(consent: StudentRecordConsent): string {
 
 /**
  * Mensagem pronta para pedir a exclusão do registro. Genérica de propósito:
- * o aluno diz o que quer apagar, e a tela não promete o que o sistema ainda
- * não faz sozinho (a exclusão do que está no sistema é feita pela escola).
+ * quem cumpre é a direção, pelo botão "Apagar registros das aulas deste
+ * aluno" da ficha (erase_student_lesson_records), que mostra antes o que sai.
  */
 export function exclusionRequestMessage(schoolName: string | null): string {
   const school = schoolName || 'escola';

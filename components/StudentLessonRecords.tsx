@@ -78,14 +78,16 @@ export default function StudentLessonRecords() {
       <section aria-labelledby="lesson-records-storage" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
         <h2 id="lesson-records-storage" className="text-lg font-bold text-brand-text">O que é guardado e por quanto tempo</h2>
         {/* Cada frase aqui tem de ser verdade no sistema: o resumo aprovado
-            guarda mais do que a tela mostra (texto das anotações revisado,
-            dificuldades, trechos da aula) e é lido por outros professores do
-            aluno; só a transcrição e a presença brutas são exclusivas. */}
+            guarda mais do que a tela mostra (dificuldades e, até 90 dias
+            depois da aula, o texto das anotações revisado e trechos da aula —
+            private.purge_lesson_memory_retention apaga) e é lido por outros
+            professores do aluno e pelo suporte técnico; só a transcrição e a
+            presença brutas são exclusivas de quem deu a aula. */}
         <ul className="list-disc space-y-2 pl-5 text-sm text-brand-text">
-          <li><b>Resumo aprovado</b>: nesta tela aparecem o objetivo, o que foi praticado, o próximo passo e a lição. O resumo completo que o professor aprovou também pode trazer o texto das anotações da aula revisado por ele, as dificuldades e evoluções que ele observou e trechos da aula que sustentam o resumo. Ele fica no seu histórico enquanto você estudar na escola e é visto pelos seus professores, pela coordenação e pela direção — é o que dá continuidade às aulas, inclusive se você trocar de professor.</li>
-          <li><b>Rascunhos do resumo</b> (antes da aprovação ou recusados pelo professor): são vistos só pelo professor da aula, pela coordenação e pela direção, e não aparecem aqui.</li>
+          <li><b>Resumo aprovado</b>: nesta tela aparecem o objetivo, o que foi praticado, o próximo passo e a lição. O resumo completo que o professor aprovou também guarda as dificuldades e evoluções que ele observou e, até 90 dias depois da aula, pode trazer o texto das anotações da aula revisado por ele e trechos da aula que sustentam o resumo — esses trechos são apagados depois disso. Ele é visto pelos seus professores, pela coordenação e pela direção (e, só para resolver problema técnico, pelo suporte do fornecedor do sistema) — é o que dá continuidade às aulas, inclusive se você trocar de professor. Fica enquanto você estudar na escola e é apagado 90 dias depois que você deixar a escola.</li>
+          <li><b>Rascunhos do resumo</b> (antes da aprovação ou recusados pelo professor): são vistos só pelo professor da aula, pela coordenação e pela direção, e não aparecem aqui. Os trechos da aula que eles trazem também são apagados 90 dias depois da aula.</li>
           <li><b>Cópias da transcrição, das anotações do Google e do relatório de presença</b>: ficam no sistema da escola até a data mostrada em cada aula e depois são apagadas. A transcrição completa e a presença são vistas só pelo professor da aula, pela coordenação e pela direção. As anotações podem virar o texto do resumo aprovado depois da revisão do professor — aí seguem a regra do resumo.</li>
-          <li><b>Arquivos originais no Google</b>: ficam na conta Google da escola, que só a direção acessa, e a escola os apaga quando você pede. Se o termo (logo abaixo) marca um prazo para apagá-los, vale o prazo do termo.</li>
+          <li><b>Arquivos originais no Google</b>: ficam na conta Google da escola, que só a direção acessa. O termo (logo abaixo) diz em quanto tempo a escola os apaga; se você pedir a exclusão, eles são apagados antes.</li>
           <li>A aula não é gravada em vídeo.</li>
         </ul>
         {view.term && <details className="rounded-xl border border-brand-border p-3">
@@ -105,11 +107,11 @@ export default function StudentLessonRecords() {
 
       <section aria-labelledby="lesson-records-exclusion" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
         <h2 id="lesson-records-exclusion" className="text-lg font-bold text-brand-text">Pedir a exclusão</h2>
-        {/* Só o que existe hoje: apagar os originais do Google a pedido é o que
-            o termo promete; o que está no sistema da escola (resumos, cópias)
-            ainda não tem porta própria — a escola responde ao pedido. */}
+        {/* O fluxo real: o aluno pede pelo WhatsApp, a direção apaga pelo
+            botão da ficha (erase_student_lesson_records, 20260927120000). A
+            lista abaixo é a do que aquela RPC apaga — mudou lá, muda aqui. */}
         <p className="text-sm text-brand-text">
-          Você pode pedir a exclusão do registro das suas aulas a qualquer momento, pelo WhatsApp da escola{view.schoolName ? ` (${view.schoolName})` : ''}. Os arquivos originais na conta Google da escola são apagados a seu pedido. Sobre o que está no sistema da escola — os resumos aprovados e as cópias ainda guardadas —, a escola responde ao seu pedido e diz o que foi apagado.
+          Você pode pedir a exclusão do registro das suas aulas a qualquer momento, pelo WhatsApp da escola{view.schoolName ? ` (${view.schoolName})` : ''}. A direção confere o pedido e apaga, de uma vez, o que o sistema da escola guardou das suas aulas já realizadas: os resumos (aprovados e rascunhos), as cópias da transcrição, das anotações e da presença, a memória das aulas usada para planejar e o seu cartão de aluno. Os arquivos originais na conta Google da escola também são apagados (vão para a lixeira do Google, que os elimina de vez em até 30 dias). Continuam a presença e os pagamentos lançados e o registro das suas respostas ao termo. Para que as próximas aulas também não sejam transcritas, revogue a autorização (acima).
         </p>
         {exclusionUrl
           ? <a href={exclusionUrl} target="_blank" rel="noopener noreferrer"
