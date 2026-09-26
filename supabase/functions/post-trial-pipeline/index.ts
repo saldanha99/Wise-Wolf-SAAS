@@ -512,9 +512,10 @@ serve(async (req) => {
         if (
           internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12
         ) {
-          const msg = `🎓 *Experimental concluída, fechamento em andamento*\n\n*${
-            opp.student_name || "-"
-          }* fez a aula experimental e ainda não tem link de matrícula. Confira a conversa e confirme plano, grade com o aluno e a professora, início e vencimento antes de gerar a proposta. Não repita perguntas já respondidas.`;
+          const msg =
+            `🎓 *Experimental concluída, fechamento em andamento*\n\n*${
+              opp.student_name || "-"
+            }* fez a aula experimental e ainda não tem link de matrícula. Confira a conversa e confirme plano, grade com o aluno e a professora, início e vencimento antes de gerar a proposta. Não repita perguntas já respondidas.`;
           await deliverClaimed({
             kind: alertKind,
             subjectId: opp.id,

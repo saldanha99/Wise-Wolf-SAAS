@@ -12,35 +12,35 @@ import {
   resolveTenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import {
-  type CatalogPrice,
   adjacentFourDayAlternative,
   asksToReadContract,
+  type CatalogPrice,
   classifyTeacherSlotsReply,
   contractReadingAnswer,
   mergeTeacherCounterproposal,
-  parseEnrollmentDuration,
+  parseCounterproposalDecision,
   parseEnrollmentDueDay,
+  parseEnrollmentDuration,
   parseEnrollmentSlots,
   parseEnrollmentSlotsFromMessages,
   parseEnrollmentStartDate,
-  parseCounterproposalDecision,
   parseTeacherOptionChoice,
   parseTrialDenial,
   parseTrialOutcomeReply,
+  slotsText,
+  studentCounterproposalBlocks,
   studentDenialAck,
   studentNeedMessage,
   studentNoShowMessage,
   studentOfferMessage,
-  studentCounterproposalBlocks,
   studentPlanQuestion,
   studentSlotsUnavailableMessage,
   studentWaitingFeedbackMessage,
-  slotsText,
+  teacherAlternativeQuestion,
   teacherDoneConfirmation,
   teacherFeedbackAsk,
-  teacherAlternativeQuestion,
-  trialClosingMayResumeAfterHandoff,
   teacherNoShowConfirmation,
+  trialClosingMayResumeAfterHandoff,
 } from "./trial-closing.ts";
 import {
   parseRenewalFrequency,
@@ -5923,67 +5923,96 @@ async function handleTrialClosingTeacherSlotsReply(
 ): Promise<boolean> {
   if (tenantId !== "school-wise-wolf") return false;
   const teachers = await activeMemberProfiles(sb, tenantId, ["TEACHER"]);
-  const teacher = (teachers || []).find((profile: any) => phonesMatch(profile.phone, phone));
+  const teacher = (teachers || []).find((profile: any) =>
+    phonesMatch(profile.phone, phone)
+  );
   if (!teacher) return false;
   // Only the latest school question can own a bare "sim". A different
   // outgoing message (including a human question about another student)
   // makes the answer ambiguous, so never confirm a slot from it.
-  const { data: loggedQuestions, error: questionError } = await sb.from("ai_wa_messages")
+  const { data: loggedQuestions, error: questionError } = await sb.from(
+    "ai_wa_messages",
+  )
     .select("phone,content,meta,created_at")
     .eq("tenant_id", tenantId)
     .contains("meta", { kind: "trial_closing_teacher_slots_question" })
     .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
     .order("created_at", { ascending: false }).limit(100);
-  if (questionError) throw new Error("trial_closing_teacher_question_lookup_failed");
+  if (questionError) {
+    throw new Error("trial_closing_teacher_question_lookup_failed");
+  }
   // O provedor às vezes registra o mesmo celular com ou sem o nono dígito.
   const question = (loggedQuestions || []).find((row: any) =>
     phonesMatch(row.phone, phone)
   );
   if (!question?.meta?.flow_id || question.meta.entregue !== true) return false;
-  const { data: conversations, error: conversationError } = await sb.from("whatsapp_conversations")
+  const { data: conversations, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  )
     .select("id,remote_jid,phone")
     .eq("tenant_id", tenantId).eq("instance_name", instance);
-  if (conversationError) throw new Error("trial_closing_teacher_conversation_lookup_failed");
+  if (conversationError) {
+    throw new Error("trial_closing_teacher_conversation_lookup_failed");
+  }
   const ids = (conversations || []).filter((conversation: any) =>
     phonesMatch(conversation.phone || conversation.remote_jid, phone)
   ).map((conversation: any) => conversation.id);
   if (ids.length === 0) return false;
-  const { data: outbounds, error: outboundError } = await sb.from("whatsapp_messages")
+  const { data: outbounds, error: outboundError } = await sb.from(
+    "whatsapp_messages",
+  )
     .select("body,occurred_at")
     .eq("tenant_id", tenantId).in("conversation_id", ids).eq("direction", "out")
     .order("occurred_at", { ascending: false }).limit(1);
-  if (outboundError) throw new Error("trial_closing_teacher_latest_outbound_lookup_failed");
-  const { data: alternativeQuestions, error: alternativeQuestionError } = await sb.from("ai_wa_messages")
-    .select("phone,content,meta,created_at").eq("tenant_id", tenantId)
-    .contains("meta", { kind: "trial_closing_teacher_alternative_question" })
-    .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
-    .order("created_at", { ascending: false }).limit(100);
-  if (alternativeQuestionError) throw new Error("trial_closing_teacher_alternative_lookup_failed");
+  if (outboundError) {
+    throw new Error("trial_closing_teacher_latest_outbound_lookup_failed");
+  }
+  const { data: alternativeQuestions, error: alternativeQuestionError } =
+    await sb.from("ai_wa_messages")
+      .select("phone,content,meta,created_at").eq("tenant_id", tenantId)
+      .contains("meta", { kind: "trial_closing_teacher_alternative_question" })
+      .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .order("created_at", { ascending: false }).limit(100);
+  if (alternativeQuestionError) {
+    throw new Error("trial_closing_teacher_alternative_lookup_failed");
+  }
   const alternativeQuestion = (alternativeQuestions || []).find((row: any) =>
     phonesMatch(row.phone, phone) && row.meta?.entregue === true
   );
-  if (alternativeQuestion && outbounds?.[0]?.body === alternativeQuestion.content) {
+  if (
+    alternativeQuestion && outbounds?.[0]?.body === alternativeQuestion.content
+  ) {
     const alternativeDecision = classifyTeacherSlotsReply(
-      text, (alternativeQuestion.meta?.slots || []) as RenewalSlot[],
+      text,
+      (alternativeQuestion.meta?.slots || []) as RenewalSlot[],
     );
-    if (alternativeDecision !== "confirmed" && alternativeDecision !== "declined") return false;
+    if (
+      alternativeDecision !== "confirmed" && alternativeDecision !== "declined"
+    ) return false;
     const { data: resolved, error: resolvedError } = await sb.rpc(
-      "trial_closing_teacher_alternative_reply", {
-        p_tenant: tenantId, p_teacher: teacher.id,
+      "trial_closing_teacher_alternative_reply",
+      {
+        p_tenant: tenantId,
+        p_teacher: teacher.id,
         p_flow: alternativeQuestion.meta.flow_id,
         p_confirmed: alternativeDecision === "confirmed",
       },
     );
-    if (resolvedError) throw new Error("trial_closing_teacher_alternative_reply_failed");
+    if (resolvedError) {
+      throw new Error("trial_closing_teacher_alternative_reply_failed");
+    }
     if (!resolved?.handled) return false;
     await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
-      msg_id: msgId, kind: "trial_closing_teacher_alternative_reply",
+      msg_id: msgId,
+      kind: "trial_closing_teacher_alternative_reply",
       flow_id: resolved.flow_id,
     });
-    const ack = "Obrigado! Vou apresentar ao aluno somente os horários que você confirmou.";
+    const ack =
+      "Obrigado! Vou apresentar ao aluno somente os horários que você confirmou.";
     const ackSent = await sendWhats(instance, phone, ack);
     await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
-      kind: "trial_closing_teacher_alternative_ack", flow_id: resolved.flow_id,
+      kind: "trial_closing_teacher_alternative_ack",
+      flow_id: resolved.flow_id,
       entregue: ackSent,
     });
     // O sweeper entrega uma única mensagem dentro da janela, respeitando handoff.
@@ -5997,63 +6026,107 @@ async function handleTrialClosingTeacherSlotsReply(
     const proposed = mergeTeacherCounterproposal(expected, text);
     if (proposed.length !== expected.length) return false;
     const { data: proposal, error: proposalError } = await sb.rpc(
-      "trial_closing_teacher_counterproposal_for_flow", {
-        p_tenant: tenantId, p_teacher: teacher.id,
-        p_flow: question.meta.flow_id, p_slots: proposed,
+      "trial_closing_teacher_counterproposal_for_flow",
+      {
+        p_tenant: tenantId,
+        p_teacher: teacher.id,
+        p_flow: question.meta.flow_id,
+        p_slots: proposed,
       },
     );
-    if (proposalError) throw new Error("trial_closing_teacher_counterproposal_unavailable");
+    if (proposalError) {
+      throw new Error("trial_closing_teacher_counterproposal_unavailable");
+    }
     if (!proposal?.handled) return false;
     await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
-      msg_id: msgId, kind: "trial_closing_teacher_counterproposal",
+      msg_id: msgId,
+      kind: "trial_closing_teacher_counterproposal",
       flow_id: proposal.flow_id,
     });
-    const ack = "Obrigado! Vou confirmar esses novos horários com o aluno antes de preparar a matrícula.";
+    const ack =
+      "Obrigado! Vou confirmar esses novos horários com o aluno antes de preparar a matrícula.";
     const ackSent = await sendWhats(instance, phone, ack);
     await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
       kind: "trial_closing_teacher_counterproposal_ack",
-      flow_id: proposal.flow_id, entregue: ackSent,
+      flow_id: proposal.flow_id,
+      entregue: ackSent,
     });
     const leadPhone = String(proposal.lead_phone || "");
     if (!leadPhone) return true;
     const alternative = adjacentFourDayAlternative(proposed);
     const hour = nowBRT().getUTCHours();
-    if (alternative.length && hour >= 9 && hour < 20 &&
-        !await inboxConversationHasActiveHandoff(sb, tenantId, instance, `${phone}@s.whatsapp.net`)) {
+    if (
+      alternative.length && hour >= 9 && hour < 20 &&
+      !await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        instance,
+        `${phone}@s.whatsapp.net`,
+      )
+    ) {
       const { data: prepared, error: prepareError } = await sb.rpc(
-        "trial_closing_prepare_teacher_alternative", {
-          p_flow: proposal.flow_id, p_slots: alternative,
+        "trial_closing_prepare_teacher_alternative",
+        {
+          p_flow: proposal.flow_id,
+          p_slots: alternative,
         },
       );
-      if (prepareError) throw new Error("trial_closing_teacher_alternative_prepare_failed");
+      if (prepareError) {
+        throw new Error("trial_closing_teacher_alternative_prepare_failed");
+      }
       if (prepared?.handled) {
         const questionText = teacherAlternativeQuestion({
           teacherName: teacher.full_name || null,
-          leadName: proposal.lead_name || null, slots: alternative,
+          leadName: proposal.lead_name || null,
+          slots: alternative,
         });
         const delivered = await sendWhats(instance, phone, questionText);
-        await logMsg(sb, tenantId, phone, "trial_closing", "out", questionText, {
-          kind: "trial_closing_teacher_alternative_question",
-          flow_id: proposal.flow_id, slots: alternative, entregue: delivered,
-        });
+        await logMsg(
+          sb,
+          tenantId,
+          phone,
+          "trial_closing",
+          "out",
+          questionText,
+          {
+            kind: "trial_closing_teacher_alternative_question",
+            flow_id: proposal.flow_id,
+            slots: alternative,
+            entregue: delivered,
+          },
+        );
         if (delivered) return true;
         await sb.rpc("trial_closing_teacher_alternative_reply", {
-          p_tenant: tenantId, p_teacher: teacher.id,
-          p_flow: proposal.flow_id, p_confirmed: false,
+          p_tenant: tenantId,
+          p_teacher: teacher.id,
+          p_flow: proposal.flow_id,
+          p_confirmed: false,
         });
       }
     }
-    const studentInstance = await trialClosingStudentInstance(sb, tenantId, instance);
-    if (await inboxConversationHasActiveHandoff(
-      sb, tenantId, studentInstance, `${leadPhone}@s.whatsapp.net`,
-    )) return true;
+    const studentInstance = await trialClosingStudentInstance(
+      sb,
+      tenantId,
+      instance,
+    );
+    if (
+      await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        studentInstance,
+        `${leadPhone}@s.whatsapp.net`,
+      )
+    ) return true;
     if (hour < 9 || hour >= 20) return true;
     const { data: claimed, error: claimError } = await sb.rpc(
-      "trial_closing_claim_teacher_counterproposal_student", {
+      "trial_closing_claim_teacher_counterproposal_student",
+      {
         p_flow: proposal.flow_id,
       },
     );
-    if (claimError) throw new Error("trial_closing_teacher_counterproposal_claim_failed");
+    if (claimError) {
+      throw new Error("trial_closing_teacher_counterproposal_claim_failed");
+    }
     if (!claimed?.claimed) return true;
     const blocks = studentCounterproposalBlocks({
       leadName: proposal.lead_name || null,
@@ -6066,38 +6139,53 @@ async function handleTrialClosingTeacherSlotsReply(
       const delivered = await sendWhats(studentInstance, leadPhone, reply);
       await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
         kind: "trial_closing_teacher_counterproposal_to_student",
-        flow_id: proposal.flow_id, block_index: blockIndex, entregue: delivered,
+        flow_id: proposal.flow_id,
+        block_index: blockIndex,
+        entregue: delivered,
       });
       if (!delivered) break;
     }
     return true;
   }
   const yes = decision === "confirmed";
-  const { data, error } = await sb.rpc("trial_closing_teacher_slots_reply_for_flow", {
-    p_tenant: tenantId,
-    p_teacher: teacher.id,
-    p_flow: question.meta.flow_id,
-    p_confirmed: yes,
-    p_origin: null,
-  });
+  const { data, error } = await sb.rpc(
+    "trial_closing_teacher_slots_reply_for_flow",
+    {
+      p_tenant: tenantId,
+      p_teacher: teacher.id,
+      p_flow: question.meta.flow_id,
+      p_confirmed: yes,
+      p_origin: null,
+    },
+  );
   if (error) throw new Error("trial_closing_teacher_slots_unavailable");
   if (!data?.handled) return false;
   await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
-    msg_id: msgId, kind: "trial_closing_teacher_slots_reply", flow_id: data.flow_id,
+    msg_id: msgId,
+    kind: "trial_closing_teacher_slots_reply",
+    flow_id: data.flow_id,
   });
   const teacherAck = yes
     ? "Obrigado! Registrei sua confirmação desses horários. A grade definitiva só será feita após a matrícula."
     : "Entendi. Não vou oferecer esses horários como confirmados; vou pedir outras opções ao aluno.";
   const ackSent = await sendWhats(instance, phone, teacherAck);
   await logMsg(sb, tenantId, phone, "trial_closing", "out", teacherAck, {
-    kind: "trial_closing_teacher_slots_ack", flow_id: data.flow_id, entregue: ackSent,
+    kind: "trial_closing_teacher_slots_ack",
+    flow_id: data.flow_id,
+    entregue: ackSent,
   });
   const leadPhone = String(data.lead_phone || "");
   if (!leadPhone) return true;
-  const studentInstance = await trialClosingStudentInstance(sb, tenantId, instance);
+  const studentInstance = await trialClosingStudentInstance(
+    sb,
+    tenantId,
+    instance,
+  );
   let reply = "";
   if (!yes) {
-    reply = `A teacher ${String(teacher.full_name || "professora").split(" ")[0]} não consegue manter os horários que você sugeriu. Pode me mandar outras opções de dias e horários? Eu confirmo com ela antes da matrícula.`;
+    reply = `A teacher ${
+      String(teacher.full_name || "professora").split(" ")[0]
+    } não consegue manter os horários que você sugeriu. Pode me mandar outras opções de dias e horários? Eu confirmo com ela antes da matrícula.`;
   } else if (data.offer?.ok) {
     reply = studentOfferMessage({
       leadName: data.lead_name,
@@ -6112,15 +6200,23 @@ async function handleTrialClosingTeacherSlotsReply(
       enrollmentFee: Number(data.offer.enrollment_fee || 0),
     });
   } else if (data.offer?.error) {
-    reply = studentSlotsUnavailableMessage((data.offer.free_slots || []) as RenewalSlot[]);
+    reply = studentSlotsUnavailableMessage(
+      (data.offer.free_slots || []) as RenewalSlot[],
+    );
   }
   if (reply) {
-    if (await inboxConversationHasActiveHandoff(
-      sb, tenantId, studentInstance, `${leadPhone}@s.whatsapp.net`,
-    )) return true;
+    if (
+      await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        studentInstance,
+        `${leadPhone}@s.whatsapp.net`,
+      )
+    ) return true;
     const delivered = await sendWhats(studentInstance, leadPhone, reply);
     await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
-      kind: "trial_closing_teacher_slots_result", flow_id: data.flow_id,
+      kind: "trial_closing_teacher_slots_result",
+      flow_id: data.flow_id,
       offer_id: data.offer?.ok ? data.offer.offer_id : null,
       entregue: delivered,
     });
@@ -6129,22 +6225,34 @@ async function handleTrialClosingTeacherSlotsReply(
 }
 
 async function recentStudentScheduleMessages(
-  sb: any, tenantId: string, instance: string, phone: string, current: string,
+  sb: any,
+  tenantId: string,
+  instance: string,
+  phone: string,
+  current: string,
 ): Promise<string[]> {
-  const { data: conversations, error: conversationError } = await sb.from("whatsapp_conversations")
+  const { data: conversations, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  )
     .select("id,phone,remote_jid").eq("tenant_id", tenantId)
     .eq("instance_name", instance);
-  if (conversationError) throw new Error("trial_closing_schedule_conversation_lookup_failed");
+  if (conversationError) {
+    throw new Error("trial_closing_schedule_conversation_lookup_failed");
+  }
   const ids = (conversations || []).filter((row: any) =>
     phonesMatch(row.phone || row.remote_jid, phone)
   ).map((row: any) => row.id);
   if (!ids.length) return [current];
-  const { data: history, error: historyError } = await sb.from("whatsapp_messages")
+  const { data: history, error: historyError } = await sb.from(
+    "whatsapp_messages",
+  )
     .select("direction,sender_kind,message_type,body,occurred_at")
     .eq("tenant_id", tenantId).in("conversation_id", ids)
     .gte("occurred_at", new Date(Date.now() - 20 * 60_000).toISOString())
     .order("occurred_at", { ascending: false }).limit(30);
-  if (historyError) throw new Error("trial_closing_schedule_history_lookup_failed");
+  if (historyError) {
+    throw new Error("trial_closing_schedule_history_lookup_failed");
+  }
   const ordered = (history || []).reverse();
   const lastHuman = ordered.findLastIndex((row: any) =>
     row.direction === "out" && row.sender_kind === "human"
@@ -6210,28 +6318,44 @@ async function handleTrialClosingStudent(
     : [text];
   const duration = parseEnrollmentDuration(text);
   const frequency = parseRenewalFrequency(text);
-  const expectedFrequency = frequency || Number(closingContext?.plan?.frequency || 0) || null;
+  const expectedFrequency = frequency ||
+    Number(closingContext?.plan?.frequency || 0) || null;
   const parsedSchedule = parseEnrollmentSlotsFromMessages(
-    recentMessages, expectedFrequency,
+    recentMessages,
+    expectedFrequency,
   );
-  const slots = closingContext ? parsedSchedule.complete : parseEnrollmentSlots(text);
+  const slots = closingContext
+    ? parsedSchedule.complete
+    : parseEnrollmentSlots(text);
   const startDate = parseEnrollmentStartDate(text);
   const dueDay = parseEnrollmentDueDay(text);
   const contractQuestion = asksToReadContract(text);
   const proposalDecision = parseCounterproposalDecision(text);
   const optionChoice = parseTeacherOptionChoice(text);
-  if ((proposalDecision !== null || optionChoice !== null) && tenantId === "school-wise-wolf") {
+  if (
+    (proposalDecision !== null || optionChoice !== null) &&
+    tenantId === "school-wise-wolf"
+  ) {
     const closing = await loadTrialClosingContext(sb, tenantId, phone);
     if (closing?.plan?.teacher_counterproposal_slots?.length) {
-      const twoOptions = Array.isArray(closing.plan.teacher_alternative_confirmed_slots);
+      const twoOptions = Array.isArray(
+        closing.plan.teacher_alternative_confirmed_slots,
+      );
       if (twoOptions && optionChoice === null) return false;
       if (!twoOptions && proposalDecision === null) return false;
-      const { data: sentQuestions, error: sentError } = await sb.from("ai_wa_messages")
+      const { data: sentQuestions, error: sentError } = await sb.from(
+        "ai_wa_messages",
+      )
         .select("content,meta,created_at,phone")
         .eq("tenant_id", tenantId)
-        .contains("meta", { kind: "trial_closing_teacher_counterproposal_to_student", flow_id: closing.flow_id })
+        .contains("meta", {
+          kind: "trial_closing_teacher_counterproposal_to_student",
+          flow_id: closing.flow_id,
+        })
         .order("created_at", { ascending: false }).limit(10);
-      if (sentError) throw new Error("trial_closing_student_counterproposal_lookup_failed");
+      if (sentError) {
+        throw new Error("trial_closing_student_counterproposal_lookup_failed");
+      }
       const sentQuestion = (sentQuestions || []).find((row: any) =>
         phonesMatch(row.phone, phone) && row.meta?.entregue === true
       );
@@ -6243,32 +6367,51 @@ async function handleTrialClosingStudent(
           phonesMatch(row.phone || row.remote_jid, phone)
         ).map((row: any) => row.id);
         if (ids.length) {
-          const { data: outbounds, error: outboundError } = await sb.from("whatsapp_messages")
+          const { data: outbounds, error: outboundError } = await sb.from(
+            "whatsapp_messages",
+          )
             .select("body").eq("tenant_id", tenantId).in("conversation_id", ids)
-            .eq("direction", "out").order("occurred_at", { ascending: false }).limit(1);
-          if (outboundError) throw new Error("trial_closing_student_latest_outbound_lookup_failed");
+            .eq("direction", "out").order("occurred_at", { ascending: false })
+            .limit(1);
+          if (outboundError) {
+            throw new Error(
+              "trial_closing_student_latest_outbound_lookup_failed",
+            );
+          }
           if (outbounds?.[0]?.body === sentQuestion.content) {
             const { data, error } = twoOptions
               ? await sb.rpc("trial_closing_student_select_teacher_option", {
-                p_tenant: tenantId, p_phone: phone,
-                p_flow: closing.flow_id, p_choice: optionChoice,
+                p_tenant: tenantId,
+                p_phone: phone,
+                p_flow: closing.flow_id,
+                p_choice: optionChoice,
               })
               : await sb.rpc("trial_closing_student_counterproposal_decision", {
-                p_tenant: tenantId, p_phone: phone,
-                p_flow: closing.flow_id, p_accept: proposalDecision,
+                p_tenant: tenantId,
+                p_phone: phone,
+                p_flow: closing.flow_id,
+                p_accept: proposalDecision,
               });
-            if (error) throw new Error("trial_closing_student_counterproposal_unavailable");
+            if (error) {
+              throw new Error(
+                "trial_closing_student_counterproposal_unavailable",
+              );
+            }
             if (data?.handled) {
               await logMsg(sb, tenantId, phone, "sdr", "in", text, {
-                msg_id: msgId, kind: "trial_closing_student_counterproposal_decision",
+                msg_id: msgId,
+                kind: "trial_closing_student_counterproposal_decision",
                 flow_id: closing.flow_id,
               });
               const reply = (twoOptions || proposalDecision)
                 ? data.offer?.ok
                   ? studentOfferMessage({
-                    leadName: data.lead_name, teacherName: null,
-                    url: String(data.offer.url), value: Number(data.offer.value),
-                    frequency: Number(data.offer.frequency), duration: Number(data.offer.duration),
+                    leadName: data.lead_name,
+                    teacherName: null,
+                    url: String(data.offer.url),
+                    value: Number(data.offer.value),
+                    frequency: Number(data.offer.frequency),
+                    duration: Number(data.offer.duration),
                     slots: (data.offer.slots || []) as RenewalSlot[],
                     startDate: String(data.offer.start_date || ""),
                     dueDay: Number(data.offer.due_day || 10),
@@ -6277,14 +6420,18 @@ async function handleTrialClosingStudent(
                   : data.offer?.error
                   ? "Anotei sua escolha, mas ainda não consegui liberar o link. Vou conferir os dados da matrícula com a escola."
                   : studentNeedMessage({
-                    need: (data.need || []) as string[], frequency: data.frequency ?? null,
+                    need: (data.need || []) as string[],
+                    frequency: data.frequency ?? null,
                     prices: (data.prices || []) as CatalogPrice[],
                   })
                 : "Sem problema. Quais outros dias e horários ficam melhores para você? Confirmo com a Bruna antes da matrícula.";
-              const delivered = await sendWhats(instance, phone, reply, { simulateTyping: true });
+              const delivered = await sendWhats(instance, phone, reply, {
+                simulateTyping: true,
+              });
               await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
                 kind: "trial_closing_student_counterproposal_result",
-                flow_id: closing.flow_id, entregue: delivered,
+                flow_id: closing.flow_id,
+                entregue: delivered,
                 offer_id: data.offer?.ok ? data.offer.offer_id : null,
               });
               return true;
@@ -6294,35 +6441,49 @@ async function handleTrialClosingStudent(
       }
     }
   }
-  if (slots.length === 0 && duration === null && frequency === null &&
-      startDate === null && dueDay === null) {
+  if (
+    slots.length === 0 && duration === null && frequency === null &&
+    startDate === null && dueDay === null
+  ) {
     if (!contractQuestion || tenantId !== "school-wise-wolf") return false;
     const closing = await loadTrialClosingContext(sb, tenantId, phone);
     if (!closing || closing.offer_sent) return false;
     const reply = contractReadingAnswer();
-    const delivered = await sendWhats(instance, phone, reply, { simulateTyping: true });
+    const delivered = await sendWhats(instance, phone, reply, {
+      simulateTyping: true,
+    });
     await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
-      kind: "trial_closing_contract_reading", flow_id: closing.flow_id,
-      msg_id: msgId, entregue: delivered,
+      kind: "trial_closing_contract_reading",
+      flow_id: closing.flow_id,
+      msg_id: msgId,
+      entregue: delivered,
     });
     return true;
   }
 
   const autonomousClosing = tenantId === "school-wise-wolf";
-  if (!autonomousClosing && slots.length === 0 && duration === null && frequency === null) {
+  if (
+    !autonomousClosing && slots.length === 0 && duration === null &&
+    frequency === null
+  ) {
     return false;
   }
-  const { data, error } = await sb.rpc(autonomousClosing
-    ? "trial_closing_student_terms"
-    : "trial_closing_student_plan", {
-    p_tenant: tenantId,
-    p_phone: phone,
-    p_frequency: frequency,
-    p_duration: duration,
-    p_slots: slots.length > 0 ? slots : null,
-    ...(autonomousClosing ? { p_start_date: startDate, p_due_day: dueDay } : {}),
-    p_origin: null,
-  });
+  const { data, error } = await sb.rpc(
+    autonomousClosing
+      ? "trial_closing_student_terms"
+      : "trial_closing_student_plan",
+    {
+      p_tenant: tenantId,
+      p_phone: phone,
+      p_frequency: frequency,
+      p_duration: duration,
+      p_slots: slots.length > 0 ? slots : null,
+      ...(autonomousClosing
+        ? { p_start_date: startDate, p_due_day: dueDay }
+        : {}),
+      p_origin: null,
+    },
+  );
   if (error) throw new Error("trial_closing_student_state_unavailable");
   if (!data?.handled) return false;
 
@@ -6341,9 +6502,15 @@ async function handleTrialClosingStudent(
         { frequency: number; duration: number; value: number }
       >,
     });
-    if (data.need.includes("horarios") && parsedSchedule.partial.length > 0 &&
-        expectedFrequency && parsedSchedule.partial.length < expectedFrequency) {
-      reply = `Anotei ${slotsText(parsedSchedule.partial)}. Quais são os outros ${expectedFrequency - parsedSchedule.partial.length} dias e horários?`;
+    if (
+      data.need.includes("horarios") && parsedSchedule.partial.length > 0 &&
+      expectedFrequency && parsedSchedule.partial.length < expectedFrequency
+    ) {
+      reply = `Anotei ${
+        slotsText(parsedSchedule.partial)
+      }. Quais são os outros ${
+        expectedFrequency - parsedSchedule.partial.length
+      } dias e horários?`;
     }
   } else if (data.waiting === "feedback") {
     reply = studentWaitingFeedbackMessage();
@@ -6818,7 +6985,16 @@ type TrialClosingContext = {
   student_asked_at: string | null;
   teacher_answered_at: string | null;
   offer_sent: boolean;
-  plan: { frequency?: number; duration?: number; slots?: RenewalSlot[]; start_date?: string; due_day?: number; teacher_counterproposal_slots?: RenewalSlot[]; teacher_alternative_confirmed_slots?: RenewalSlot[]; ai_resumption_authorized_at?: string };
+  plan: {
+    frequency?: number;
+    duration?: number;
+    slots?: RenewalSlot[];
+    start_date?: string;
+    due_day?: number;
+    teacher_counterproposal_slots?: RenewalSlot[];
+    teacher_alternative_confirmed_slots?: RenewalSlot[];
+    ai_resumption_authorized_at?: string;
+  };
   feedback: {
     recommended_level?: string | null;
     recommended_plan?: string | null;
@@ -6874,9 +7050,10 @@ async function mayResumePostTrialConversation(
   if (!closing || closing.offer_sent || closing.stage === "NO_SHOW") {
     return false;
   }
-  const authorizedAt = typeof closing.plan?.ai_resumption_authorized_at === "string"
-    ? closing.plan.ai_resumption_authorized_at
-    : null;
+  const authorizedAt =
+    typeof closing.plan?.ai_resumption_authorized_at === "string"
+      ? closing.plan.ai_resumption_authorized_at
+      : null;
   if (!authorizedAt) return false;
   const { data: conversation, error: conversationError } = await sb.from(
     "whatsapp_conversations",
@@ -6900,9 +7077,7 @@ async function mayResumePostTrialConversation(
     .eq("tenant_id", tenantId)
     .not("phone", "is", null);
   if (error) throw new Error("post_trial_handoff_lookup_failed");
-  const lead = (leads || []).find((row: any) =>
-    phonesMatch(row.phone, phone)
-  );
+  const lead = (leads || []).find((row: any) => phonesMatch(row.phone, phone));
   const lastHumanAt = String(lastHuman?.[0]?.occurred_at || "");
   const latestHandoff = Math.max(
     Date.parse(String(lead?.ai_handoff_at || "")) || 0,
@@ -6941,7 +7116,7 @@ function trialClosingStageInstructions(
       ? `plano recomendado=${feedback.recommended_plan}`
       : "plano recomendado=?",
     feedback.interest_score != null &&
-        Number.isFinite(Number(feedback.interest_score))
+      Number.isFinite(Number(feedback.interest_score))
       ? `interesse=${Number(feedback.interest_score)}/5`
       : "",
   ].filter(Boolean).join(", ");
@@ -6958,7 +7133,9 @@ function trialClosingStageInstructions(
       : "",
     `Já definido pelo aluno: frequência=${plan.frequency || "?"}, plano=${
       plan.duration ? plan.duration + " meses" : "?"
-    }, horários=${slots}, início=${plan.start_date || "?"}, vencimento mensal=dia ${plan.due_day || "?"}.`,
+    }, horários=${slots}, início=${
+      plan.start_date || "?"
+    }, vencimento mensal=dia ${plan.due_day || "?"}.`,
     `Horários livres de ${teacher}: ${
       free || "nenhum livre agora — diga que a coordenação encaixa"
     }.`,
@@ -7706,7 +7883,9 @@ async function handleSDR(
     if (!postTrialHandoffOverride) return;
     // O modelo pode levar alguns segundos. Se uma pessoa assumiu nesse meio
     // tempo, a nova intervenção vence e nenhuma resposta da IA é enviada.
-    if (!(await mayResumePostTrialConversation(sb, tenantId, instance, phone))) return;
+    if (
+      !(await mayResumePostTrialConversation(sb, tenantId, instance, phone))
+    ) return;
   }
   if (!(await beginEffects())) return;
   if (!ai || !ai.reply) {
@@ -8548,7 +8727,12 @@ async function drainSdrConversation(
             `${phone}@s.whatsapp.net`,
           );
         const postTrialHandoffOverride = hasHandoff &&
-          await mayResumePostTrialConversation(sb, tenantId, input.instance, phone);
+          await mayResumePostTrialConversation(
+            sb,
+            tenantId,
+            input.instance,
+            phone,
+          );
         if (hasHandoff && !postTrialHandoffOverride) return;
         // Aluno que acabou de fazer a experimental e está escolhendo plano e
         // horário: resposta determinística, com o preço da tabela. Quem não
@@ -9221,7 +9405,12 @@ serve(async (req) => {
       if (
         !isMedia && !rateLimited &&
         await handleTrialClosingTeacherSlotsReply(
-          sb, instance, tenantId, phone, text, msgId,
+          sb,
+          instance,
+          tenantId,
+          phone,
+          text,
+          msgId,
         )
       ) {
         continue;

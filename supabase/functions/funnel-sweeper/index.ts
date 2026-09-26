@@ -23,10 +23,10 @@ import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts
 // (`whatsapp-inbound`): texto de pergunta e texto de resposta precisam mudar
 // juntos. As duas funções são publicadas no mesmo pacote.
 import {
-  studentOfferMessage,
   studentCounterproposalBlocks,
-  studentTwoOptionsBlocks,
+  studentOfferMessage,
   studentPostTrialOpener,
+  studentTwoOptionsBlocks,
   teacherOutcomeQuestion,
   teacherRecurringSlotsQuestion,
   teacherTrialBriefing,
@@ -1317,16 +1317,22 @@ serve(async (req) => {
         // handoff. A consulta consome uma trava durável antes do envio; qualquer
         // nova mensagem humana ou do aluno invalida o disparo proativo.
         const resumeRoute = byTenant["school-wise-wolf"];
-        if (resumeRoute?.studentInstance && cfgOf("school-wise-wolf")?.sdr?.enabled !== false) {
+        if (
+          resumeRoute?.studentInstance &&
+          cfgOf("school-wise-wolf")?.sdr?.enabled !== false
+        ) {
           const { data: followup, error: followupError } = await sb.rpc(
             "trial_closing_claim_authorized_student_followup",
           );
           if (followupError) throw new Error(followupError.message);
           if (followup?.claimed) {
             const phone = cleanPhone(followup.lead_phone || "");
-            const first = String(followup.lead_name || "").trim().split(/\s+/)[0] || "";
+            const first =
+              String(followup.lead_name || "").trim().split(/\s+/)[0] || "";
             const count = Number(followup.frequency);
-            const msg = `Oi${first ? `, ${first}` : ""}! Para seguir com ${count} aulas por semana no plano que você escolheu, quais ${count} dias e horários ficam melhores? Podemos considerar o horário da experimental como primeira opção. Confirmo a grade com a professora antes de preparar o link.`;
+            const msg = `Oi${
+              first ? `, ${first}` : ""
+            }! Para seguir com ${count} aulas por semana no plano que você escolheu, quais ${count} dias e horários ficam melhores? Podemos considerar o horário da experimental como primeira opção. Confirmo a grade com a professora antes de preparar o link.`;
             if (phone.length >= 12) {
               const delivery = await sendWhatsTextDetailed({
                 base: EVOLUTION_API_URL,
@@ -1336,21 +1342,33 @@ serve(async (req) => {
                 text: msg,
               });
               const delivered = delivery.outcome === "accepted";
-              const { error: logError } = await sb.from("ai_wa_messages").insert({
-                tenant_id: "school-wise-wolf", phone, agent: "sdr",
-                direction: "out", content: msg,
-                meta: {
-                  kind: "trial_closing_authorized_student_followup",
-                  flow_id: followup.flow_id,
-                  delivery_outcome: delivery.outcome,
-                  entregue: delivered,
-                },
-              });
-              if (logError) result.failures.push(`closing_followup_log ${followup.flow_id}`);
+              const { error: logError } = await sb.from("ai_wa_messages")
+                .insert({
+                  tenant_id: "school-wise-wolf",
+                  phone,
+                  agent: "sdr",
+                  direction: "out",
+                  content: msg,
+                  meta: {
+                    kind: "trial_closing_authorized_student_followup",
+                    flow_id: followup.flow_id,
+                    delivery_outcome: delivery.outcome,
+                    entregue: delivered,
+                  },
+                });
+              if (logError) {
+                result.failures.push(
+                  `closing_followup_log ${followup.flow_id}`,
+                );
+              }
               if (delivered) result.closing_authorized_followups++;
-              else result.failures.push(`closing_followup_delivery ${followup.flow_id}: ${delivery.outcome}`);
+              else {result.failures.push(
+                  `closing_followup_delivery ${followup.flow_id}: ${delivery.outcome}`,
+                );}
             } else {
-              result.failures.push(`closing_followup_phone ${followup.flow_id}`);
+              result.failures.push(
+                `closing_followup_phone ${followup.flow_id}`,
+              );
             }
           }
           // A professora não precisa responder à alternativa para sempre:
@@ -1358,12 +1376,17 @@ serve(async (req) => {
           const { error: alternativeExpiryError } = await sb.rpc(
             "trial_closing_expire_teacher_alternatives",
           );
-          if (alternativeExpiryError) throw new Error(alternativeExpiryError.message);
-          const { data: counterproposal, error: counterproposalError } = await sb.rpc(
-            "trial_closing_claim_teacher_counterproposal_student",
-            { p_flow: null },
-          );
-          if (counterproposalError) throw new Error(counterproposalError.message);
+          if (alternativeExpiryError) {
+            throw new Error(alternativeExpiryError.message);
+          }
+          const { data: counterproposal, error: counterproposalError } =
+            await sb.rpc(
+              "trial_closing_claim_teacher_counterproposal_student",
+              { p_flow: null },
+            );
+          if (counterproposalError) {
+            throw new Error(counterproposalError.message);
+          }
           if (counterproposal?.claimed) {
             const phone = cleanPhone(counterproposal.lead_phone || "");
             const blocks = Array.isArray(counterproposal.alternative_slots)
@@ -1372,50 +1395,71 @@ serve(async (req) => {
                 teacherName: counterproposal.teacher_name || null,
                 requested: (counterproposal.original_slots || []) as Slot[],
                 primary: (counterproposal.slots || []) as Slot[],
-                alternative: counterproposal.alternative_slots as Slot[], hourBRT,
+                alternative: counterproposal.alternative_slots as Slot[],
+                hourBRT,
               })
               : studentCounterproposalBlocks({
                 leadName: counterproposal.lead_name || null,
                 teacherName: counterproposal.teacher_name || null,
                 requested: (counterproposal.original_slots || []) as Slot[],
-                proposed: (counterproposal.slots || []) as Slot[], hourBRT,
+                proposed: (counterproposal.slots || []) as Slot[],
+                hourBRT,
               });
             if (phone.length >= 12) {
               let allAccepted = true;
               for (const [blockIndex, msg] of blocks.entries()) {
                 const delivery = await sendWhatsTextDetailed({
-                  base: EVOLUTION_API_URL, keys: EVOLUTION_KEYS,
-                  instance: resumeRoute.studentInstance, to: phone, text: msg,
+                  base: EVOLUTION_API_URL,
+                  keys: EVOLUTION_KEYS,
+                  instance: resumeRoute.studentInstance,
+                  to: phone,
+                  text: msg,
                 });
                 const delivered = delivery.outcome === "accepted";
-                const { error: logError } = await sb.from("ai_wa_messages").insert({
-                  tenant_id: "school-wise-wolf", phone, agent: "sdr",
-                  direction: "out", content: msg,
-                  meta: {
-                    kind: "trial_closing_teacher_counterproposal_to_student",
-                    flow_id: counterproposal.flow_id,
-                    block_index: blockIndex,
-                    delivery_outcome: delivery.outcome, entregue: delivered,
-                  },
-                });
-                if (logError) result.failures.push(`closing_counterproposal_log ${counterproposal.flow_id}:${blockIndex}`);
+                const { error: logError } = await sb.from("ai_wa_messages")
+                  .insert({
+                    tenant_id: "school-wise-wolf",
+                    phone,
+                    agent: "sdr",
+                    direction: "out",
+                    content: msg,
+                    meta: {
+                      kind: "trial_closing_teacher_counterproposal_to_student",
+                      flow_id: counterproposal.flow_id,
+                      block_index: blockIndex,
+                      delivery_outcome: delivery.outcome,
+                      entregue: delivered,
+                    },
+                  });
+                if (logError) {
+                  result.failures.push(
+                    `closing_counterproposal_log ${counterproposal.flow_id}:${blockIndex}`,
+                  );
+                }
                 if (!delivered) {
                   allAccepted = false;
-                  result.failures.push(`closing_counterproposal_delivery ${counterproposal.flow_id}:${blockIndex}: ${delivery.outcome}`);
+                  result.failures.push(
+                    `closing_counterproposal_delivery ${counterproposal.flow_id}:${blockIndex}: ${delivery.outcome}`,
+                  );
                   break;
                 }
               }
               if (allAccepted) result.closing_counterproposals++;
-            } else result.failures.push(`closing_counterproposal_phone ${counterproposal.flow_id}`);
+            } else {result.failures.push(
+                `closing_counterproposal_phone ${counterproposal.flow_id}`,
+              );}
           }
         }
         const { data: slotAsks, error: slotAskError } = await sb.rpc(
-          "trial_closing_pending_teacher_slots", { p_limit: 10 },
+          "trial_closing_pending_teacher_slots",
+          { p_limit: 10 },
         );
         if (slotAskError) throw new Error(slotAskError.message);
         for (const ask of (slotAsks || [])) {
           const t = byTenant[ask.tenant_id];
-          if (!t?.teacherInstance || cfgOf(ask.tenant_id)?.sdr?.enabled === false) continue;
+          if (
+            !t?.teacherInstance || cfgOf(ask.tenant_id)?.sdr?.enabled === false
+          ) continue;
           const phone = cleanPhone(ask.teacher_phone || "");
           if (phone.length < 12) continue;
           const msg = teacherRecurringSlotsQuestion({
@@ -1425,12 +1469,21 @@ serve(async (req) => {
           });
           const delivered = await sendWhats(t.teacherInstance, phone, msg);
           await sb.from("ai_wa_messages").insert({
-            tenant_id: ask.tenant_id, phone, agent: "trial_closing",
-            direction: "out", content: msg,
-            meta: { kind: "trial_closing_teacher_slots_question", flow_id: ask.flow_id, entregue: delivered },
+            tenant_id: ask.tenant_id,
+            phone,
+            agent: "trial_closing",
+            direction: "out",
+            content: msg,
+            meta: {
+              kind: "trial_closing_teacher_slots_question",
+              flow_id: ask.flow_id,
+              entregue: delivered,
+            },
           });
           if (delivered) {
-            await sb.rpc("trial_closing_mark_teacher_slots_asked", { p_flow: ask.flow_id });
+            await sb.rpc("trial_closing_mark_teacher_slots_asked", {
+              p_flow: ask.flow_id,
+            });
             result.closing_teacher_slot_asks++;
           } else result.failures.push(`closing_teacher_slots ${ask.flow_id}`);
         }
@@ -1562,8 +1615,11 @@ serve(async (req) => {
           enrollmentFee: Number(offer.enrollment_fee || 0),
         });
         const delivery = await sendWhatsTextDetailed({
-          base: EVOLUTION_API_URL, keys: EVOLUTION_KEYS,
-          instance: t.studentInstance, to: phone, text: msg,
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: t.studentInstance,
+          to: phone,
+          text: msg,
         });
         const delivered = delivery.outcome === "accepted";
         await sb.from("ai_wa_messages").insert({
@@ -1584,7 +1640,8 @@ serve(async (req) => {
       }
 
       const { data: failedOffers, error: failedOffersError } = await sb.rpc(
-        "trial_closing_failed_offer_deliveries", { p_limit: 10 },
+        "trial_closing_failed_offer_deliveries",
+        { p_limit: 10 },
       );
       if (failedOffersError) throw new Error(failedOffersError.message);
       for (const row of (failedOffers || [])) {
@@ -1594,28 +1651,43 @@ serve(async (req) => {
         const phone = cleanPhone(row.lead_phone || "");
         if (phone.length < 12) continue;
         const msg = studentOfferMessage({
-          leadName: row.lead_name, teacherName: null,
-          url: String(offer.url), value: Number(offer.value),
-          frequency: Number(offer.frequency), duration: Number(offer.duration),
+          leadName: row.lead_name,
+          teacherName: null,
+          url: String(offer.url),
+          value: Number(offer.value),
+          frequency: Number(offer.frequency),
+          duration: Number(offer.duration),
           slots: (offer.slots || []) as Slot[],
           startDate: String(offer.start_date || ""),
           dueDay: Number(offer.due_day || 10),
           enrollmentFee: Number(offer.enrollment_fee || 0),
         });
         const delivery = await sendWhatsTextDetailed({
-          base: EVOLUTION_API_URL, keys: EVOLUTION_KEYS,
-          instance: t.studentInstance, to: phone, text: msg,
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: t.studentInstance,
+          to: phone,
+          text: msg,
         });
         const delivered = delivery.outcome === "accepted";
         await sb.from("ai_wa_messages").insert({
-          tenant_id: row.tenant_id, phone, agent: "sdr", direction: "out",
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
           content: msg,
-          meta: { kind: "trial_closing_offer_retry", flow_id: row.flow_id,
-            offer_id: offer.offer_id, entregue: delivered,
-            delivery_outcome: delivery.outcome },
+          meta: {
+            kind: "trial_closing_offer_retry",
+            flow_id: row.flow_id,
+            offer_id: offer.offer_id,
+            entregue: delivered,
+            delivery_outcome: delivery.outcome,
+          },
         });
         if (delivered) result.closing_offers++;
-        else result.failures.push(`closing_offer_retry ${offer.offer_id || "?"}`);
+        else {result.failures.push(
+            `closing_offer_retry ${offer.offer_id || "?"}`,
+          );}
       }
 
       const { data: overdue, error: overdueError } = await sb.rpc(
