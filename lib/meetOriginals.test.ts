@@ -33,6 +33,18 @@ describe('prévia do pedido de exclusão', () => {
     expect(empty[0].label).toBe('0 cópias da transcrição e das anotações guardadas no sistema');
   });
 
+  it('plano do Planner com a base das aulas aprovadas: a base sai, o plano fica', () => {
+    // Integração com o Planner (20260927130000): o item só aparece com plano afetado.
+    expect(erasureItems(readErasurePreview(preview())!).map(item => item.key)).not.toContain('planner');
+    const one = erasureItems(readErasurePreview(preview({ planner_basis: 1 }))!);
+    expect(one.find(item => item.key === 'planner')?.label)
+      .toBe('a base das aulas aprovadas copiada em 1 plano do Planner (o plano fica)');
+    const many = erasureItems(readErasurePreview(preview({ planner_basis: 3 }))!);
+    expect(many.find(item => item.key === 'planner')?.label)
+      .toBe('a base das aulas aprovadas copiada em 3 planos do Planner (os planos ficam)');
+    expect(readErasureResult({ ok: true, planner_basis_cleared: 2 })?.planner_basis_cleared).toBe(2);
+  });
+
   it('lixeira ligada e autorizada: os originais vão para a lixeira, com o prazo da conferência', () => {
     expect(erasureOriginalsText(readErasurePreview(preview())!, ACTIVE)).toBe(
       '2 originais registrados vão para a lixeira do Google Drive da escola. '

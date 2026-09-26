@@ -368,6 +368,27 @@ begin
     (v_tenant, v_other_student, 'MEET_SESSION', v_live::text, 'Outro aluno');
   insert into public.student_learning_cards (tenant_id, student_id, real_goal, engaging_topics)
   values (v_tenant, v_student, 'Viajar para Londres', array['viagem']);
+  -- Integração com o Planner (20260927130000): o plano salvo e o rascunho do
+  -- Planner guardam a BASE das aulas aprovadas (o próximo passo e os erros
+  -- copiados do resumo aprovado). O pedido tira a base; o plano fica. O plano
+  -- do outro aluno e o plano sem base não mudam.
+  insert into public.planner_ai_runs (tenant_id, teacher_id, student_id, task_mode, model_id, prompt_version,
+    result, status) values
+    (v_tenant, v_teacher, v_student, 'lesson_plan', 'fixture/modelo', 'fixture',
+      jsonb_build_object('title', 'PLANO-DO-PROFESSOR', 'lesson_basis', jsonb_build_object(
+        'source', 'MEET_APPROVED_SUMMARIES', 'lesson_dates', jsonb_build_array((v_today - 10)::text),
+        'continued_from', jsonb_build_object('lesson_date', (v_today - 10)::text,
+          'recommended_next_step', 'PASSO-APROVADO-COPIADO'),
+        'homework_targets', jsonb_build_array('ERRO-APROVADO-COPIADO'))), 'SAVED'),
+    (v_tenant, v_teacher, v_other_student, 'lesson_plan', 'fixture/modelo', 'fixture',
+      jsonb_build_object('title', 'PLANO-DO-OUTRO', 'lesson_basis', jsonb_build_object('source', 'MEET_APPROVED_SUMMARIES',
+        'lesson_dates', jsonb_build_array((v_today - 3)::text))), 'SAVED');
+  insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan, planner_run_id)
+  select run.tenant_id, run.teacher_id, run.student_id, run.result, run.id
+    from public.planner_ai_runs as run
+   where run.tenant_id = v_tenant and run.prompt_version = 'fixture';
+  insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan) values
+    (v_tenant, v_teacher, v_student, jsonb_build_object('title', 'PLANO-SEM-BASE', 'lesson_basis', null));
 
   -- Só a direção DA ESCOLA do aluno.
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_coord, 'role', 'authenticated')::text, true);
@@ -401,6 +422,7 @@ begin
     and (v_result ->> 'approved_summaries')::integer = 1
     and (v_result ->> 'memories')::integer = 2
     and (v_result ->> 'card')::boolean
+    and (v_result ->> 'planner_basis')::integer = 1        -- o plano com base; o sem base não conta
     and (v_result ->> 'originals_pending')::integer = 2   -- sheetOld1 (falhou) e docRecentT
     and (v_result ->> 'originals_done')::integer = 2
     and (v_result ->> 'rooms_to_discover')::integer = 2   -- recent e sync
@@ -427,6 +449,7 @@ begin
     and (v_result ->> 'summary_versions_deleted')::integer = 2
     and (v_result ->> 'memories_deleted')::integer = 2
     and (v_result ->> 'card_deleted')::boolean
+    and (v_result ->> 'planner_basis_cleared')::integer = 1
     and (v_result ->> 'originals_queued')::integer = 2
     and (v_result ->> 'originals_other_account')::integer = 1
     and (v_result ->> 'sessions_to_discover')::integer = 2
@@ -466,6 +489,20 @@ begin
     and exists (select 1 from private.student_learning_card_events where student_id = v_student
       and actor_role = 'DIRECTION_ERASURE' and actor_id = v_admin),
     'cartão não apagado ou sem histórico da remoção');
+  perform pg_temp.originais_assert(
+    not exists (select 1 from public.lesson_plans where student_id = v_student and structured_plan ? 'lesson_basis'
+      and jsonb_typeof(structured_plan -> 'lesson_basis') = 'object')
+    and not exists (select 1 from public.planner_ai_runs where student_id = v_student and result ? 'lesson_basis')
+    and (select count(*) from public.lesson_plans where student_id = v_student
+      and structured_plan ->> 'title' in ('PLANO-DO-PROFESSOR', 'PLANO-SEM-BASE')) = 2
+    and exists (select 1 from public.lesson_plans where student_id = v_other_student
+      and jsonb_typeof(structured_plan -> 'lesson_basis') = 'object')
+    and exists (select 1 from public.planner_ai_runs where student_id = v_other_student and result ? 'lesson_basis')
+    and position('PASSO-APROVADO-COPIADO' in (select string_agg(structured_plan::text, ' ') from public.lesson_plans
+      where student_id = v_student)) = 0
+    and (select planner_basis_cleared from private.student_lesson_record_erasures
+      where student_id = v_student order by requested_at desc limit 1) = 1,
+    'a base das aulas aprovadas ficou no plano do Planner do aluno (ou o plano/outro aluno perdeu dados)');
   perform pg_temp.originais_assert(
     (select bool_and(trash_due_at <= now() and next_attempt_at is null) from private.google_meet_drive_originals
       where file_id in ('docRecentT', 'sheetOld1')),

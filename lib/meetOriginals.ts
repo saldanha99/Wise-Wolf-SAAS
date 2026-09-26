@@ -52,6 +52,9 @@ export interface ErasurePreview {
   approved_summaries: number;
   memories: number;
   card: boolean;
+  // Planos do Planner com a base das aulas aprovadas copiada (a base sai; o
+  // plano fica — integração com 20260927130000).
+  planner_basis: number;
   // Originais que a conta central ATUAL move (ou moverá).
   originals_pending: number;
   // Da conta central anterior: só ela move — apagar à mão no Drive dela.
@@ -76,6 +79,7 @@ export interface ErasureResult {
   summary_versions_deleted: number;
   memories_deleted: number;
   card_deleted: boolean;
+  planner_basis_cleared: number;
   originals_queued: number;
   sessions_to_discover: number;
   originals_other_account: number;
@@ -118,6 +122,7 @@ export function readErasurePreview(raw: unknown): ErasurePreview | null {
     approved_summaries: count(data.approved_summaries),
     memories: count(data.memories),
     card: data.card === true,
+    planner_basis: count(data.planner_basis),
     originals_pending: count(data.originals_pending),
     originals_other_account: count(data.originals_other_account),
     originals_done: count(data.originals_done),
@@ -143,6 +148,7 @@ export function readErasureResult(raw: unknown): ErasureResult | null {
     summary_versions_deleted: count(data.summary_versions_deleted),
     memories_deleted: count(data.memories_deleted),
     card_deleted: data.card_deleted === true,
+    planner_basis_cleared: count(data.planner_basis_cleared),
     originals_queued: count(data.originals_queued),
     sessions_to_discover: count(data.sessions_to_discover),
     originals_other_account: count(data.originals_other_account),
@@ -167,6 +173,11 @@ export function erasureItems(preview: ErasurePreview): { key: string; label: str
     { key: 'memories', label: `${plural(preview.memories, 'registro', 'registros')} de memória vindo${preview.memories === 1 ? '' : 's'} das aulas no Meet` },
   ];
   if (preview.card) items.push({ key: 'card', label: 'o cartão do aluno (objetivo, temas e preferências)' });
+  // Só aparece com plano afetado: o plano (material do professor) fica, sem a
+  // base copiada do resumo aprovado.
+  if (preview.planner_basis > 0) {
+    items.push({ key: 'planner', label: `a base das aulas aprovadas copiada em ${plural(preview.planner_basis, 'plano', 'planos')} do Planner (${preview.planner_basis === 1 ? 'o plano fica' : 'os planos ficam'})` });
+  }
   return items;
 }
 

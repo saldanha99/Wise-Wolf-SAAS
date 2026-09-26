@@ -50,6 +50,13 @@
 --   * a prévia/resultado da exclusão separam o que é da conta central anterior,
 --     dizem o prazo da conferência e as aulas sem planilha de presença registrada.
 --
+-- Integração da onda 2 (com 20260927130000, o Planner a partir das aulas
+-- aprovadas): o plano salvo guarda a BASE das aulas aprovadas
+-- (structured_plan.lesson_basis — datas, o próximo passo e os erros copiados do
+-- resumo aprovado), e o rascunho do Planner guarda o mesmo em
+-- planner_ai_runs.result. A exclusão a pedido tira essa base dos planos do
+-- aluno; o plano, material do professor, fica (ver o runbook).
+--
 -- ⚠️ A Meet API guarda a conferência e os documentos dela por ~30 dias: a lista
 -- de documentos de uma aula só pode ser conferida nesse prazo (28 dias, com
 -- folga). A importação registra os documentos que vê; a fila confere de novo as
@@ -154,6 +161,10 @@ create table if not exists private.student_lesson_record_erasures (
   originals_queued integer not null default 0,
   sessions_to_discover integer not null default 0
 );
+-- Planos do Planner que perderam a base das aulas aprovadas (integração da
+-- onda 2). Banco com a tabela de antes da coluna ganha a coluna.
+alter table private.student_lesson_record_erasures
+  add column if not exists planner_basis_cleared integer not null default 0;
 create index if not exists student_lesson_record_erasures_student_idx
   on private.student_lesson_record_erasures(tenant_id, student_id, requested_at desc);
 alter table private.student_lesson_record_erasures owner to postgres;
@@ -355,6 +366,12 @@ language sql stable security definer set search_path = '' as $$
       where memory.tenant_id = p_tenant and memory.student_id = p_student and memory.source_type = 'MEET_SESSION'),
     'card', exists (select 1 from public.student_learning_cards as card
       where card.tenant_id = p_tenant and card.student_id = p_student),
+    -- Planos do Planner com a base das aulas aprovadas copiada (datas, próximo
+    -- passo e erros do resumo aprovado, 20260927130000): a base sai com o
+    -- pedido; o plano fica.
+    'planner_basis', (select pg_catalog.count(*) from public.lesson_plans as plan
+      where plan.tenant_id = p_tenant and plan.student_id = p_student
+        and pg_catalog.jsonb_typeof(plan.structured_plan -> 'lesson_basis') = 'object'),
     -- Originais registrados que a conta central atual move (ou moverá).
     'originals_pending', (select pg_catalog.count(*) from pending
       where (select conn.organizer_sub from conn) is null
@@ -716,6 +733,9 @@ $$;
 --     texto que alimentava a memória);
 --   * memória de origem MEET_SESSION e o cartão do aluno (o histórico do cartão
 --     ganha a linha da remoção, sem texto, com o papel DIRECTION_ERASURE);
+--   * a base das aulas aprovadas copiada nos planos do Planner
+--     (lesson_plans.structured_plan.lesson_basis e planner_ai_runs.result) — o
+--     plano, material do professor, fica;
 --   * os originais no Drive vencem NA HORA (a fila manda para a lixeira) e as
 --     salas ainda na janela da Meet API têm a lista de documentos conferida;
 --   * as aulas ficam marcadas: nada delas volta a ser importado nem resumido.
@@ -736,6 +756,7 @@ declare
   v_versions integer := 0;
   v_memories integer := 0;
   v_card_version integer;
+  v_plans integer := 0;
   v_queued integer := 0;
   v_discover integer := 0;
   v_counts jsonb;
@@ -798,6 +819,18 @@ begin
     values (v_tenant, v_student.id, v_uid, 'DIRECTION_ERASURE', v_card_version,
       array['real_goal', 'engaging_topics', 'correction_style', 'avoid_topics', 'notes']::text[]);
   end if;
+  -- A base das aulas aprovadas copiada nos planos do Planner (20260927130000)
+  -- é texto do resumo aprovado (o próximo passo, os erros): sai com o pedido.
+  -- O plano salvo e o rascunho do Planner ficam, sem ela.
+  update public.lesson_plans as plan
+     set structured_plan = plan.structured_plan - 'lesson_basis'
+   where plan.tenant_id = v_tenant and plan.student_id = v_student.id
+     and pg_catalog.jsonb_typeof(plan.structured_plan -> 'lesson_basis') = 'object';
+  get diagnostics v_plans = row_count;
+  update public.planner_ai_runs as run
+     set result = run.result - 'lesson_basis'
+   where run.tenant_id = v_tenant and run.student_id = v_student.id
+     and pg_catalog.jsonb_typeof(run.result -> 'lesson_basis') = 'object';
 
   -- Originais já registrados: vencem agora (a fila manda para a lixeira, quando
   -- ela está ligada e autorizada). As mesmas contas da prévia dizem o que a conta
@@ -812,9 +845,9 @@ begin
 
   insert into private.student_lesson_record_erasures (id, tenant_id, student_id, requested_by, requested_at,
     sessions, raw_copies_deleted, attendance_reports_deleted, summary_versions_deleted, memories_deleted,
-    card_deleted, originals_queued, sessions_to_discover)
+    card_deleted, originals_queued, sessions_to_discover, planner_basis_cleared)
   values (v_erasure, v_tenant, v_student.id, v_uid, v_now, pg_catalog.cardinality(v_sessions), v_raw, v_attendance,
-    v_versions, v_memories, v_card_version is not null, v_queued, v_discover);
+    v_versions, v_memories, v_card_version is not null, v_queued, v_discover, v_plans);
   insert into private.google_meet_access_events (tenant_id, actor_id, lesson_session_id, action)
   values (v_tenant, v_uid, null, 'STUDENT_LESSON_RECORDS_ERASED');
 
@@ -827,6 +860,7 @@ begin
     'summary_versions_deleted', v_versions,
     'memories_deleted', v_memories,
     'card_deleted', v_card_version is not null,
+    'planner_basis_cleared', v_plans,
     'originals_queued', v_queued,
     'sessions_to_discover', v_discover,
     -- O que a lixeira automática não alcança (a tela manda conferir à mão).

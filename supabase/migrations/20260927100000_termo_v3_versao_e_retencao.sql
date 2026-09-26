@@ -7,10 +7,13 @@
 -- professor, aceite que caiu, job que aplica o termo) e 20260926220000 (cartão
 -- do aluno).
 -- ⚠️ O texto v3 promete apagar os ORIGINAIS no Drive da escola 90 dias depois
--- da aula (decisão da direção). Nada aqui faz isso: é a frente
--- wave2/retencao-drive, com escopo de escrita no Drive (a conta central tem só
--- drive.readonly). O primeiro original vence 90 dias depois da primeira aula
--- transcrita sob a v3 — a remoção precisa estar no ar até lá.
+-- da aula (decisão da direção). Nada aqui faz isso: é a migration
+-- 20260927120000 (lixeira dos originais), que só move arquivo com a flag
+-- GOOGLE_MEET_DELETE_ORIGINALS_ENABLED ligada e a conta central reconectada com
+-- o escopo drive (em 26/09 ela tinha só drive.readonly). O primeiro original
+-- vence 90 dias depois da primeira aula transcrita sob a v3 — a lixeira precisa
+-- estar LIGADA até lá. A exclusão a pedido do aluno (que o termo promete pelo
+-- WhatsApp) é public.erase_student_lesson_records, da mesma migration.
 --
 -- 1. Texto v3 (aluno e professor). Diz com exatidão o que o sistema faz depois
 --    das ondas 1–3: transcrição e anotações do Google (sem vídeo); resumo
@@ -52,8 +55,9 @@
 --        depois da aula;
 --    (b) quem DEIXOU a escola (lifecycle_status = 'offboarded' com o
 --        desligamento concluído) perde, 90 dias depois do fim, a memória de
---        origem MEET_SESSION, o cartão do aluno e o conteúdo dos resumos das
---        aulas dele;
+--        origem MEET_SESSION, o cartão do aluno, o conteúdo dos resumos das
+--        aulas dele e a base das aulas aprovadas copiada nos planos do Planner
+--        (lesson_basis, 20260927130000 — integração da onda 2);
 --    (c) cada rodada deixa uma trilha só com contagens, por escola.
 --
 -- Em 26/09/2026 havia 0 aceites, 0 salas, 0 resumos e 0 memórias MEET_SESSION
@@ -874,10 +878,15 @@ create table if not exists private.lesson_memory_retention_runs (
 alter table private.lesson_memory_retention_runs
   add column if not exists approved_excerpts_cleared integer not null default 0
     check (approved_excerpts_cleared >= 0);
+-- Planos do Planner que perderam a base das aulas aprovadas (integração da
+-- onda 2, com 20260927130000).
+alter table private.lesson_memory_retention_runs
+  add column if not exists planner_basis_cleared integer not null default 0
+    check (planner_basis_cleared >= 0);
 create index if not exists lesson_memory_retention_runs_tenant_idx
   on private.lesson_memory_retention_runs(tenant_id, ran_at desc);
 comment on table private.lesson_memory_retention_runs is
-  'Retenção da memória das aulas (20260927100000): contagens por escola e rodada — rascunhos e resumos aprovados que perderam os trechos da aula, resumos apagados, memórias MEET_SESSION e cartões apagados. Nunca conteúdo.';
+  'Retenção da memória das aulas (20260927100000): contagens por escola e rodada — rascunhos e resumos aprovados que perderam os trechos da aula, resumos apagados, memórias MEET_SESSION e cartões apagados, planos do Planner que perderam a base das aulas aprovadas. Nunca conteúdo.';
 
 alter table private.lesson_memory_retention_runs owner to postgres;
 alter table private.lesson_memory_retention_runs enable row level security;
@@ -901,7 +910,11 @@ grant select (id, tenant_id, lesson_session_id, status, content),
 -- (b) Aluno que deixou a escola há mais de 90 dias: apaga a memória de origem
 --     MEET_SESSION, o cartão do aluno e o conteúdo de todos os resumos das
 --     aulas dele (a linha da versão fica, sem conteúdo, para a trilha de quem
---     aprovou e quando). Memória de outras origens não é tocada.
+--     aprovou e quando). Memória de outras origens não é tocada. A base das
+--     aulas aprovadas copiada nos planos do Planner (lesson_plans e
+--     planner_ai_runs: datas, próximo passo e erros do resumo aprovado) sai
+--     também — é o próximo passo do resumo aprovado, que o termo promete
+--     apagar; o plano, material do professor, fica.
 -- (c) Uma linha de contagens por escola afetada.
 -- Re-executável: o que já foi limpo não casa de novo.
 create or replace function private.purge_lesson_memory_retention()
@@ -918,6 +931,7 @@ declare
   v_summaries jsonb;
   v_memories jsonb;
   v_cards jsonb;
+  v_plans jsonb;
 begin
   v_excerpts_cutoff := v_now - pg_catalog.make_interval(days => (v_policy ->> 'lesson_excerpts_days')::integer);
   v_left_cutoff := v_now - pg_catalog.make_interval(days => (v_policy ->> 'after_leaving_days')::integer);
@@ -1013,22 +1027,54 @@ begin
   select coalesce(jsonb_object_agg(counted.tenant_id, counted.total), '{}'::jsonb) into v_cards
   from (select logged.tenant_id, count(*)::integer as total from logged group by logged.tenant_id) as counted;
 
+  -- (b4) Base das aulas aprovadas nos planos do Planner de quem deixou a
+  --      escola (20260927130000). Conta os planos salvos; o rascunho do Planner
+  --      (planner_ai_runs) perde a mesma base.
+  with gone as (
+    select student.id, student.tenant_id
+    from public.profiles as student
+    where student.role = 'STUDENT'
+      and private.student_left_school_at(student.id) < v_left_cutoff
+  ), cleared_runs as (
+    update public.planner_ai_runs as run
+       set result = run.result - 'lesson_basis'
+      from gone
+     where run.student_id = gone.id
+       and run.tenant_id = gone.tenant_id
+       and pg_catalog.jsonb_typeof(run.result -> 'lesson_basis') = 'object'
+    returning run.tenant_id
+  ), cleared_plans as (
+    update public.lesson_plans as plan
+       set structured_plan = plan.structured_plan - 'lesson_basis'
+      from gone
+     where plan.student_id = gone.id
+       and plan.tenant_id = gone.tenant_id
+       and pg_catalog.jsonb_typeof(plan.structured_plan -> 'lesson_basis') = 'object'
+    returning plan.tenant_id
+  )
+  select coalesce(jsonb_object_agg(counted.tenant_id, counted.total), '{}'::jsonb) into v_plans
+  from (select cleared_plans.tenant_id, count(*)::integer as total from cleared_plans
+        group by cleared_plans.tenant_id) as counted;
+
   -- (c) Trilha: uma linha por escola com alguma coisa apagada.
   insert into private.lesson_memory_retention_runs (
-    run_id, tenant_id, drafts_cleared, approved_excerpts_cleared, summaries_cleared, memories_deleted, cards_deleted
+    run_id, tenant_id, drafts_cleared, approved_excerpts_cleared, summaries_cleared, memories_deleted, cards_deleted,
+    planner_basis_cleared
   )
   select v_run, affected.tenant_id,
     coalesce((v_drafts ->> affected.tenant_id)::integer, 0),
     coalesce((v_approved ->> affected.tenant_id)::integer, 0),
     coalesce((v_summaries ->> affected.tenant_id)::integer, 0),
     coalesce((v_memories ->> affected.tenant_id)::integer, 0),
-    coalesce((v_cards ->> affected.tenant_id)::integer, 0)
+    coalesce((v_cards ->> affected.tenant_id)::integer, 0),
+    coalesce((v_plans ->> affected.tenant_id)::integer, 0)
   from (
     select jsonb_object_keys(v_drafts)
     union select jsonb_object_keys(v_approved)
     union select jsonb_object_keys(v_summaries)
     union select jsonb_object_keys(v_memories)
     union select jsonb_object_keys(v_cards)
+    union select jsonb_object_keys(v_plans)
   ) as affected(tenant_id);
 
   return jsonb_build_object(
@@ -1037,7 +1083,8 @@ begin
     'approved_excerpts_cleared', coalesce((select sum(value::integer) from jsonb_each_text(v_approved)), 0),
     'summaries_cleared', coalesce((select sum(value::integer) from jsonb_each_text(v_summaries)), 0),
     'memories_deleted', coalesce((select sum(value::integer) from jsonb_each_text(v_memories)), 0),
-    'cards_deleted', coalesce((select sum(value::integer) from jsonb_each_text(v_cards)), 0)
+    'cards_deleted', coalesce((select sum(value::integer) from jsonb_each_text(v_cards)), 0),
+    'planner_basis_cleared', coalesce((select sum(value::integer) from jsonb_each_text(v_plans)), 0)
   );
 end;
 $$;

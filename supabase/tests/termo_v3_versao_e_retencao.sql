@@ -685,6 +685,18 @@ begin
     ('v3-termo-fixture', v_gone, 'MANUAL', 'v3-manual', now() - interval '120 days', 'Anotação manual', 'VERIFIED'),
     ('v3-termo-fixture', v_recent, 'MEET_SESSION', v_recent_old::text, now() - interval '60 days', 'Futuro', 'VERIFIED');
 
+  -- Planos do Planner com a base das aulas aprovadas (20260927130000): a base
+  -- copia o próximo passo do resumo aprovado — sai 90 dias depois de o aluno
+  -- deixar a escola, como o resumo; o plano fica. Quem continua não perde.
+  insert into public.lesson_plans (tenant_id, teacher_id, student_id, structured_plan) values
+    ('v3-termo-fixture', v_teacher, v_gone, jsonb_build_object('title', 'Plano do que saiu',
+      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos')))),
+    ('v3-termo-fixture', v_teacher, v_keep, jsonb_build_object('title', 'Plano do que ficou',
+      'lesson_basis', jsonb_build_object('continued_from', jsonb_build_object('recommended_next_step', 'Revisar os verbos'))));
+  insert into public.planner_ai_runs (tenant_id, teacher_id, student_id, task_mode, model_id, prompt_version, result) values
+    ('v3-termo-fixture', v_teacher, v_gone, 'lesson_plan', 'fixture/modelo', 'fixture',
+      jsonb_build_object('lesson_basis', jsonb_build_object('lesson_dates', jsonb_build_array('2026-06-01'))));
+
   -- Idade não comprovada = menor para o cartão: só objetivo e temas.
   insert into public.student_learning_cards (tenant_id, student_id, real_goal, engaging_topics) values
     ('v3-termo-fixture', v_keep, 'Viajar a trabalho', array['futebol']),
@@ -772,13 +784,21 @@ begin
       where student_id = v_gone and actor_role = 'SYSTEM_RETENTION'),
     'histórico do cartão sem a remoção pela retenção'
   );
+  perform pg_temp.v3_assert(
+    (select not (structured_plan ? 'lesson_basis') and structured_plan ->> 'title' = 'Plano do que saiu'
+      from public.lesson_plans where student_id = v_gone)
+    and not exists (select 1 from public.planner_ai_runs where student_id = v_gone and result ? 'lesson_basis')
+    and (select structured_plan ? 'lesson_basis' from public.lesson_plans where student_id = v_keep)
+    and (v_result ->> 'planner_basis_cleared')::integer >= 1,
+    'base das aulas aprovadas ficou no plano de quem deixou a escola (ou saiu do plano de quem ficou): ' || v_result::text
+  );
 
   -- (c) Trilha só com contagens, uma linha por escola.
   select * into v_trail from private.lesson_memory_retention_runs
    where tenant_id = 'v3-termo-fixture' and run_id = (v_result ->> 'run_id')::uuid;
   perform pg_temp.v3_assert(
     v_trail.drafts_cleared = 2 and v_trail.approved_excerpts_cleared = 2 and v_trail.summaries_cleared = 2
-      and v_trail.memories_deleted = 1 and v_trail.cards_deleted = 1,
+      and v_trail.memories_deleted = 1 and v_trail.cards_deleted = 1 and v_trail.planner_basis_cleared = 1,
     'trilha da retenção com contagem errada: ' || coalesce(to_jsonb(v_trail)::text, 'sem linha')
   );
   perform pg_temp.v3_assert(
@@ -798,6 +818,7 @@ begin
     (v_result ->> 'drafts_cleared')::integer = 0 and (v_result ->> 'approved_excerpts_cleared')::integer = 0
       and (v_result ->> 'summaries_cleared')::integer = 0
       and (v_result ->> 'memories_deleted')::integer = 0 and (v_result ->> 'cards_deleted')::integer = 0
+      and (v_result ->> 'planner_basis_cleared')::integer = 0
       and (select count(*) from private.lesson_memory_retention_runs where tenant_id = 'v3-termo-fixture') = v_trails,
     'segunda rodada da retenção apagou de novo: ' || v_result::text
   );
