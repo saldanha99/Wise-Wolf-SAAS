@@ -390,6 +390,13 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
   a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
   `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
+- **O aluno vê o próprio registro** (migration `20260927140000`, tela "Minhas aulas registradas", aba
+  `lesson-records` do aluno): `get_my_lesson_records()` devolve só a última versão `VERIFIED` de cada aula
+  DELE na escola dele — objetivo, praticado, próximo passo, lição —, até quando a cópia bruta fica no sistema
+  (`raw_copy_until`, o `expires_at` real), a situação do próprio termo (sem token do link) e o WhatsApp da
+  instância central para pedir exclusão. ⚠️ Nunca texto bruto, citação de evidência, "dificuldades",
+  narrativa do professor nem cartão do aluno; outros papéis recebem `somente_o_aluno`. Campo novo no resumo
+  que deva chegar ao aluno entra **na RPC** (lista fechada de chaves; o teste reprova chave a mais).
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

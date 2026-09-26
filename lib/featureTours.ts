@@ -267,6 +267,40 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // O tour do cartão (2026-09-26) só explicava o cartão, sem apontar onde
+    // ele fica para o professor: aqui o holofote vai no "Dossiê do aluno".
+    id: '2026-09-27-cartao-no-dossie',
+    title: 'Cartão do aluno no dossiê',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'lesson-session-handover',
+        view: 'lesson-sessions',
+        title: 'O cartão do aluno fica no dossiê 🗂️',
+        text: 'Em cada aula desta lista, "Dossiê do aluno" abre o cartão que você escreve: objetivo real, temas que engajam, como o aluno prefere ser corrigido, o que evitar e observações para quem der a próxima aula. O Planner IA usa o cartão antes do que o Wolfie deduziu.',
+      },
+      {
+        target: null,
+        view: 'lesson-sessions',
+        title: 'Onde achar o cartão',
+        text: 'Pelo "Dossiê do aluno" de qualquer aula dos últimos ou dos próximos 7 dias, aqui em "Salas e continuidade", ou pela ficha do aluno em "Alunos" → "Continuidade pedagógica". Aluno menor de idade (ou sem idade confirmada pela escola) guarda só objetivo e temas. Saúde, religião, política, família e dinheiro nunca entram no cartão.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-27-minhas-aulas-registradas',
+    title: 'Minhas aulas registradas',
+    roles: ['STUDENT'],
+    steps: [
+      {
+        target: 'student-lesson-records',
+        view: 'lesson-records',
+        title: 'Novidade: o registro das suas aulas 📒',
+        text: 'Aqui aparecem os resumos que o seu professor aprovou depois das aulas na sala da escola no Google Meet: objetivo, o que foi praticado, próximo passo e lição. A transcrição não aparece — ela fica só com o professor da aula, a coordenação e a direção. Nesta tela você também vê o que é guardado e por quanto tempo, a situação da sua autorização, como revogar e como pedir a exclusão pelo WhatsApp da escola.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

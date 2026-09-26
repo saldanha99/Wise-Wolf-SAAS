@@ -118,6 +118,18 @@ Desde a migration `20260926190000`, a aula com sala da escola **READY**, sessão
 - O texto sai de `public.render_lesson_reminder_message`, o mesmo que a cerca do envio usa para conferir o lembrete. Se a sala ficar pronta (ou deixar de valer) entre a preparação e o envio, a cerca devolve `RETRY` (`official_lesson_room_changed`) e o worker remonta o texto na rodada seguinte — o lembrete não se perde.
 - Enquanto 0 salas existirem (estado de 26/09), nenhum aviso muda.
 
+## O aluno vê o próprio registro (migration `20260927140000`)
+
+Decisão da direção (onda 2): o aluno vê o próprio registro das aulas. Tela **"Minhas aulas registradas"** no menu do aluno (aba `lesson-records`, `components/StudentLessonRecords.tsx`), lida por `get_my_lesson_records()` (SECURITY DEFINER, `search_path` vazio, dono postgres, só `authenticated`):
+
+- **Só o próprio aluno** (`profiles.role = STUDENT` de `auth.uid()`), só as sessões dele **na escola dele**. Professor, coordenação, direção e visitante recebem `somente_o_aluno` — eles têm o dossiê e "Sala e resumo".
+- **Só resumo APROVADO:** a última versão `VERIFIED` de cada sessão (a mesma que a aprovação grava em `student_learning_memories`); rascunho posterior ou rejeição depois da aprovação não trocam o que aparece. Campos: data, hora, professor, objetivo, conteúdo praticado, próximo passo e lição. **Nunca** texto bruto (transcrição, notas do Google, citações de evidência), nem "dificuldades", "evoluções", pontos a verificar ou o resumo narrativo do professor, nem nada do cartão do aluno.
+- **O que é guardado e por quanto tempo sai do dado:** por aula, `raw_copy_until` = o maior `expires_at` vivo entre transcrição/anotações (`meeting_artifact_revisions`) e relatório de presença (nulo = cópia já apagada); `pending_review` = aulas com transcrição guardada sem resumo aprovado. O texto do termo vigente vai junto (é ele que diz o prazo dos originais no Google).
+- **Como revogar:** situação do termo pela régua que marca as aulas (`AUTHORIZED` = `lesson_recording_student_consent_effective`; `NOT_EFFECTIVE`, `REFUSED`, `REVOKED`, `NONE`) e a validade do link vivo — **sem token** (o banco só guarda o hash). A tela manda abrir o link que está no WhatsApp de quem responde e escolher "Não autorizo", ou pedir à escola.
+- **Como pedir exclusão:** WhatsApp da instância central pelo critério de `teacher_support_contacts` (SCHOOL_ADMIN ativo dono da instância), com a mensagem pronta; sem número, a tela mostra o nome da escola e "fale com a escola pelo WhatsApp".
+
+Teste: `supabase/tests/aluno_ve_o_proprio_registro.sql` (aluno vê só o dele, colega e outra escola não, professor e direção recusados, nenhum marcador de texto bruto/cartão/token no retorno, validade real da cópia, anon sem GRANT).
+
 ## Presença pelo relatório nativo do Google (Business Plus)
 
 Com `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED=true`, a sala nasce com `attendanceReportGenerationType = GENERATE_REPORT`. No sync, a edge lista as conferências da sala (só nome e horário), procura no Drive da conta central as planilhas criadas pelo Meet até 3 h depois do fim, escolhe a da sala pelo código da reunião no nome (ou, se não houver, pela que cita o e-mail do professor), exporta em CSV e resume professor × aluno × organizador (`attendance.ts`, colunas em português ou inglês). O banco guarda em `private.meeting_attendance_reports` (retenção igual às cópias brutas) e `private.meet_attendance_evaluate` compara com o lançamento:
