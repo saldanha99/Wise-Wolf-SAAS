@@ -1,9 +1,16 @@
 // Termo de registro das aulas (Meet): regras de tela e textos.
-// As regras que valem estão no banco (migration 20260926120000); aqui ficam
-// só o espelho para a tela avisar antes de chamar o servidor.
+// As regras que valem estão no banco (migrations 20260926120000 e
+// 20260926200000); aqui ficam só o espelho para a tela avisar antes de chamar
+// o servidor.
 
 export type RecordingDecision = 'NONE' | 'ACCEPTED' | 'REFUSED' | 'REVOKED';
 export type SignerRelation = 'SELF' | 'GUARDIAN' | 'SCHOOL';
+/** Por que o responsável responde; nulo = adulto comprovado pela escola. */
+export type GuardianReason = 'KIDS' | 'MINOR' | 'AGE_UNKNOWN';
+
+/** Nome da edge function que manda o código de 6 dígitos pelo WhatsApp. */
+export const CODE_FUNCTION = 'lesson-recording-code';
+export const CODE_LENGTH = 6;
 
 export const CONSENT_PATH = '/registro-das-aulas';
 
@@ -22,6 +29,46 @@ export const RELATION_LABEL: Record<SignerRelation, string> = {
 
 export function asDecision(value: unknown): RecordingDecision {
   return value === 'ACCEPTED' || value === 'REFUSED' || value === 'REVOKED' ? value : 'NONE';
+}
+
+/** Motivo fora da lista, com responsável exigido, vira idade desconhecida. */
+export function asGuardianReason(value: unknown, requiresGuardian?: boolean): GuardianReason | null {
+  if (value === 'KIDS' || value === 'MINOR' || value === 'AGE_UNKNOWN') return value;
+  return requiresGuardian ? 'AGE_UNKNOWN' : null;
+}
+
+/** Explicação para a família de por que quem responde é o responsável. */
+export function guardianReasonText(reason: GuardianReason, firstName: string): string {
+  if (reason === 'AGE_UNKNOWN') {
+    return `A escola ainda não cadastrou a data de nascimento de ${firstName}. Por segurança, quem responde é o responsável legal. Se ${firstName} já tem 18 anos, peça à escola para cadastrar a data de nascimento e abra o link de novo.`;
+  }
+  return `Como ${firstName} é menor de idade, quem responde é o responsável legal.`;
+}
+
+/** Explicação curta para a escola, no painel. */
+export const GUARDIAN_REASON_LABEL: Record<GuardianReason, string> = {
+  KIDS: 'Turma infantil · responde o responsável',
+  MINOR: 'Menor de idade · responde o responsável',
+  AGE_UNKNOWN: 'Idade não cadastrada pela escola · responde o responsável',
+};
+
+/** Só dígitos, no máximo `max` (campo do código). */
+export function onlyDigits(value: string, max = CODE_LENGTH): string {
+  return value.replace(/\D/g, '').slice(0, max);
+}
+
+export function isSixDigitCode(value: string): boolean {
+  return /^[0-9]{6}$/.test(value);
+}
+
+/** "30 segundos", "2 minutos", "1 hora". */
+export function formatWait(seconds: number | null | undefined): string {
+  const total = Math.max(1, Math.ceil(Number(seconds) || 60));
+  if (total < 60) return `${total} segundos`;
+  const minutes = Math.ceil(total / 60);
+  if (minutes < 60) return minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+  const hours = Math.ceil(minutes / 60);
+  return hours === 1 ? '1 hora' : `${hours} horas`;
 }
 
 /** Junta espaços repetidos e apara as pontas, como o servidor faz. */
@@ -51,16 +98,20 @@ export function consentWhatsAppMessage(input: {
   schoolName?: string | null;
   link: string;
   forGuardian: boolean;
+  guardianReason?: GuardianReason | null;
 }): string {
   const firstName = normalizeSignerName(input.studentName).split(' ')[0] || 'o aluno';
   const school = input.schoolName?.trim() || 'a escola';
-  const opening = input.forGuardian
-    ? `Olá! Aqui é da ${school}. Como ${firstName} é menor de idade, precisamos da sua autorização como responsável para o registro das aulas.`
-    : `Olá, ${firstName}! Aqui é da ${school}. Precisamos da sua autorização para o registro das aulas.`;
+  const opening = !input.forGuardian
+    ? `Olá, ${firstName}! Aqui é da ${school}. Precisamos da sua autorização para o registro das aulas.`
+    : input.guardianReason === 'AGE_UNKNOWN'
+      ? `Olá! Aqui é da ${school}. Precisamos da autorização do responsável por ${firstName} para o registro das aulas.`
+      : `Olá! Aqui é da ${school}. Como ${firstName} é menor de idade, precisamos da sua autorização como responsável para o registro das aulas.`;
   return [
     opening,
     'As aulas passam a ser transcritas pelo Google Meet (sem vídeo), para registrar o que foi trabalhado e dar continuidade ao aprendizado, inclusive se houver troca de professor.',
     `O termo completo e a autorização estão neste link (leva 1 minuto): ${input.link}`,
+    'Para confirmar que é você, a página manda um código de 6 dígitos para este WhatsApp.',
     'Dá para mudar de ideia quando quiser, pelo mesmo link.',
   ].join('\n\n');
 }
@@ -72,7 +123,19 @@ export function whatsappUrl(phone: string | null | undefined, message: string): 
 
 const ERRORS: Record<string, string> = {
   nome_completo_obrigatorio: 'Digite nome e sobrenome.',
-  responsavel_obrigatorio: 'Como o aluno é menor de idade, quem autoriza é o responsável.',
+  responsavel_obrigatorio: 'Quem autoriza é o responsável: o aluno é menor de idade ou a escola ainda não cadastrou a data de nascimento.',
+  codigo_incorreto: 'Código incorreto. Confira a mensagem no WhatsApp e digite de novo.',
+  codigo_invalido: 'Digite os 6 números do código.',
+  codigo_expirado: 'O código venceu ou não vale mais. Peça um código novo.',
+  codigo_bloqueado: 'Muitas tentativas erradas. Peça um código novo.',
+  limite_de_envios: 'Já mandamos 3 códigos na última hora. Espere um pouco para pedir outro.',
+  aguarde: 'O WhatsApp da escola está com fila. Tente pedir o código de novo em instantes.',
+  telefone_nao_cadastrado: 'A escola não tem este WhatsApp no cadastro. Peça à escola para cadastrar e mandar um link novo.',
+  whatsapp_indisponivel: 'O WhatsApp da escola está fora do ar agora. Tente de novo mais tarde ou fale com a escola.',
+  whatsapp_recusou: 'O WhatsApp não aceitou a mensagem para este número. Fale com a escola.',
+  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
+  kids_classification_requires_direction: 'Só a direção ou a coordenação classifica o aluno como infantil.',
+  data_de_nascimento_invalida: 'Data de nascimento inválida.',
   link_expirado: 'Este link expirou ou foi substituído. Peça um novo à escola.',
   relacao_invalida: 'Escolha se você é o aluno ou o responsável.',
   resposta_invalida: 'Não foi possível registrar a resposta. Tente de novo.',
@@ -86,8 +149,27 @@ const ERRORS: Record<string, string> = {
 /** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */
 export function consentErrorMessage(raw: string | null | undefined): string {
   const text = String(raw || '');
-  const code = Object.keys(ERRORS).find(key => text.includes(key));
+  const code = Object.keys(ERRORS)
+    .sort((a, b) => b.length - a.length)
+    .find(key => text.includes(key));
   return code ? ERRORS[code] : 'Algo deu errado. Tente de novo em instantes.';
+}
+
+/** Erro do código com as tentativas restantes ou a espera, quando o servidor diz. */
+export function codeErrorMessage(input: {
+  error?: string | null;
+  attemptsLeft?: number | null;
+  retryAfterSeconds?: number | null;
+}): string {
+  const code = String(input.error || '');
+  if (code === 'codigo_incorreto' && Number(input.attemptsLeft) > 0) {
+    const left = Number(input.attemptsLeft);
+    return `Código incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`} para este código.`;
+  }
+  if ((code === 'limite_de_envios' || code === 'aguarde') && input.retryAfterSeconds) {
+    return `${consentErrorMessage(code)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
+  }
+  return consentErrorMessage(code);
 }
 
 export function formatDecisionDate(value: string | null | undefined): string {
@@ -95,4 +177,33 @@ export function formatDecisionDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+type RpcErrorLike = { code?: string | null; message?: string | null } | null | undefined;
+
+/**
+ * RPC que ainda não existe no banco (PostgREST devolve PGRST202; Postgres,
+ * 42883). A tela mostra o recurso como indisponível em vez de quebrar.
+ */
+export function isMissingRpcError(error: RpcErrorLike): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  return /could not find the function|function .* does not exist/i.test(String(error.message || ''));
+}
+
+export type GoogleIdentityState =
+  | { status: 'verified'; email: string; verifiedAt: string }
+  | { status: 'missing'; email: string | null }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+/** Resposta de `get_my_google_identity`: `{ email, verified_at }` ou nulo. */
+export function googleIdentityState(data: unknown, error: RpcErrorLike): GoogleIdentityState {
+  if (error) return isMissingRpcError(error) ? { status: 'unavailable' } : { status: 'error' };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return { status: 'missing', email: null };
+  const record = row as Record<string, unknown>;
+  const email = typeof record.email === 'string' && record.email.trim() ? record.email.trim() : null;
+  const verifiedAt = typeof record.verified_at === 'string' && record.verified_at.trim() ? record.verified_at : null;
+  return email && verifiedAt ? { status: 'verified', email, verifiedAt } : { status: 'missing', email };
 }

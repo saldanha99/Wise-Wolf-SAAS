@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Copy, Loader2, MessageCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import StudentBirthDateField from './StudentBirthDateField';
 import {
   asDecision,
+  asGuardianReason,
   consentErrorMessage,
   consentLink,
   consentWhatsAppMessage,
   DECISION_LABEL,
   formatDecisionDate,
+  GUARDIAN_REASON_LABEL,
   RELATION_LABEL,
   whatsappUrl,
   type RecordingDecision,
@@ -18,14 +21,21 @@ type StudentRow = {
   student_id: string;
   name: string;
   requires_guardian: boolean;
+  guardian_reason?: string | null;
+  school_birth_date?: string | null;
   guardian_name: string | null;
   contact_phone: string | null;
   decision: string;
+  effective?: boolean;
   decided_at: string | null;
   signer_name: string | null;
   signer_relation: string | null;
+  verification?: string | null;
+  verified_phone?: string | null;
   link_expires_at: string | null;
+  link_code_phone_masked?: string | null;
 };
+type GeneratedLink = { url: string; codePhone: string | null };
 type TeacherRow = { teacher_id: string; name: string; decision: string; decided_at: string | null };
 type Overview = { google_connected: boolean; students: StudentRow[]; teachers: TeacherRow[] };
 
@@ -45,7 +55,8 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
   const [data, setData] = useState<Overview | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [links, setLinks] = useState<Record<string, string>>({});
+  const [links, setLinks] = useState<Record<string, GeneratedLink>>({});
+  const [ageEditor, setAgeEditor] = useState('');
   const [copied, setCopied] = useState('');
 
   const load = useCallback(async () => {
@@ -62,7 +73,11 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
     const { data: result, error: rpcError } = await supabase.rpc('create_lesson_recording_consent_link', { p_student_id: student.student_id });
     setBusy('');
     if (rpcError || result?.ok !== true) { setError(consentErrorMessage(rpcError?.message)); return; }
-    setLinks(current => ({ ...current, [student.student_id]: consentLink(window.location.origin, result.token) }));
+    const codePhone = result.guardian_reason ? result.guardian_phone_masked : result.student_phone_masked;
+    setLinks(current => ({
+      ...current,
+      [student.student_id]: { url: consentLink(window.location.origin, result.token), codePhone: codePhone || null },
+    }));
     void load();
   }
 
@@ -83,7 +98,8 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
 
   const students = data?.students || [];
   const teachers = data?.teachers || [];
-  const acceptedStudents = students.filter(s => asDecision(s.decision) === 'ACCEPTED').length;
+  // Conta só o aceite que vale: com código e, se o cadastro exige, do responsável.
+  const acceptedStudents = students.filter(s => asDecision(s.decision) === 'ACCEPTED' && s.effective !== false).length;
   const acceptedTeachers = teachers.filter(t => asDecision(t.decision) === 'ACCEPTED').length;
 
   return <div data-tour="recording-consents" className="space-y-5 text-slate-800 dark:text-slate-100">
@@ -93,6 +109,10 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
         <p className="mt-2 text-sm text-slate-500">
           A transcrição da aula só acontece quando o aluno (ou o responsável, se for menor) <b>e</b> o professor autorizaram.
           Cada um responde uma vez; vale até revogar.
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          A família confirma com um código que a página manda pelo WhatsApp do cadastro. Sem data de nascimento
+          confirmada pela escola, quem responde é o responsável — cadastre a data aqui ou na ficha do aluno.
         </p>
       </div>
       <button type="button" onClick={() => void load()} disabled={!!busy} aria-label="Atualizar" className="rounded-xl border p-2">
@@ -121,22 +141,41 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
       {data && !students.length && <p className="rounded-xl border p-4 text-sm text-slate-500">Nenhum aluno com aula no período.</p>}
       {students.map(student => {
         const decision = asDecision(student.decision);
-        const link = links[student.student_id];
-        const message = link ? consentWhatsAppMessage({ studentName: student.name, schoolName, link, forGuardian: student.requires_guardian }) : '';
+        const reason = asGuardianReason(student.guardian_reason, student.requires_guardian);
+        const generated = links[student.student_id];
+        const link = generated?.url;
+        const message = link ? consentWhatsAppMessage({ studentName: student.name, schoolName, link, forGuardian: !!reason, guardianReason: reason }) : '';
         const whatsapp = link ? whatsappUrl(student.contact_phone, message) : null;
+        const ineffective = decision === 'ACCEPTED' && student.effective === false;
         return <article key={student.student_id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="font-semibold">{student.name}</h3>
-              {student.requires_guardian && <p className="text-xs text-slate-500">Menor de idade · responde {student.guardian_name || 'o responsável'}</p>}
+              {reason
+                ? <p className="text-xs text-slate-500">{GUARDIAN_REASON_LABEL[reason]}{student.guardian_name ? ` (${student.guardian_name})` : ''}</p>
+                : <p className="text-xs text-slate-500">Maior de idade pela data da escola · o próprio aluno responde</p>}
             </div>
             <Badge decision={student.decision} />
           </div>
           {decision !== 'NONE' && <p className="mt-2 text-xs text-slate-500">
             {student.signer_name} ({RELATION_LABEL[(student.signer_relation || 'SELF') as SignerRelation]}) · {formatDecisionDate(student.decided_at)}
+            {student.verified_phone ? ` · confirmado pelo WhatsApp ${student.verified_phone}` : ''}
           </p>}
+          {ineffective && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+            {student.verification
+              ? 'Este aceite foi dado pelo próprio aluno e hoje o cadastro exige o responsável: não vale para transcrever. Gere um link novo para o responsável.'
+              : 'Este aceite foi dado sem o código de confirmação e não vale para transcrever. Gere um link novo.'}
+          </p>}
+          {reason === 'AGE_UNKNOWN' && (ageEditor === student.student_id
+            ? <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                <StudentBirthDateField studentId={student.student_id} compact onSaved={() => { setAgeEditor(''); void load(); }} />
+              </div>
+            : <button type="button" data-tour="recording-age-check" onClick={() => setAgeEditor(student.student_id)} className="mt-2 text-xs font-semibold text-blue-600">
+                Cadastrar data de nascimento
+              </button>)}
           {decision === 'NONE' && student.link_expires_at && !link && <p className="mt-2 text-xs text-slate-500">
             Link enviado, válido até {formatDecisionDate(student.link_expires_at)}.
+            {student.link_code_phone_masked ? ` O código vai para ${student.link_code_phone_masked}.` : ' Sem telefone para o código: gere um link novo depois de cadastrar.'}
           </p>}
           <div className="mt-3 flex flex-wrap gap-3 text-sm">
             <button type="button" disabled={!!busy} onClick={() => void createLink(student)} className="font-semibold text-blue-600 disabled:opacity-40">
@@ -158,6 +197,11 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
                   </a>
                 : <span className="text-xs">Sem telefone no cadastro: copie o link e envie por onde conversa com a família.</span>}
             </div>
+            <p className="text-xs">
+              {generated?.codePhone
+                ? `O código de confirmação vai para ${generated.codePhone} (o cadastro de agora). Corrigiu o telefone depois? Gere um link novo.`
+                : `Sem WhatsApp ${reason ? 'do responsável' : 'do aluno'} no cadastro: a página não consegue mandar o código. Cadastre o telefone${reason === 'AGE_UNKNOWN' ? ' (ou a data de nascimento, se o aluno for maior)' : ''} e gere um link novo.`}
+            </p>
             <p className="text-xs">O link vale 30 dias. Gerar outro invalida este.</p>
           </div>}
         </article>;

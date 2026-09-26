@@ -208,6 +208,38 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-26-termo-seguro',
+    title: 'Termo das aulas com confirmação',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'recording-consents',
+        view: 'recording-consents',
+        title: 'A família confirma pelo WhatsApp 🔐',
+        text: 'A página do termo agora manda um código de 6 dígitos para o WhatsApp do cadastro antes de gravar a resposta. Sem data de nascimento confirmada pela escola, quem responde é o responsável — por segurança, idade desconhecida conta como menor.',
+      },
+      {
+        target: 'recording-age-check',
+        view: 'recording-consents',
+        title: 'Confirme a data de nascimento',
+        text: 'Para o aluno maior de idade responder sozinho, a escola confirma a data de nascimento aqui ou na ficha do aluno. Data digitada em outro lugar (formulário, o próprio aluno) não vale como prova.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-26-termo-seguro-professor',
+    title: 'Conta Google da sala',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'recording-teacher-google',
+        view: 'lesson-sessions',
+        title: 'Confirme sua conta Google 🔑',
+        text: 'Antes de autorizar o registro das aulas, entre com a conta Google que você usa nas aulas. É ela que a escola coloca como coanfitriã da sala — sem essa confirmação o botão de autorizar fica desligado.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

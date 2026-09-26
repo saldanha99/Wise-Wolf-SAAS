@@ -349,7 +349,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           interests: profileData.interests,
           private_notes: profileData.private_notes,
           fixed_schedule: profileData.fixed_schedule,
-          is_kids: profileData.is_kids,
+          // is_kids fica com a direção (migration 20260926200000).
           status: profileData.status,
           module: requestedModule,
         }
