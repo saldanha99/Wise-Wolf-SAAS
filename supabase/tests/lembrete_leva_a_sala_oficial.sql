@@ -9,6 +9,15 @@
 -- Também guarda a regressão da Débora (16/09–25/09/2026): o worker achatava o
 -- modelo do professor e punha o link pessoal no {class_link}; a cerca recusou
 -- 45 lembretes seguidos. O texto aceito é o do renderizador do banco.
+--
+-- E reprova contra a primeira versão desta migration (revisão de 26/09):
+--   • a sala era mandada sem conferir quem dá a aula — em cobertura confirmada,
+--     reposição com professor trocado ou agendamento transferido depois do
+--     aceite, o aluno ia para a sala do professor ausente;
+--   • sala que ficava pronta (ou deixava de valer) entre o worker e a cerca
+--     virava REVIEW_REQUIRED, e o lembrete era descartado para sempre;
+--   • modelo terminado em {class_link} numa aula sem sala sobrava com "\n\n" no
+--     fim; o worker aparava e a cerca recusava o lembrete.
 
 \set ON_ERROR_STOP on
 
@@ -29,9 +38,16 @@ grant execute on function pg_temp.assert_true(boolean, text) to public;
 -- ─── 1. Superfície: só o servidor chama ─────────────────────────────────────
 
 select pg_temp.assert_true(
-  to_regprocedure('public.official_lesson_link(text,text,text,date,time,uuid)') is not null
+  to_regprocedure('public.official_lesson_link(text,text,text,date,uuid,time,uuid)') is not null
   and to_regprocedure('public.render_lesson_reminder_message(text,text,text,text,text,text,text)') is not null,
   'funções da sala oficial no lembrete não existem'
+);
+
+-- A consulta da sala sem o professor não pode sobrar (nem ficar ambígua no
+-- PostgREST).
+select pg_temp.assert_true(
+  to_regprocedure('public.official_lesson_link(text,text,text,date,time,uuid)') is null,
+  'official_lesson_link sem o professor continua exposta'
 );
 
 select pg_temp.assert_true(
@@ -43,7 +59,7 @@ select pg_temp.assert_true(
     )
     from pg_catalog.pg_proc as procedure
     where procedure.oid in (
-      'public.official_lesson_link(text,text,text,date,time,uuid)'::regprocedure,
+      'public.official_lesson_link(text,text,text,date,uuid,time,uuid)'::regprocedure,
       'public.render_lesson_reminder_message(text,text,text,text,text,text,text)'::regprocedure
     )
   ),
@@ -51,24 +67,26 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  has_function_privilege('service_role', 'public.official_lesson_link(text,text,text,date,time,uuid)', 'EXECUTE')
+  has_function_privilege('service_role', 'public.official_lesson_link(text,text,text,date,uuid,time,uuid)', 'EXECUTE')
   and has_function_privilege('service_role', 'public.render_lesson_reminder_message(text,text,text,text,text,text,text)', 'EXECUTE')
-  and not has_function_privilege('authenticated', 'public.official_lesson_link(text,text,text,date,time,uuid)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.official_lesson_link(text,text,text,date,uuid,time,uuid)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.render_lesson_reminder_message(text,text,text,text,text,text,text)', 'EXECUTE')
-  and not has_function_privilege('anon', 'public.official_lesson_link(text,text,text,date,time,uuid)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.official_lesson_link(text,text,text,date,uuid,time,uuid)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.render_lesson_reminder_message(text,text,text,text,text,text,text)', 'EXECUTE'),
   'sala oficial exposta para além do service_role'
 );
 
 select pg_temp.assert_true(
-  pg_catalog.strpos(
-    pg_catalog.pg_get_functiondef(
-      'public.begin_notification_delivery_submission_pre_trial_lifecycle_impl(uuid,uuid,text,text,text,text,uuid,bigint)'::regprocedure
-    ),
-    'public.official_lesson_link('
-  ) > 0,
-  'cerca do envio não confere o lembrete com a sala oficial'
-);
+  pg_catalog.strpos(definition, 'public.official_lesson_link(') > 0
+  and pg_catalog.strpos(definition, 'v_teacher_id,') > 0
+  and pg_catalog.strpos(definition, 'official_lesson_room_changed') > 0,
+  'cerca do envio não confere o lembrete com a sala oficial de quem dá a aula'
+)
+from (
+  select pg_catalog.pg_get_functiondef(
+    'public.begin_notification_delivery_submission_pre_trial_lifecycle_impl(uuid,uuid,text,text,text,text,uuid,bigint)'::regprocedure
+  ) as definition
+) as fence;
 
 -- ─── 2. Texto do lembrete ───────────────────────────────────────────────────
 
@@ -78,7 +96,7 @@ select
   'https://meet.google.com/abc-defg-hij'::text as room,
   'https://meet.google.com/pes-soal-xyz'::text as personal;
 
--- Sem link: EXATAMENTE o que a cerca rendia antes (decisão de 16/09 mantida).
+-- Sem link: o que a cerca rendia antes (decisão de 16/09 mantida).
 select pg_temp.assert_true(
   public.render_lesson_reminder_message(null, 'Ana', '19:00', 'Débora', 'Wise Wolf', null, null)
     = private.render_lesson_notification_message(null, 'Ana', '19:00', 'Débora', 'Wise Wolf', null)
@@ -142,6 +160,26 @@ cross join lateral (
   ) as msg
 ) as m;
 
+-- Pontas: {class_link} no fim (ou no começo) do modelo, numa aula sem sala, não
+-- deixa quebra de linha sobrando — o worker e a cerca recebem o mesmo texto, e
+-- o worker não precisa aparar nada. Com sala, a linha própria não vira buraco.
+select pg_temp.assert_true(
+  public.render_lesson_reminder_message(
+    E'Oi {student_name}, aula às *{class_time}*.\n\n{class_link}', 'Ana', '19:00', 'D', 'W', null, null
+  ) = 'Oi Ana, aula às *19:00*.'
+  and public.render_lesson_reminder_message(
+    E'{class_link}\nOi {student_name}, aula às {class_time}.', 'Ana', '19:00', 'D', 'W', null, null
+  ) = 'Oi Ana, aula às 19:00.'
+  and public.render_lesson_reminder_message(
+    E'Oi {student_name}, aula às *{class_time}*.\n\n{class_link}', 'Ana', '19:00', 'D', 'W', t.room, null
+  ) = E'Oi Ana, aula às *19:00*.\n\nhttps://meet.google.com/abc-defg-hij'
+  and public.render_lesson_reminder_message(
+    E'Oi {student_name}.\n\n{tenant_name}', 'Ana', '19:00', 'D', '', t.room, null
+  ) = E'Oi Ana.\n\nEsta aula é na sala da escola no Google Meet. Entre por este link:\nhttps://meet.google.com/abc-defg-hij',
+  'lembrete saiu com quebra de linha sobrando na ponta'
+)
+from walink_text as t;
+
 -- ─── 3. Qual sala é a oficial ───────────────────────────────────────────────
 
 set local request.jwt.claims = '{"role":"service_role"}';
@@ -158,7 +196,9 @@ insert into auth.users (
   ('00000000-0000-4000-8000-00000000d502', 'authenticated', 'authenticated', 'walink-teacher@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Teacher Sala"}', now(), now()),
   ('00000000-0000-4000-8000-00000000d503', 'authenticated', 'authenticated', 'walink-student@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Theo Sala"}', now(), now()),
   ('00000000-0000-4000-8000-00000000d504', 'authenticated', 'authenticated', 'walink-debora@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Debora Sala"}', now(), now()),
-  ('00000000-0000-4000-8000-00000000d505', 'authenticated', 'authenticated', 'walink-student2@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Ana Sala"}', now(), now());
+  ('00000000-0000-4000-8000-00000000d505', 'authenticated', 'authenticated', 'walink-student2@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Ana Sala"}', now(), now()),
+  ('00000000-0000-4000-8000-00000000d506', 'authenticated', 'authenticated', 'walink-student3@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Bia Sala"}', now(), now()),
+  ('00000000-0000-4000-8000-00000000d507', 'authenticated', 'authenticated', 'walink-student4@example.invalid', '{"provider":"email","providers":["email"]}', '{"full_name":"Caio Sala"}', now(), now());
 
 update public.profiles
 set tenant_id = 'sala-oficial-test', role = 'SCHOOL_ADMIN', lifecycle_status = 'active',
@@ -192,12 +232,26 @@ set tenant_id = 'sala-oficial-test', role = 'STUDENT', lifecycle_status = 'activ
     meeting_link = 'https://meet.google.com/ana-link-xyz', is_test_account = false
 where id = '00000000-0000-4000-8000-00000000d505';
 
+update public.profiles
+set tenant_id = 'sala-oficial-test', role = 'STUDENT', lifecycle_status = 'active',
+    full_name = 'Bia Sala', phone = '5511988881506', attendance_phone = '5511988881506',
+    is_test_account = false
+where id = '00000000-0000-4000-8000-00000000d506';
+
+update public.profiles
+set tenant_id = 'sala-oficial-test', role = 'STUDENT', lifecycle_status = 'active',
+    full_name = 'Caio Sala', phone = '5511988881507', attendance_phone = '5511988881507',
+    is_test_account = false
+where id = '00000000-0000-4000-8000-00000000d507';
+
 insert into public.tenant_memberships (user_id, tenant_id, role, status, is_primary) values
   ('00000000-0000-4000-8000-00000000d501', 'sala-oficial-test', 'SCHOOL_ADMIN', 'ACTIVE', true),
   ('00000000-0000-4000-8000-00000000d502', 'sala-oficial-test', 'TEACHER', 'ACTIVE', true),
   ('00000000-0000-4000-8000-00000000d503', 'sala-oficial-test', 'STUDENT', 'ACTIVE', true),
   ('00000000-0000-4000-8000-00000000d504', 'sala-oficial-test', 'TEACHER', 'ACTIVE', true),
-  ('00000000-0000-4000-8000-00000000d505', 'sala-oficial-test', 'STUDENT', 'ACTIVE', true)
+  ('00000000-0000-4000-8000-00000000d505', 'sala-oficial-test', 'STUDENT', 'ACTIVE', true),
+  ('00000000-0000-4000-8000-00000000d506', 'sala-oficial-test', 'STUDENT', 'ACTIVE', true),
+  ('00000000-0000-4000-8000-00000000d507', 'sala-oficial-test', 'STUDENT', 'ACTIVE', true)
 on conflict (user_id, tenant_id) do update
 set role = excluded.role, status = excluded.status, is_primary = excluded.is_primary;
 
@@ -218,34 +272,38 @@ from (
   select pg_catalog.date_trunc('minute', (now() + interval '30 minutes') at time zone 'America/Sao_Paulo') as local_start
 ) as clock;
 
+-- B1: Teacher Sala × Theo. B2: Débora × Ana (sem sala). B3: Débora × Bia (sem
+-- sala). B4: Débora × Caio — agendamento transferido da Teacher Sala para a
+-- Débora depois do aceite: a sessão congelada (e a sala) continuam da Teacher.
 insert into public.bookings (id, tenant_id, teacher_id, student_id, day_of_week, time_slot, date, start_date, status)
-select '00000000-0000-4000-8000-00000000d5b1'::uuid, 'sala-oficial-test',
-       '00000000-0000-4000-8000-00000000d502'::uuid, '00000000-0000-4000-8000-00000000d503'::uuid,
+select v.id, 'sala-oficial-test', v.teacher_id, v.student_id,
        c.day_name, c.class_time, null, date '2026-01-05', 'SCHEDULED'
-from walink_clock as c;
-
-insert into public.bookings (id, tenant_id, teacher_id, student_id, day_of_week, time_slot, date, start_date, status)
-select '00000000-0000-4000-8000-00000000d5b2'::uuid, 'sala-oficial-test',
-       '00000000-0000-4000-8000-00000000d504'::uuid, '00000000-0000-4000-8000-00000000d505'::uuid,
-       c.day_name, c.class_time, null, date '2026-01-05', 'SCHEDULED'
-from walink_clock as c;
+from walink_clock as c
+cross join lateral (values
+  ('00000000-0000-4000-8000-00000000d5b1'::uuid, '00000000-0000-4000-8000-00000000d502'::uuid, '00000000-0000-4000-8000-00000000d503'::uuid),
+  ('00000000-0000-4000-8000-00000000d5b2'::uuid, '00000000-0000-4000-8000-00000000d504'::uuid, '00000000-0000-4000-8000-00000000d505'::uuid),
+  ('00000000-0000-4000-8000-00000000d5b3'::uuid, '00000000-0000-4000-8000-00000000d504'::uuid, '00000000-0000-4000-8000-00000000d506'::uuid),
+  ('00000000-0000-4000-8000-00000000d5b4'::uuid, '00000000-0000-4000-8000-00000000d504'::uuid, '00000000-0000-4000-8000-00000000d507'::uuid)
+) as v(id, teacher_id, student_id);
 
 -- Sessões e salas: S1 = aula de agora (booking B1, aceite, sala READY);
--- S2 = reposição R1 amanhã; S3 = antecipação do B1 para depois de amanhã.
+-- S2 = reposição R1 amanhã; S3 = antecipação do B1 para depois de amanhã;
+-- S6 = aula de agora do B4, ainda com a Teacher Sala (antes da transferência).
 insert into public.lesson_sessions (
   id, tenant_id, student_id, teacher_id, class_date, scheduled_start_at, scheduled_end_at, source_key, documentation_consent
 )
-select s.id, 'sala-oficial-test', '00000000-0000-4000-8000-00000000d503', '00000000-0000-4000-8000-00000000d502',
+select s.id, 'sala-oficial-test', s.student_id, '00000000-0000-4000-8000-00000000d502',
        s.class_date,
        (s.class_date + s.start_time) at time zone 'America/Sao_Paulo',
        (s.class_date + s.start_time + interval '30 minutes') at time zone 'America/Sao_Paulo',
        s.source_key, true
 from walink_clock as c
 cross join lateral (values
-  ('00000000-0000-4000-8000-00000000d5a1'::uuid, c.class_date, c.class_time::time, 'walink-s1'),
-  ('00000000-0000-4000-8000-00000000d5a2'::uuid, c.class_date + 1, time '15:00', 'walink-s2'),
-  ('00000000-0000-4000-8000-00000000d5a3'::uuid, c.class_date + 2, time '08:00', 'walink-s3')
-) as s(id, class_date, start_time, source_key);
+  ('00000000-0000-4000-8000-00000000d5a1'::uuid, c.class_date, c.class_time::time, 'walink-s1', '00000000-0000-4000-8000-00000000d503'::uuid),
+  ('00000000-0000-4000-8000-00000000d5a2'::uuid, c.class_date + 1, time '15:00', 'walink-s2', '00000000-0000-4000-8000-00000000d503'::uuid),
+  ('00000000-0000-4000-8000-00000000d5a3'::uuid, c.class_date + 2, time '08:00', 'walink-s3', '00000000-0000-4000-8000-00000000d503'::uuid),
+  ('00000000-0000-4000-8000-00000000d5a6'::uuid, c.class_date, c.class_time::time, 'walink-s6', '00000000-0000-4000-8000-00000000d507'::uuid)
+) as s(id, class_date, start_time, source_key, student_id);
 
 insert into public.lesson_occurrences (
   tenant_id, session_id, source_type, source_id, class_date, start_time,
@@ -259,7 +317,8 @@ from walink_clock as c
 cross join lateral (values
   ('00000000-0000-4000-8000-00000000d5a1'::uuid, 'booking', '00000000-0000-4000-8000-00000000d5b1', c.class_date, c.class_time::time),
   ('00000000-0000-4000-8000-00000000d5a2'::uuid, 'reschedule', '00000000-0000-4000-8000-00000000d5c1', c.class_date + 1, time '15:00'),
-  ('00000000-0000-4000-8000-00000000d5a3'::uuid, 'booking', '00000000-0000-4000-8000-00000000d5b1', c.class_date + 2, time '08:00')
+  ('00000000-0000-4000-8000-00000000d5a3'::uuid, 'booking', '00000000-0000-4000-8000-00000000d5b1', c.class_date + 2, time '08:00'),
+  ('00000000-0000-4000-8000-00000000d5a6'::uuid, 'booking', '00000000-0000-4000-8000-00000000d5b4', c.class_date, c.class_time::time)
 ) as v(session_id, source_type, source_id, class_date, start_time);
 
 insert into private.google_meet_rooms (
@@ -267,18 +326,22 @@ insert into private.google_meet_rooms (
 ) values
   ('00000000-0000-4000-8000-00000000d5a1', 'sala-oficial-test', 'spaces/walinkS1', 'https://meet.google.com/abc-defg-hij', 'synthetic-sub', 'walink-teacher@example.invalid', 'READY', '00000000-0000-4000-8000-00000000d502'),
   ('00000000-0000-4000-8000-00000000d5a2', 'sala-oficial-test', 'spaces/walinkS2', 'https://meet.google.com/rep-osic-aoo', 'synthetic-sub', 'walink-teacher@example.invalid', 'READY', '00000000-0000-4000-8000-00000000d502'),
-  ('00000000-0000-4000-8000-00000000d5a3', 'sala-oficial-test', 'spaces/walinkS3', 'https://meet.google.com/ant-ecip-ada', 'synthetic-sub', 'walink-teacher@example.invalid', 'READY', '00000000-0000-4000-8000-00000000d502');
+  ('00000000-0000-4000-8000-00000000d5a3', 'sala-oficial-test', 'spaces/walinkS3', 'https://meet.google.com/ant-ecip-ada', 'synthetic-sub', 'walink-teacher@example.invalid', 'READY', '00000000-0000-4000-8000-00000000d502'),
+  ('00000000-0000-4000-8000-00000000d5a6', 'sala-oficial-test', 'spaces/walinkS6', 'https://meet.google.com/tra-nsfe-rid', 'synthetic-sub', 'walink-teacher@example.invalid', 'READY', '00000000-0000-4000-8000-00000000d502');
 
 -- Agendamento, reposição e antecipação acham a sala da própria data.
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'BOOKING', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, c.class_time::time, '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/abc-defg-hij'
+    c.class_date, '00000000-0000-4000-8000-00000000d502', c.class_time::time,
+    '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/abc-defg-hij'
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, null, null) = 'https://meet.google.com/abc-defg-hij'
+    c.class_date, '00000000-0000-4000-8000-00000000d502', null, null) = 'https://meet.google.com/abc-defg-hij'
   and public.official_lesson_link('sala-oficial-test', 'reschedule', '00000000-0000-4000-8000-00000000d5c1',
-    c.class_date + 1, time '15:00', '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/rep-osic-aoo'
+    c.class_date + 1, '00000000-0000-4000-8000-00000000d502', time '15:00',
+    '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/rep-osic-aoo'
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, time '08:00', '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/ant-ecip-ada',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00',
+    '00000000-0000-4000-8000-00000000d503') = 'https://meet.google.com/ant-ecip-ada',
   'sala oficial de agendamento, reposição ou antecipação não encontrada'
 )
 from walink_clock as c;
@@ -286,25 +349,94 @@ from walink_clock as c;
 -- Outra data, outro horário, outro aluno, outra escola, outro tipo: nada.
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 3, null, null) is null
+    c.class_date + 3, '00000000-0000-4000-8000-00000000d502', null, null) is null
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, time '23:59', null) is null
+    c.class_date, '00000000-0000-4000-8000-00000000d502', time '23:59', null) is null
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, null, '00000000-0000-4000-8000-00000000d505') is null
+    c.class_date, '00000000-0000-4000-8000-00000000d502', null, '00000000-0000-4000-8000-00000000d505') is null
   and public.official_lesson_link('sala-oficial-outra', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, null, null) is null
+    c.class_date, '00000000-0000-4000-8000-00000000d502', null, null) is null
   and public.official_lesson_link('sala-oficial-test', 'appointment', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date, null, null) is null,
+    c.class_date, '00000000-0000-4000-8000-00000000d502', null, null) is null,
   'sala oficial vazou para outra aula'
 )
 from walink_clock as c;
+
+-- Quem dá a aula tem de ser o professor da sessão (o coanfitrião da sala).
+-- Reposição com professor trocado depois do aceite, agendamento transferido, ou
+-- professor desconhecido: nenhuma sala.
+select pg_temp.assert_true(
+  public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date, '00000000-0000-4000-8000-00000000d504', c.class_time::time, null) is null
+  and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date, null, c.class_time::time, null) is null
+  and public.official_lesson_link('sala-oficial-test', 'reschedule', '00000000-0000-4000-8000-00000000d5c1',
+    c.class_date + 1, '00000000-0000-4000-8000-00000000d504', time '15:00', null) is null
+  and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b4',
+    c.class_date, '00000000-0000-4000-8000-00000000d504', c.class_time::time,
+    '00000000-0000-4000-8000-00000000d507') is null,
+  'sala oficial mandada com outro professor dando a aula'
+)
+from walink_clock as c;
+
+-- Cobertura confirmada depois da sala ("Flávio não dá aula hoje", a Débora
+-- aceita): o lembrete continua saindo pelo agendamento do Flávio, mas a sala
+-- dele não vale — quem dá a aula é a Débora.
+alter table public.class_coverages disable trigger user;
+insert into public.class_coverages (
+  id, tenant_id, original_teacher_id, cover_teacher_id, student_id, booking_id,
+  class_date, class_time, status, confirmed_at
+)
+select '00000000-0000-4000-8000-00000000d5d1', 'sala-oficial-test',
+       '00000000-0000-4000-8000-00000000d502', '00000000-0000-4000-8000-00000000d504',
+       '00000000-0000-4000-8000-00000000d503', '00000000-0000-4000-8000-00000000d5b1',
+       c.class_date + 2, '08:00', 'confirmed', now()
+from walink_clock as c;
+alter table public.class_coverages enable trigger user;
+
+select pg_temp.assert_true(
+  public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null) is null
+  and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d504', time '08:00', null) is null,
+  'cobertura confirmada depois da sala mandou o aluno para a sala do professor ausente'
+)
+from walink_clock as c;
+
+-- Sessão que nasceu DEPOIS da cobertura (o sync já a criou com o substituto):
+-- a sala é do substituto, e vale para o lembrete do agendamento do titular.
+update public.lesson_sessions set teacher_id = '00000000-0000-4000-8000-00000000d504'
+where id = '00000000-0000-4000-8000-00000000d5a3';
+select pg_temp.assert_true(
+  public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null)
+    = 'https://meet.google.com/ant-ecip-ada',
+  'sala do substituto não foi mandada na aula coberta'
+)
+from walink_clock as c;
+update public.lesson_sessions set teacher_id = '00000000-0000-4000-8000-00000000d502'
+where id = '00000000-0000-4000-8000-00000000d5a3';
+
+-- Cobertura cancelada não muda quem dá a aula.
+alter table public.class_coverages disable trigger user;
+update public.class_coverages set status = 'cancelled'
+where id = '00000000-0000-4000-8000-00000000d5d1';
+alter table public.class_coverages enable trigger user;
+select pg_temp.assert_true(
+  public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null)
+    = 'https://meet.google.com/ant-ecip-ada',
+  'cobertura cancelada tirou a sala do titular'
+)
+from walink_clock as c;
+delete from public.class_coverages where id = '00000000-0000-4000-8000-00000000d5d1';
 
 -- Sala que não está pronta não vale.
 update private.google_meet_rooms set state = 'COHOST_PENDING'
 where lesson_session_id = '00000000-0000-4000-8000-00000000d5a2';
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'reschedule', '00000000-0000-4000-8000-00000000d5c1',
-    c.class_date + 1, time '15:00', null) is null,
+    c.class_date + 1, '00000000-0000-4000-8000-00000000d502', time '15:00', null) is null,
   'sala em COHOST_PENDING foi mandada ao aluno'
 )
 from walink_clock as c;
@@ -316,7 +448,7 @@ update public.lesson_occurrences set status = 'SUPERSEDED'
 where session_id = '00000000-0000-4000-8000-00000000d5a2';
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'reschedule', '00000000-0000-4000-8000-00000000d5c1',
-    c.class_date + 1, time '15:00', null) is null,
+    c.class_date + 1, '00000000-0000-4000-8000-00000000d502', time '15:00', null) is null,
   'ocorrência substituída ainda aponta para a sala'
 )
 from walink_clock as c;
@@ -328,7 +460,7 @@ update public.lesson_sessions set documentation_consent = false
 where id = '00000000-0000-4000-8000-00000000d5a3';
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, time '08:00', null) is null,
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null) is null,
   'sala oficial mandada para aula sem aceite de registro'
 )
 from walink_clock as c;
@@ -340,7 +472,7 @@ update public.lesson_sessions set status = 'SUPERSEDED'
 where id = '00000000-0000-4000-8000-00000000d5a3';
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, time '08:00', null) is null,
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null) is null,
   'sessão substituída ainda manda a sala'
 )
 from walink_clock as c;
@@ -376,11 +508,11 @@ insert into private.google_meet_rooms (
 );
 select pg_temp.assert_true(
   public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, null, null) is null
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', null, null) is null
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, time '08:00', null) = 'https://meet.google.com/ant-ecip-ada'
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '08:00', null) = 'https://meet.google.com/ant-ecip-ada'
   and public.official_lesson_link('sala-oficial-test', 'booking', '00000000-0000-4000-8000-00000000d5b1',
-    c.class_date + 2, time '09:00', null) = 'https://meet.google.com/out-rasa-laa',
+    c.class_date + 2, '00000000-0000-4000-8000-00000000d502', time '09:00', null) = 'https://meet.google.com/out-rasa-laa',
   'identidade ambígua mandou uma sala qualquer'
 )
 from walink_clock as c;
@@ -400,7 +532,11 @@ cross join lateral (values
   ('00000000-0000-4000-8000-00000000d5e1'::uuid, '5511988881503', 'lesson official',
    '00000000-0000-4000-8000-00000000d5b1'::uuid, 'walink-official'),
   ('00000000-0000-4000-8000-00000000d5e2'::uuid, '5511988881505', 'lesson debora',
-   '00000000-0000-4000-8000-00000000d5b2'::uuid, 'walink-debora')
+   '00000000-0000-4000-8000-00000000d5b2'::uuid, 'walink-debora'),
+  ('00000000-0000-4000-8000-00000000d5e3'::uuid, '5511988881506', 'lesson edge',
+   '00000000-0000-4000-8000-00000000d5b3'::uuid, 'walink-edge'),
+  ('00000000-0000-4000-8000-00000000d5e4'::uuid, '5511988881507', 'lesson transferred',
+   '00000000-0000-4000-8000-00000000d5b4'::uuid, 'walink-transferred')
 ) as v(id, phone, body, source_id, idempotency_key);
 
 do $fence$
@@ -408,13 +544,17 @@ declare
   v_row public.notification_queue%rowtype;
   v_official public.notification_queue%rowtype;
   v_debora public.notification_queue%rowtype;
+  v_edge public.notification_queue%rowtype;
+  v_transferred public.notification_queue%rowtype;
   v_integration_id uuid;
   v_integration_version bigint;
   v_class_time text;
   v_without_room text;
   v_with_room text;
+  v_foreign_room text;
   v_flattened text;
   v_canonical text;
+  v_worker_text text;
   v_result jsonb;
 begin
   select integration_id, integration_version
@@ -429,17 +569,45 @@ begin
       v_official := v_row;
     elsif v_row.id = '00000000-0000-4000-8000-00000000d5e2' then
       v_debora := v_row;
+    elsif v_row.id = '00000000-0000-4000-8000-00000000d5e3' then
+      v_edge := v_row;
+    elsif v_row.id = '00000000-0000-4000-8000-00000000d5e4' then
+      v_transferred := v_row;
     end if;
   end loop;
   perform pg_temp.assert_true(
-    v_official.id is not null and v_debora.id is not null,
+    v_official.id is not null and v_debora.id is not null
+      and v_edge.id is not null and v_transferred.id is not null,
     'lembretes de teste não foram reservados pela fila'
   );
 
-  -- Aula com sala oficial: o lembrete de sempre (sem link) é recusado...
   v_without_room := public.render_lesson_reminder_message(
     null, 'Theo', v_class_time, 'Teacher Sala', 'Sala Oficial Test', null, null
   );
+  v_with_room := public.render_lesson_reminder_message(
+    null, 'Theo', v_class_time, 'Teacher Sala', 'Sala Oficial Test',
+    'https://meet.google.com/abc-defg-hij', null
+  );
+
+  -- Link que não é sala desta aula não vira "só a sala mudou": REVIEW.
+  v_foreign_room := public.render_lesson_reminder_message(
+    null, 'Theo', v_class_time, 'Teacher Sala', 'Sala Oficial Test',
+    'https://meet.google.com/pes-soal-xyz', null
+  );
+  v_result := public.begin_notification_delivery_submission(
+    v_official.id, v_official.claim_token, 'wa-sala-oficial',
+    '5511988881503', '5511988881503', v_foreign_room,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'REVIEW_REQUIRED'
+      and v_result ->> 'reason' = 'lesson_authorized_snapshot_changed',
+    'cerca aceitou (ou devolveu à fila) lembrete com link que não é da aula: ' || v_result::text
+  );
+
+  -- A sala ficou pronta entre o worker (texto sem sala) e a cerca: RETRY, sem
+  -- recibo — o worker remonta com a sala. Antes: REVIEW_REQUIRED e 'skipped'.
   v_result := public.begin_notification_delivery_submission(
     v_official.id, v_official.claim_token, 'wa-sala-oficial',
     '5511988881503', '5511988881503', v_without_room,
@@ -447,19 +615,35 @@ begin
   );
   perform pg_temp.assert_true(
     (v_result ->> 'ok')::boolean is false
-      and v_result ->> 'action' = 'REVIEW_REQUIRED'
-      and v_result ->> 'reason' = 'lesson_authorized_snapshot_changed'
+      and v_result ->> 'action' = 'RETRY'
+      and v_result ->> 'reason' = 'official_lesson_room_changed'
       and not exists (
         select 1 from public.automation_sent where notification_id = v_official.id
       ),
-    'cerca aceitou lembrete sem a sala oficial: ' || v_result::text
+    'sala que ficou pronta na hora descartou o lembrete: ' || v_result::text
   );
 
-  -- ...e o lembrete com a sala oficial é o autorizado e selado.
-  v_with_room := public.render_lesson_reminder_message(
-    null, 'Theo', v_class_time, 'Teacher Sala', 'Sala Oficial Test',
-    'https://meet.google.com/abc-defg-hij', null
+  -- A sala deixou de valer entre o worker (texto com sala) e a cerca: RETRY.
+  update private.google_meet_rooms set state = 'COHOST_PENDING'
+  where lesson_session_id = '00000000-0000-4000-8000-00000000d5a1';
+  v_result := public.begin_notification_delivery_submission(
+    v_official.id, v_official.claim_token, 'wa-sala-oficial',
+    '5511988881503', '5511988881503', v_with_room,
+    v_integration_id, v_integration_version
   );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'RETRY'
+      and v_result ->> 'reason' = 'official_lesson_room_changed'
+      and not exists (
+        select 1 from public.automation_sent where notification_id = v_official.id
+      ),
+    'sala que deixou de valer na hora descartou o lembrete: ' || v_result::text
+  );
+  update private.google_meet_rooms set state = 'READY'
+  where lesson_session_id = '00000000-0000-4000-8000-00000000d5a1';
+
+  -- ...e o lembrete com a sala oficial é o autorizado e selado.
   v_result := public.begin_notification_delivery_submission(
     v_official.id, v_official.claim_token, 'wa-sala-oficial',
     '5511988881503', '5511988881503', v_with_room,
@@ -514,6 +698,57 @@ begin
     (v_result ->> 'ok')::boolean is true
       and v_result ->> 'action' = 'SUBMIT_AUTHORIZED',
     'cerca recusou o lembrete canônico sem sala: ' || v_result::text
+  );
+
+  -- Modelo terminado em {class_link} numa aula sem sala (a tela incentiva o
+  -- marcador). O worker manda o texto do banco — sem quebra de linha na ponta —
+  -- e a cerca tem de aceitar. Antes o SQL deixava "\n\n" no fim, o worker
+  -- aparava e a cerca recusava.
+  update public.profiles
+  set lesson_reminder_template = E'Oi {student_name}, aula às *{class_time}*.\n\n{class_link}'
+  where id = '00000000-0000-4000-8000-00000000d504';
+  v_worker_text := 'Oi Bia, aula às *' || v_class_time || '*.';
+  v_result := public.begin_notification_delivery_submission(
+    v_edge.id, v_edge.claim_token, 'wa-sala-oficial',
+    '5511988881506', '5511988881506', v_worker_text,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is true
+      and v_result ->> 'action' = 'SUBMIT_AUTHORIZED'
+      and v_result ->> 'messageBody' = v_worker_text,
+    'cerca recusou o lembrete de modelo terminado em {class_link}: ' || v_result::text
+  );
+
+  -- Agendamento transferido para a Débora depois do aceite: a sessão (e a sala)
+  -- continuam da Teacher Sala. A cerca confere com a professora da agenda e
+  -- não manda o aluno para a sala da professora que saiu (o texto com a sala
+  -- volta à fila, e o worker, que também passa a professora, remonta sem ela)...
+  v_result := public.begin_notification_delivery_submission(
+    v_transferred.id, v_transferred.claim_token, 'wa-sala-oficial',
+    '5511988881507', '5511988881507',
+    E'Oi Caio, aula às *' || v_class_time || E'*.\n\nhttps://meet.google.com/tra-nsfe-rid',
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    coalesce((v_result ->> 'ok')::boolean, false) is false
+      and v_result ->> 'action' = 'RETRY'
+      and not exists (
+        select 1 from public.automation_sent where notification_id = v_transferred.id
+      ),
+    'cerca autorizou a sala do professor que não dá mais a aula: ' || v_result::text
+  );
+
+  -- ...e autoriza o lembrete de sempre, sem sala.
+  v_result := public.begin_notification_delivery_submission(
+    v_transferred.id, v_transferred.claim_token, 'wa-sala-oficial',
+    '5511988881507', '5511988881507', 'Oi Caio, aula às *' || v_class_time || '*.',
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is true
+      and v_result ->> 'action' = 'SUBMIT_AUTHORIZED',
+    'cerca recusou o lembrete sem sala do agendamento transferido: ' || v_result::text
   );
 end;
 $fence$;

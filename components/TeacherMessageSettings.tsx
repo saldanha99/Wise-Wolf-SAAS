@@ -204,7 +204,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             Exemplo simulando uma aula da Maria às 19:00 com o prof. João da escola Wise Wolf São Paulo.
                         </p>
                         <p className="text-[10px] text-slate-400 mt-1">
-                            Aula com registro (termo aceito) é na sala da escola no Google Meet: o link dela entra no {'{class_link}'} ou, se o seu modelo não tiver o marcador, numa linha no fim da mensagem. Nas outras aulas não vai link.
+                            Aula com registro (termo aceito) é na sala da escola no Google Meet: o link dela entra no {'{class_link}'} ou, se o seu modelo não tiver o marcador, numa linha no fim da mensagem. Aula sem sala da escola: o lembrete automático não leva link, e o botão "Disparar" põe no {'{class_link}'} o link de sempre do aluno.
                         </p>
                     </div>
                 </div>
@@ -217,7 +217,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
                     ) : (
                         <p className="min-w-0 text-xs text-slate-500">
-                            Variáveis vazias (ex.: {'{class_link}'} em aula sem sala da escola) somem da mensagem.
+                            Variáveis vazias (ex.: {'{class_link}'} no lembrete automático de aula sem sala da escola) somem da mensagem.
                         </p>
                     )}
                     <button

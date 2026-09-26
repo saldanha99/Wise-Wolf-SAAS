@@ -469,6 +469,9 @@ async function prepareLessonReminder(
       classDate: canonicalClassDate,
       classTime: canonicalClassTime,
       studentId: studentId || null,
+      // O mesmo professor que a cerca confere (booking/reposição/experimental):
+      // a sala só vale se a sessão for de quem dá a aula.
+      teacherId,
       template: teacher.lesson_reminder_template,
       studentName: studentName.split(/\s+/)[0] || studentName,
       teacherName: safeCommunicationText(teacher.full_name, 180),

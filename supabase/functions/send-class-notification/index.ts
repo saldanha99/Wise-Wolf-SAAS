@@ -595,6 +595,8 @@ async function prepareNotification(
     classDate: identity.classDate,
     classTime: occurrence.classTime,
     studentId: occurrence.studentId,
+    // Professor da agenda: a sala só vale se a sessão for de quem dá a aula.
+    teacherId: occurrence.teacherId,
   };
   let message: string;
   if (action === "CLASS_REMINDER") {

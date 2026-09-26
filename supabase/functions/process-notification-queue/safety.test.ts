@@ -90,6 +90,27 @@ Deno.test("lembrete é montado pelo mesmo renderizador que a cerca confere", () 
   assertStringIncludes(officialRoomMigration, "room.state = 'READY'");
 });
 
+Deno.test("sala oficial é a de quem dá a aula, e a sala que muda na hora não descarta o lembrete", () => {
+  // Sessão com aceite fica congelada: cobertura ou professor trocado depois
+  // mandariam o aluno para a sala do professor ausente.
+  assertStringIncludes(
+    source,
+    "teacherId,\n      template: teacher.lesson_reminder_template",
+  );
+  assertStringIncludes(officialRoomMigration, "and session.teacher_id = case");
+  assertStringIncludes(
+    officialRoomMigration,
+    "from public.class_coverages as coverage",
+  );
+  // Worker e cerca consultam a sala em momentos diferentes: se só a sala mudou,
+  // RETRY devolve à fila em vez de marcar 'skipped' para sempre.
+  assertStringIncludes(
+    officialRoomMigration,
+    "'reason', 'official_lesson_room_changed'",
+  );
+  assertStringIncludes(source, 'effectiveSubmission.action === "RETRY"');
+});
+
 Deno.test("frase da sala oficial é a mesma no TypeScript e no SQL", () => {
   assertStringIncludes(officialRoomMigration, `'${OFFICIAL_ROOM_NOTICE}'`);
 });

@@ -98,7 +98,8 @@ function buildUniqueInstanceName(instanceName: string): string {
 // não leva o link pessoal (decisão da direção, 16/09/2026). A versão antiga daqui
 // ("começa em 1 hora" + {class_link}) era gravada como modelo próprio quando o
 // professor só ligava a automação — os 3 modelos "personalizados" de produção eram
-// ela (migration 20260926190100).
+// ela. A migration 20260926190100 trocou "1 hora" por "30 minutos" neles e manteve o
+// {class_link}: no botão "Disparar" ele leva o link de sempre do aluno.
 export const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
 
 Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
@@ -109,7 +110,7 @@ export const REMINDER_TEMPLATE_VARIABLES = [
     { key: '{student_name}', label: 'Nome do aluno' },
     { key: '{class_time}', label: 'Horário da aula (HH:MM)' },
     { key: '{teacher_name}', label: 'Nome do professor' },
-    { key: '{class_link}', label: 'Link da sala da escola no Google Meet (só em aula com registro; nas outras fica vazio)' },
+    { key: '{class_link}', label: 'Link da aula: a sala da escola no Google Meet em aula com registro; sem sala, vazio no automático e o link de sempre do aluno no botão "Disparar"' },
     { key: '{tenant_name}', label: 'Nome da escola' },
 ];
 

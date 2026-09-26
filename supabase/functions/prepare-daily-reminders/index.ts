@@ -136,6 +136,7 @@ serve(async (req) => {
                         classDate: String(cls.class_date || ''),
                         classTime,
                         studentId,
+                        teacherId: cls.teacher_id ? String(cls.teacher_id) : null,
                         template: teacher.lesson_reminder_template ?? null,
                         studentName: firstName,
                         teacherName: teacher.full_name || '',

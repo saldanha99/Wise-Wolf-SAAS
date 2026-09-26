@@ -88,6 +88,13 @@ export interface OfficialLessonIdentity {
   /** HH:MM anunciado na mensagem; a sala tem de ser a desse horário. */
   classTime: string;
   studentId: string | null;
+  /**
+   * Professor da agenda (booking/reposição/experimental), o mesmo que a cerca do
+   * envio usa. A sala só vale se a sessão for de quem dá a aula: depois de
+   * cobertura confirmada, reposição com professor trocado ou agendamento
+   * transferido, a sessão congelada continua com o coanfitrião antigo.
+   */
+  teacherId: string | null;
 }
 
 export type OfficialLessonLinkResult =
@@ -110,6 +117,7 @@ export async function loadOfficialLessonLink(
       p_source_type: identity.sourceType.trim().toLowerCase(),
       p_source_id: identity.sourceId,
       p_class_date: identity.classDate,
+      p_teacher_id: identity.teacherId || null,
       p_start_time: /^\d{2}:\d{2}$/.test(classTime) ? classTime : null,
       p_student_id: identity.studentId || null,
     });
@@ -155,8 +163,12 @@ export async function renderLessonReminderMessage(
       p_official_link: officialMeetLink(input.officialLink),
       p_personal_link: input.personalLink || null,
     });
-    const message = typeof data === "string" ? data.trim() : "";
-    if (error || !message) {
+    // Sem aparar: a cerca do envio compara byte a byte com o MESMO renderizador.
+    // Aparar aqui (e não lá) já fez a cerca recusar lembrete de modelo que
+    // termina em {class_link} numa aula sem sala. Quem limpa as pontas é o
+    // banco; assim o worker e a cerca sempre veem o mesmo texto.
+    const message = typeof data === "string" ? data : "";
+    if (error || !message.trim()) {
       return { ok: false, reason: "lesson_reminder_render_unavailable" };
     }
     return { ok: true, message };

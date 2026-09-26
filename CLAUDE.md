@@ -285,12 +285,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `READY`, sessão viva e **aceite vigente** (`documentation_consent`) → o lembrete de 30 min, o botão
   "Disparar" e o aviso de reposição mandam o `meeting_uri` dela — no `{class_link}` do modelo ou numa
   linha própria no fim ("Esta aula é na sala da escola no Google Meet. Entre por este link:"). Sem sala,
-  nada muda. Regra única em `public.official_lesson_link(tenant, tipo, id, data, hora, aluno)` (só
-  `service_role`; agendamento, reposição e antecipação — antecipação é `booking` na data nova).
-  ⚠️ Exige o aceite, e não só "sala existe" como o `get_my_lesson_rooms`: a sala transcreve sozinha, e
-  quem revogou não pode ser mandado para lá. ⚠️ Duas salas vivas para a mesma aula sem horário que
-  desempate → nenhuma (mandar a errada é pior). ⚠️ Consulta da sala falhou → o lembrete **espera**
-  (não cai no link de sempre numa aula que pode ter aceite).
+  nada muda. Regra única em `public.official_lesson_link(tenant, tipo, id, data, professor, hora,
+  aluno)` (só `service_role`; agendamento, reposição e antecipação — antecipação é `booking` na data
+  nova). ⚠️ Exige o aceite, e não só "sala existe" como o `get_my_lesson_rooms`: a sala transcreve
+  sozinha, e quem revogou não pode ser mandado para lá. ⚠️ **Só vale se a sessão for de quem DÁ a
+  aula** — o professor da agenda ou, com cobertura viva do agendamento naquela data, o substituto (a
+  regra de `lesson_quality_sources`). Sessão com aceite ou sala fica **congelada**
+  (`lesson_session_has_evidence`): cobertura confirmada, reposição com professor trocado ou agendamento
+  transferido depois do aceite não mudam o `teacher_id` dela, e o aluno cairia na sala do ausente (só
+  ele admite quem bate). ⚠️ Duas salas vivas para a mesma aula sem horário que desempate → nenhuma
+  (mandar a errada é pior). ⚠️ Consulta da sala falhou → o lembrete **espera** (não cai no link de
+  sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
+  a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
+  `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 
@@ -532,12 +539,17 @@ onClick texto → sendMessage() → unlockAudio()
   `{class_link}`; a cerca, que preserva a formatação e apaga o link, recusou **todo** lembrete da
   Débora de 16/09 a 25/09 (45 `lesson_authorized_snapshot_changed`, 0 enviados). Testes:
   `supabase/tests/lembrete_leva_a_sala_oficial.sql` e `process-notification-queue/safety.test.ts`.
+  ⚠️ **O TypeScript não apara o texto do banco** (`renderLessonReminderMessage`): a cerca compara byte
+  a byte. Quem limpa as pontas é o SQL — modelo terminado em `{class_link}` numa aula sem sala sobrava
+  com `"\n\n"`, o worker aparava e a cerca recusava.
 - ⚠️ **Link pessoal:** o automático não manda (decisão de 16/09); o "Disparar" continua pondo o
   `profiles.meeting_link` no `{class_link}` quando a aula não tem sala da escola (0 usos em 90 dias).
 - ⚠️ A tela "Mensagens" abria com o padrão ANTIGO ("começa em 1 hora" + `{class_link}`) e gravava
   esse texto como modelo próprio quando o professor só ligava a automação — os 3 modelos de produção
   eram ele. Hoje o padrão do front é o do servidor e modelo igual ao padrão é salvo como `null`
-  (`reminderTemplateToStore`); a migration `20260926190100` (one-shot) devolveu os 3 ao padrão.
+  (`reminderTemplateToStore`); a migration `20260926190100` (one-shot) trocou "1 hora" por "30
+  minutos" nos 3 e **manteve o `{class_link}`**. Voltar a `null` tiraria o link do "Disparar" de
+  Flávio e Beatrís, que estão com o automático desligado e só avisam por ele.
 
 ---
 

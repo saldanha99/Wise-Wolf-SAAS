@@ -56,9 +56,10 @@ A sala só é criada e documentada para sessão com `documentation_consent`. Des
 
 Desde a migration `20260926190000`, a aula com sala da escola **READY**, sessão viva e aceite vigente (`documentation_consent`) recebe o link da sala em todo aviso ao aluno: o lembrete automático de 30 minutos, o botão "Disparar" do professor e o aviso de reposição marcada. O link entra no `{class_link}` do modelo do professor ou, se o modelo não tem o marcador, numa linha própria no fim: "Esta aula é na sala da escola no Google Meet. Entre por este link:". Aula sem sala segue exatamente como antes (sem link no automático).
 
-- Quem decide é `public.official_lesson_link(tenant, tipo, id, data, hora, aluno)` (só `service_role`), pela ocorrência da agenda (`lesson_occurrences` → `lesson_sessions` → `private.google_meet_rooms`). Agendamento, reposição e antecipação (booking na data nova) valem.
+- Quem decide é `public.official_lesson_link(tenant, tipo, id, data, professor, hora, aluno)` (só `service_role`), pela ocorrência da agenda (`lesson_occurrences` → `lesson_sessions` → `private.google_meet_rooms`). Agendamento, reposição e antecipação (booking na data nova) valem.
+- A sala só vale se a sessão for de quem **dá** a aula: o professor da agenda ou, com cobertura viva do agendamento naquela data, o substituto. Sessão com aceite ou sala fica congelada — cobertura confirmada, reposição com professor trocado ou agendamento transferido depois do aceite não mudam o professor dela, e a sala continua com o coanfitrião antigo. Nesses casos o aviso sai sem a sala (o de sempre), para o aluno não esperar numa sala que só o ausente pode abrir.
 - Sala criada para uma aula cujo aceite foi revogado **não** é mandada (a sala transcreve sozinha). Sala em `COHOST_PENDING`/`CREATING`/`NEEDS_RECONCILIATION` também não.
-- O texto sai de `public.render_lesson_reminder_message`, o mesmo que a cerca do envio usa para conferir o lembrete. Se a sala ficar pronta entre a preparação e o envio (segundos), a cerca recusa e o lembrete daquela aula não sai — raro, e o aluno ainda vê a sala no app.
+- O texto sai de `public.render_lesson_reminder_message`, o mesmo que a cerca do envio usa para conferir o lembrete. Se a sala ficar pronta (ou deixar de valer) entre a preparação e o envio, a cerca devolve `RETRY` (`official_lesson_room_changed`) e o worker remonta o texto na rodada seguinte — o lembrete não se perde.
 - Enquanto 0 salas existirem (estado de 26/09), nenhum aviso muda.
 
 ## Presença pelo relatório nativo do Google (Business Plus)

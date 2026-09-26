@@ -271,6 +271,7 @@ const aulaDoTheo = {
   classDate: "2026-09-28",
   classTime: "19:00",
   studentId: "223e4567-e89b-42d3-a456-426614174000",
+  teacherId: "323e4567-e89b-42d3-a456-426614174000",
 };
 
 Deno.test("só sala do Google Meet da escola passa como sala oficial", () => {
@@ -299,10 +300,46 @@ Deno.test("consulta da sala manda a identidade da aula como o banco espera", asy
       p_source_type: "booking",
       p_source_id: aulaDoTheo.sourceId,
       p_class_date: "2026-09-28",
+      p_teacher_id: aulaDoTheo.teacherId,
       p_start_time: "19:00",
       p_student_id: aulaDoTheo.studentId,
     },
   }]);
+});
+
+Deno.test("sala oficial é consultada com o professor que dá a aula", async () => {
+  // Cobertura confirmada ou professor trocado depois do aceite: a sessão
+  // congelada continua com o coanfitrião antigo. Quem confere é o banco, com o
+  // professor da agenda; sem professor, o banco não devolve sala nenhuma.
+  const semProfessor = fakeRpc({
+    official_lesson_link: { data: null, error: null },
+  });
+  assertEquals(
+    await loadOfficialLessonLink(semProfessor.rpc, {
+      ...aulaDoTheo,
+      teacherId: null,
+    }),
+    { ok: true, link: null },
+  );
+  assertEquals(semProfessor.calls[0].args.p_teacher_id, null);
+
+  const { rpc, calls } = fakeRpc({
+    official_lesson_link: { data: SALA, error: null },
+    render_lesson_reminder_message: { data: "mensagem", error: null },
+  });
+  await canonicalLessonReminder(rpc, {
+    ...aulaDoTheo,
+    teacherId: "423e4567-e89b-42d3-a456-426614174000",
+    template: null,
+    studentName: "Theo",
+    teacherName: "Débora",
+    tenantName: "Wise Wolf",
+    personalLink: null,
+  });
+  assertEquals(
+    calls[0].args.p_teacher_id,
+    "423e4567-e89b-42d3-a456-426614174000",
+  );
 });
 
 Deno.test("sem sala, horário inválido ou valor estranho do banco: sem link oficial", async () => {
@@ -371,6 +408,28 @@ Deno.test("texto do lembrete vem do renderizador do banco, com modelo cru", asyn
   assertEquals(calls[0].args.p_template, modeloDaDebora);
   assertEquals(calls[0].args.p_official_link, SALA);
   assertEquals(calls[0].args.p_personal_link, null);
+});
+
+Deno.test("texto do banco volta como veio: a cerca compara byte a byte", async () => {
+  // Modelo terminado em {class_link} numa aula sem sala: se o banco devolver
+  // quebra de linha na ponta, o worker não pode aparar sozinho — a cerca
+  // renderiza de novo pelo MESMO SQL e recusaria o lembrete inteiro.
+  const comPonta = "Oi Ana, aula às *19:00*.\n\n";
+  const { rpc } = fakeRpc({
+    render_lesson_reminder_message: { data: comPonta, error: null },
+  });
+  assertEquals(
+    await renderLessonReminderMessage(rpc, {
+      template: "Oi {student_name}, aula às *{class_time}*.\n\n{class_link}",
+      studentName: "Ana",
+      classTime: "19:00",
+      teacherName: "Débora",
+      tenantName: "Wise Wolf",
+      officialLink: null,
+      personalLink: null,
+    }),
+    { ok: true, message: comPonta },
+  );
 });
 
 Deno.test("link oficial inválido nunca chega ao renderizador", async () => {
