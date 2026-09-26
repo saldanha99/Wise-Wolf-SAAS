@@ -271,10 +271,12 @@ done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-edge-functions --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-auth --format '{{.State.Running}}' | grep -qx true
+# GAMMA_API_KEY é opcional (decisão de 26/09/2026): sem ela o gerador de livros
+# responde GAMMA_NOT_CONFIGURED e a tela avisa. A chave entra depois em
+# .env.functions, recriando o container das functions — sem novo release.
 docker exec supabase-edge-functions sh -lc \
   'test -n "${OPENAI_API_KEY:-}" &&
    test -n "${OPENROUTER_API_KEY:-}" &&
-   test -n "${GAMMA_API_KEY:-}" &&
    test -n "${EVOLUTION_API_URL:-}" &&
    test -n "${EVOLUTION_API_KEY:-}" &&
    test -n "${WHATSAPP_INBOUND_TOKEN:-}" &&
