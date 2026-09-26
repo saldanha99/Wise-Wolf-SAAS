@@ -236,6 +236,39 @@ número de alunos (Descoberta 1 · Essencial 2 · Pro 8 · Studio 25 · Instituc
 
 ---
 
+## Google Meet da escola: registro das aulas e presença ✅
+
+> Runbook completo: `docs/runbooks/google-meet-pedagogical-documentation.md`. Leia antes de mexer em
+> `supabase/functions/google-meet`, `lesson_sessions.documentation_consent` ou na Central de Qualidade.
+
+**Conta e projeto (26/09/2026):** Google Workspace **Business Plus** assinado sobre o Gmail da conta
+central (sem domínio → sem organização no Cloud → app OAuth **Externo, em produção, não verificado**,
+uso próprio < 100 usuários). Projeto `wise-wolf-aulas`, APIs Meet REST + Drive, cliente OAuth Web com
+retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
+
+- ⚠️ **O segredo do cliente OAuth entra pela direção**, com `bash deploy/vps/configurar-google-meet.sh`
+  (lê o JSON de Downloads, grava em `.env.functions` pelo stdin do ssh, gera a chave de cifragem NA VPS,
+  apaga o JSON). Nunca colar no chat nem commitar.
+- **O que existe (12/09 + 26/09):** sala exclusiva por sessão criada pela conta central, professor
+  como coanfitrião, transcrição e anotações do Gemini automáticas, importação após a aula, revisão do
+  professor, resumo aprovado na memória do aluno.
+- **Termo de registro** (migration `20260926120000`): aluno/responsável aceita uma vez por link
+  (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
+  próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
+  `security_definer_authorization_hardening.sql`.
+- **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
+  **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
+  `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
+  Divergência com o lançamento (aluno ausente em aula dada, falta do aluno com aluno na sala, professor
+  ausente, atraso 10+ min, aula fora da sala) **só abre caso** na Central de Qualidade
+  (`MEET_ATTENDANCE`, `LATE_START`, `OUTSIDE_ROOM`). Decisão da direção: nada disso altera pagamento.
+- ⚠️ **Formato do relatório não é documentado pelo Google.** `attendance.ts` aceita colunas pt/en e
+  horários em vários formatos; conferir no primeiro relatório real e ajustar.
+- ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
+  site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
+
+---
+
 ## Wolfie: gratuito x premium — a VOZ é a fronteira ✅
 
 > **A separação não é de tela, é de servidor.** Antes existiam dois blocos na

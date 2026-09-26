@@ -32,6 +32,12 @@ import {
   GoogleMeetProvider,
   GoogleProviderError,
 } from "./provider.ts";
+import {
+  meetingCodeFromUri,
+  parseAttendanceReport,
+  pickAttendanceReport,
+  summarizeAttendance,
+} from "./attendance.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +60,7 @@ type Config = {
   redirectUri: string;
   key: string;
   enabled: boolean;
+  attendanceEnabled: boolean;
   aiEnabled: boolean;
   aiKey: string;
   aiModel: string;
@@ -90,6 +97,9 @@ function config(): Config {
     redirectUri,
     key,
     enabled: env("GOOGLE_MEET_PEDAGOGY_ENABLED") === "true",
+    // Relatório de presença nativo do Google (Business Plus). Sem a flag, a
+    // sala nasce sem relatório e nada de presença é lido.
+    attendanceEnabled: env("GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED") === "true",
     aiEnabled: env("GOOGLE_MEET_SUMMARY_AI_ENABLED") === "true" && !!aiKey &&
       /^[a-zA-Z0-9._-]+$/.test(aiModel),
     aiKey,
@@ -343,6 +353,30 @@ async function syncSession(
         });
       }
     }
+    let attendance: unknown = null;
+    if (cfg.attendanceEnabled) {
+      try {
+        attendance = await syncAttendance(
+          db,
+          provider,
+          cfg,
+          tenantId,
+          sessionId,
+          detail,
+          connection,
+        );
+      } catch (error) {
+        // Presença falhando não derruba a documentação pedagógica; fica no log.
+        const code = error instanceof Error && /^[a-z_]+$/.test(error.message)
+          ? error.message
+          : "google_attendance_failed";
+        console.error("[google-meet] relatório de presença", {
+          sessionId,
+          code,
+        });
+        attendance = { error: code };
+      }
+    }
     const state = metadata.length === 0
       ? "ARTIFACTS_NOT_AVAILABLE"
       : pending
@@ -351,7 +385,13 @@ async function syncSession(
     await storage(db, "sync_complete", tenantId, actorId, sessionId, {
       error_code: state,
     });
-    return { ok: true, imported, pending, status: state || "SYNCED" };
+    return {
+      ok: true,
+      imported,
+      pending,
+      attendance,
+      status: state || "SYNCED",
+    };
   } catch (error) {
     const code = error instanceof Error && /^[a-z_]+$/.test(error.message)
       ? error.message
@@ -361,6 +401,113 @@ async function syncSession(
     });
     throw error;
   }
+}
+
+async function attendanceStorage(
+  db: SupabaseClient,
+  action: "attendance_save" | "attendance_evaluate",
+  tenantId: string,
+  sessionId: string,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  const { data, error } = await db.rpc("google_meet_attendance_backend", {
+    p_action: action,
+    p_tenant_id: tenantId,
+    p_session_id: sessionId,
+    p_payload: payload,
+  });
+  if (error) {
+    throw new Error(
+      /^[a-z_]+$/.test(error.message || "")
+        ? error.message
+        : "google_meet_storage_unavailable",
+    );
+  }
+  return data;
+}
+
+// Presença pelo relatório nativo do Google: a planilha que o Meet cria no
+// Drive da conta da escola depois da reunião. O banco compara com o lançamento
+// e só abre caso na Central de Qualidade — pagamento não muda.
+async function syncAttendance(
+  db: SupabaseClient,
+  provider: GoogleMeetProvider,
+  cfg: Config,
+  tenantId: string,
+  sessionId: string,
+  detail: any,
+  connection: any,
+) {
+  const conferences = await provider.conferences(detail.room.space_name, {
+    start: detail.session.scheduled_start_at,
+    end: detail.session.scheduled_end_at,
+  });
+  let reportFound = false;
+  if (conferences.length) {
+    const starts = conferences.map((c) => c.startTime).filter(Boolean).sort();
+    const ends = conferences.map((c) => c.endTime || c.startTime).filter(
+      Boolean,
+    ).sort();
+    const first = starts[0] || detail.session.scheduled_start_at;
+    const last = ends[ends.length - 1] || detail.session.scheduled_end_at;
+    // O Google gera a planilha depois que a reunião acaba: janela de 3 h.
+    const candidates = (await provider.attendanceReportCandidates(
+      first,
+      new Date(Date.parse(last) + 3 * 3600000).toISOString(),
+    )).slice(0, 10);
+    const code = meetingCodeFromUri(detail.room.meeting_uri);
+    let picked = pickAttendanceReport(candidates, code, null) as
+      | (typeof candidates[number] & { csv?: string })
+      | null;
+    if (picked) {
+      picked = { ...picked, csv: await provider.spreadsheetCsv(picked.id) };
+    } else if (candidates.length) {
+      const withCsv = [];
+      for (const candidate of candidates) {
+        withCsv.push({
+          ...candidate,
+          csv: await provider.spreadsheetCsv(candidate.id),
+        });
+      }
+      picked = pickAttendanceReport(withCsv, code, detail.room.cohost_email);
+    }
+    if (picked?.csv) {
+      const { data: teacher } = await db.from("profiles").select("full_name")
+        .eq("id", detail.session.teacher_id).eq("tenant_id", tenantId)
+        .maybeSingle();
+      const parsed = parseAttendanceReport(picked.csv, first);
+      const summary = "error" in parsed ? null : summarizeAttendance(
+        parsed.rows,
+        {
+          teacherEmail: detail.room.cohost_email || null,
+          teacherName: teacher?.full_name || null,
+          organizerEmail: connection.organizer_email || null,
+        },
+      );
+      await attendanceStorage(db, "attendance_save", tenantId, sessionId, {
+        conference_name: conferences[0].name,
+        document_id: picked.id,
+        document_name: picked.name,
+        source_csv: picked.csv,
+        content_sha256: await sha256(picked.csv),
+        parse_error: "error" in parsed ? parsed.error : null,
+        participants: summary?.participants || [],
+        teacher_first_join_at: summary?.teacherFirstJoinAt || null,
+        teacher_seconds: summary ? summary.teacherSeconds : null,
+        student_first_join_at: summary?.studentFirstJoinAt || null,
+        student_seconds: summary ? summary.studentSeconds : null,
+        retention_days: cfg.retentionDays,
+      });
+      reportFound = true;
+    }
+  }
+  return await attendanceStorage(
+    db,
+    "attendance_evaluate",
+    tenantId,
+    sessionId,
+    { conference_count: conferences.length, report_found: reportFound },
+  );
 }
 
 async function createSessionRoom(
@@ -407,7 +554,9 @@ async function createSessionRoom(
   let room = claim.room;
   if (claim.claimed) {
     try {
-      const space = await provider.createSpace();
+      const space = await provider.createSpace({
+        attendanceReport: cfg.attendanceEnabled,
+      });
       room = await storage(db, "room_save", tenantId, actorId, sessionId, {
         ...space,
         state: "COHOST_PENDING",

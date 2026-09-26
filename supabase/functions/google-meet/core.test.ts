@@ -147,6 +147,44 @@ Deno.test("creates institutional room with automatic notes/transcripts and no re
     config.artifactConfig.recordingConfig.autoRecordingGeneration === "OFF",
   );
   assert(config.attendanceReportGenerationType === "DO_NOT_GENERATE");
+  // Com a flag de presença (Business Plus), a sala nasce com o relatório nativo.
+  await provider.createSpace({ attendanceReport: true });
+  assert(
+    calls[1].body.config.attendanceReportGenerationType === "GENERATE_REPORT",
+  );
+});
+Deno.test("attendance report comes from the Meet spreadsheet in Drive, never from participant telemetry", async () => {
+  const calls: string[] = [];
+  const provider = new GoogleMeetProvider(
+    "synthetic",
+    fakeFetch((url) => {
+      calls.push(url);
+      assert(!url.includes("/participants"));
+      if (url.includes("/drive/v3/files?")) {
+        const q = new URL(url).searchParams.get("q") || "";
+        assert(q.includes("application/vnd.google-apps.spreadsheet"));
+        assert(q.includes("createdTime >= '2026-09-26T13:00:00.000Z'"));
+        assert(q.includes("createdTime <= '2026-09-26T16:30:00.000Z'"));
+        return response({
+          files: [{
+            id: "sheet_1",
+            name: "abc-defg-hij",
+            createdTime: "2026-09-26T13:40:00Z",
+          }],
+        });
+      }
+      assert(url.endsWith("/files/sheet_1/export?mimeType=text%2Fcsv"));
+      return new Response("Nome,E-mail,Duração\nAna,,30 min", { status: 200 });
+    }),
+  );
+  const files = await provider.attendanceReportCandidates(
+    "2026-09-26T13:00:00Z",
+    "2026-09-26T16:30:00Z",
+  );
+  assert(files.length === 1 && files[0].id === "sheet_1");
+  const csv = await provider.spreadsheetCsv("sheet_1");
+  assert(csv.includes("Ana"));
+  assert(calls.length === 2);
 });
 Deno.test("cohost assignment is retried without creating another room or duplicating existing cohost", async () => {
   const calls: string[] = [];
@@ -188,7 +226,7 @@ Deno.test("artifact discovery requests only documents and conference IDs, pagina
       if (url.includes("/conferenceRecords?")) {
         assert(
           new URL(url).searchParams.get("fields") ===
-            "conferenceRecords(name),nextPageToken",
+            "conferenceRecords(name,startTime,endTime),nextPageToken",
         );
         return response({
           conferenceRecords: [{ name: "conferenceRecords/test" }],

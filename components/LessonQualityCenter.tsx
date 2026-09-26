@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import StudentHandover from './StudentHandover';
 
 type QualityCase = { id: string; student_id: string; student_name: string; teacher_name: string; category: string; status: string; description: string; assigned_to: string | null; created_at: string; events: { id: string; event_type: string; created_at: string; details: Record<string, unknown> }[] };
-const categories: Record<string, string> = { LATE_START: 'Atraso relatado', EARLY_END: 'Término antecipado', SCHEDULE_CHANGE: 'Mudança de horário', DID_NOT_HAPPEN: 'Aula não realizada', OTHER: 'Relato da família', MISSING_LOG: 'Lançamento pendente', DELIVERY_FAILURE: 'Falha de entrega' };
+const categories: Record<string, string> = { LATE_START: 'Atraso relatado', EARLY_END: 'Término antecipado', SCHEDULE_CHANGE: 'Mudança de horário', DID_NOT_HAPPEN: 'Aula não realizada', OTHER: 'Relato da família', MISSING_LOG: 'Lançamento pendente', DELIVERY_FAILURE: 'Falha de entrega', MEET_ATTENDANCE: 'Presença no Meet diverge do lançamento', OUTSIDE_ROOM: 'Aula fora da sala da escola' };
 const statuses: Record<string, string> = { OPEN: 'Aberto', IN_REVIEW: 'Em análise', WAITING: 'Aguardando retorno', RESOLVED: 'Resolvido', FOLLOWUP: 'Acompanhamento' };
 const dateOnly = (daysAgo: number) => { const date = new Date(); date.setDate(date.getDate() - daysAgo); return date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); };
 export default function LessonQualityCenter() {
@@ -39,7 +39,7 @@ export default function LessonQualityCenter() {
   }
   const metrics = [['planned', 'Sessões previstas'], ['eligible', 'Auditorias criadas'], ['sent', 'Enviadas'], ['delivered', 'Entregues'], ['read', 'Lidas'], ['responded', 'Com retorno'], ['unknown', 'Não acompanhadas'], ['failed', 'Falhas / incertas'], ['missing_log', 'Sem lançamento há 24h'], ['unverified_contact', 'Contato não verificado']];
   return <div className="space-y-5 text-slate-800 dark:text-slate-100">
-    <header><h1 className="text-2xl font-bold">Central de qualidade</h1><p className="mt-2 text-sm text-slate-500">Relatos da família e registros operacionais para análise humana. Silêncio não significa satisfação; dados do Meet não são usados para avaliar professores ou calcular pagamento.</p></header>
+    <header><h1 className="text-2xl font-bold">Central de qualidade</h1><p className="mt-2 text-sm text-slate-500">Relatos da família, registros operacionais e o relatório de presença do Meet para análise humana. Silêncio não significa satisfação; nenhum desses avisos altera o pagamento — são para conversar com o professor.</p></header>
     <div className="flex flex-wrap items-end gap-3">
       <label className="text-sm">De<input aria-label="Data inicial" type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>
       <label className="text-sm">Até<input aria-label="Data final" type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>

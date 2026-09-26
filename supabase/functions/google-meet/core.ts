@@ -1,4 +1,7 @@
-// No participant telemetry or teacher evaluation belongs in this integration.
+// Participantes nunca são lidos pela API do Meet (o Google diz que ela não é
+// destinada a acompanhamento de desempenho). Presença vem só do relatório
+// nativo do Google (attendance.ts) e vira caso para análise humana, nunca
+// desconto ou decisão automática de pagamento.
 export const GOOGLE_SCOPES = [
   "openid",
   "email",

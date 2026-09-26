@@ -456,6 +456,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.ts \
   supabase/functions/google-meet/core.test.ts \
+  supabase/functions/google-meet/attendance.ts \
+  supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/automation-auth.ts \
@@ -716,6 +718,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-renewal-billing/source.test.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
+  supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
@@ -1412,9 +1415,14 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260924194214_affiliate_coupon_commission_settlement.sql"
   "supabase/migrations/20260925022856_gamma_school_book_generator.sql"
   "supabase/migrations/20260926050000_travas_do_release_sobre_o_fechamento_da_experimental.sql"
+  "supabase/migrations/20260926120000_termo_de_registro_das_aulas.sql"
+  "supabase/migrations/20260926130000_isencao_da_taxa_gravada_na_oferta.sql"
+  "supabase/migrations/20260926140000_presenca_pelo_relatorio_do_meet.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
+  "supabase/tests/termo_de_registro_das_aulas.sql"
+  "supabase/tests/presenca_pelo_relatorio_do_meet.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"

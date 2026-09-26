@@ -51,14 +51,20 @@ export class GoogleMeetProvider {
     }
     return result;
   }
-  async createSpace(): Promise<{ space_name: string; meeting_uri: string }> {
+  async createSpace(
+    options: { attendanceReport?: boolean } = {},
+  ): Promise<{ space_name: string; meeting_uri: string }> {
     const result = await this.json("https://meet.googleapis.com/v2/spaces", {
       method: "POST",
       body: JSON.stringify({
         config: {
           accessType: "RESTRICTED",
           moderation: "ON",
-          attendanceReportGenerationType: "DO_NOT_GENERATE",
+          // Relatório de presença nativo do Google (Business Plus): planilha no
+          // Drive da conta da escola. Só com a flag de presença ligada.
+          attendanceReportGenerationType: options.attendanceReport
+            ? "GENERATE_REPORT"
+            : "DO_NOT_GENERATE",
           artifactConfig: {
             recordingConfig: { autoRecordingGeneration: "OFF" },
             transcriptionConfig: { autoTranscriptionGeneration: "ON" },
@@ -114,10 +120,11 @@ export class GoogleMeetProvider {
     }
     throw new GoogleProviderError("google_pagination_limit", 503);
   }
-  async artifactMetadata(
+  /** Conferências da sala na janela da agenda: só identidade e horário da reunião. */
+  async conferences(
     space: string,
     sessionWindow?: { start: string; end: string },
-  ): Promise<Record<string, unknown>[]> {
+  ): Promise<{ name: string; startTime: string; endTime: string }[]> {
     const url = new URL("https://meet.googleapis.com/v2/conferenceRecords");
     let filter = `space.name = "${safeResource(space, "space")}"`;
     if (sessionWindow) {
@@ -133,12 +140,26 @@ export class GoogleMeetProvider {
       }" AND start_time <= "${new Date(end + 2 * 3600000).toISOString()}"`;
     }
     url.searchParams.set("filter", filter);
-    // Only conference identity is needed to locate educational documents.
-    url.searchParams.set("fields", "conferenceRecords(name),nextPageToken");
-    const conferences = await this.list(url.toString(), "conferenceRecords");
+    // Identidade e horário da conferência: é o que localiza os documentos da
+    // aula e o relatório de presença. Participantes não são consultados.
+    url.searchParams.set(
+      "fields",
+      "conferenceRecords(name,startTime,endTime),nextPageToken",
+    );
+    const rows = await this.list(url.toString(), "conferenceRecords");
+    return rows.map((row) => ({
+      name: safeResource(row.name, "conference"),
+      startTime: text(row.startTime, 40),
+      endTime: text(row.endTime, 40),
+    }));
+  }
+  async artifactMetadata(
+    space: string,
+    sessionWindow?: { start: string; end: string },
+  ): Promise<Record<string, unknown>[]> {
     const artifacts: Record<string, unknown>[] = [];
-    for (const conference of conferences) {
-      const name = safeResource(conference.name, "conference");
+    for (const conference of await this.conferences(space, sessionWindow)) {
+      const name = conference.name;
       for (
         const [resource, kind] of [["transcripts", "TRANSCRIPT"], [
           "smartNotes",
@@ -153,6 +174,62 @@ export class GoogleMeetProvider {
       }
     }
     return artifacts;
+  }
+  /**
+   * Planilhas criadas pelo Meet no Drive da conta da escola dentro da janela
+   * (o escopo drive.meet.readonly só enxerga arquivos criados pelo Meet).
+   */
+  async attendanceReportCandidates(
+    from: string,
+    to: string,
+  ): Promise<{ id: string; name: string; createdTime: string }[]> {
+    const start = Date.parse(from), end = Date.parse(to);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      throw new Error("invalid_session_window");
+    }
+    const url = new URL("https://www.googleapis.com/drive/v3/files");
+    url.searchParams.set(
+      "q",
+      `mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and createdTime >= '${
+        new Date(start).toISOString()
+      }' and createdTime <= '${new Date(end).toISOString()}'`,
+    );
+    url.searchParams.set("fields", "files(id,name,createdTime),nextPageToken");
+    url.searchParams.set("orderBy", "createdTime");
+    const files = await this.list(url.toString(), "files");
+    return files.map((file) => ({
+      id: safeResource(file.id, "document"),
+      name: text(file.name, 300),
+      createdTime: text(file.createdTime, 40),
+    }));
+  }
+  async spreadsheetCsv(fileId: string): Promise<string> {
+    const id = safeResource(fileId, "document");
+    let response: Response;
+    try {
+      response = await this.request(
+        `https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=text%2Fcsv`,
+        {
+          headers: { Authorization: `Bearer ${this.token}` },
+          signal: AbortSignal.timeout(20000),
+        },
+      );
+    } catch {
+      throw new GoogleProviderError("google_document_unavailable", 503);
+    }
+    if (!response.ok) {
+      throw new GoogleProviderError(
+        response.status === 403
+          ? "google_document_permission_required"
+          : "google_document_unavailable",
+        response.status,
+      );
+    }
+    const result = await response.text();
+    if (result.length > 200000) {
+      throw new GoogleProviderError("google_document_too_large", 422);
+    }
+    return result;
   }
   async documentText(documentId: string): Promise<string> {
     const id = safeResource(documentId, "document");
