@@ -192,6 +192,10 @@ const ENROLLMENT_OFFER_ERRORS: Array<[string, string]> = [
     ['pro_rata_not_applicable', 'O prorrata não se aplica a plano de aula avulsa. Desative essa opção ou escolha um plano recorrente.'],
     ['invalid_enrollment_billing_period', 'Revise a data de início e o mês do primeiro vencimento.'],
     ['enrollment_first_billing_date_passed', 'O primeiro vencimento desta oferta já passou. Gere um novo link com datas atualizadas.'],
+    // Indicação de afiliado (camada affiliateCoupon de create_enrollment_offer).
+    ['cupom de afiliado invalido', 'Cupom de afiliado inválido ou inativo. Confira o código com o aluno ou busque pelo nome de quem indicou.'],
+    ['cupom de afiliado nao se aplica', 'O cupom de afiliado vale só para plano (mensal, semestral ou anual), não para aula avulsa.'],
+    ['afiliado nao gera link', 'Afiliado não gera link de matrícula: a indicação dele é feita pelo cupom.'],
     ['42501', 'Não foi possível confirmar sua autorização para gerar o link. Atualize a sessão e tente novamente.'],
 ];
 

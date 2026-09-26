@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Link as LinkIcon, Copy, Check, Calendar, Clock, BookOpen, Users,
-    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2
+    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2, BadgePercent, X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
@@ -16,6 +16,7 @@ import {
     normalizeEnrollmentTime,
     weekdayIndex,
 } from '../lib/enrollmentOffer';
+import { formatCents, resolveAffiliateLookup, type AffiliateMatch } from '../lib/affiliateProgram';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
@@ -86,6 +87,66 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
 
+    // Indicação de afiliado: o cupom (ou o nome de quem indicou, dito na
+    // conversa) isenta a taxa de matrícula e vincula a comissão. Quem decide é o
+    // servidor (`create_enrollment_offer` com affiliateCoupon): ele confere o
+    // cupom e congela o valor da comissão na oferta.
+    const [affiliateQuery, setAffiliateQuery] = useState('');
+    const [affiliateOptions, setAffiliateOptions] = useState<AffiliateMatch[]>([]);
+    const [selectedAffiliate, setSelectedAffiliate] = useState<AffiliateMatch | null>(null);
+    const [affiliateLookup, setAffiliateLookup] = useState<'idle' | 'searching' | 'options' | 'none' | 'error'>('idle');
+    const affiliateApplies = Boolean(selectedAffiliate) && duration !== 0;
+
+    useEffect(() => {
+        if (selectedAffiliate) return;
+        const query = affiliateQuery.trim();
+        if (query.length < 2) {
+            setAffiliateOptions([]);
+            setAffiliateLookup('idle');
+            return;
+        }
+        let cancelled = false;
+        setAffiliateLookup('searching');
+        const timer = setTimeout(async () => {
+            const { data, error } = await supabase.rpc('find_affiliates', {
+                p_query: query,
+                p_tenant_id: tenantId || null,
+            });
+            if (cancelled) return;
+            if (error) {
+                setAffiliateOptions([]);
+                setAffiliateLookup('error');
+                return;
+            }
+            const matches = Array.isArray(data) ? data as AffiliateMatch[] : [];
+            const decision = resolveAffiliateLookup(matches);
+            // Cupom exato resolve sozinho. Nome pede um clique: "ga" também casa
+            // com "Olga", e com duas Gabrielas quem gera o link escolhe pelo cupom.
+            if (decision.kind === 'single' && decision.affiliate.match === 'CODE') {
+                setSelectedAffiliate(decision.affiliate);
+                setAffiliateOptions([]);
+                setAffiliateLookup('idle');
+            } else if (decision.kind === 'none') {
+                setAffiliateOptions([]);
+                setAffiliateLookup('none');
+            } else {
+                setAffiliateOptions(matches);
+                setAffiliateLookup('options');
+            }
+        }, 400);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [affiliateQuery, selectedAffiliate, tenantId]);
+
+    const clearAffiliate = () => {
+        setSelectedAffiliate(null);
+        setAffiliateQuery('');
+        setAffiliateOptions([]);
+        setAffiliateLookup('idle');
+    };
+
     // Pricing carregado do banco (com fallback hardcoded)
     const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
 
@@ -111,7 +172,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
         selectedProfessor, selectedProfessor2, isDependent, studentPhone,
         selectedGuardianId, scheduleSlots, startDate, enableProRata, billingStartMonth,
-        studentLevel,
+        studentLevel, selectedAffiliate,
     ]);
 
     // Update slots when frequency changes
@@ -308,7 +369,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             schedule: validSchedule.length > 0 ? validSchedule : null,
             startDate: startDate,
             requiresEnrollment: duration !== 0,
-            enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
+            enrollmentFee: affiliateApplies ? 0 : (chargeEnrollmentFee ? enrollmentFee : 0),
+            // Indicação de afiliado: o servidor confere o cupom, isenta a taxa e
+            // congela a comissão no mesmo commit (cupom inválido desfaz o link).
+            affiliateCoupon: affiliateApplies ? selectedAffiliate?.affiliate_code : undefined,
             // Módulo 3 - Pro-rata + billing start month
             enableProRata: proRataEnabled,
             billingStartMonth,
@@ -543,13 +607,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted cursor-pointer hover:text-blue-500 transition-colors">
                                         <input
                                             type="checkbox"
-                                            checked={chargeEnrollmentFee}
+                                            checked={chargeEnrollmentFee && !affiliateApplies}
+                                            disabled={affiliateApplies}
                                             onChange={(e) => setChargeEnrollmentFee(e.target.checked)}
                                             className="rounded text-blue-600 focus:ring-blue-500"
                                         />
                                         Cobrar Taxa de Matrícula
                                     </label>
-                                    {chargeEnrollmentFee && (
+                                    {chargeEnrollmentFee && !affiliateApplies && (
                                         <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/40 px-3 py-1 rounded-lg border border-blue-100 dark:border-blue-800">
                                             <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">R$</span>
                                             <input
@@ -562,11 +627,82 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     )}
                                 </div>
                                 <p className="text-[9px] text-brand-muted font-medium">
-                                    {chargeEnrollmentFee 
-                                        ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
-                                        : 'A taxa de matrícula não será cobrada neste link.'}
+                                    {affiliateApplies
+                                        ? 'Taxa de matrícula isenta pelo cupom de afiliado.'
+                                        : chargeEnrollmentFee
+                                            ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
+                                            : 'A taxa de matrícula não será cobrada neste link.'}
                                 </p>
                             </div>
+
+                            {/* Indicação de afiliado: cupom ou nome de quem indicou */}
+                            {duration !== 0 && (
+                                <div className="pt-4 border-t border-brand-border" data-tour="affiliate-coupon-field">
+                                    <label htmlFor="enrollment-link-affiliate" className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted mb-2">
+                                        <BadgePercent size={12} aria-hidden="true" /> Indicação de afiliado (opcional)
+                                    </label>
+                                    {selectedAffiliate ? (
+                                        <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                            <div className="min-w-0 text-xs">
+                                                <p className="font-black">
+                                                    {selectedAffiliate.full_name || 'Afiliado'} · cupom {selectedAffiliate.affiliate_code}
+                                                </p>
+                                                <p className="mt-0.5">
+                                                    Taxa de matrícula isenta. Comissão de {formatCents(selectedAffiliate.commission_cents)} liberada quando a 1ª mensalidade for liquidada.
+                                                </p>
+                                            </div>
+                                            <button type="button" onClick={clearAffiliate} aria-label="Remover indicação" className="shrink-0 rounded-lg p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={14} aria-hidden="true" />
+                                                <input
+                                                    id="enrollment-link-affiliate"
+                                                    value={affiliateQuery}
+                                                    onChange={event => setAffiliateQuery(event.target.value)}
+                                                    placeholder="Cupom (ex.: AFILIADA10) ou nome de quem indicou"
+                                                    autoComplete="off"
+                                                    className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2 pl-9 pr-3 text-sm text-brand-text outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                                {affiliateLookup === 'searching' && (
+                                                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-brand-muted" size={14} aria-hidden="true" />
+                                                )}
+                                            </div>
+                                            {affiliateLookup === 'options' && affiliateOptions.length > 0 && (
+                                                <div className="mt-2 space-y-1" role="listbox" aria-label="Afiliados encontrados">
+                                                    <p className="text-[10px] font-bold text-brand-muted">
+                                                        {affiliateOptions.length > 1
+                                                            ? 'Mais de um afiliado com esse nome — confira o cupom com o aluno:'
+                                                            : 'Confirme quem indicou:'}
+                                                    </p>
+                                                    {affiliateOptions.map(option => (
+                                                        <button
+                                                            key={option.vendor_id}
+                                                            type="button"
+                                                            role="option"
+                                                            aria-selected={false}
+                                                            onClick={() => { setSelectedAffiliate(option); setAffiliateOptions([]); setAffiliateLookup('idle'); }}
+                                                            className="flex w-full items-center justify-between gap-2 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-left text-xs hover:border-emerald-400"
+                                                        >
+                                                            <span className="font-bold text-brand-text">{option.full_name || 'Afiliado'}</span>
+                                                            <span className="font-mono font-black text-emerald-600">{option.affiliate_code}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {affiliateLookup === 'none' && (
+                                                <p className="mt-2 text-[10px] font-bold text-amber-600">Nenhum afiliado ativo com esse cupom ou nome.</p>
+                                            )}
+                                            {affiliateLookup === 'error' && (
+                                                <p className="mt-2 text-[10px] font-bold text-red-600">Não foi possível buscar afiliados agora. Tente de novo.</p>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

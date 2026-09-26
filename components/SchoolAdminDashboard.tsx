@@ -228,6 +228,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               Treinamento
             </button>
             <button
+              data-tour="enrollment-link-tab"
               onClick={() => setActiveTab('registration')}
               className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >

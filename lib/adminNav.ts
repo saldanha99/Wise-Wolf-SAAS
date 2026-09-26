@@ -159,7 +159,7 @@ export const ADMIN_NAV: NavGroup[] = [
     id: 'referral-admin', label: 'Indicações', icon: Gift, section: 'Crescimento',
     tabs: [
       { id: 'referral-admin', label: 'Programa' },
-      { id: 'vendors-mgmt', label: 'Vendedores' },
+      { id: 'vendors-mgmt', label: 'Afiliados' },
     ],
   },
 

@@ -80,6 +80,17 @@ function uuid(value: unknown, field: string): string {
   return value.trim();
 }
 
+export function normalizeAffiliateCouponInput(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ApiError(400, "INVALID_COUPON", "Cupom inválido");
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized.length < 4 || normalized.length > 64) {
+    throw new ApiError(400, "INVALID_COUPON", "Cupom inválido");
+  }
+  return normalized;
+}
+
 function serviceClient() {
   const url = Deno.env.get("SUPABASE_URL")?.trim() || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
@@ -188,6 +199,12 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       kind: data.kind,
       commissionRate: data.commissionRate,
       suggestedName: data.suggestedName,
+      // Cupom reservado no convite e nome da escola: a página de cadastro
+      // explica o programa com os dados reais do afiliado.
+      affiliateCode: typeof data.affiliateCode === "string"
+        ? data.affiliateCode
+        : null,
+      schoolName: typeof data.schoolName === "string" ? data.schoolName : null,
       tenantId: data.tenantId,
       _offerId: data._offerId,
     });
@@ -220,6 +237,40 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
   return json({
     ...data,
     [body.offerType === "teacher" ? "schoolInfo" : "_schoolInfo"]: materialized,
+  });
+}
+
+async function applyAffiliateCoupon(
+  body: Record<string, unknown>,
+): Promise<Response> {
+  if (!hasOnlyKeys(body, ["action", "offerId", "couponCode"])) {
+    throw new ApiError(400, "INVALID_REQUEST", "Unexpected request fields");
+  }
+  const offerId = uuid(body.offerId, "offerId");
+  const couponCode = normalizeAffiliateCouponInput(body.couponCode);
+  const admin = serviceClient();
+  const { data, error } = await admin.rpc("apply_affiliate_coupon", {
+    p_offer_id: offerId,
+    p_coupon_code: couponCode,
+  });
+  if (error) {
+    throw new ApiError(503, "COUPON_UNAVAILABLE", "Cupom indisponível");
+  }
+  if (!isRecord(data) || data.ok !== true) {
+    const code = isRecord(data) && typeof data.error === "string"
+      ? data.error
+      : "INVALID_COUPON";
+    // Domain rejections stay HTTP 200 so supabase-js preserves the structured
+    // code for the registration UI. Transport/auth failures still use non-2xx.
+    return json({ error: code });
+  }
+
+  // Return the same materialized offer contract used by the registration page,
+  // now with the authoritative fee set to zero.
+  return await resolveOffer({
+    action: "offer",
+    offerId,
+    offerType: "enrollment",
   });
 }
 
@@ -304,6 +355,9 @@ export async function handleRequest(req: Request): Promise<Response> {
   try {
     const body = await requestBody(req);
     if (body.action === "offer") return await resolveOffer(body);
+    if (body.action === "applyAffiliateCoupon") {
+      return await applyAffiliateCoupon(body);
+    }
     if (body.action !== "current" && body.action !== "contract") {
       throw new ApiError(400, "INVALID_ACTION", "Unsupported action");
     }

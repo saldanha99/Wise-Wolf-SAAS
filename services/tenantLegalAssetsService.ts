@@ -31,6 +31,10 @@ export const tenantLegalAssetsService = {
     return invoke({ action: 'offer', offerType: 'enrollment', offerId });
   },
 
+  applyAffiliateCoupon(offerId: string, couponCode: string): Promise<Record<string, unknown>> {
+    return invoke({ action: 'applyAffiliateCoupon', offerId, couponCode });
+  },
+
   teacherContract(userId: string): Promise<Record<string, unknown>> {
     return invoke({ action: 'contract', userId });
   },

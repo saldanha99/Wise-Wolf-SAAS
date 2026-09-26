@@ -11,6 +11,7 @@ import {
     ArrowLeft,
     ArrowRight,
     Barcode,
+    BadgePercent,
     CalendarDays,
     Check,
     CheckCircle,
@@ -260,6 +261,9 @@ const PublicRegistration: React.FC = () => {
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [contractData, setContractData] = useState<any>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
+    const [affiliateCoupon, setAffiliateCoupon] = useState('');
+    const [couponState, setCouponState] = useState<'IDLE' | 'APPLYING' | 'APPLIED'>('IDLE');
+    const [couponError, setCouponError] = useState<string | null>(null);
     // Signature Data for PDF
     const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string } | null>(null);
     const [signedPdfUrl, setSignedPdfUrl] = useState<string>('');
@@ -348,6 +352,11 @@ const PublicRegistration: React.FC = () => {
             // A oferta segura já inclui os dados jurídicos; links legados usam o fallback.
             if (data._schoolInfo) setSchool(data._schoolInfo as SchoolInfo);
             else if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
+            if (data.affiliateCouponApplied) {
+                setAffiliateCoupon(String(data.affiliateCouponCode || ''));
+                setCouponState('APPLIED');
+                setCouponError(null);
+            }
             // Matrícula vinculada: contrato/cobrança usa os dados do RESPONSÁVEL.
             if (data.isDependent) {
                 if (data.guardianPostalCode) setPostalCode(String(data.guardianPostalCode));
@@ -998,8 +1007,51 @@ const PublicRegistration: React.FC = () => {
         setStep('CONTRACT');
     };
 
-    const handleFormSubmit = (e: React.FormEvent) => {
+    const applyAffiliateCoupon = async (): Promise<boolean> => {
+        const code = affiliateCoupon.trim();
+        const offerId = contractData?._offerId;
+        if (!code) return true;
+        if (couponState === 'APPLIED') return true;
+        if (typeof offerId !== 'string' || !offerId) {
+            setCouponError('Este link não aceita cupom. Solicite um novo link de matrícula.');
+            return false;
+        }
+
+        setCouponState('APPLYING');
+        setCouponError(null);
+        try {
+            const payload = await tenantLegalAssetsService.applyAffiliateCoupon(offerId, code);
+            setContractData((current: any) => ({
+                ...current,
+                ...payload,
+                classSchedule: (payload as any).classSchedule || (payload as any).schedule || current?.classSchedule || [],
+                requiresEnrollment: (payload as any).requiresEnrollment !== false,
+            }));
+            if ((payload as any)._schoolInfo) setSchool((payload as any)._schoolInfo as SchoolInfo);
+            setAffiliateCoupon(String((payload as any).affiliateCouponCode || code).toUpperCase());
+            setCouponState('APPLIED');
+            return true;
+        } catch (couponFailure) {
+            const reason = couponFailure instanceof Error ? couponFailure.message : '';
+            const message = reason.includes('TOO_MANY_ATTEMPTS')
+                ? 'Muitas tentativas neste link. Aguarde uma hora ou fale com a escola.'
+                : reason.includes('OFFER_NOT_ELIGIBLE')
+                    ? 'O cupom só pode ser aplicado antes de iniciar a matrícula.'
+                    : reason.includes('AFFILIATE_ALREADY_ATTRIBUTED')
+                        ? 'Esta matrícula já está vinculada a outro afiliado.'
+                        : 'Cupom inválido ou inativo. Confira o código e tente novamente.';
+            setCouponError(message);
+            setCouponState('IDLE');
+            return false;
+        }
+    };
+
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (affiliateCoupon.trim() && couponState !== 'APPLIED') {
+            const applied = await applyAffiliateCoupon();
+            if (!applied) return;
+        }
         if (!validateForm()) return;
         setError(null);
         // If requires enrollment (non-avulso), show enrollment form first
@@ -1560,6 +1612,69 @@ const PublicRegistration: React.FC = () => {
 
                 <form onSubmit={handleFormSubmit} className="enrollment-form" noValidate>
                         {renderFinancialSummary()}
+                        {/* Optional affiliate attribution. The server owns both
+                            the fee waiver and the commission snapshot. */}
+                        {Number(contractData?.planDuration ?? 1) !== 0 && (
+                            <div className="enrollment-form-section space-y-3">
+                                <div className="enrollment-form-section__heading !mb-1">
+                                    <h3 className="enrollment-form-section__title">
+                                        <span className="enrollment-form-section__icon"><BadgePercent size={16} aria-hidden="true" /></span>
+                                        Cupom de afiliado
+                                    </h3>
+                                </div>
+
+                                {contractData?.vendorId && !contractData?.affiliateCouponApplied ? (
+                                    <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+                                        <CheckCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                        <div>
+                                            <p className="text-xs font-bold">Indicação já vinculada</p>
+                                            <p className="mt-1 text-[11px]">Este link já pertence a um afiliado. A comissão será liberada somente após a confirmação do pagamento.</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-brand-muted">
+                                            Tem um código? Aplique-o para zerar a taxa de matrícula. A mensalidade e as demais condições do plano não mudam.
+                                        </p>
+                                        <div className="flex flex-col gap-2 sm:flex-row">
+                                            <input
+                                                id="enrollment-affiliate-coupon"
+                                                value={affiliateCoupon}
+                                                onChange={event => {
+                                                    setAffiliateCoupon(event.target.value.toUpperCase());
+                                                    setCouponError(null);
+                                                }}
+                                                readOnly={couponState === 'APPLIED'}
+                                                autoComplete="off"
+                                                placeholder="Digite o cupom"
+                                                aria-label="Cupom de afiliado"
+                                                aria-invalid={Boolean(couponError)}
+                                                className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface-2 px-5 py-4 text-sm font-black uppercase tracking-wider text-brand-text outline-none transition-all placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-brand-muted focus:ring-2 focus:ring-[#002366] read-only:opacity-70"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => void applyAffiliateCoupon()}
+                                                disabled={!affiliateCoupon.trim() || couponState === 'APPLYING' || couponState === 'APPLIED'}
+                                                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#002366] px-5 text-xs font-black uppercase tracking-wider text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {couponState === 'APPLYING'
+                                                    ? <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+                                                    : couponState === 'APPLIED'
+                                                        ? <><Check size={16} aria-hidden="true" /> Aplicado</>
+                                                        : 'Aplicar cupom'}
+                                            </button>
+                                        </div>
+                                        {couponError ? <FieldError message={couponError} /> : null}
+                                        {couponState === 'APPLIED' ? (
+                                            <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800" role="status">
+                                                <CheckCircle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                                <p className="text-xs font-semibold">Cupom aplicado. Sua taxa de matrícula foi isenta.</p>
+                                            </div>
+                                        ) : null}
+                                    </>
+                                )}
+                            </div>
+                        )}
                         {/* 1. Payment Method Overview */}
                         <div className="enrollment-form-section">
                             <div className="enrollment-form-section__heading">

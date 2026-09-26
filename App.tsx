@@ -5,7 +5,6 @@ import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
 import { fetchPendingLessons } from './lib/pendingLessons';
 import { calculateDaysWithoutAbsence } from './lib/teacherManagement';
-import { resolveEnrollmentOfferVendorId } from './lib/enrollmentOffer';
 import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
@@ -124,7 +123,7 @@ const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGene
 const VendorInviteGenerator = lazy(() => import('./components/VendorInviteGenerator'));
 const PublicContractView = lazy(() => import('./components/PublicContractView'));
 const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
-const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
+const AffiliateGuidePage = lazy(() => import('./components/affiliate/AffiliateGuidePage'));
 const RegistrationLinkGenerator = lazy(() => import('./components/RegistrationLinkGenerator'));
 const ReferralLanding = lazy(() => import('./components/ReferralLanding'));
 const VendedorLanding = lazy(() => import('./components/VendedorLanding'));
@@ -196,7 +195,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
     { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
     { tab: 'referral-admin', label: 'Indicações', group: 'Crescimento' },
-    { tab: 'vendors-mgmt', label: 'Vendedores', group: 'Crescimento' },
+    { tab: 'vendors-mgmt', label: 'Afiliados', group: 'Crescimento' },
     { tab: 'contracts', label: 'Contratos', group: 'Configurações' },
     { tab: 'settings_school', label: 'Central da Escola', group: 'Configurações' },
     { tab: 'whatsapp', label: 'Conversas do WhatsApp', group: 'Comunicação', keywords: 'mensagens atendimento inbox' },
@@ -250,11 +249,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.SALESPERSON]: [
-    { tab: 'vendor_dashboard', label: 'Dashboard', group: 'Vendas' },
-    { tab: 'vendor_schedule', label: 'Agenda de Professores', group: 'Vendas' },
-    { tab: 'vendor_trial', label: 'Link Experimental', group: 'Vendas' },
-    { tab: 'vendor_enrollment', label: 'Gerar Matrícula', group: 'Vendas' },
-    { tab: 'vendor_commissions', label: 'Minhas Comissões', group: 'Vendas' },
+    { tab: 'vendor_dashboard', label: 'Painel do afiliado', group: 'Afiliado', keywords: 'cupom indicações comissões saque pix' },
+    { tab: 'vendor_guide', label: 'Como funciona', group: 'Afiliado', keywords: 'regras liquidação comissão saque' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.NON_STUDENT]: [
@@ -1178,7 +1174,8 @@ const App: React.FC = () => {
   const renderContent = () => {
     // SECURITY GUARD: Strict Vendor Access Check
     if (user.role === UserRole.SALESPERSON) {
-      const allowedVendorTabs = ['vendor_dashboard', 'vendor_schedule', 'vendor_trial', 'vendor_enrollment', 'vendor_commissions', 'profile'];
+      // Afiliado não gera link (a indicação é o cupom): só painel, guia e perfil.
+      const allowedVendorTabs = ['vendor_dashboard', 'vendor_guide', 'profile'];
       if (!allowedVendorTabs.includes(activeTab)) {
         setActiveTab('vendor_dashboard');
         return null;
@@ -1405,16 +1402,8 @@ const App: React.FC = () => {
       'contract_teacher': <PublicContractView id={user.id} />,
 
       // VENDEDOR tabs
-      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
-      'vendor_schedule': <TeacherScheduleExplorer
-        user={user}
-        teachers={activeTeachers}
-        reschedules={[]}
-        currentTenantId={currentTenant?.id}
-      />,
-      'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={activeTeachers} /></div>,
-      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={activeTeachers} tenantId={currentTenant?.id || ''} vendorId={resolveEnrollmentOfferVendorId(user)} /></div>,
-      'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
+      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
+      'vendor_guide': <AffiliateGuidePage />,
     };
 
     const node = contentMap[activeTab] || contentMap['dashboard'];
@@ -1570,7 +1559,10 @@ const App: React.FC = () => {
                       'settings': 'Configurações',
                       'profile': 'Meu Perfil',
                       'referral': 'Indicações & Afiliação',
-                      'recruiting': 'Recrutamento'
+                      'recruiting': 'Recrutamento',
+                      'vendors-mgmt': 'Afiliados',
+                      'vendor_dashboard': 'Painel do afiliado',
+                      'vendor_guide': 'Como funciona'
                     };
                     return titles[activeTab] || activeTab.replace('_', ' ');
                   })()}

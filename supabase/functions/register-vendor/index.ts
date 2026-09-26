@@ -38,6 +38,26 @@ function requiredString(
   return normalized;
 }
 
+/**
+ * Cupom escolhido pela escola no convite ("AFILIADA10"). Mesma normalização do
+ * banco (`private.normalize_affiliate_code`); fora do formato vira null e o
+ * banco gera um cupom próprio.
+ */
+export function affiliateCodeFromInvite(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().replace(/[^A-Za-z0-9_-]+/g, "").toUpperCase();
+  return /^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code) ? code : null;
+}
+
+/** Cupom tomado (ou recusado pelo banco) desde o convite. */
+function isAffiliateCodeRejection(
+  error: { code?: string; message?: string } | null,
+): boolean {
+  if (!error) return false;
+  return error.code === "23505" || error.code === "22023" ||
+    /affiliate_code/i.test(error.message || "");
+}
+
 function normalizedEmail(value: unknown): string {
   const email = requiredString(value, "email", 5, 254).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError("email");
@@ -94,9 +114,13 @@ async function handleRequest(req: Request): Promise<Response> {
     if (rawPhone && (rawPhone.length < 10 || rawPhone.length > 15)) {
       throw new InputError("phone");
     }
+    // A página de cadastro mostra as regras do programa (comissão, liquidação,
+    // saque) e pede o aceite; sem ele a conta não nasce.
+    if (body.acceptedTerms !== true) throw new InputError("terms");
 
     invite = await claimInvite(admin, body.offerPayload, "VENDOR_INVITE");
     const commissionRate = Number(invite.data.commissionRate);
+    const requestedCode = affiliateCodeFromInvite(invite.data.affiliateCode);
     const { data: authData, error: authError } = await admin.auth.admin
       .createUser({
         email,
@@ -111,7 +135,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     const trustedIp = req.headers.get("cf-connecting-ip")?.trim() ||
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const { error: profileError } = await admin.from("profiles").upsert({
+    const profileRow = {
       id: userId,
       email,
       full_name: name,
@@ -124,7 +148,21 @@ async function handleRequest(req: Request): Promise<Response> {
       user_ip: trustedIp,
       accepted_at: new Date().toISOString(),
       contract_accepted: true,
-    });
+    };
+    let { error: profileError } = await admin.from("profiles").upsert(
+      requestedCode
+        ? { ...profileRow, affiliate_code: requestedCode }
+        : profileRow,
+    );
+    // Cupom do convite tomado desde então (convite antigo, troca manual): o
+    // cadastro não trava — nasce com cupom gerado e a direção ajusta na lista.
+    if (
+      profileError && requestedCode && isAffiliateCodeRejection(profileError)
+    ) {
+      ({ error: profileError } = await admin.from("profiles").upsert(
+        profileRow,
+      ));
+    }
     if (profileError) throw new Error("profile_creation_failed");
 
     await finalizeInvite(admin, invite, userId);

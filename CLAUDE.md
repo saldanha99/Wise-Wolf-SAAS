@@ -544,15 +544,62 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
-## Gestão de Vendedores (SALESPERSON) ✅
+## Gestão de Afiliados (SALESPERSON) — modelo híbrido por cupom ✅
 
-- **Criação:** por link de convite (`VendorInviteGenerator`, payload base64 com `commissionRate` em **centavos**) — vendedor se autocadastra. Surfaced no hub.
-- **Hub do diretor** (`VendorManagement`, aba "Vendedores"): KPIs (a pagar, receita trazida), lista com editar comissão inline + ativar/desativar + convite. `VendorProfileView` = ficha 360 (comissões, funil, histórico) com **workflow** Confirmar→Pagar.
-- **RPCs (só admin):** `list_vendors_overview()`, `get_vendor_overview(uuid)`, `set_vendor_commission_status(uuid, text)`.
-- **Auto-confirm:** trigger `confirm_vendor_commission_on_payment` em `student_payments` → comissão PENDING vira CONFIRMED quando o aluno indicado paga (RECEIVED).
-- **Atribuição:** link de matrícula com `?vendor_id=` cria `vendor_commissions` (vendor_id, student_id, amount_brl em **reais**, status PENDING/CONFIRMED/PAID).
-- `profiles.commission_rate` em **centavos** (dividir por 100 p/ exibir). Auditoria de comissão via `log_profile_changes` (role SALESPERSON).
-- **Estado atual:** 0 vendedores / 0 comissões — camada estava inerte; agora operável.
+> **Decisão da direção (25/09/2026): o afiliado NÃO gera link.** A indicação é o
+> **cupom** dele (ex.: `AFILIADA10`). Quem se matricula com cupom fica isento da taxa
+> de matrícula; o afiliado ganha um valor fixo por matrícula, liberado quando a
+> **1ª mensalidade é liquidada**. Migration `20260924194214_affiliate_coupon_commission_settlement`
+> (ainda **não publicada** em 25/09), teste `supabase/tests/affiliate_coupon_commission_settlement.sql`.
+
+- **Convite:** `VendorInviteGenerator` → `create_affiliate_invite(comissão, nome, cupom)` —
+  passa pela porta de sempre (`create_invite_offer`, que confere papel e escola) e **reserva
+  o cupom** até o convite ser usado ou vencer (`affiliate_code_in_use` se já é de alguém).
+  `/vendor-onboarding` explica o programa inteiro (cupom, liquidação, saque) antes do
+  formulário e exige o aceite das regras (`acceptedTerms`, conferido no `register-vendor`).
+  Cupom tomado entre o convite e o cadastro não trava: a conta nasce com cupom gerado.
+- **Atribuição — três portas, um benefício** (`private.grant_affiliate_benefit`: taxa 0 +
+  comissão congelada em `offers.metadata.affiliate_commission_cents`):
+  1. o aluno digita o cupom na página de matrícula (`apply_affiliate_coupon`, service role
+     via `tenant-legal-assets`, 10 chutes/hora por oferta);
+  2. a escola põe o cupom no **link manual** (`RegistrationLinkGenerator` → `affiliateCoupon`
+     no payload de `create_enrollment_offer`; cupom inválido desfaz o link inteiro). O campo
+     aceita cupom **ou nome** (`find_affiliates`, sem acento): cupom exato resolve sozinho;
+     nome pede um clique, e com dois nomes iguais a lista mostra o cupom de cada um;
+  3. legado: experimental aberta por afiliado (`opportunities.created_by_vendor_id`).
+  Só vale para **plano** — aula avulsa não tem matrícula e não gera comissão.
+- ⚠️ **SALESPERSON não cria oferta de matrícula** (camada nova sobre `create_enrollment_offer`,
+  a anterior virou `_pre_affiliate_coupon_impl` sem grant). A porta aceitava **qualquer
+  mensalidade** vinda do afiliado. O menu dele é só Painel + Como funciona + Perfil.
+- **Liberação:** comissão nasce `PENDING` quando o aluno começa a matrícula e vira `CONFIRMED`
+  quando a oferta chega a `COMPLETED` — que é disparado pela liquidação (`PAYMENT_RECEIVED`/
+  `RECEIVED_IN_CASH`) da cobrança que ativa a matrícula. Como o cupom zera a taxa, essa
+  cobrança é a **1ª mensalidade**: Pix na hora, boleto na compensação, cartão quando o valor
+  cai (até ~30 dias; com antecipação da Asaas cai antes — medido: cartão de 31/08 liquidou
+  em 01/09). Estorno reabre a oferta → comissão volta a `PENDING` e o saque pendente é cancelado.
+- **Etapas do painel são derivadas, nunca gravadas** (`private.affiliate_referral_view`):
+  aguardando pagamento → em liquidação (cartão aprovado, com `student_payments.estimated_credit_at`)
+  → disponível → em saque → paga. Afiliado vê o aluno como "Maria S.".
+- **Painel do afiliado:** `get_my_affiliate_panel()` (tudo numa chamada) + `set_my_affiliate_pix`.
+  ⚠️ "Meu Perfil" só mostra PIX para **professor** — sem a porta própria, o saque do afiliado
+  ficava preso em `PIX_REQUIRED` para sempre.
+- **Saque:** só comissões `CONFIRMED` sem reserva entram; `request_vendor_withdrawal` reserva as
+  linhas exatas (`withdrawal_request_id`); a direção aprova e marca pago na ficha
+  (`set_vendor_withdrawal_status`). "Liberar manualmente" na ficha é exceção (pede confirmação).
+- `vendor_commissions.amount_brl`, `vendor_withdrawal_requests.amount_brl` e
+  `profiles.commission_rate` são **centavos** (padrão 4900 = R$ 49). Caixa, DRE e o alerta de
+  `list_vendors_overview` convertem na borda (o alerta mostrava "R$ 4.900,00" para R$ 49).
+- ⚠️ **Dois erros de sintaxe que derrubariam o release** estavam na migration e foram
+  corrigidos em 25/09: um `+` solto (resto de patch) e `pg_catalog.substring(x from 1 for 10)`
+  — a forma `from … for` é sintaxe especial e **não existe com o prefixo `pg_catalog.`** (use
+  `pg_catalog.substr(x, 1, 10)`). Mesma família do `nullif`.
+- **Testar migration sem travar produção:** cópia só com a estrutura no mesmo servidor —
+  `createdb ww_x` + `pg_dump --schema-only | psql -d ww_x` (só o `pg_cron` falha, fica no
+  banco principal), rodar migration 2× + teste em `BEGIN … ROLLBACK` ali, `dropdb` no fim.
+  Não pega `ACCESS EXCLUSIVE` em `profiles` em horário de aula.
+- **Estado em 25/09/2026:** 0 afiliados, 0 comissões; no ar ainda a versão antiga ("Vendedores",
+  sem cupom). O bot do WhatsApp **não** reconhece cupom na conversa — hoje o caminho é a escola
+  (link manual) ou o aluno (página de matrícula).
 
 ---
 

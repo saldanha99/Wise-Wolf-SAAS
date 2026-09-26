@@ -551,6 +551,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/register-vendor/index.ts \
+  supabase/functions/register-vendor/index.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
@@ -779,6 +781,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/school-admin/core.test.ts \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/register-vendor/index.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
   supabase/functions/reconcile-whatsapp-webhooks/core.test.ts \
   supabase/functions/process-notification-queue/core.test.ts \
@@ -1399,8 +1402,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260923190000_professor_avisa_no_show_da_experimental.sql"
   "supabase/migrations/20260923194310_notify_enrollment_completion_and_persist_terms.sql"
   "supabase/migrations/20260923200000_allow_enrollment_before_trial_feedback.sql"
+  "supabase/migrations/20260924194214_affiliate_coupon_commission_settlement.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/affiliate_coupon_commission_settlement.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"

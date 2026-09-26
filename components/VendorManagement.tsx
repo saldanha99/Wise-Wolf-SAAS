@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Users, DollarSign, Wallet, BadgeCheck, RefreshCw, Eye, UserPlus, Check, Power, AlertTriangle } from 'lucide-react';
+import { Users, DollarSign, Wallet, BadgeCheck, RefreshCw, Eye, UserPlus, Check, Power, AlertTriangle, BadgePercent } from 'lucide-react';
 import { User as UserType } from '../types';
 import VendorProfileView from './VendorProfileView';
 import VendorInviteGenerator from './VendorInviteGenerator';
@@ -14,16 +14,27 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
   const [showInvite, setShowInvite] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.rpc('list_vendors_overview');
-    setRows(Array.isArray(data) ? data : []);
+    const [{ data }, { data: terms }] = await Promise.all([
+      supabase.rpc('list_vendors_overview'),
+      supabase.rpc('list_vendor_affiliate_terms'),
+    ]);
+    const termMap = new Map(
+      (Array.isArray(terms) ? terms : []).map((term: any) => [term.vendor_id, term]),
+    );
+    setRows((Array.isArray(data) ? data : []).map((row: any) => ({
+      ...row,
+      ...(termMap.get(row.vendor_id) || {}),
+    })));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
-  const money = (v: any) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`;
+  const money = (cents: any) => `R$ ${(Number(cents || 0) / 100).toFixed(2).replace('.', ',')}`;
   const stats = useMemo(() => ({
     total: rows.length,
     active: rows.filter(r => r.status === 'Ativo').length,
@@ -34,7 +45,19 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
   const saveCommission = async (id: string) => {
     const cents = Math.round(parseFloat(editVal || '0') * 100);
     if (!cents || cents <= 0) { setEditId(null); return; }
-    await supabase.from('profiles').update({ commission_rate: cents }).eq('id', id);
+    setSaveError(null);
+    const { data, error } = await supabase.rpc('update_vendor_affiliate_terms', {
+      p_vendor_id: id,
+      p_commission_cents: cents,
+      p_affiliate_code: editCode,
+    });
+    if (error || !(data as any)?.ok) {
+      const reason = (data as any)?.error;
+      setSaveError(reason === 'CODE_IN_USE'
+        ? 'Este cupom já está em uso nesta unidade.'
+        : 'Revise o cupom e o valor da comissão.');
+      return;
+    }
     setEditId(null); load();
   };
   const toggleStatus = async (id: string, cur: string) => {
@@ -48,13 +71,13 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
         <div className="flex min-w-0 items-center gap-3">
           <div className="shrink-0 rounded-2xl bg-emerald-50 p-3 text-emerald-600 dark:bg-emerald-900/20"><Users size={24} /></div>
           <div className="min-w-0">
-            <h2 className="text-xl font-bold text-brand-text">Vendedores</h2>
-            <p className="text-sm text-brand-muted">Equipe de vendas, desempenho e comissões</p>
+            <h2 className="text-xl font-bold text-brand-text">Afiliados</h2>
+            <p className="text-sm text-brand-muted">Cupom por afiliado, comissão por matrícula liberada na 1ª mensalidade liquidada, saques</p>
           </div>
         </div>
         <div className="flex w-full items-stretch gap-2 sm:ml-auto sm:w-auto">
-          <button onClick={() => setShowInvite(s => !s)} className="flex min-w-0 flex-1 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 bg-tenant-primary px-4 py-2 text-xs font-bold text-white sm:flex-none">
-            <UserPlus size={15} /> Convidar vendedor
+          <button data-tour="affiliate-invite" onClick={() => setShowInvite(s => !s)} className="flex min-w-0 flex-1 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 bg-tenant-primary px-4 py-2 text-xs font-bold text-white sm:flex-none">
+            <UserPlus size={15} /> Convidar afiliado
           </button>
           <button onClick={load} aria-label="Atualizar vendedores" title="Atualizar vendedores" className="shrink-0 rounded-xl border border-brand-border p-2 text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
         </div>
@@ -63,19 +86,20 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
       {showInvite && <div className="animate-in fade-in"><VendorInviteGenerator tenantId={tenantId || ''} /></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<Users size={16} />} label="Vendedores" value={`${stats.active}/${stats.total}`} />
+        <Kpi icon={<Users size={16} />} label="Afiliados" value={`${stats.active}/${stats.total}`} />
         <Kpi icon={<Wallet size={16} className="text-indigo-500" />} label="A pagar" value={money(stats.toPay)} accent="text-indigo-600" />
-        <Kpi icon={<DollarSign size={16} className="text-emerald-500" />} label="Receita trazida" value={money(stats.revenue)} />
+        <Kpi icon={<DollarSign size={16} className="text-emerald-500" />} label="Comissões geradas" value={money(stats.revenue)} />
         <Kpi icon={<BadgeCheck size={16} />} label="Matrículas (total)" value={`${rows.reduce((s, r) => s + (r.matriculas || 0), 0)}`} />
       </div>
 
       <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
-        <h3 className="text-sm font-bold text-brand-text mb-4">Equipe</h3>
+        <h3 className="text-sm font-bold text-brand-text mb-4">Rede de afiliados</h3>
+        {saveError ? <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700" role="alert">{saveError}</p> : null}
         {loading ? <div className="py-10 text-center text-brand-muted"><RefreshCw size={20} className="animate-spin mx-auto" /></div>
         : rows.length === 0 ? (
           <div className="py-10 text-center text-brand-muted">
-            <p className="text-sm font-bold mb-1">Nenhum vendedor ainda.</p>
-            <p className="text-xs">Clique em "Convidar vendedor" para gerar o link de cadastro com a comissão definida.</p>
+            <p className="text-sm font-bold mb-1">Nenhum afiliado ainda.</p>
+            <p className="text-xs">Clique em "Convidar afiliado" para gerar o link de cadastro com o cupom e a comissão.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -94,13 +118,14 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
                     {Number(v.confirmed_unpaid) > 0 && <span className="whitespace-nowrap font-bold text-indigo-600" title="A pagar">a pagar {money(v.confirmed_unpaid)}</span>}
                     {/* Comissão editável */}
                     {editId === v.vendor_id ? (
-                      <span className="flex min-w-0 items-center gap-1">
-                        <input value={editVal} onChange={e => setEditVal(e.target.value)} className="w-16 px-2 py-1 rounded border border-brand-border bg-brand-surface text-brand-text" placeholder="R$" />
+                      <span className="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+                        <input value={editCode} onChange={e => setEditCode(e.target.value.toUpperCase())} className="w-28 px-2 py-1 rounded border border-brand-border bg-brand-surface text-brand-text font-mono uppercase" placeholder="CUPOM" aria-label="Cupom do afiliado" />
+                        <input value={editVal} onChange={e => setEditVal(e.target.value)} className="w-16 px-2 py-1 rounded border border-brand-border bg-brand-surface text-brand-text" placeholder="R$" aria-label="Comissão por matrícula" />
                         <button onClick={() => saveCommission(v.vendor_id)} aria-label="Salvar comissão" className="shrink-0 rounded bg-emerald-600 p-1 text-white"><Check size={14} /></button>
                       </span>
                     ) : (
-                      <button onClick={() => { setEditId(v.vendor_id); setEditVal(((v.commission_rate || 0) / 100).toFixed(2)); }} className="shrink-0 whitespace-nowrap underline hover:text-brand-text" title="Editar comissão">
-                        {money((v.commission_rate || 0) / 100)}/matríc.
+                      <button onClick={() => { setEditId(v.vendor_id); setEditVal(((v.commission_rate || 0) / 100).toFixed(2)); setEditCode(v.affiliate_code || ''); setSaveError(null); }} className="shrink-0 whitespace-nowrap underline hover:text-brand-text" title="Editar cupom e comissão">
+                        <BadgePercent size={12} className="inline" /> {v.affiliate_code || 'sem cupom'} · {money(v.commission_rate)}/matríc.
                       </button>
                     )}
                     <button onClick={() => toggleStatus(v.vendor_id, v.status)} className="shrink-0 rounded-lg border border-brand-border p-1.5 hover:bg-brand-surface-2" aria-label={v.status === 'Ativo' ? 'Desativar vendedor' : 'Ativar vendedor'} title={v.status === 'Ativo' ? 'Desativar' : 'Ativar'}><Power size={13} /></button>

@@ -119,12 +119,11 @@ export const superAdminMenuItems: NavItem[] = [
   { id: 'automation', label: 'Smart', icon: Zap },
 ];
 
+// Afiliado indica pelo cupom — não gera link de matrícula nem de experimental
+// (a porta do banco recusa). O menu dele é o painel e o guia do programa.
 export const salespersonMenuItems: NavItem[] = [
-  { id: 'vendor_dashboard', label: 'Dashboard', icon: TrendingUp },
-  { id: 'vendor_schedule', label: 'Agenda Professores', icon: CalendarClock },
-  { id: 'vendor_trial', label: 'Link Experimental', icon: Zap },
-  { id: 'vendor_enrollment', label: 'Gerar Matrícula', icon: UserPlus },
-  { id: 'vendor_commissions', label: 'Minhas Comissões', icon: DollarSign },
+  { id: 'vendor_dashboard', label: 'Painel', icon: TrendingUp },
+  { id: 'vendor_guide', label: 'Como funciona', icon: BookOpen },
 ];
 
 /** Lista de itens do papel. Puro: recebe o contador em vez de ler estado. */

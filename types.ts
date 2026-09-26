@@ -179,6 +179,7 @@ export interface Vendor {
   role: UserRole.SALESPERSON;
   avatar?: string;
   commission_rate: number; // valor em centavos por matrícula
+  affiliate_code?: string;
 }
 
 export type ClosingStatus =

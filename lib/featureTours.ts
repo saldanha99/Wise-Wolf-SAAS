@@ -163,6 +163,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-25-afiliados-por-cupom',
+    title: 'Afiliados por cupom',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'affiliate-invite',
+        view: 'vendors-mgmt',
+        title: 'Cada afiliado tem o seu cupom 🎟️',
+        text: 'Convide o afiliado já com o cupom (ex.: AFILIADA10) e a comissão por matrícula. O link de cadastro explica tudo a ele — cupom, liquidação e saque — e o painel dele mostra as indicações e o saldo. Os pedidos de saque você aprova na ficha do afiliado.',
+      },
+      {
+        target: 'enrollment-link-tab',
+        view: 'dashboard',
+        title: 'Indicação no link de matrícula',
+        text: 'Em "Link Matrícula", informe o cupom ou o nome de quem indicou: a taxa de matrícula sai isenta e a comissão fica vinculada ao afiliado. Ela só é liberada quando a 1ª mensalidade é liquidada — Pix na hora, boleto na compensação, cartão quando o valor cai.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
