@@ -1,4 +1,9 @@
 -- Transaction-safe release checks for the school Gamma book generator.
+-- O release exige o envelope begin; … rollback; em todo teste SQL.
+
+\set ON_ERROR_STOP on
+
+begin;
 
 do $test$
 declare
@@ -66,3 +71,5 @@ begin
   end if;
 end
 $test$;
+
+rollback;
