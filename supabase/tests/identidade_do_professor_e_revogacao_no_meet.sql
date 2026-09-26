@@ -23,6 +23,28 @@ begin
 end;
 $$;
 
+-- Aceite do aluno pelo fluxo real do link (20260926200000): código de 6 dígitos
+-- emitido para a edge (service_role), "entregue" e digitado na página (anon).
+-- Aceite gravado direto, sem código, não vale para marcar aula.
+create or replace function pg_temp.p2_accept_by_link(p_token text, p_signer text)
+returns text language plpgsql as $$
+declare
+  v_issue jsonb;
+  v_result jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_issue := public.issue_lesson_recording_consent_code(p_token, 'SELF');
+  if not coalesce((v_issue ->> 'ok')::boolean, false) then
+    raise exception 'Meet parte 2: código do termo não saiu: %', v_issue;
+  end if;
+  perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.decide_lesson_recording_consent_public(p_token, p_signer, 'SELF', true, v_issue ->> 'code');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  return v_result ->> 'decision';
+end;
+$$;
+
 do $privileges$
 begin
   perform pg_temp.p2_assert(
@@ -89,6 +111,7 @@ declare
   v_draft uuid;
   v_room private.google_meet_rooms;
   v_changed integer;
+  v_token5 text;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   -- Textos do termo (a cópia só-estrutura não tem os dados; na produção já existem).
@@ -582,9 +605,15 @@ begin
     'o termo ligou por cima da decisão manual de desligar');
 
   -- ===== 6c. Aceite que volta pelo termo religa a sessão e a sala =============
-  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
-    signer_relation, term_audience, term_version, source, recorded_by) values
-    ('meet-p2-fixture', v_student5, 'STUDENT', 'ACCEPTED', 'Aluno Cinco Fixture', 'SCHOOL', 'STUDENT', 'v1', 'SCHOOL', v_admin);
+  -- O aceite que vale é o do termo seguro (20260926200000): pelo link, com o
+  -- código do WhatsApp, e — sem data de nascimento atestada — do responsável. O
+  -- aluno 5 é maior pela data que a direção confirma e aceita pelo fluxo real.
+  update public.profiles set phone = '5511955550005' where id = v_student5;
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_student_birth_date(v_student5, date '1990-05-10', 'Documento conferido (fixture)');
+  v_token5 := public.create_lesson_recording_consent_link(v_student5) ->> 'token';
+  perform pg_temp.p2_assert(pg_temp.p2_accept_by_link(v_token5, 'Aluno Cinco Fixture') = 'ACCEPTED',
+    'aceite do aluno 5 pelo link (com código) não registrado');
   v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
   perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_cycle),
     'os dois aceites não marcaram a sessão');
@@ -605,10 +634,10 @@ begin
     'revogação não desligou a sala');
   perform public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_cycle,
     jsonb_build_object('result', 'DISABLED'));
-  -- Aceita de novo pelo termo antes da aula: o job remarca e a fila religa.
-  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
-    signer_relation, term_audience, term_version, source, recorded_by) values
-    ('meet-p2-fixture', v_student5, 'STUDENT', 'ACCEPTED', 'Aluno Cinco Fixture', 'SCHOOL', 'STUDENT', 'v1', 'SCHOOL', v_admin);
+  -- Aceita de novo pelo termo antes da aula (mesmo link, código novo): o job
+  -- remarca e a fila religa.
+  perform pg_temp.p2_assert(pg_temp.p2_accept_by_link(v_token5, 'Aluno Cinco Fixture') = 'ACCEPTED',
+    'novo aceite do aluno 5 pelo link (com código) não registrado');
   v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
   perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_cycle),
     'aceite de volta pelo termo não remarcou a sessão (o desmarque do próprio termo segurou)');
