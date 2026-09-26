@@ -11,6 +11,11 @@
  *     a base é calculada AQUI, pelo código, e não pedida ao modelo;
  *   - o plano continua do recommended_next_step aprovado mais recente, e a
  *     lição (modo homework) ataca os erros recorrentes aprovados;
+ *   - MAS só enquanto a aula aprovada é a aula dada mais recente: se houve
+ *     aula lançada em class_logs DEPOIS dela (o Meet é piloto; aceite
+ *     revogado, sala que não foi criada, resumo que ninguém aprovou), as
+ *     aprovadas viram histórico e o plano não continua de um próximo passo
+ *     que ficou para trás;
  *   - só campos pedagógicos: nada de metadata, notes_to_verify, source_ref ou
  *     quem revisou. Dado pessoal do aluno só entra pelo cartão revisado
  *     (teacher-card.ts), nunca por aqui.
@@ -67,16 +72,36 @@ export interface ApprovedLesson {
   recommendedNextStep: string;
 }
 
+/**
+ * As aulas aprovadas junto com a data da aula dada mais recente. Toda conta de
+ * base, foco e continuidade passa por aqui — não existe caminho que use as
+ * aulas aprovadas sem saber se houve aula depois delas.
+ */
+export interface ApprovedLessonsContext {
+  /** Aulas aprovadas, da mais recente para a mais antiga. */
+  lessons: ApprovedLesson[];
+  /**
+   * AAAA-MM-DD da aula DADA (class_logs COMPLETED) mais recente quando ela é
+   * posterior à última aula aprovada; null quando a aprovada é a mais atual.
+   */
+  newerLoggedLessonDate: string | null;
+}
+
 export interface PlannerLessonBasis {
   source: "MEET_APPROVED_SUMMARIES";
   /** Datas das aulas usadas, sem repetição, da mais antiga para a mais nova. */
   lesson_dates: string[];
-  /** "Baseado nas aulas de 20/09 e 23/09". */
+  /**
+   * "Baseado nas aulas de 20/09 e 23/09" — ou, com aula lançada depois,
+   * "Aulas aprovadas de 20/09 e 23/09 usadas como histórico: …".
+   */
   label: string;
-  /** O próximo passo aprovado de onde o plano continua. */
+  /** O próximo passo aprovado de onde o plano continua (null se ficou para trás). */
   continued_from: { lesson_date: string; recommended_next_step: string } | null;
   /** Só no modo homework: os erros recorrentes que a lição ataca. */
   homework_targets: string[];
+  /** Aula lançada depois da última aprovada (AAAA-MM-DD), ou null. */
+  newer_logged_lesson_date: string | null;
 }
 
 export type ApprovedLessonsTaskFocus =
@@ -85,6 +110,7 @@ export type ApprovedLessonsTaskFocus =
   | "homework_attacks_recurring_errors"
   | "use_as_evidence";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TEXT_LIMIT = 700;
 const LIST_ITEMS = 15;
 const LIST_ITEM_LENGTH = 300;
@@ -142,6 +168,46 @@ export function normalizeApprovedMeetLessons(rows: unknown): ApprovedLesson[] {
     }));
 }
 
+/**
+ * Linhas de class_logs → a data (AAAA-MM-DD) da aula DADA mais recente. Só
+ * presença COMPLETED conta: falta do aluno ou do professor não é aula que
+ * aconteceu, e a aula aprovada continua sendo a última com conteúdo.
+ */
+export function latestGivenLessonDate(rows: unknown): string | null {
+  if (!Array.isArray(rows)) return null;
+  let latest: string | null = null;
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    if (String(row.presence ?? "").trim().toUpperCase() !== "COMPLETED") {
+      continue;
+    }
+    const date = typeof row.class_date === "string"
+      ? row.class_date.slice(0, 10)
+      : "";
+    if (!ISO_DATE.test(date)) continue;
+    if (latest === null || date > latest) latest = date;
+  }
+  return latest;
+}
+
+/**
+ * Junta as aulas aprovadas com a última aula dada. Aula lançada no MESMO dia
+ * da última aprovada é a própria aula (ou a outra metade de 1 h partida): a
+ * aprovada continua valendo. Só data posterior tira a aprovada da frente.
+ */
+export function approvedLessonsContext(
+  lessons: ApprovedLesson[],
+  latestLoggedLessonDate: string | null,
+): ApprovedLessonsContext {
+  const latestApproved = lessons[0]?.lessonDate ?? null;
+  const newer = latestApproved !== null && latestLoggedLessonDate !== null &&
+      ISO_DATE.test(latestLoggedLessonDate) &&
+      latestLoggedLessonDate > latestApproved
+    ? latestLoggedLessonDate
+    : null;
+  return { lessons, newerLoggedLessonDate: newer };
+}
+
 /** "2026-09-20" → "20/09". */
 export function dayMonth(isoDate: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
@@ -159,9 +225,20 @@ export function approvedLessonDates(lessons: ApprovedLesson[]): string[] {
   return [...new Set(lessons.map((lesson) => lesson.lessonDate))].sort();
 }
 
-export function lessonBasisLabel(dates: string[]): string {
+export function lessonBasisLabel(
+  dates: string[],
+  newerLoggedLessonDate: string | null = null,
+): string {
   if (!dates.length) return "";
   const days = dates.map(dayMonth);
+  if (newerLoggedLessonDate) {
+    const after = `houve aula lançada depois, em ${
+      dayMonth(newerLoggedLessonDate)
+    }`;
+    return days.length === 1
+      ? `Aula aprovada de ${days[0]} usada como histórico: ${after}`
+      : `Aulas aprovadas de ${joinPtBr(days)} usadas como histórico: ${after}`;
+  }
   return days.length === 1
     ? `Baseado na aula de ${days[0]}`
     : `Baseado nas aulas de ${joinPtBr(days)}`;
@@ -217,47 +294,72 @@ export function recurringErrorsToTarget(
 }
 
 export function approvedLessonsTaskFocus(
-  lessons: ApprovedLesson[],
+  approved: ApprovedLessonsContext,
   taskMode: PlannerTaskMode,
 ): ApprovedLessonsTaskFocus {
-  if (!lessons.length) return "none";
+  if (!approved.lessons.length) return "none";
+  // Houve aula dada depois da última aprovada: as aprovadas são histórico,
+  // em qualquer modo — continuar delas seria voltar no tempo.
+  if (approved.newerLoggedLessonDate) return "use_as_evidence";
   if (taskMode === "homework") return "homework_attacks_recurring_errors";
   if (EVIDENCE_TASK_MODES.includes(taskMode)) return "use_as_evidence";
   return "continue_from_recommended_next_step";
 }
 
+/** O próximo passo aprovado de onde o plano continua — nulo se ficou para trás. */
+export function approvedContinuation(
+  approved: ApprovedLessonsContext,
+): { lesson_date: string; recommended_next_step: string } | null {
+  return approved.newerLoggedLessonDate ? null : continueFrom(approved.lessons);
+}
+
+/** Os erros aprovados que o plano ataca — nenhum se a aula aprovada ficou para trás. */
+export function approvedErrorTargets(
+  approved: ApprovedLessonsContext,
+  limit = HOMEWORK_TARGET_LIMIT,
+): string[] {
+  return approved.newerLoggedLessonDate
+    ? []
+    : recurringErrorsToTarget(approved.lessons, limit);
+}
+
 /** A base que o plano devolve e que a tela mostra — nula sem aula aprovada. */
 export function approvedLessonBasis(
-  lessons: ApprovedLesson[],
+  approved: ApprovedLessonsContext,
   taskMode: PlannerTaskMode,
 ): PlannerLessonBasis | null {
-  const dates = approvedLessonDates(lessons);
+  const dates = approvedLessonDates(approved.lessons);
   if (!dates.length) return null;
   return {
     source: "MEET_APPROVED_SUMMARIES",
     lesson_dates: dates,
-    label: lessonBasisLabel(dates),
-    continued_from: continueFrom(lessons),
+    label: lessonBasisLabel(dates, approved.newerLoggedLessonDate),
+    continued_from: approvedContinuation(approved),
     homework_targets: taskMode === "homework"
-      ? recurringErrorsToTarget(lessons)
+      ? approvedErrorTargets(approved)
       : [],
+    newer_logged_lesson_date: approved.newerLoggedLessonDate,
   };
 }
 
 /** O bloco approved_lessons da entrada do modelo. */
 export function approvedLessonsPromptBlock(
-  lessons: ApprovedLesson[],
+  approved: ApprovedLessonsContext,
   taskMode: PlannerTaskMode,
 ) {
   return {
     source:
       "Resumos das aulas no Google Meet revisados e aprovados pelo professor.",
-    basis_label: lessonBasisLabel(approvedLessonDates(lessons)),
-    task_focus: approvedLessonsTaskFocus(lessons, taskMode),
-    continue_from: continueFrom(lessons),
-    recurring_errors_to_target: recurringErrorsToTarget(lessons),
+    basis_label: lessonBasisLabel(
+      approvedLessonDates(approved.lessons),
+      approved.newerLoggedLessonDate,
+    ),
+    task_focus: approvedLessonsTaskFocus(approved, taskMode),
+    newer_logged_lesson_date: approved.newerLoggedLessonDate,
+    continue_from: approvedContinuation(approved),
+    recurring_errors_to_target: approvedErrorTargets(approved),
     // Mais recente primeiro. Só campos pedagógicos.
-    lessons: lessons.map((lesson) => ({
+    lessons: approved.lessons.map((lesson) => ({
       lesson_date: lesson.lessonDate,
       lesson_objective: lesson.lessonObjective,
       content_practiced: lesson.contentPracticed,
@@ -286,7 +388,8 @@ export function legacyContentWithBasis(
  */
 export const APPROVED_LESSONS_SYSTEM_PROMPT = `
 AULAS APROVADAS (approved_lessons)
-- approved_lessons.lessons traz os resumos das últimas aulas do aluno no Google Meet que o professor revisou e aprovou, cada um com lesson_date, da mais recente para a mais antiga. São evidências verificadas: valem mais que wolf_intelligence, recent_lesson_memory e os relatórios do Wolfie.
+- approved_lessons.lessons traz os resumos das últimas aulas do aluno no Google Meet que o professor revisou e aprovou, cada um com lesson_date, da mais recente para a mais antiga. São evidências verificadas do que aconteceu ATÉ a data de cada uma: sobre essas aulas, valem mais que wolf_intelligence e os relatórios do Wolfie. Não valem mais que aula lançada DEPOIS delas (recent_lesson_memory.recent_class_logs com data posterior): o mais recente vence.
+- approved_lessons.newer_logged_lesson_date preenchido quer dizer que houve aula dada e lançada depois da última aula aprovada. Então task_focus é "use_as_evidence", continue_from vem nulo e recurring_errors_to_target vem vazio: parta dos lançamentos mais recentes e use as aulas aprovadas só como histórico; não continue de um próximo passo que ficou para trás nem ataque como atual um erro que só aparece nelas.
 - task_focus = "continue_from_recommended_next_step": o artefato continua de approved_lessons.continue_from.recommended_next_step. Retome no aquecimento o que foi praticado na aula mais recente e não repita como novidade o que já foi dominado.
 - task_focus = "homework_attacks_recurring_errors": a tarefa de casa (homework) ataca approved_lessons.recurring_errors_to_target — cada erro vira prática concreta (reescrever, completar, gravar um áudio curto usando a forma certa). expected_corrections trata esses mesmos erros, que são evidência aprovada; não invente erro fora da lista.
 - task_focus = "use_as_evidence": use as aulas aprovadas como evidência do que o aluno fez e de como evoluiu.

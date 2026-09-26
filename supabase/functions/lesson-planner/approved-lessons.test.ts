@@ -5,10 +5,12 @@ import {
   APPROVED_LESSONS_SYSTEM_PROMPT,
   type ApprovedLesson,
   approvedLessonBasis,
+  approvedLessonsContext,
   approvedLessonsPromptBlock,
   approvedLessonsTaskFocus,
   dayMonth,
   joinPtBr,
+  latestGivenLessonDate,
   legacyContentWithBasis,
   LESSON_PLANNER_PROMPT_VERSION,
   MEET_APPROVED_LESSON_LIMIT,
@@ -32,6 +34,10 @@ function assertEquals(actual: unknown, expected: unknown, message?: string) {
     message ?? `expected ${expectedJson}, received ${actualJson}`,
   );
 }
+
+/** Aulas aprovadas sem aula lançada depois delas (a aprovada é a mais recente). */
+const fresh = (lessons: ApprovedLesson[]) =>
+  approvedLessonsContext(lessons, null);
 
 /** Linha como o banco devolve (com colunas que NÃO podem chegar ao modelo). */
 const meetRow = (
@@ -109,7 +115,7 @@ Deno.test("só campos pedagógicos: metadata, notas, origem e revisor nunca cheg
         "Mandar o áudio para maria@example.com ou 11 98888-7777",
     }),
   ]);
-  const block = approvedLessonsPromptBlock(lessons, "lesson_plan");
+  const block = approvedLessonsPromptBlock(fresh(lessons), "lesson_plan");
   const serialized = JSON.stringify(block);
   for (
     const forbidden of [
@@ -160,7 +166,7 @@ Deno.test("a base diz as datas das aulas: dd/mm, sem repetir o dia, em ordem", (
 
   const one = normalizeApprovedMeetLessons([meetRow("2026-09-23T13:00:00Z")]);
   assertEquals(
-    approvedLessonBasis(one, "lesson_plan")?.label,
+    approvedLessonBasis(fresh(one), "lesson_plan")?.label,
     "Baseado na aula de 23/09",
   );
 
@@ -169,7 +175,7 @@ Deno.test("a base diz as datas das aulas: dd/mm, sem repetir o dia, em ordem", (
     meetRow("2026-09-23T13:00:00Z"),
   ]);
   assertEquals(
-    approvedLessonBasis(two, "lesson_plan")?.label,
+    approvedLessonBasis(fresh(two), "lesson_plan")?.label,
     "Baseado nas aulas de 20/09 e 23/09",
   );
 
@@ -180,14 +186,14 @@ Deno.test("a base diz as datas das aulas: dd/mm, sem repetir o dia, em ordem", (
     meetRow("2026-09-23T13:30:00Z"),
     meetRow("2026-09-20T13:00:00Z"),
   ]);
-  const basis = approvedLessonBasis(three, "lesson_plan");
+  const basis = approvedLessonBasis(fresh(three), "lesson_plan");
   assertEquals(basis?.lesson_dates, ["2026-09-16", "2026-09-20", "2026-09-23"]);
   assertEquals(basis?.label, "Baseado nas aulas de 16/09, 20/09 e 23/09");
   assertEquals(basis?.source, "MEET_APPROVED_SUMMARIES");
 
   // Sem aula aprovada não há base — e a entrada do modelo diz isso.
-  assertEquals(approvedLessonBasis([], "lesson_plan"), null);
-  const empty = approvedLessonsPromptBlock([], "lesson_plan");
+  assertEquals(approvedLessonBasis(fresh([]), "lesson_plan"), null);
+  const empty = approvedLessonsPromptBlock(fresh([]), "lesson_plan");
   assertEquals(empty.basis_label, "");
   assertEquals(empty.task_focus, "none");
   assertEquals(empty.lessons, []);
@@ -208,15 +214,15 @@ Deno.test("o plano continua do próximo passo aprovado MAIS RECENTE", () => {
     recommended_next_step: "Perguntas com does/doesn't",
   };
   assertEquals(
-    approvedLessonBasis(lessons, "lesson_plan")?.continued_from,
+    approvedLessonBasis(fresh(lessons), "lesson_plan")?.continued_from,
     expected,
   );
-  const block = approvedLessonsPromptBlock(lessons, "lesson_plan");
+  const block = approvedLessonsPromptBlock(fresh(lessons), "lesson_plan");
   assertEquals(block.continue_from, expected);
   assertEquals(block.task_focus, "continue_from_recommended_next_step");
   // Plano de aula não mostra alvo de lição.
   assertEquals(
-    approvedLessonBasis(lessons, "lesson_plan")?.homework_targets,
+    approvedLessonBasis(fresh(lessons), "lesson_plan")?.homework_targets,
     [],
   );
 });
@@ -243,9 +249,9 @@ Deno.test("a lição (homework) ataca os erros recorrentes aprovados, os que mai
     "I have 30 years → I'm 30",
     "in the weekend → on the weekend",
   ]);
-  const basis = approvedLessonBasis(lessons, "homework");
+  const basis = approvedLessonBasis(fresh(lessons), "homework");
   assertEquals(basis?.homework_targets, targets);
-  const block = approvedLessonsPromptBlock(lessons, "homework");
+  const block = approvedLessonsPromptBlock(fresh(lessons), "homework");
   assertEquals(block.task_focus, "homework_attacks_recurring_errors");
   assertEquals(block.recurring_errors_to_target, targets);
   assertEquals(recurringErrorsToTarget(lessons, 1), ["he work → he works"]);
@@ -256,18 +262,18 @@ Deno.test("feedback e relatório usam as aulas como evidência", () => {
     meetRow("2026-09-23T13:00:00Z"),
   ]);
   assertEquals(
-    approvedLessonsTaskFocus(lessons, "student_feedback"),
+    approvedLessonsTaskFocus(fresh(lessons), "student_feedback"),
     "use_as_evidence",
   );
   assertEquals(
-    approvedLessonsTaskFocus(lessons, "progress_report"),
+    approvedLessonsTaskFocus(fresh(lessons), "progress_report"),
     "use_as_evidence",
   );
   assertEquals(
-    approvedLessonsTaskFocus(lessons, "class_script"),
+    approvedLessonsTaskFocus(fresh(lessons), "class_script"),
     "continue_from_recommended_next_step",
   );
-  assertEquals(approvedLessonsTaskFocus([], "homework"), "none");
+  assertEquals(approvedLessonsTaskFocus(fresh([]), "homework"), "none");
 });
 
 Deno.test("o texto salvo do plano começa pela base, e sem base fica igual", () => {
@@ -275,7 +281,7 @@ Deno.test("o texto salvo do plano começa pela base, e sem base fica igual", () 
     meetRow("2026-09-20T13:00:00Z"),
     meetRow("2026-09-23T13:00:00Z"),
   ]);
-  const basis = approvedLessonBasis(lessons, "lesson_plan");
+  const basis = approvedLessonBasis(fresh(lessons), "lesson_plan");
   assertEquals(
     legacyContentWithBasis(basis, "Warm-up (5 min)"),
     "Baseado nas aulas de 20/09 e 23/09.\n\nWarm-up (5 min)",
@@ -293,6 +299,8 @@ Deno.test("regra do modelo e versão do prompt do lesson-planner", () => {
       "continue_from.recommended_next_step",
       "recurring_errors_to_target",
       "basis_label",
+      "newer_logged_lesson_date",
+      "o mais recente vence",
       "Não deduza nem registre fato pessoal",
     ]
   ) {
@@ -301,10 +309,139 @@ Deno.test("regra do modelo e versão do prompt do lesson-planner", () => {
       `a regra do modelo perdeu ${rule}`,
     );
   }
+  // A aula aprovada não vence um lançamento POSTERIOR a ela.
+  assert(
+    !APPROVED_LESSONS_SYSTEM_PROMPT.includes(
+      "valem mais que wolf_intelligence, recent_lesson_memory",
+    ),
+    "a regra do modelo voltou a pôr a aula aprovada acima dos lançamentos mais recentes",
+  );
   assert(
     LESSON_PLANNER_PROMPT_VERSION.startsWith(`${WISE_WOLF_PROMPT_VERSION}+`) &&
       LESSON_PLANNER_PROMPT_VERSION.length >
         WISE_WOLF_PROMPT_VERSION.length + 1,
     "a versão do prompt do lesson-planner não distingue as aulas aprovadas",
+  );
+});
+
+Deno.test("a aula dada mais recente: só presença COMPLETED, data válida, a maior", () => {
+  assertEquals(
+    latestGivenLessonDate([
+      { class_date: "2026-11-18", presence: "COMPLETED" },
+      // Falta do aluno ou do professor não é aula que aconteceu.
+      { class_date: "2026-11-25", presence: "STUDENT_ABSENCE" },
+      { class_date: "2026-11-26", presence: "TEACHER_ABSENCE" },
+      { class_date: "2026-11-20", presence: " completed " },
+      { class_date: "20/11/2026", presence: "COMPLETED" },
+      { class_date: null, presence: "COMPLETED" },
+      null,
+      "lixo",
+    ]),
+    "2026-11-20",
+  );
+  assertEquals(latestGivenLessonDate([]), null);
+  assertEquals(latestGivenLessonDate(undefined), null);
+  assertEquals(latestGivenLessonDate({ class_date: "2026-11-20" }), null);
+});
+
+Deno.test("aula aprovada mais antiga que o último lançamento vira histórico (não é ponto de partida)", () => {
+  // O caso do achado: aprovadas em 20/09 e 23/09; depois o Meet parou (aceite
+  // revogado, sala não criada, resumo não aprovado) e o aluno teve mais aulas,
+  // lançadas só em class_logs, até 20/11.
+  const lessons = normalizeApprovedMeetLessons([
+    meetRow("2026-09-20T13:00:00Z", {
+      recommended_next_step: "Passo de 20/09",
+      recurring_errors: ["he work → he works"],
+    }),
+    meetRow("2026-09-23T13:00:00Z", {
+      recommended_next_step: "Perguntas com does/doesn't",
+      recurring_errors: [
+        "he work → he works",
+        "in the weekend → on the weekend",
+      ],
+    }),
+  ]);
+  const approved = approvedLessonsContext(
+    lessons,
+    latestGivenLessonDate([
+      { class_date: "2026-11-20", presence: "COMPLETED" },
+      { class_date: "2026-11-18", presence: "COMPLETED" },
+    ]),
+  );
+  assertEquals(approved.newerLoggedLessonDate, "2026-11-20");
+
+  for (const mode of ["lesson_plan", "class_script", "homework"] as const) {
+    assertEquals(
+      approvedLessonsTaskFocus(approved, mode),
+      "use_as_evidence",
+      `${mode}: com aula lançada depois, a aprovada não pode ser o ponto de partida`,
+    );
+  }
+
+  const basis = approvedLessonBasis(approved, "homework");
+  assertEquals(basis?.continued_from, null);
+  assertEquals(basis?.homework_targets, []);
+  assertEquals(basis?.newer_logged_lesson_date, "2026-11-20");
+  assertEquals(basis?.lesson_dates, ["2026-09-20", "2026-09-23"]);
+  assertEquals(
+    basis?.label,
+    "Aulas aprovadas de 20/09 e 23/09 usadas como histórico: houve aula lançada depois, em 20/11",
+  );
+  assert(
+    !basis?.label.startsWith("Baseado"),
+    "a tela diria 'Baseado nas aulas de setembro' num plano de novembro",
+  );
+
+  const block = approvedLessonsPromptBlock(approved, "homework");
+  assertEquals(block.task_focus, "use_as_evidence");
+  assertEquals(block.continue_from, null);
+  assertEquals(block.recurring_errors_to_target, []);
+  assertEquals(block.newer_logged_lesson_date, "2026-11-20");
+  // As aulas continuam no prompt, como evidência datada.
+  assertEquals(block.lessons.map((lesson) => lesson.lesson_date), [
+    "2026-09-23",
+    "2026-09-20",
+  ]);
+
+  // Uma aprovada só: rótulo no singular.
+  const single = approvedLessonsContext(
+    normalizeApprovedMeetLessons([meetRow("2026-09-23T13:00:00Z")]),
+    "2026-10-01",
+  );
+  assertEquals(
+    approvedLessonBasis(single, "lesson_plan")?.label,
+    "Aula aprovada de 23/09 usada como histórico: houve aula lançada depois, em 01/10",
+  );
+});
+
+Deno.test("lançamento no mesmo dia (ou antes) da última aprovada não a tira da frente", () => {
+  const lessons = normalizeApprovedMeetLessons([
+    meetRow("2026-09-20T13:00:00Z"),
+    // 01:30 UTC de 24/09 é 23/09 em São Paulo: a última aprovada é de 23/09.
+    meetRow("2026-09-24T01:30:00Z", {
+      recommended_next_step: "Perguntas com does/doesn't",
+    }),
+  ]);
+  for (const logged of ["2026-09-23", "2026-09-21", null]) {
+    const approved = approvedLessonsContext(lessons, logged);
+    assertEquals(approved.newerLoggedLessonDate, null, `lançamento ${logged}`);
+    assertEquals(
+      approvedLessonsTaskFocus(approved, "lesson_plan"),
+      "continue_from_recommended_next_step",
+    );
+    assertEquals(approvedLessonBasis(approved, "lesson_plan")?.continued_from, {
+      lesson_date: "2026-09-23",
+      recommended_next_step: "Perguntas com does/doesn't",
+    });
+  }
+  // Sem aula aprovada, lançamento nenhum vira "aula depois da aprovada".
+  assertEquals(
+    approvedLessonsContext([], "2026-11-20").newerLoggedLessonDate,
+    null,
+  );
+  // Data de lançamento fora do formato não conta.
+  assertEquals(
+    approvedLessonsContext(lessons, "20/11/2026").newerLoggedLessonDate,
+    null,
   );
 });

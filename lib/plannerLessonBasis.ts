@@ -6,6 +6,10 @@
  * quem diz. A tela só lê e mostra: "Baseado nas aulas de 20/09 e 23/09", o
  * próximo passo aprovado de onde o plano continua e, na tarefa de casa, os
  * erros recorrentes que ela ataca.
+ *
+ * Se houve aula lançada DEPOIS da última aula aprovada (o Meet é piloto), a
+ * aprovada vira histórico: o servidor manda `newer_logged_lesson_date`, sem
+ * próximo passo nem alvos, e a tela diz isso em vez de "continua de 23/09".
  */
 
 export interface PlannerLessonBasis {
@@ -13,6 +17,8 @@ export interface PlannerLessonBasis {
   label: string;
   continuedFrom: { lessonDate: string; recommendedNextStep: string } | null;
   homeworkTargets: string[];
+  /** AAAA-MM-DD da aula lançada depois da última aprovada, ou null. */
+  newerLoggedLessonDate: string | null;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -65,10 +71,18 @@ export function parsePlannerLessonBasis(response: unknown): PlannerLessonBasis |
     }
     : null;
 
+  const newerLoggedLessonDate = typeof raw.newer_logged_lesson_date === 'string'
+    && ISO_DATE.test(raw.newer_logged_lesson_date)
+    ? raw.newer_logged_lesson_date
+    : null;
+
   return {
     lessonDates,
     label,
-    continuedFrom,
-    homeworkTargets: stringList(raw.homework_targets, 6),
+    // Com aula lançada depois, a tela nunca diz "continua de" nem mostra alvo
+    // antigo — mesmo que a resposta os traga.
+    continuedFrom: newerLoggedLessonDate ? null : continuedFrom,
+    homeworkTargets: newerLoggedLessonDate ? [] : stringList(raw.homework_targets, 6),
+    newerLoggedLessonDate,
   };
 }

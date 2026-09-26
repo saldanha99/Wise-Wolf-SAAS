@@ -940,6 +940,11 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                                         {lessonBasis.continuedFrom.recommendedNextStep}
                                                     </p>
                                                 )}
+                                                {lessonBasis.newerLoggedLessonDate && (
+                                                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                                                        Houve aula lançada em {plannerDayMonth(lessonBasis.newerLoggedLessonDate)}, depois da última aula aprovada: o plano parte dos lançamentos mais recentes, e as aulas aprovadas entram só como histórico.
+                                                    </p>
+                                                )}
                                                 {lessonBasis.homeworkTargets.length > 0 && (
                                                     <div className="text-xs text-brand-text dark:text-slate-200">
                                                         <p className="font-black">A lição ataca os erros recorrentes:</p>
@@ -1237,6 +1242,22 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     <p className="text-[10px] font-black text-blue-500 uppercase">Base Wise Wolf</p>
                                     <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Fontes verificáveis</p>
                                 </div>
+                                {!adapter && (
+                                    // Alvo do tour sem plano gerado: o motor usa o primeiro
+                                    // [data-tour] visível, e a seção "Base do plano" só existe
+                                    // depois de gerar. Mesmo alvo, mesmo assunto.
+                                    <div
+                                        data-tour="planner-lesson-basis"
+                                        className="col-span-2 p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm text-left"
+                                    >
+                                        <p className="flex items-center gap-2 text-[10px] font-black text-tenant-primary uppercase">
+                                            <History size={12} /> Base do plano
+                                        </p>
+                                        <p className="text-[11px] text-brand-muted mt-1 leading-relaxed">
+                                            O plano diz de quais aulas saiu: os resumos do Meet que o professor aprovou (até 6) — ou, se houve aula lançada depois deles, os lançamentos mais recentes.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

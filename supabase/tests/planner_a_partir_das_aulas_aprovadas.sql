@@ -7,11 +7,15 @@
 -- encerrada pela direção ou fora da janela não abre nada (o acesso fantasma de
 -- 20260923130000 não volta por aqui).
 --
--- Reprova contra o código anterior: sem a migration as funções não existem, e a
+-- E a última decisão humana sobre o resumo da aula vale: resumo aprovado e
+-- depois REJEITADO sai da memória do aluno (e portanto do Planner, que lê só
+-- MEET_SESSION VERIFIED) — antes a memória ficava VERIFIED para sempre.
+--
+-- Reprova contra o código anterior: sem a migration as funções não existem, a
 -- regra de leitura de perfis (_teacher_can_access_student) dá resposta
--- diferente nos casos marcados abaixo. Não depende de dado real nem do horário:
--- a data de referência é a de São Paulo no início da transação, a mesma que as
--- funções usam.
+-- diferente nos casos marcados abaixo, e a rejeição não mexia na memória. Não
+-- depende de dado real nem do horário: a data de referência é a de São Paulo no
+-- início da transação, a mesma que as funções usam.
 
 \set ON_ERROR_STOP on
 
@@ -93,7 +97,9 @@ from (values
   ('00000000-0000-4000-8000-00000000fb11', 'pa-repo-dada@example.invalid', 'Aluno Reposicao Dada'),
   ('00000000-0000-4000-8000-00000000fb12', 'pa-inativo-aluno@example.invalid', 'Aluno Inativo'),
   ('00000000-0000-4000-8000-00000000fb13', 'pa-sem-agenda@example.invalid', 'Aluno Sem Agenda'),
-  ('00000000-0000-4000-8000-00000000fb14', 'pa-agenda-velha@example.invalid', 'Aluno Agenda Velha')
+  ('00000000-0000-4000-8000-00000000fb14', 'pa-agenda-velha@example.invalid', 'Aluno Agenda Velha'),
+  ('00000000-0000-4000-8000-00000000fa06', 'pa-meet@example.invalid', 'Prof Meet'),
+  ('00000000-0000-4000-8000-00000000fb15', 'pa-meet-aluno@example.invalid', 'Aluno Meet')
 ) as v(id, email, nome);
 
 -- Os gatilhos de perfil, agenda, cobertura e reposição (atribuição só pela
@@ -109,6 +115,9 @@ update public.profiles
    set tenant_id = 'planner-aulas-school', role = 'TEACHER', status = 'Inativo', lifecycle_status = 'active'
  where id = '00000000-0000-4000-8000-00000000fa05';
 update public.profiles
+   set tenant_id = 'planner-aulas-school', role = 'TEACHER', status = 'Ativo', lifecycle_status = 'active'
+ where id = '00000000-0000-4000-8000-00000000fa06';
+update public.profiles
    set tenant_id = 'planner-aulas-school', role = 'STUDENT', status = 'Ativo', lifecycle_status = 'active',
        module = 'A2', professor_id = null, professor_id2 = null
  where id::text like '00000000-0000-4000-8000-00000000fb%';
@@ -121,6 +130,16 @@ update public.profiles
 -- Titular sem agenda nenhuma.
 update public.profiles set professor_id = '00000000-0000-4000-8000-00000000fa04'
  where id = '00000000-0000-4000-8000-00000000fb13';
+-- Aluno da aula no Meet (resumo aprovado e depois rejeitado).
+update public.profiles set professor_id = '00000000-0000-4000-8000-00000000fa06'
+ where id = '00000000-0000-4000-8000-00000000fb15';
+insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+  scheduled_start_at, scheduled_end_at, source_key, documentation_consent)
+select '00000000-0000-4000-8000-00000000fc01', 'planner-aulas-school',
+       '00000000-0000-4000-8000-00000000fb15', '00000000-0000-4000-8000-00000000fa06',
+       pd.d - 1, now() - interval '1 day', now() - interval '1 day' + interval '30 minutes',
+       'planner-aulas-meet-fixture', true
+from pd;
 
 insert into public.bookings (tenant_id, teacher_id, student_id, day_of_week, time_slot, date, start_date, status)
 select 'planner-aulas-school', b.teacher_id::uuid, b.student_id::uuid, 'Segunda', b.hora, b.dia, '2026-01-05', 'SCHEDULED'
@@ -329,5 +348,100 @@ exception
 end $$;
 
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- Resumo aprovado e depois REJEITADO sai da memória do aluno (e do Planner)
+-- ---------------------------------------------------------------------------
+select pg_temp.assert_true(
+  to_regprocedure('private.meet_summary_rejection_revokes_memory()') is not null,
+  'a rejeição do resumo não tem gatilho: a memória aprovada ficaria VERIFIED para sempre'
+);
+select pg_temp.assert_true(
+  exists (select 1 from pg_trigger t
+           where t.tgrelid = 'private.lesson_summary_versions'::regclass
+             and t.tgname = 'trg_zz_meet_summary_rejection_revokes_memory'
+             and not t.tgisinternal)
+  and (select p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres'
+              and p.proconfig @> array['search_path=""']
+         from pg_proc p
+        where p.oid = 'private.meet_summary_rejection_revokes_memory()'::regprocedure)
+  and not has_function_privilege('anon', 'private.meet_summary_rejection_revokes_memory()', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.meet_summary_rejection_revokes_memory()', 'EXECUTE'),
+  'gatilho da rejeição do resumo ausente, sem SECURITY DEFINER/search_path/dono postgres, ou executável pelo navegador'
+);
+
+create temp table meet_versions (step text primary key, id uuid);
+
+-- O mesmo filtro da consulta do Planner (e do dossiê do substituto).
+create or replace function pg_temp.planner_ve_a_aula() returns boolean
+language sql as $$
+  select exists (
+    select 1 from public.student_learning_memories m
+     where m.tenant_id = 'planner-aulas-school'
+       and m.student_id = '00000000-0000-4000-8000-00000000fb15'
+       and m.source_type = 'MEET_SESSION'
+       and m.source_ref = '00000000-0000-4000-8000-00000000fc01'
+       and m.verification_status = 'VERIFIED');
+$$;
+
+create or replace function pg_temp.salvar_resumo(p_step text, p_status text, p_parent text, p_origin text)
+returns void language plpgsql as $$
+declare v jsonb;
+begin
+  v := public.google_meet_backend('summary_save', 'planner-aulas-school',
+    '00000000-0000-4000-8000-00000000fa06', '00000000-0000-4000-8000-00000000fc01',
+    jsonb_build_object(
+      'status', p_status,
+      'origin', p_origin,
+      'parent_version_id', (select id from meet_versions where step = p_parent),
+      'content', jsonb_build_object(
+        'lesson_objective', 'Perguntas no aeroporto',
+        'recommended_next_step', 'Pedir informação por telefone',
+        'recurring_errors', jsonb_build_array('where is going → where is it going')),
+      'source_artifact_ids', '[]'::jsonb));
+  insert into meet_versions values (p_step, (v ->> 'id')::uuid);
+end $$;
+
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+select pg_temp.salvar_resumo('rascunho', 'PROPOSED', null, 'GOOGLE_SMART_NOTES');
+select pg_temp.assert_true(not pg_temp.planner_ve_a_aula(),
+  'rascunho do Meet virou memória do aluno sem aprovação');
+
+select pg_temp.salvar_resumo('aprovado', 'VERIFIED', 'rascunho', 'HUMAN_REVIEW');
+select pg_temp.assert_true(pg_temp.planner_ve_a_aula(),
+  'fixture: resumo aprovado não virou memória VERIFIED do aluno');
+
+-- Rascunho novo (IA gerou de novo) NÃO é decisão: a aprovada continua valendo.
+select pg_temp.salvar_resumo('rascunho-novo', 'PROPOSED', 'aprovado', 'GEMINI_API');
+select pg_temp.assert_true(pg_temp.planner_ve_a_aula(),
+  'um rascunho novo (sem decisão humana) derrubou a memória aprovada');
+
+-- O professor percebe um erro (ou um dado pessoal) e registra a rejeição.
+select pg_temp.salvar_resumo('rejeitado', 'REJECTED', 'rascunho-novo', 'HUMAN_REVIEW');
+select pg_temp.assert_true(not pg_temp.planner_ve_a_aula(),
+  'resumo rejeitado depois de aprovado continua entrando no Planner como aula aprovada');
+select pg_temp.assert_true(
+  exists (select 1 from public.student_learning_memories m
+           where m.source_type = 'MEET_SESSION'
+             and m.source_ref = '00000000-0000-4000-8000-00000000fc01'
+             and m.verification_status = 'REJECTED'
+             and m.metadata ->> 'rejected_summary_version_id'
+                 = (select id::text from meet_versions where step = 'rejeitado')),
+  'a memória rejeitada não guarda qual versão a rejeitou'
+);
+
+-- Aprovou de novo: a última decisão volta a valer.
+select pg_temp.salvar_resumo('reaprovado', 'VERIFIED', 'rejeitado', 'HUMAN_REVIEW');
+select pg_temp.assert_true(pg_temp.planner_ve_a_aula(),
+  'resumo aprovado de novo depois da rejeição não voltou para a memória do aluno');
+select pg_temp.assert_true(
+  (select count(*) from public.student_learning_memories m
+    where m.source_type = 'MEET_SESSION'
+      and m.source_ref = '00000000-0000-4000-8000-00000000fc01') = 1,
+  'aprovar, rejeitar e aprovar de novo duplicou a memória da aula'
+);
+
+select set_config('request.jwt.claims', '', true);
 
 rollback;

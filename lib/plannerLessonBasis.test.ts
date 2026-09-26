@@ -16,9 +16,28 @@ describe('base do plano (aulas aprovadas)', () => {
       label: 'Baseado nas aulas de 20/09 e 23/09',
       continuedFrom: { lessonDate: '2026-09-23', recommendedNextStep: 'Perguntas com does' },
       homeworkTargets: ['he work → he works'],
+      newerLoggedLessonDate: null,
     };
     expect(parsePlannerLessonBasis({ lesson_basis: basis })).toEqual(expected);
     expect(parsePlannerLessonBasis({ plan: { lesson_basis: basis } })).toEqual(expected);
+  });
+
+  it('aula lançada depois da última aprovada: a base vira histórico, sem "continua de" nem alvo antigo', () => {
+    const parsed = parsePlannerLessonBasis({
+      lesson_basis: {
+        ...basis,
+        label: 'Aulas aprovadas de 20/09 e 23/09 usadas como histórico: houve aula lançada depois, em 20/11',
+        newer_logged_lesson_date: '2026-11-20',
+        // Mesmo que a resposta viesse com eles, a tela não mostra.
+        continued_from: basis.continued_from,
+        homework_targets: basis.homework_targets,
+      },
+    });
+    expect(parsed?.newerLoggedLessonDate).toBe('2026-11-20');
+    expect(parsed?.continuedFrom).toBeNull();
+    expect(parsed?.homeworkTargets).toEqual([]);
+    expect(parsePlannerLessonBasis({ lesson_basis: { ...basis, newer_logged_lesson_date: '20/11' } })?.newerLoggedLessonDate)
+      .toBeNull();
   });
 
   it('sem base, base de outra origem ou fora do formato: nada (a tela nunca inventa aula)', () => {

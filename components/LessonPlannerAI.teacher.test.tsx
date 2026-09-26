@@ -122,6 +122,62 @@ describe('Planner IA do professor', () => {
     }));
   });
 
+  it('o alvo do tour "Base do plano" existe antes de gerar qualquer plano', async () => {
+    rpc.mockResolvedValue({
+      data: [{ id: 'aluno-agenda', full_name: 'Ana', module: 'B1', access_reason: 'BOOKING', valid_until: null }],
+      error: null,
+    });
+
+    render(<LessonPlannerAI user={teacher} tenantId="school-wise-wolf" />);
+    await screen.findByText('Ana · B1');
+
+    // O tour abre no primeiro acesso, sem plano na tela: o passo 2 não pode
+    // depender de "Gerar planejamento" (o motor pularia o passo e marcaria o
+    // tour como visto).
+    const targets = document.querySelectorAll<HTMLElement>('[data-tour="planner-lesson-basis"]');
+    expect(targets).toHaveLength(1);
+    let node: HTMLElement | null = targets[0];
+    while (node) {
+      expect(node.classList.contains('hidden')).toBe(false);
+      node = node.parentElement;
+    }
+    expect(targets[0].textContent).toMatch(/Base do plano/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('aula lançada depois da última aprovada: a tela não diz "continua de" um passo antigo', async () => {
+    rpc.mockResolvedValue({
+      data: [{ id: 'aluno-agenda', full_name: 'Ana', module: 'B1', access_reason: 'BOOKING', valid_until: null }],
+      error: null,
+    });
+    invoke.mockResolvedValue({
+      data: {
+        run_id: 'run-3',
+        plan: { ...plan, task_mode: 'lesson_plan' },
+        knowledge: { mode: 'STRUCTURED_MEMORY_ONLY', sources: [], rag_used: false },
+        lesson_basis: {
+          source: 'MEET_APPROVED_SUMMARIES',
+          lesson_dates: ['2026-09-20', '2026-09-23'],
+          label: 'Aulas aprovadas de 20/09 e 23/09 usadas como histórico: houve aula lançada depois, em 20/11',
+          continued_from: null,
+          homework_targets: [],
+          newer_logged_lesson_date: '2026-11-20',
+        },
+      },
+      error: null,
+    });
+
+    render(<LessonPlannerAI user={teacher} tenantId="school-wise-wolf" />);
+    await screen.findByText('Ana · B1');
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'aluno-agenda' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /gerar planejamento/i })).not.toHaveProperty('disabled', true));
+    fireEvent.click(screen.getByRole('button', { name: /gerar planejamento/i }));
+
+    expect(await screen.findByText(/Houve aula lançada em 20\/11/)).toBeTruthy();
+    expect(screen.getByText(/usadas como histórico/)).toBeTruthy();
+    expect(screen.queryByText(/Continua do próximo passo aprovado/)).toBeNull();
+  });
+
   it('sem aula aprovada, diz de onde o plano saiu em vez de inventar data', async () => {
     rpc.mockResolvedValue({
       data: [{ id: 'aluno-agenda', full_name: 'Ana', module: 'B1', access_reason: 'BOOKING', valid_until: null }],

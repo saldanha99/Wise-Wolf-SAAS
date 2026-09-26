@@ -282,7 +282,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'planner-lesson-basis',
         view: 'lesson-planner-ai',
         title: 'O plano diz de quais aulas saiu',
-        text: 'O Planner lê os resumos das aulas no Meet que o professor aprovou — até as 6 mais recentes — e mostra aqui: "Baseado nas aulas de 20/09 e 23/09". O plano continua do próximo passo aprovado, e a tarefa de casa ataca os erros recorrentes confirmados. Resumo que ninguém aprovou não entra.',
+        text: 'Ao gerar, o Planner lê os resumos das aulas no Meet que o professor aprovou — até as 6 mais recentes — e mostra neste quadro: "Baseado nas aulas de 20/09 e 23/09". O plano continua do próximo passo aprovado, e a tarefa de casa ataca os erros recorrentes confirmados. Resumo que ninguém aprovou (ou que foi rejeitado depois) não entra, e se houve aula lançada depois da última aprovada, o plano parte dos lançamentos.',
       },
     ],
   },

@@ -34,6 +34,11 @@
 --     só service_role; é o que a edge consulta antes de gerar ou salvar;
 --   * public.my_planner_students() — o professor logado lista para quem pode
 --     planejar agora, com o motivo e até quando vale.
+--
+-- E (seção 2, no fim) a última decisão humana sobre o resumo da aula vale:
+-- resumo aprovado e depois REJEITADO sai da memória do aluno — o Planner, o
+-- dossiê do substituto e o segundo professor liam só o status da memória, que
+-- ficava VERIFIED para sempre.
 
 create or replace function private.planner_student_access(
   p_teacher_id uuid,
@@ -199,5 +204,109 @@ $function$;
 alter function public.my_planner_students() owner to postgres;
 revoke all on function public.my_planner_students() from public, anon;
 grant execute on function public.my_planner_students() to authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. Resumo aprovado e depois REJEITADO sai da memória do aluno
+-- ---------------------------------------------------------------------------
+-- google_meet_backend('summary_save') grava a memória MEET_SESSION VERIFIED
+-- quando o professor aprova uma versão do resumo, e não mexia nela quando uma
+-- versão POSTERIOR era rejeitada ("Registrar rejeição" — o professor viu um erro
+-- ou um dado pessoal que o Gemini pôs no resumo). A memória seguia VERIFIED e ia
+-- ao Planner (agora também do substituto e do segundo professor) e ao dossiê da
+-- cobertura como a evidência de maior peso.
+--
+-- Regra: a última decisão humana vale. Versão REJECTED gravada → a memória
+-- daquela aula vira REJECTED (com a versão rejeitada no metadata; o conteúdo
+-- fica, como a trilha das versões). Rascunho novo (PROPOSED) não é decisão e
+-- não mexe em nada. Aprovou de novo → o summary_save faz o upsert de sempre e a
+-- memória volta a VERIFIED.
+--
+-- É gatilho na tabela das versões, e não remendo no google_meet_backend: vale
+-- para qualquer escritor, inclusive uma recriação futura da função (a onda 1
+-- recriou-a inteira; a próxima não precisa lembrar desta regra).
+
+create or replace function private.meet_summary_rejection_revokes_memory()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  -- Decisão gravada DEPOIS desta (versão maior) manda. Com o lock da sessão no
+  -- summary_save a rejeição é sempre a versão mais nova; a guarda é para
+  -- escritor que não segue o lock.
+  if exists (
+    select 1
+      from private.lesson_summary_versions as newer
+     where newer.lesson_session_id = new.lesson_session_id
+       and newer.version > new.version
+       and newer.status in ('VERIFIED', 'REJECTED')
+  ) then
+    return null;
+  end if;
+
+  update public.student_learning_memories as memory
+     set verification_status = 'REJECTED',
+         metadata = memory.metadata || pg_catalog.jsonb_build_object(
+           'rejected_summary_version_id', new.id,
+           'rejected_at', pg_catalog.now()),
+         updated_at = pg_catalog.now()
+   where memory.tenant_id = new.tenant_id
+     and memory.source_type = 'MEET_SESSION'
+     and memory.source_ref = new.lesson_session_id::text
+     and memory.verification_status <> 'REJECTED';
+  return null;
+end
+$function$;
+
+alter function private.meet_summary_rejection_revokes_memory() owner to postgres;
+revoke all on function private.meet_summary_rejection_revokes_memory()
+  from public, anon, authenticated, service_role;
+
+comment on function private.meet_summary_rejection_revokes_memory() is
+  'Resumo do Meet rejeitado depois de aprovado: a memória MEET_SESSION da aula vira REJECTED (a última decisão humana vale).';
+
+drop trigger if exists trg_zz_meet_summary_rejection_revokes_memory
+  on private.lesson_summary_versions;
+create trigger trg_zz_meet_summary_rejection_revokes_memory
+  after insert on private.lesson_summary_versions
+  for each row
+  when (new.status = 'REJECTED')
+  execute function private.meet_summary_rejection_revokes_memory();
+
+-- Memórias que já estão VERIFIED com a última decisão da aula sendo REJECTED
+-- (rejeitadas antes do gatilho existir). Uma vez só: a trava é o
+-- schema_one_shots, como todo ajuste de dado em migration.
+do $oneshot$
+begin
+  if exists (select 1 from public.schema_one_shots
+              where key = 'meet_memoria_de_resumo_rejeitado_20260927') then
+    return;
+  end if;
+
+  update public.student_learning_memories as memory
+     set verification_status = 'REJECTED',
+         metadata = memory.metadata || pg_catalog.jsonb_build_object(
+           'rejected_summary_version_id', last_review.id,
+           'rejected_at', pg_catalog.now()),
+         updated_at = pg_catalog.now()
+    from (
+      select distinct on (version.lesson_session_id)
+             version.lesson_session_id, version.tenant_id, version.id, version.status
+        from private.lesson_summary_versions as version
+       where version.status in ('VERIFIED', 'REJECTED')
+       order by version.lesson_session_id, version.version desc
+    ) as last_review
+   where last_review.status = 'REJECTED'
+     and memory.tenant_id = last_review.tenant_id
+     and memory.source_type = 'MEET_SESSION'
+     and memory.source_ref = last_review.lesson_session_id::text
+     and memory.verification_status <> 'REJECTED';
+
+  insert into public.schema_one_shots (key, nota)
+  values ('meet_memoria_de_resumo_rejeitado_20260927',
+          'memória MEET_SESSION VERIFIED cuja última revisão do resumo foi REJECTED virou REJECTED');
+end
+$oneshot$;
 
 notify pgrst, 'reload schema';
