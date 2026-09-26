@@ -461,6 +461,12 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/google-meet/provider.ts \
   supabase/functions/google-meet/provider.test.ts \
   supabase/functions/google-meet/index.ts \
+  supabase/functions/lesson-recording-code/core.ts \
+  supabase/functions/lesson-recording-code/core.test.ts \
+  supabase/functions/lesson-recording-code/index.ts \
+  supabase/functions/lesson-planner/teacher-card.ts \
+  supabase/functions/lesson-planner/teacher-card.test.ts \
+  supabase/functions/lesson-planner/source.test.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -721,6 +727,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.test.ts \
+  supabase/functions/lesson-recording-code/core.test.ts \
+  supabase/functions/lesson-planner/teacher-card.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
@@ -822,6 +830,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/asaas-adjudication/core.test.ts \
+  supabase/functions/lesson-planner/source.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
@@ -868,6 +877,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/student-renewal-billing/index.ts \
   scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
+  supabase/functions/lesson-recording-code/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
@@ -1422,11 +1432,24 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260926140000_presenca_pelo_relatorio_do_meet.sql"
   "supabase/migrations/20260926150000_termo_de_registro_v2.sql"
   "supabase/migrations/20260926160000_link_da_aula_nao_some_sem_sala.sql"
+  "supabase/migrations/20260926170000_importacao_do_meet_nao_trava_e_termina.sql"
+  "supabase/migrations/20260926180000_meet_identidade_do_professor_e_revogacao.sql"
+  "supabase/migrations/20260926190000_lembrete_leva_a_sala_oficial.sql"
+  "supabase/migrations/20260926190100_modelo_de_lembrete_antigo_volta_ao_padrao.sql"
+  "supabase/migrations/20260926200000_termo_seguro_do_aluno.sql"
+  "supabase/migrations/20260926210000_termo_de_registro_envio_em_lote.sql"
+  "supabase/migrations/20260926220000_cartao_do_aluno_pelo_professor.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
   "supabase/tests/termo_de_registro_das_aulas.sql"
   "supabase/tests/presenca_pelo_relatorio_do_meet.sql"
+  "supabase/tests/importacao_do_meet_nao_trava_e_termina.sql"
+  "supabase/tests/identidade_do_professor_e_revogacao_no_meet.sql"
+  "supabase/tests/lembrete_leva_a_sala_oficial.sql"
+  "supabase/tests/termo_seguro_do_aluno.sql"
+  "supabase/tests/termo_de_registro_envio_em_lote.sql"
+  "supabase/tests/cartao_do_aluno_pelo_professor.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"
@@ -1701,6 +1724,7 @@ HARDENED_FUNCTIONS=(
   teacher-training-invite
   send-attendance-confirmations
   google-meet
+  lesson-recording-code
   send-class-notification
   send-rejection-email
   send-welcome-contract
