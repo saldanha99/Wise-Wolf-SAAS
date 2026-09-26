@@ -68,7 +68,8 @@ begin
     scheduled_start_at, scheduled_end_at, source_key, documentation_consent) values
     (v_done, 'meet-attendance-fixture', v_student, v_teacher, v_today, now() - interval '3 hours', now() - interval '150 minutes', 'att-done', true),
     (v_absent, 'meet-attendance-fixture', v_student, v_teacher, v_today, now() - interval '5 hours', now() - interval '270 minutes', 'att-absent', true),
-    (v_outside, 'meet-attendance-fixture', v_student, v_teacher, v_today, now() - interval '7 hours', now() - interval '390 minutes', 'att-outside', true),
+    -- "Fora da sala" só depois que o dia da aula acaba (20260926170000): aula de ontem.
+    (v_outside, 'meet-attendance-fixture', v_student, v_teacher, v_today - 1, now() - interval '31 hours', now() - interval '1830 minutes', 'att-outside', true),
     (v_unlogged, 'meet-attendance-fixture', v_student, v_teacher, v_today, now() - interval '9 hours', now() - interval '510 minutes', 'att-unlogged', true),
     (v_no_consent, 'meet-attendance-fixture', v_student, v_teacher, v_today, now() - interval '11 hours', now() - interval '630 minutes', 'att-no-consent', false);
 

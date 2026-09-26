@@ -7,17 +7,21 @@ import {
 import { authorizeRequest, hasTenantAccess } from "../_shared/request-auth.ts";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
+  type ArtifactImportStatus,
   authorizationUrl,
   decryptSecret,
+  documentationSyncOutcome,
   encryptSecret,
   googleEmail,
   grantedRequiredScopes,
   isRecord,
+  JOB_DEADLINE_MS,
   nativeNotesDraft,
   normalizeSummary,
   pkceChallenge,
   randomToken,
   runDocumentationTick,
+  saoPauloDayWindow,
   sha256,
   type SourceArtifact,
   SUMMARY_PROMPT_VERSION,
@@ -31,15 +35,74 @@ import {
   googleIdentity,
   GoogleMeetProvider,
   GoogleProviderError,
+  importArtifacts,
+  type MeetArtifact,
+  type MeetArtifactKind,
+  type MeetConference,
+  providerErrorCode,
+  roomCreationErrorCode,
 } from "./provider.ts";
 import {
+  type AttendanceSource,
+  combineAttendanceReports,
   looksLikeAttendanceReport,
   meetingCodeFromUri,
   namesOtherMeeting,
-  parseAttendanceReport,
-  pickAttendanceReport,
+  pickAttendanceReports,
   summarizeAttendance,
 } from "./attendance.ts";
+
+type ConnectionRow = {
+  tenant_id?: string;
+  organizer_sub: string;
+  organizer_email: string | null;
+  refresh_token_ciphertext: string | null;
+  status: string;
+};
+type TokenGrant = { token: string; connection: ConnectionRow };
+// Um token de acesso por escola e por rodada: o lote processa vários trabalhos
+// e não precisa trocar o refresh token a cada sala.
+type TokenCache = Map<string, Promise<TokenGrant>>;
+type RoomRow = {
+  lesson_session_id: string;
+  space_name: string | null;
+  meeting_uri: string | null;
+  state: string;
+  organizer_sub: string;
+  cohost_email: string;
+  claim_id?: string | null;
+};
+type ImportRow = {
+  provider_name: string;
+  status: ArtifactImportStatus;
+};
+type SessionDetailData = {
+  session: {
+    teacher_id: string;
+    class_date: string;
+    scheduled_start_at: string;
+    scheduled_end_at: string;
+    documentation_consent: boolean;
+    status: string;
+  };
+  room: RoomRow | null;
+  summaries: { origin: string; source_artifact_ids: string[] }[];
+  imports?: ImportRow[];
+  attendance_saved_reports?: number;
+};
+type PendingJob = {
+  tenant_id: string;
+  actor_id: string;
+  lesson_session_id: string;
+  operation: "PREPARE_ROOM" | "SYNC_ARTIFACTS";
+};
+// claim_id é a reserva interna da criação; não vai para o navegador.
+const publicRoom = (room: RoomRow | null) => {
+  if (!room) return room;
+  const { claim_id: _claim, ...rest } = room;
+  return rest;
+};
+const ARTIFACT_KINDS: MeetArtifactKind[] = ["TRANSCRIPT", "SMART_NOTES"];
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -155,13 +218,35 @@ async function summaryPricing(
       6000 * Number(data.output_usd_per_1m)) / 1000000,
   };
 }
-async function tokenFor(
+function tokenFor(
   db: SupabaseClient,
   cfg: Config,
   tenantId: string,
   actorId: string,
-) {
-  const connection = await storage(db, "connection_get", tenantId, actorId);
+  cache?: TokenCache,
+): Promise<TokenGrant> {
+  const key = `${tenantId}:${actorId}`;
+  const cached = cache?.get(key);
+  if (cached) return cached;
+  const pending = issueToken(db, cfg, tenantId, actorId);
+  // Falha também fica no cache da rodada: com o Google fora, os outros
+  // trabalhos da mesma escola falham na hora em vez de esperar 20 s cada.
+  pending.catch(() => {});
+  cache?.set(key, pending);
+  return pending;
+}
+async function issueToken(
+  db: SupabaseClient,
+  cfg: Config,
+  tenantId: string,
+  actorId: string,
+): Promise<TokenGrant> {
+  const connection: ConnectionRow | null = await storage(
+    db,
+    "connection_get",
+    tenantId,
+    actorId,
+  );
   if (
     !connection?.refresh_token_ciphertext || connection.status !== "CONNECTED"
   ) throw new Error("google_connection_required");
@@ -275,14 +360,25 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
   }
 }
 
+type SyncOptions = {
+  // Releitura manual ("Importar transcrição e notas"): relê o que já foi
+  // importado para pegar edição do documento. Vazio continua final.
+  force?: boolean;
+  // Prazo absoluto (ms) da rodada: passado dele, não abre mais documento.
+  deadline?: number;
+  tokens?: TokenCache;
+};
+
 async function syncSession(
   db: SupabaseClient,
   cfg: Config,
   tenantId: string,
   actorId: string,
   sessionId: string,
+  options: SyncOptions = {},
 ) {
-  const detail = await storage(
+  const deadline = options.deadline ?? Date.now() + JOB_DEADLINE_MS;
+  const detail: SessionDetailData = await storage(
     db,
     "session_detail",
     tenantId,
@@ -292,71 +388,147 @@ async function syncSession(
   if (!detail.session.documentation_consent) {
     throw new Error("documentation_consent_required");
   }
-  if (!detail.room?.space_name || detail.room.state !== "READY") {
+  const room = detail.room;
+  if (!room?.space_name || room.state !== "READY") {
     throw new Error("google_room_not_ready");
   }
-  const { token, connection } = await tokenFor(db, cfg, tenantId, actorId);
-  if (connection.organizer_sub !== detail.room.organizer_sub) {
+  const { token, connection } = await tokenFor(
+    db,
+    cfg,
+    tenantId,
+    actorId,
+    options.tokens,
+  );
+  if (connection.organizer_sub !== room.organizer_sub) {
     throw new Error("google_organizer_changed");
   }
   const provider = new GoogleMeetProvider(token);
-  let imported = 0, pending = 0;
+  const known = new Map(
+    (detail.imports || []).map((row) => [row.provider_name, row]),
+  );
+
+  // A sala é exclusiva da sessão: toda conferência dela no DIA da aula é a
+  // aula (remarcada por fora no mesmo dia inclusive).
+  let conferences: MeetConference[];
   try {
-    const metadata = await provider.artifactMetadata(detail.room.space_name, {
-      start: detail.session.scheduled_start_at,
-      end: detail.session.scheduled_end_at,
+    conferences = await provider.conferences(
+      room.space_name,
+      saoPauloDayWindow(detail.session.class_date),
+    );
+  } catch (error) {
+    await storage(db, "sync_complete", tenantId, actorId, sessionId, {
+      error_code: providerErrorCode(error, "google_sync_failed"),
+      complete: false,
     });
-    for (const item of metadata) {
-      if (item.state !== "FILE_GENERATED") {
-        pending++;
-        continue;
-      }
-      if (!isRecord(item.docsDestination) || !item.docsDestination.document) {
-        pending++;
-        continue;
-      }
-      const sourceText = await provider.documentText(
-        String(item.docsDestination.document),
-      );
-      const result = await storage(
-        db,
-        "artifact_save",
-        tenantId,
-        actorId,
-        sessionId,
-        {
-          provider_name: item.name,
-          kind: item.kind,
-          document_id: item.docsDestination.document,
-          source_text: sourceText,
-          content_sha256: await sha256(sourceText),
-          retention_days: cfg.retentionDays,
-        },
-      );
-      if (result.inserted) imported++;
-      if (
-        item.kind === "SMART_NOTES" &&
-        !detail.summaries.some((summary: any) =>
-          summary.origin === "GOOGLE_SMART_NOTES" &&
-          summary.source_artifact_ids.includes(result.id)
-        )
-      ) {
-        const source = {
-          id: result.id,
-          kind: "SMART_NOTES",
-          source_text: sourceText,
-        };
-        await storage(db, "summary_save", tenantId, actorId, sessionId, {
-          status: "PROPOSED",
-          origin: "GOOGLE_SMART_NOTES",
-          content: nativeNotesDraft(source),
-          source_artifact_ids: [source.id],
-          prompt_version: "native-google-notes",
+    throw error;
+  }
+
+  // Cada lista (tipo × conferência) no seu try/catch: anotação que não lista
+  // não esconde a transcrição nem a presença.
+  const artifacts: MeetArtifact[] = [];
+  let listingError: string | null = null;
+  for (const conference of conferences) {
+    for (const kind of ARTIFACT_KINDS) {
+      try {
+        artifacts.push(...await provider.artifactsOf(conference, kind));
+      } catch (error) {
+        listingError = listingError ||
+          providerErrorCode(error, "google_artifact_listing_failed");
+        console.error("[google-meet] lista de documentos", {
+          sessionId,
+          kind,
+          code: providerErrorCode(error, "google_artifact_listing_failed"),
         });
       }
     }
-    let attendance: unknown = null;
-    if (cfg.attendanceEnabled) {
+  }
+
+  // Um documento por vez, cada um com o próprio erro registrado; o laço segue.
+  let imported = 0;
+  const { statuses, deferred: docsDeferred } = await importArtifacts(
+    provider,
+    artifacts,
+    {
+      known,
+      force: options.force,
+      deadline,
+      persist: async (item, reading) => {
+        let revisionId: string | null = null;
+        if (reading.status === "IMPORTED") {
+          const result = await storage(
+            db,
+            "artifact_save",
+            tenantId,
+            actorId,
+            sessionId,
+            {
+              provider_name: item.name,
+              kind: item.kind,
+              document_id: item.document || item.name.split("/").pop(),
+              source: reading.source,
+              source_text: reading.sourceText,
+              content_sha256: await sha256(reading.sourceText),
+              retention_days: cfg.retentionDays,
+            },
+          );
+          revisionId = result.id;
+          if (result.inserted) imported++;
+          if (
+            item.kind === "SMART_NOTES" &&
+            !detail.summaries.some((summary) =>
+              summary.origin === "GOOGLE_SMART_NOTES" &&
+              summary.source_artifact_ids.includes(result.id)
+            )
+          ) {
+            const source = {
+              id: result.id,
+              kind: "SMART_NOTES",
+              source_text: reading.sourceText,
+            };
+            await storage(db, "summary_save", tenantId, actorId, sessionId, {
+              status: "PROPOSED",
+              origin: "GOOGLE_SMART_NOTES",
+              content: nativeNotesDraft(source),
+              source_artifact_ids: [source.id],
+              prompt_version: "native-google-notes",
+            });
+          }
+        }
+        await storage(db, "artifact_status", tenantId, actorId, sessionId, {
+          provider_name: item.name,
+          kind: item.kind,
+          provider_state: item.state,
+          status: reading.status,
+          source: reading.source,
+          error_code: reading.errorCode,
+          revision_id: revisionId,
+        });
+      },
+      recordFailure: async (item, code) => {
+        console.error("[google-meet] documento", {
+          sessionId,
+          kind: item.kind,
+          code,
+        });
+        await storage(db, "artifact_status", tenantId, actorId, sessionId, {
+          provider_name: item.name,
+          kind: item.kind,
+          provider_state: item.state,
+          status: "FAILED",
+          error_code: code,
+        });
+      },
+    },
+  );
+  let deferred = docsDeferred;
+
+  // A presença roda mesmo com documento falhando: é outra fonte, outro arquivo.
+  let attendance: Record<string, unknown> | null = null;
+  let attendanceDone = false;
+  if (cfg.attendanceEnabled) {
+    if (Date.now() > deadline) {
+      deferred = true;
+    } else {
       try {
         attendance = await syncAttendance(
           db,
@@ -366,12 +538,14 @@ async function syncSession(
           sessionId,
           detail,
           connection,
+          conferences,
         );
+        // Só conclui com relatório lido E aula lançada: lançamento que chega
+        // depois ainda precisa ser comparado com a sala.
+        attendanceDone = attendance.report_found === true &&
+          typeof attendance.presence === "string" && !!attendance.presence;
       } catch (error) {
-        // Presença falhando não derruba a documentação pedagógica; fica no log.
-        const code = error instanceof Error && /^[a-z_]+$/.test(error.message)
-          ? error.message
-          : "google_attendance_failed";
+        const code = providerErrorCode(error, "google_attendance_failed");
         console.error("[google-meet] relatório de presença", {
           sessionId,
           code,
@@ -379,30 +553,39 @@ async function syncSession(
         attendance = { error: code };
       }
     }
-    const state = metadata.length === 0
-      ? "ARTIFACTS_NOT_AVAILABLE"
-      : pending
-      ? "ARTIFACTS_PENDING"
-      : null;
-    await storage(db, "sync_complete", tenantId, actorId, sessionId, {
-      error_code: state,
-    });
-    return {
-      ok: true,
-      imported,
-      pending,
-      attendance,
-      status: state || "SYNCED",
-    };
-  } catch (error) {
-    const code = error instanceof Error && /^[a-z_]+$/.test(error.message)
-      ? error.message
-      : "google_sync_failed";
-    await storage(db, "sync_complete", tenantId, actorId, sessionId, {
-      error_code: code,
-    });
-    throw error;
   }
+
+  const outcome = documentationSyncOutcome({
+    statuses,
+    listingFailed: !!listingError,
+    deferred,
+    attendanceRequired: cfg.attendanceEnabled,
+    attendanceDone,
+  });
+  const state = outcome.complete ? null : listingError ||
+    (artifacts.length === 0
+      ? "ARTIFACTS_NOT_AVAILABLE"
+      : outcome.failed
+      ? "ARTIFACTS_FAILED"
+      : outcome.pending
+      ? "ARTIFACTS_PENDING"
+      : cfg.attendanceEnabled && !attendanceDone
+      ? "ATTENDANCE_PENDING"
+      : null);
+  await storage(db, "sync_complete", tenantId, actorId, sessionId, {
+    error_code: state,
+    complete: outcome.complete,
+  });
+  return {
+    ok: true,
+    imported,
+    pending: outcome.pending,
+    failed: outcome.failed,
+    deferred,
+    complete: outcome.complete,
+    attendance,
+    status: outcome.complete ? "COMPLETE" : state || "SYNCED",
+  };
 }
 
 async function attendanceStorage(
@@ -411,7 +594,7 @@ async function attendanceStorage(
   tenantId: string,
   sessionId: string,
   payload: Record<string, unknown>,
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   const { data, error } = await db.rpc("google_meet_attendance_backend", {
     p_action: action,
     p_tenant_id: tenantId,
@@ -425,102 +608,122 @@ async function attendanceStorage(
         : "google_meet_storage_unavailable",
     );
   }
-  return data;
+  return isRecord(data) ? data : {};
 }
 
 // Presença pelo relatório nativo do Google: a planilha que o Meet cria no
-// Drive da conta da escola depois da reunião. O banco compara com o lançamento
-// e só abre caso na Central de Qualidade — pagamento não muda.
+// Drive da conta da escola depois de cada conferência. O banco compara com o
+// lançamento e só abre caso na Central de Qualidade — pagamento não muda.
 async function syncAttendance(
   db: SupabaseClient,
   provider: GoogleMeetProvider,
   cfg: Config,
   tenantId: string,
   sessionId: string,
-  detail: any,
-  connection: any,
-) {
-  const conferences = await provider.conferences(detail.room.space_name, {
-    start: detail.session.scheduled_start_at,
-    end: detail.session.scheduled_end_at,
-  });
+  detail: SessionDetailData,
+  connection: ConnectionRow,
+  conferences: MeetConference[],
+): Promise<Record<string, unknown>> {
+  const room = detail.room!;
   let reportFound = false;
   // Conferência ainda aberta: o relatório dela não existe; o que estiver no Drive
   // é de outra aula. Espera o próximo ciclo (a avaliação só abre caso sem
   // conferência nenhuma, então "sem relatório ainda" não acusa ninguém).
   const stillOpen = conferences.some((c) => !c.endTime);
   if (conferences.length && !stillOpen) {
-    const starts = conferences.map((c) => c.startTime).filter(Boolean).sort();
-    const ends = conferences.map((c) => c.endTime || c.startTime).filter(
-      Boolean,
-    ).sort();
-    const first = starts[0] || detail.session.scheduled_start_at;
-    const last = ends[ends.length - 1] || detail.session.scheduled_end_at;
-    // O Google gera a planilha depois que a reunião acaba (medido: 2 s depois):
-    // janela do fim da última conferência desta sala até 3 h depois, com 2 min
-    // de folga para relógio. Planilha criada antes disso é de outra aula.
-    const candidates = await provider.attendanceReportCandidates(
-      new Date(Date.parse(last) - 2 * 60000).toISOString(),
-      new Date(Date.parse(last) + 3 * 3600000).toISOString(),
-    );
-    const code = meetingCodeFromUri(detail.room.meeting_uri);
-    let picked = pickAttendanceReport(candidates, code, null) as
-      | (typeof candidates[number] & { csv?: string })
-      | null;
-    if (picked) {
-      picked = { ...picked, csv: await provider.spreadsheetCsv(picked.id) };
-    } else if (candidates.length) {
-      const withCsv = [];
-      for (
-        const candidate of candidates.filter((c) =>
-          looksLikeAttendanceReport(c.name) && !namesOtherMeeting(c.name, code)
-        ).slice(0, 10)
-      ) {
-        withCsv.push({
+    if ((detail.attendance_saved_reports || 0) >= conferences.length) {
+      // Já guardado com todas as conferências do dia: só reavalia contra o
+      // lançamento (que pode ter chegado depois), sem baixar a planilha de novo.
+      reportFound = true;
+    } else {
+      const starts = conferences.map((c) => c.startTime).filter(Boolean)
+        .sort();
+      const ends = conferences.map((c) => c.endTime || c.startTime).filter(
+        Boolean,
+      ).sort();
+      const first = starts[0] || detail.session.scheduled_start_at;
+      const last = ends[ends.length - 1] || detail.session.scheduled_end_at;
+      // O Google gera a planilha logo depois que cada conferência acaba
+      // (medido: 2 s). Janela do início da primeira conferência do dia até 3 h
+      // depois do fim da última, com 2 min de folga para relógio.
+      const candidates = await provider.attendanceReportCandidates(
+        new Date(Date.parse(first) - 2 * 60000).toISOString(),
+        new Date(Date.parse(last) + 3 * 3600000).toISOString(),
+      );
+      const code = meetingCodeFromUri(room.meeting_uri);
+      let sources: AttendanceSource[] = [];
+      // Queda e reentrada = mais de uma planilha com o código da sala: todas.
+      for (const candidate of pickAttendanceReports(candidates, code, null)) {
+        if (sources.length >= 10) break;
+        sources.push({
           ...candidate,
           csv: await provider.spreadsheetCsv(candidate.id),
         });
       }
-      picked = pickAttendanceReport(withCsv, code, detail.room.cohost_email);
-    }
-    if (picked?.csv) {
-      const { data: teacher } = await db.from("profiles").select("full_name")
-        .eq("id", detail.session.teacher_id).eq("tenant_id", tenantId)
-        .maybeSingle();
-      const parsed = parseAttendanceReport(picked.csv, first);
-      const summary = "error" in parsed ? null : summarizeAttendance(
-        parsed.rows,
-        {
-          teacherEmail: detail.room.cohost_email || null,
-          teacherName: teacher?.full_name || null,
-          organizerEmail: connection.organizer_email || null,
-        },
-      );
-      await attendanceStorage(db, "attendance_save", tenantId, sessionId, {
-        conference_name: conferences[0].name,
-        document_id: picked.id,
-        document_name: picked.name,
-        source_csv: picked.csv,
-        content_sha256: await sha256(picked.csv),
-        parse_error: "error" in parsed ? parsed.error : null,
-        participants: summary?.participants || [],
-        teacher_first_join_at: summary?.teacherFirstJoinAt || null,
-        teacher_seconds: summary ? summary.teacherSeconds : null,
-        student_first_join_at: summary?.studentFirstJoinAt || null,
-        student_seconds: summary ? summary.studentSeconds : null,
-        retention_days: cfg.retentionDays,
-      });
-      reportFound = true;
+      if (!sources.length && candidates.length) {
+        const withCsv: AttendanceSource[] = [];
+        for (
+          const candidate of candidates.filter((c) =>
+            looksLikeAttendanceReport(c.name) &&
+            !namesOtherMeeting(c.name, code)
+          ).slice(0, 10)
+        ) {
+          withCsv.push({
+            ...candidate,
+            csv: await provider.spreadsheetCsv(candidate.id),
+          });
+        }
+        sources = pickAttendanceReports(withCsv, code, room.cohost_email);
+      }
+      if (sources.length) {
+        const combined = combineAttendanceReports(sources, first);
+        if (combined.sourceCsv.length > 200000) {
+          throw new GoogleProviderError("google_document_too_large", 422);
+        }
+        const { data: teacher } = await db.from("profiles").select("full_name")
+          .eq("id", detail.session.teacher_id).eq("tenant_id", tenantId)
+          .maybeSingle();
+        const summary = combined.parseError
+          ? null
+          : summarizeAttendance(combined.rows, {
+            teacherEmail: room.cohost_email || null,
+            teacherName: teacher?.full_name || null,
+            organizerEmail: connection.organizer_email || null,
+          });
+        await attendanceStorage(db, "attendance_save", tenantId, sessionId, {
+          conference_name: conferences[0].name,
+          document_id: combined.documentId,
+          document_name: combined.documentName,
+          source_document_ids: combined.documentIds,
+          source_csv: combined.sourceCsv,
+          content_sha256: await sha256(combined.sourceCsv),
+          parse_error: combined.parseError,
+          participants: summary?.participants || [],
+          teacher_first_join_at: summary?.teacherFirstJoinAt || null,
+          teacher_seconds: summary ? summary.teacherSeconds : null,
+          student_first_join_at: summary?.studentFirstJoinAt || null,
+          student_seconds: summary ? summary.studentSeconds : null,
+          retention_days: cfg.retentionDays,
+        });
+        reportFound = !combined.parseError;
+      }
     }
   }
-  return await attendanceStorage(
+  const evaluation = await attendanceStorage(
     db,
     "attendance_evaluate",
     tenantId,
     sessionId,
     { conference_count: conferences.length, report_found: reportFound },
   );
+  return { ...evaluation, report_found: reportFound };
 }
+
+type RoomOptions = {
+  // Rodada do cron: FAILED só é tentado de novo quando a espera venceu.
+  automatic?: boolean;
+  tokens?: TokenCache;
+};
 
 async function createSessionRoom(
   db: SupabaseClient,
@@ -528,11 +731,12 @@ async function createSessionRoom(
   tenantId: string,
   actorId: string,
   sessionId: string,
+  options: RoomOptions = {},
 ) {
   if (!cfg.enabled || cfg.missing.length) {
     throw new Error("google_pedagogy_disabled");
   }
-  const detail = await storage(
+  const detail: SessionDetailData = await storage(
     db,
     "session_detail",
     tenantId,
@@ -550,39 +754,84 @@ async function createSessionRoom(
     .maybeSingle();
   if (error || !teacher) throw new Error("session_teacher_not_found");
   const cohostEmail = googleEmail(teacher.email);
-  const { token, connection } = await tokenFor(db, cfg, tenantId, actorId);
-  const claim = await storage(db, "room_claim", tenantId, actorId, sessionId, {
-    organizer_sub: connection.organizer_sub,
-    cohost_email: cohostEmail,
-  });
+  const { token, connection } = await tokenFor(
+    db,
+    cfg,
+    tenantId,
+    actorId,
+    options.tokens,
+  );
+  const claim: { claimed: boolean; room: RoomRow } = await storage(
+    db,
+    "room_claim",
+    tenantId,
+    actorId,
+    sessionId,
+    {
+      organizer_sub: connection.organizer_sub,
+      cohost_email: cohostEmail,
+      automatic: !!options.automatic,
+    },
+  );
   if (claim.room.organizer_sub !== connection.organizer_sub) {
     throw new Error("google_organizer_changed");
   }
-  if (claim.room.state === "READY") return { ok: true, room: claim.room };
-  if (!claim.claimed && !claim.room.space_name) {
+  if (claim.room.state === "READY") {
+    return { ok: true, room: publicRoom(claim.room) };
+  }
+  if (claim.room.state === "NEEDS_RECONCILIATION") {
     throw new Error("google_room_reconciliation_required");
+  }
+  if (!claim.claimed && !claim.room.space_name) {
+    throw new Error(
+      claim.room.state === "FAILED"
+        ? "google_room_retry_scheduled"
+        : "google_room_creation_in_progress",
+    );
   }
   const provider = new GoogleMeetProvider(token);
   let room = claim.room;
   if (claim.claimed) {
+    let space: { space_name: string; meeting_uri: string };
     try {
-      const space = await provider.createSpace({
+      space = await provider.createSpace({
         attendanceReport: cfg.attendanceEnabled,
       });
-      room = await storage(db, "room_save", tenantId, actorId, sessionId, {
-        ...space,
-        state: "COHOST_PENDING",
-      });
-    } catch (error) {
-      await storage(db, "room_save", tenantId, actorId, sessionId, {
-        state: "NEEDS_RECONCILIATION",
-        error_code: "google_room_creation_uncertain",
-      });
-      throw error;
+    } catch (creationError) {
+      // Recusa do Google OU falha incerta: nos dois casos nenhum link foi
+      // salvo, e só o link salvo chega ao aluno e ao professor. Um space que o
+      // Google tenha criado sem responder fica órfão na conta da escola, sem
+      // ninguém com o link — por isso a sala vai para FAILED e é tentada de
+      // novo sozinha (30 min, 2 h, 6 h; até 5 tentativas), em vez de travar em
+      // NEEDS_RECONCILIATION esperando a direção.
+      try {
+        await storage(db, "room_save", tenantId, actorId, sessionId, {
+          state: "FAILED",
+          claim_id: claim.room.claim_id,
+          error_code: roomCreationErrorCode(creationError),
+        });
+      } catch (saveError) {
+        // Sem gravar FAILED a linha fica em CREATING e volta à fila em 15 min.
+        console.error("[google-meet] falha ao registrar criação", {
+          sessionId,
+          code: providerErrorCode(saveError, "google_meet_storage_unavailable"),
+        });
+      }
+      throw creationError;
+    }
+    // Se outra rodada tomou a reserva (sala presa em CREATING por 15 min), o
+    // banco recusa (google_room_claim_lost) e este space nunca é distribuído.
+    room = await storage(db, "room_save", tenantId, actorId, sessionId, {
+      ...space,
+      state: "COHOST_PENDING",
+      claim_id: claim.room.claim_id,
+    });
+    if (room.state === "NEEDS_RECONCILIATION") {
+      throw new Error("google_room_reconciliation_required");
     }
   }
   try {
-    await provider.ensureCohost(room.space_name, room.cohost_email);
+    await provider.ensureCohost(room.space_name!, room.cohost_email);
     room = await storage(db, "room_save", tenantId, actorId, sessionId, {
       state: "READY",
     });
@@ -593,7 +842,7 @@ async function createSessionRoom(
     });
     throw error;
   }
-  return { ok: true, room };
+  return { ok: true, room: publicRoom(room) };
 }
 
 serve(async (req: Request) => {
@@ -618,7 +867,8 @@ serve(async (req: Request) => {
     const action = text(body.action, 40),
       tenantId = text(body.tenantId, 100) || auth.profile?.tenant_id || "";
     if (auth.isService && action === "sync_due" && !tenantId) {
-      const result = await runDocumentationTick<any>(
+      const tokens: TokenCache = new Map();
+      const result = await runDocumentationTick<PendingJob>(
         cfg.enabled,
         cfg.missing.length === 0,
         async () => {
@@ -626,12 +876,13 @@ serve(async (req: Request) => {
             "get_pending_google_meet_sync_sessions",
           );
           if (error) throw new Error("google_meet_storage_unavailable");
-          return jobs || [];
+          return Array.isArray(jobs) ? jobs : [];
         },
-        async (job) => {
+        async (job, deadline) => {
           try {
             return {
               session_id: job.lesson_session_id,
+              operation: job.operation,
               ...(job.operation === "PREPARE_ROOM"
                 ? await createSessionRoom(
                   db,
@@ -639,6 +890,7 @@ serve(async (req: Request) => {
                   job.tenant_id,
                   job.actor_id,
                   job.lesson_session_id,
+                  { automatic: true, tokens },
                 )
                 : await syncSession(
                   db,
@@ -646,15 +898,15 @@ serve(async (req: Request) => {
                   job.tenant_id,
                   job.actor_id,
                   job.lesson_session_id,
+                  { deadline, tokens },
                 )),
             };
           } catch (error) {
             return {
               session_id: job.lesson_session_id,
+              operation: job.operation,
               ok: false,
-              error: error instanceof Error && /^[a-z_]+$/.test(error.message)
-                ? error.message
-                : "google_sync_failed",
+              error: providerErrorCode(error, "google_sync_failed"),
             };
           }
         },
@@ -814,36 +1066,51 @@ serve(async (req: Request) => {
     }
     if (action === "sync_artifacts") {
       return json(
-        await syncSession(db, cfg, tenantId, actorId, uuid(body.sessionId)),
+        await syncSession(db, cfg, tenantId, actorId, uuid(body.sessionId), {
+          force: true,
+        }),
       );
     }
     if (action === "sync_due") {
       if (!isAdmin) return json({ error: "google_meet_admin_required" }, 403);
-      const due = await storage(db, "sync_due", tenantId, actorId),
-        results = [];
-      for (const item of due) {
-        try {
-          results.push({
-            session_id: item.lesson_session_id,
-            ...await syncSession(
-              db,
-              cfg,
-              tenantId,
-              actorId,
-              item.lesson_session_id,
-            ),
-          });
-        } catch (error) {
-          results.push({
-            session_id: item.lesson_session_id,
-            ok: false,
-            error: error instanceof Error && /^[a-z_]+$/.test(error.message)
-              ? error.message
-              : "google_sync_failed",
-          });
-        }
-      }
-      return json({ ok: results.every((row) => row.ok), results });
+      const due: { lesson_session_id: string }[] = await storage(
+        db,
+        "sync_due",
+        tenantId,
+        actorId,
+      );
+      const tokens: TokenCache = new Map();
+      const tick = await runDocumentationTick(
+        true,
+        true,
+        () => Promise.resolve(Array.isArray(due) ? due : []),
+        async (item, deadline) => {
+          try {
+            return {
+              session_id: item.lesson_session_id,
+              ...await syncSession(
+                db,
+                cfg,
+                tenantId,
+                actorId,
+                item.lesson_session_id,
+                { deadline, tokens },
+              ),
+            };
+          } catch (error) {
+            return {
+              session_id: item.lesson_session_id,
+              ok: false,
+              error: providerErrorCode(error, "google_sync_failed"),
+            };
+          }
+        },
+      );
+      return json({
+        ok: tick.results.every((row) => isRecord(row) && row.ok === true),
+        results: tick.results,
+        deferred: tick.deferred,
+      });
     }
     if (action === "generate_summary") {
       if (!cfg.aiEnabled) {

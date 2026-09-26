@@ -280,6 +280,17 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   aceite — deixava o **botão "entrar na aula" do app vazio em todas as aulas de 13/09 a 26/09** (medido:
   4 de 4 aulas de um professor em 25/09). Ninguém reclamou porque o lembrete do WhatsApp usa
   `profiles.meeting_link`. Conserto no servidor vale até para PWA antigo em cache.
+  Desde `20260926170000` também não volta sessão com sala `FAILED`/`NEEDS_RECONCILIATION` nem
+  aula a menos de 15 min do início sem sala `READY` — a aula nunca fica sem link.
+- **Importação não trava e termina** (migration `20260926170000`, teste
+  `supabase/tests/importacao_do_meet_nao_trava_e_termina.sql`): erro por documento em
+  `private.google_meet_artifact_imports` (visível em "Sala e resumo"), vazio é final, transcrição
+  sem export sai pelas falas da API (`MEET_ENTRIES`, só o nome de exibição do participante), sala
+  recusada vira `FAILED` com nova tentativa sozinha (30 min, 2 h, 6 h; até 5) e reserva `claim_id`,
+  fila com fim (`sync_status` COMPLETE/EXPIRED em 7 dias), conferências buscadas no DIA da aula,
+  planilhas de presença de queda e reentrada juntadas, e só token revogado (`invalid_grant`)
+  desconecta a conta. ⚠️ `google_meet_backend` foi recriada inteira: migration posterior que mexer
+  nela parte desta definição.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

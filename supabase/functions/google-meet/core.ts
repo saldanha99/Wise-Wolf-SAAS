@@ -1,7 +1,9 @@
-// Participantes nunca são lidos pela API do Meet (o Google diz que ela não é
-// destinada a acompanhamento de desempenho). Presença vem só do relatório
-// nativo do Google (attendance.ts) e vira caso para análise humana, nunca
-// desconto ou decisão automática de pagamento.
+// Participantes não servem de presença pela API do Meet (o Google diz que ela
+// não é destinada a acompanhamento de desempenho): a única leitura é o NOME DE
+// EXIBIÇÃO de quem falou, para rotular a transcrição do plano B
+// (provider.transcriptText). Presença vem só do relatório nativo do Google
+// (attendance.ts) e vira caso para análise humana, nunca desconto ou decisão
+// automática de pagamento.
 // drive.readonly e não drive.meet.readonly: medido em 26/09/2026 com a conta
 // central (Business Plus sobre Gmail), a drive.meet.readonly lista e lê os
 // metadados das anotações do Gemini e do relatório de presença, mas o export do
@@ -15,18 +17,124 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
 export const SUMMARY_PROMPT_VERSION = "meet-pedagogical-v1";
+
+// O worker do edge-runtime morre em 150 s. O lote começa trabalho novo até
+// ~100 s; o trabalho em andamento recebe um prazo (deadline) de ~125 s para
+// parar de abrir documentos e deixar o resto para a rodada seguinte — a última
+// chamada ao Google tem 20 s de timeout, então sobra folga antes do corte.
+export const TICK_BUDGET_MS = 100_000;
+export const JOB_DEADLINE_MS = 125_000;
+
+/**
+ * Processa a fila do Meet enquanto houver orçamento de tempo (antes eram só 3
+ * trabalhos por chamada, e uma sala travada segurava a fila inteira).
+ * `deferred` diz quantos trabalhos ficaram para a próxima rodada.
+ */
 export async function runDocumentationTick<T>(
   enabled: boolean,
   configured: boolean,
   loadJobs: () => Promise<T[]>,
-  processJob: (job: T) => Promise<unknown>,
-): Promise<{ status: string; results: unknown[] }> {
-  if (!enabled || !configured) return { status: "DISABLED", results: [] };
-  const results = [];
-  for (const job of (await loadJobs()).slice(0, 3)) {
-    results.push(await processJob(job));
+  processJob: (job: T, deadline: number) => Promise<unknown>,
+  options: { budgetMs?: number; deadlineMs?: number; now?: () => number } = {},
+): Promise<{ status: string; results: unknown[]; deferred: number }> {
+  if (!enabled || !configured) {
+    return { status: "DISABLED", results: [], deferred: 0 };
   }
-  return { status: "PROCESSED", results };
+  const now = options.now || Date.now;
+  const started = now();
+  const budget = options.budgetMs ?? TICK_BUDGET_MS;
+  const deadline = started + (options.deadlineMs ?? JOB_DEADLINE_MS);
+  const jobs = await loadJobs();
+  const results = [];
+  for (const job of jobs) {
+    if (now() - started >= budget) break;
+    results.push(await processJob(job, deadline));
+  }
+  return {
+    status: "PROCESSED",
+    results,
+    deferred: jobs.length - results.length,
+  };
+}
+
+/**
+ * O dia da aula no fuso da escola (America/Sao_Paulo, UTC-3 sem horário de
+ * verão desde 2019), em UTC. A sala é exclusiva da sessão: toda conferência
+ * dela nesse dia é a aula — inclusive a que professor e aluno remarcaram por
+ * fora para outro horário do mesmo dia.
+ */
+export function saoPauloDayWindow(
+  classDate: string,
+): { start: string; end: string } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(classDate)) {
+    throw new Error("invalid_class_date");
+  }
+  const start = Date.parse(`${classDate}T00:00:00-03:00`);
+  if (!Number.isFinite(start)) throw new Error("invalid_class_date");
+  return {
+    start: new Date(start).toISOString(),
+    end: new Date(start + 86_400_000).toISOString(),
+  };
+}
+
+export interface TranscriptEntry {
+  participant: string;
+  text: string;
+  startTime: string;
+}
+
+/** "14:03:12" no fuso da escola; horário ilegível vira "--:--:--". */
+function saoPauloClock(iso: string): string {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return "--:--:--";
+  return new Date(time - 3 * 3_600_000).toISOString().slice(11, 19);
+}
+
+/**
+ * Plano B da transcrição: o texto montado pelas falas da API do Meet quando o
+ * Google Docs não exporta. Uma linha por fala, "[hh:mm:ss] Nome: texto", em
+ * ordem de horário. Sem fala nenhuma devolve "" (a aula não teve fala).
+ */
+export function formatTranscriptEntries(
+  entries: TranscriptEntry[],
+  names: Map<string, string>,
+): string {
+  return entries
+    .filter((entry) => text(entry.text, 20000))
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) =>
+      (Date.parse(a.entry.startTime) || 0) -
+        (Date.parse(b.entry.startTime) || 0) || a.index - b.index
+    )
+    .map(({ entry }) =>
+      `[${saoPauloClock(entry.startTime)}] ${
+        names.get(entry.participant) || "Participante"
+      }: ${text(entry.text, 20000).replace(/\s+/g, " ")}`
+    )
+    .join("\n");
+}
+
+export type ArtifactImportStatus = "PENDING" | "IMPORTED" | "EMPTY" | "FAILED";
+
+/**
+ * A fila tem fim: a sessão para de voltar quando TUDO que o Google gerou foi
+ * importado (ou é documento vazio, estado final) e, com a presença ligada, o
+ * relatório foi encontrado e avaliado contra uma aula já lançada. Sem nenhum
+ * documento a sessão não conclui aqui: quem a encerra é a janela final no banco.
+ */
+export function documentationSyncOutcome(input: {
+  statuses: ArtifactImportStatus[];
+  listingFailed: boolean;
+  deferred: boolean;
+  attendanceRequired: boolean;
+  attendanceDone: boolean;
+}): { complete: boolean; pending: number; failed: number } {
+  const pending = input.statuses.filter((s) => s === "PENDING").length;
+  const failed = input.statuses.filter((s) => s === "FAILED").length;
+  const complete = input.statuses.length > 0 && pending === 0 &&
+    failed === 0 && !input.listingFailed && !input.deferred &&
+    (!input.attendanceRequired || input.attendanceDone);
+  return { complete, pending, failed };
 }
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -54,13 +162,17 @@ export const uuid = (value: unknown): string => {
 };
 export function safeResource(
   value: unknown,
-  type: "space" | "conference" | "document",
+  type: "space" | "conference" | "document" | "transcript" | "participant",
 ): string {
   const valueText = text(value, 200);
   const patterns = {
     space: /^spaces\/[A-Za-z0-9_-]+$/,
     conference: /^conferenceRecords\/[A-Za-z0-9_-]+$/,
     document: /^[A-Za-z0-9_-]+$/,
+    transcript:
+      /^conferenceRecords\/[A-Za-z0-9_-]+\/transcripts\/[A-Za-z0-9_-]+$/,
+    participant:
+      /^conferenceRecords\/[A-Za-z0-9_-]+\/participants\/[A-Za-z0-9_-]+$/,
   };
   if (!patterns[type].test(valueText)) {
     throw new Error("google_resource_invalid");

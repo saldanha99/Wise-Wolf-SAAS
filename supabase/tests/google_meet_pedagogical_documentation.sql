@@ -6,7 +6,7 @@ do $test$
 declare
   admin_id uuid:=gen_random_uuid();teacher_id uuid:=gen_random_uuid();student_id uuid:=gen_random_uuid();
   outsider_id uuid:=gen_random_uuid();other_student uuid:=gen_random_uuid();session_id uuid:=gen_random_uuid();other_session uuid:=gen_random_uuid();future_session uuid:=gen_random_uuid();
-  result jsonb;artifact_id uuid;summary_id uuid;blocked boolean;nonce jsonb;original_count bigint;
+  result jsonb;artifact_id uuid;summary_id uuid;blocked boolean;nonce jsonb;original_count bigint;claim_id text;
   today date:=(now() at time zone 'America/Sao_Paulo')::date;
 begin
   perform set_config('request.jwt.claims','{"role":"service_role"}',true);
@@ -50,9 +50,14 @@ begin
 
   result:=public.google_meet_backend('room_claim','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('organizer_sub','synthetic-sub','cohost_email','teacher@example.invalid'));
   perform pg_temp.meet_assert((result->>'claimed')::boolean,'first room reservation not acquired');
+  claim_id:=result->'room'->>'claim_id';
   result:=public.google_meet_backend('room_claim','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('organizer_sub','synthetic-sub','cohost_email','teacher@example.invalid'));
   perform pg_temp.meet_assert(not (result->>'claimed')::boolean,'concurrent room creates duplicate');
-  perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY'));
+  perform pg_temp.meet_assert(not (result->'room' ? 'claim_id'),'room reservation token leaks to a non-owner');
+  -- Só quem tem a reserva grava o link (20260926170000).
+  blocked:=false;begin perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY'));exception when object_not_in_prerequisite_state then blocked:=true;end;
+  perform pg_temp.meet_assert(blocked,'room link saved without the creation reservation');
+  perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY','claim_id',claim_id));
   insert into public.lesson_occurrences(tenant_id,session_id,source_type,source_id,class_date,start_time,scheduled_start_at,scheduled_end_at,entitlement_date,status)
     values('meet-docs-fixture',session_id,'booking','active-fixture',today,'14:00',now()-interval '1 hour',now()-interval '30 minutes',today,'SCHEDULED'),
     ('meet-docs-fixture',session_id,'booking','archived-fixture',today,'14:00',now()-interval '1 hour',now()-interval '30 minutes',today,'SUPERSEDED');

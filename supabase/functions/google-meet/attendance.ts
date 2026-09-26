@@ -279,6 +279,99 @@ export function parseAttendanceReport(
   return rows.length ? { rows } : { error: "attendance_rows_empty" };
 }
 
+/**
+ * Queda e reentrada: quando todos saem e alguém volta, o Google abre outra
+ * conferência na MESMA sala e gera outro relatório. Junta as linhas da mesma
+ * pessoa (e-mail; sem e-mail, o nome): primeira entrada, última saída e a SOMA
+ * das durações — sem isso o aluno que caiu e voltou aparecia com só o tempo de
+ * um dos pedaços.
+ */
+export function mergeAttendanceRows(rows: AttendanceRow[]): AttendanceRow[] {
+  const merged = new Map<string, AttendanceRow>();
+  const minIso = (a: string | null, b: string | null) =>
+    !a ? b : !b ? a : Date.parse(a) <= Date.parse(b) ? a : b;
+  const maxIso = (a: string | null, b: string | null) =>
+    !a ? b : !b ? a : Date.parse(a) >= Date.parse(b) ? a : b;
+  for (const row of rows) {
+    const key = row.email
+      ? `email:${row.email.toLowerCase()}`
+      : `name:${fold(row.name).replace(/\s+/g, " ")}`;
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...row });
+      continue;
+    }
+    merged.set(key, {
+      name: current.name || row.name,
+      email: current.email || row.email,
+      joinedAt: minIso(current.joinedAt, row.joinedAt),
+      leftAt: maxIso(current.leftAt, row.leftAt),
+      durationSeconds:
+        current.durationSeconds === null && row.durationSeconds === null
+          ? null
+          : (current.durationSeconds || 0) + (row.durationSeconds || 0),
+    });
+  }
+  return [...merged.values()];
+}
+
+export type AttendanceSource = {
+  id: string;
+  name: string;
+  csv: string;
+  createdTime?: string;
+};
+
+/**
+ * As planilhas da mesma sala viram UM registro de presença: linhas juntadas
+ * por pessoa (mergeAttendanceRows), CSVs guardados em sequência (ordem de
+ * criação) e a lista de ids para rastrear de onde veio cada pedaço. Planilha
+ * ilegível não derruba as outras; só se nenhuma for lida o erro fica gravado.
+ */
+export function combineAttendanceReports(
+  reports: AttendanceSource[],
+  conferenceStartIso: string,
+): {
+  documentId: string;
+  documentName: string;
+  documentIds: string[];
+  sourceCsv: string;
+  rows: AttendanceRow[];
+  parseError: "attendance_header_not_found" | "attendance_rows_empty" | null;
+} {
+  if (!reports.length) throw new Error("attendance_reports_required");
+  const ordered = [...reports].sort((a, b) =>
+    (Date.parse(a.createdTime || "") || 0) -
+    (Date.parse(b.createdTime || "") || 0)
+  );
+  const rows: AttendanceRow[] = [];
+  let parseError:
+    | "attendance_header_not_found"
+    | "attendance_rows_empty"
+    | null = null;
+  let parsedAny = false;
+  for (const report of ordered) {
+    const parsed = parseAttendanceReport(report.csv, conferenceStartIso);
+    if ("error" in parsed) {
+      parseError = parseError || parsed.error;
+      continue;
+    }
+    parsedAny = true;
+    rows.push(...parsed.rows);
+  }
+  return {
+    documentId: ordered[0].id,
+    documentName: ordered.map((report) => report.name).join(" + ").slice(
+      0,
+      300,
+    ),
+    documentIds: ordered.map((report) => report.id),
+    sourceCsv: ordered.map((report) => report.csv).join("\n\n"),
+    rows: parsedAny ? mergeAttendanceRows(rows) : [],
+    parseError: parsedAny ? null : parseError,
+  };
+}
+
 const sameName = (a: string, b: string) => {
   const x = fold(a).replace(/[^a-z ]/g, "").split(" ").filter(Boolean);
   const y = fold(b).replace(/[^a-z ]/g, "").split(" ").filter(Boolean);
@@ -367,6 +460,29 @@ export function pickAttendanceReport<T extends { name: string; csv?: string }>(
     if (byTeacher.length === 1) return byTeacher[0];
   }
   return null;
+}
+
+/**
+ * Todas as planilhas da sala: uma por conferência (queda e reentrada geram mais
+ * de uma, todas com o mesmo código no nome). Sem nenhuma pelo código, cai no
+ * plano B de uma planilha só (a que cita o professor), como antes.
+ */
+export function pickAttendanceReports<
+  T extends { name: string; csv?: string },
+>(
+  candidates: T[],
+  meetingCode: string | null,
+  teacherEmail: string | null,
+): T[] {
+  const code = meetingCode?.toLowerCase() || "";
+  if (code) {
+    const byName = candidates.filter((c) =>
+      c.name.toLowerCase().includes(code)
+    );
+    if (byName.length) return byName;
+  }
+  const single = pickAttendanceReport(candidates, meetingCode, teacherEmail);
+  return single ? [single] : [];
 }
 
 /**

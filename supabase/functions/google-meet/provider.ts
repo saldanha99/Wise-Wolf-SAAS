@@ -1,12 +1,27 @@
 import {
+  formatTranscriptEntries,
   googleEmail,
   isRecord,
   safeMeetingUri,
   safeResource,
   SUMMARY_RESPONSE_SCHEMA,
   text,
+  type TranscriptEntry,
 } from "./core.ts";
 export type Fetcher = typeof fetch;
+export type MeetConference = {
+  name: string;
+  startTime: string;
+  endTime: string;
+};
+export type MeetArtifactKind = "TRANSCRIPT" | "SMART_NOTES";
+export type MeetArtifact = {
+  name: string;
+  kind: MeetArtifactKind;
+  state: string;
+  document: string | null;
+  conference: MeetConference;
+};
 export class GoogleProviderError extends Error {
   constructor(
     public code: string,
@@ -157,10 +172,11 @@ export class GoogleMeetProvider {
   async list(
     urlString: string,
     key: string,
+    maxPages = 20,
   ): Promise<Record<string, unknown>[]> {
     const items: Record<string, unknown>[] = [], url = new URL(urlString);
     url.searchParams.set("pageSize", "100");
-    for (let page = 0; page < 20; page++) {
+    for (let page = 0; page < maxPages; page++) {
       const result = await this.json(url.toString());
       const rows = Array.isArray(result[key])
         ? result[key].filter(isRecord)
@@ -172,24 +188,28 @@ export class GoogleMeetProvider {
     }
     throw new GoogleProviderError("google_pagination_limit", 503);
   }
-  /** Conferências da sala na janela da agenda: só identidade e horário da reunião. */
+  /**
+   * Conferências da sala num intervalo (o dia da aula, no fuso da escola — ver
+   * saoPauloDayWindow): só identidade e horário da reunião. A sala é exclusiva
+   * da sessão, então aula remarcada por fora no mesmo dia continua sendo achada;
+   * antes a busca era ±2 h do horário da agenda e virava caso falso de
+   * "fora da sala".
+   */
   async conferences(
     space: string,
-    sessionWindow?: { start: string; end: string },
-  ): Promise<{ name: string; startTime: string; endTime: string }[]> {
+    window?: { start: string; end: string },
+  ): Promise<MeetConference[]> {
     const url = new URL("https://meet.googleapis.com/v2/conferenceRecords");
     let filter = `space.name = "${safeResource(space, "space")}"`;
-    if (sessionWindow) {
-      const start = Date.parse(sessionWindow.start),
-        end = Date.parse(sessionWindow.end);
+    if (window) {
+      const start = Date.parse(window.start),
+        end = Date.parse(window.end);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         throw new Error("invalid_session_window");
       }
-      // Scope document discovery to this lesson. These query bounds are the
-      // school's schedule, not provider presence/duration measurements.
       filter += ` AND start_time >= "${
-        new Date(start - 2 * 3600000).toISOString()
-      }" AND start_time <= "${new Date(end + 2 * 3600000).toISOString()}"`;
+        new Date(start).toISOString()
+      }" AND start_time <= "${new Date(end).toISOString()}"`;
     }
     url.searchParams.set("filter", filter);
     // Identidade e horário da conferência: é o que localiza os documentos da
@@ -205,27 +225,96 @@ export class GoogleMeetProvider {
       endTime: text(row.endTime, 40),
     }));
   }
-  async artifactMetadata(
-    space: string,
-    sessionWindow?: { start: string; end: string },
-  ): Promise<Record<string, unknown>[]> {
-    const artifacts: Record<string, unknown>[] = [];
-    for (const conference of await this.conferences(space, sessionWindow)) {
-      const name = conference.name;
-      for (
-        const [resource, kind] of [["transcripts", "TRANSCRIPT"], [
-          "smartNotes",
-          "SMART_NOTES",
-        ]]
-      ) {
-        const artifactUrl =
-          `https://meet.googleapis.com/v2/${name}/${resource}?fields=${resource}(name,state,docsDestination),nextPageToken`;
-        for (const artifact of await this.list(artifactUrl, resource)) {
-          artifacts.push({ ...artifact, kind });
-        }
+  /**
+   * Documentos de UM tipo de uma conferência. Separado por tipo de propósito:
+   * a falha ao listar as anotações não pode esconder a transcrição (nem a
+   * presença) — quem chama trata cada lista no seu próprio try/catch.
+   */
+  async artifactsOf(
+    conference: MeetConference,
+    kind: MeetArtifactKind,
+  ): Promise<MeetArtifact[]> {
+    const name = safeResource(conference.name, "conference");
+    const resource = kind === "TRANSCRIPT" ? "transcripts" : "smartNotes";
+    const artifactUrl =
+      `https://meet.googleapis.com/v2/${name}/${resource}?fields=${resource}(name,state,docsDestination),nextPageToken`;
+    const prefix = `${name}/${resource}/`;
+    return (await this.list(artifactUrl, resource)).map((row) => {
+      const artifactName = text(row.name, 250);
+      if (
+        !artifactName.startsWith(prefix) ||
+        !/^[A-Za-z0-9_-]+$/.test(artifactName.slice(prefix.length))
+      ) throw new GoogleProviderError("google_response_invalid", 502);
+      const document = isRecord(row.docsDestination)
+        ? text(row.docsDestination.document, 200)
+        : "";
+      return {
+        name: artifactName,
+        kind,
+        state: text(row.state, 40),
+        document: /^[A-Za-z0-9_-]+$/.test(document) ? document : null,
+        conference,
+      };
+    });
+  }
+  /**
+   * Plano B da transcrição: as falas pela API do Meet, quando o Google Docs não
+   * exporta (403, arquivo ausente, Drive sem espaço para gerar o documento).
+   * Pede só participante, texto e horário da fala. O nome de quem falou vem de
+   * participants.get com máscara de campos restrita ao NOME DE EXIBIÇÃO — é o
+   * rótulo que o próprio documento do Google traria; horários de entrada e
+   * saída (earliestStartTime/latestEndTime) e participantSessions nunca são
+   * pedidos. Presença continua vindo só do relatório de presença.
+   */
+  async transcriptText(transcriptName: string): Promise<string> {
+    const name = safeResource(transcriptName, "transcript");
+    const entriesUrl =
+      `https://meet.googleapis.com/v2/${name}/entries?fields=transcriptEntries(participant,text,startTime),nextPageToken`;
+    const entries: TranscriptEntry[] =
+      (await this.list(entriesUrl, "transcriptEntries", 60)).map((row) => ({
+        participant: text(row.participant, 250),
+        text: text(row.text, 20000),
+        startTime: text(row.startTime, 40),
+      }));
+    const names = new Map<string, string>();
+    let unnamed = 0;
+    // Numeração de quem ficou sem nome segue a ordem em que falou.
+    const chronological = [...entries].sort((a, b) =>
+      (Date.parse(a.startTime) || 0) - (Date.parse(b.startTime) || 0)
+    );
+    for (const entry of chronological) {
+      if (!entry.participant || names.has(entry.participant)) continue;
+      if (names.size >= 30) {
+        names.set(entry.participant, `Participante ${++unnamed}`);
+        continue;
+      }
+      try {
+        names.set(
+          entry.participant,
+          await this.participantDisplayName(entry.participant),
+        );
+      } catch {
+        names.set(entry.participant, `Participante ${++unnamed}`);
       }
     }
-    return artifacts;
+    const result = formatTranscriptEntries(entries, names);
+    if (result.length > 500000) {
+      throw new GoogleProviderError("google_document_too_large", 422);
+    }
+    return result;
+  }
+  private async participantDisplayName(participant: string): Promise<string> {
+    const name = safeResource(participant, "participant");
+    const result = await this.json(
+      `https://meet.googleapis.com/v2/${name}?fields=signedinUser(displayName),anonymousUser(displayName),phoneUser(displayName)`,
+    );
+    for (const key of ["signedinUser", "anonymousUser", "phoneUser"]) {
+      const user = result[key];
+      if (isRecord(user) && text(user.displayName, 120)) {
+        return text(user.displayName, 120).replace(/[\r\n:]+/g, " ");
+      }
+    }
+    throw new GoogleProviderError("google_participant_unnamed", 404);
   }
   /**
    * Planilhas da PRÓPRIA conta da escola criadas na janela da aula. Com
@@ -317,6 +406,18 @@ export class GoogleMeetProvider {
     return result;
   }
 }
+// Erros do endpoint de token que significam "este refresh token não vale mais
+// para este cliente": revogado, expirado, senha trocada (invalid_grant) ou
+// emitido para outro cliente OAuth, como depois de trocar o cliente no Cloud
+// (unauthorized_client). Só eles pedem reconectar a conta central.
+const REVOKED_TOKEN_ERRORS = new Set(["invalid_grant", "unauthorized_client"]);
+
+/**
+ * Troca de token com a conta central. Só token revogado desconecta
+ * (google_reconnect_required → REAUTH_REQUIRED). Instabilidade do Google (5xx,
+ * 429, rede) é transitória: antes qualquer resposta não-OK marcava a conta para
+ * reconectar e parava todas as salas e importações até a direção agir.
+ */
 export async function exchangeToken(
   input: Record<string, string>,
   request: Fetcher = fetch,
@@ -333,13 +434,189 @@ export async function exchangeToken(
     throw new GoogleProviderError("google_oauth_unavailable", 503);
   }
   if (!response.ok) {
-    throw new GoogleProviderError("google_reconnect_required", 401);
+    if (response.status === 429 || response.status >= 500) {
+      throw new GoogleProviderError("google_oauth_unavailable", 503);
+    }
+    let oauthError = "";
+    try {
+      const body = await response.json();
+      oauthError = isRecord(body) ? text(body.error, 80) : "";
+    } catch { /* corpo não-JSON: fica sem o código do OAuth */ }
+    if (
+      (response.status === 400 || response.status === 401) &&
+      REVOKED_TOKEN_ERRORS.has(oauthError)
+    ) throw new GoogleProviderError("google_reconnect_required", 401);
+    // invalid_client (segredo trocado), invalid_request…: é configuração, e
+    // reconectar a conta não resolve. Não desconecta; o código fica visível.
+    throw new GoogleProviderError("google_oauth_rejected", response.status);
   }
   const result = await response.json();
   if (!isRecord(result) || !text(result.access_token, 8000)) {
     throw new GoogleProviderError("google_oauth_response_invalid", 502);
   }
   return result;
+}
+export const providerErrorCode = (error: unknown, fallback: string): string =>
+  error instanceof Error && /^[a-z_]{1,80}$/.test(error.message)
+    ? error.message
+    : fallback;
+
+export type ArtifactReading = {
+  status: "PENDING" | "IMPORTED" | "EMPTY";
+  source: "DRIVE_EXPORT" | "MEET_ENTRIES" | null;
+  sourceText: string;
+  // Com IMPORTED pelas falas, guarda por que o Docs não serviu (visível na tela).
+  errorCode: string | null;
+};
+
+// Transcrição que parou em ENDED (arquivo nunca gerado — por exemplo, Drive da
+// conta sem espaço) é montada pelas falas depois desta espera.
+export const TRANSCRIPT_FILE_GRACE_MS = 3_600_000;
+
+/**
+ * O que fazer com UM documento do Meet. Lança erro só quando o documento
+ * falhou de verdade (quem chama registra a falha daquele artefato e segue):
+ * - ainda gerando → PENDING;
+ * - Docs vazio (aula sem fala) → EMPTY, estado final, nunca vira falha repetida;
+ * - transcrição que o Docs não exporta, sem documento, ou parada em ENDED há
+ *   mais de 1 h → plano B pelas falas da API (MEET_ENTRIES).
+ */
+export async function readArtifact(
+  provider: GoogleMeetProvider,
+  item: MeetArtifact,
+  nowMs: number,
+): Promise<ArtifactReading> {
+  const fromEntries = async (reason: string): Promise<ArtifactReading> => {
+    let entries: string;
+    try {
+      entries = await provider.transcriptText(item.name);
+    } catch {
+      // O plano B também falhou: o erro que conta é o do documento.
+      throw new GoogleProviderError(reason, 502);
+    }
+    return entries.trim()
+      ? {
+        status: "IMPORTED",
+        source: "MEET_ENTRIES",
+        sourceText: entries,
+        errorCode: reason,
+      }
+      : {
+        status: "EMPTY",
+        source: "MEET_ENTRIES",
+        sourceText: "",
+        errorCode: reason,
+      };
+  };
+  if (item.state !== "FILE_GENERATED") {
+    const ended = Date.parse(item.conference.endTime);
+    if (
+      item.kind === "TRANSCRIPT" && item.state === "ENDED" &&
+      Number.isFinite(ended) && nowMs - ended > TRANSCRIPT_FILE_GRACE_MS
+    ) return await fromEntries("google_document_not_generated");
+    return { status: "PENDING", source: null, sourceText: "", errorCode: null };
+  }
+  if (!item.document) {
+    if (item.kind === "TRANSCRIPT") {
+      return await fromEntries("google_document_missing");
+    }
+    throw new GoogleProviderError("google_document_missing", 502);
+  }
+  try {
+    const sourceText = await provider.documentText(item.document);
+    return {
+      status: "IMPORTED",
+      source: "DRIVE_EXPORT",
+      sourceText,
+      errorCode: null,
+    };
+  } catch (error) {
+    const code = providerErrorCode(error, "google_document_unavailable");
+    if (code === "google_document_empty") {
+      return {
+        status: "EMPTY",
+        source: "DRIVE_EXPORT",
+        sourceText: "",
+        errorCode: null,
+      };
+    }
+    if (item.kind === "TRANSCRIPT") return await fromEntries(code);
+    throw error;
+  }
+}
+
+/**
+ * O laço de importação: um documento por vez, cada um no seu try/catch. Falha
+ * de um documento é registrada NELE (recordFailure) e o laço segue — antes a
+ * primeira falha derrubava a sessão inteira, e nem a presença era lida.
+ * - EMPTY é final (nunca relido); IMPORTED só é relido na importação manual;
+ * - passado o prazo da rodada, o que falta fica PENDING para a próxima.
+ */
+export async function importArtifacts(
+  provider: GoogleMeetProvider,
+  artifacts: MeetArtifact[],
+  options: {
+    known: Map<string, { status: string }>;
+    force?: boolean;
+    deadline: number;
+    now?: () => number;
+    persist: (item: MeetArtifact, reading: ArtifactReading) => Promise<void>;
+    recordFailure: (item: MeetArtifact, code: string) => Promise<void>;
+  },
+): Promise<{
+  statuses: ("PENDING" | "IMPORTED" | "EMPTY" | "FAILED")[];
+  deferred: boolean;
+}> {
+  const now = options.now || Date.now;
+  const statuses: ("PENDING" | "IMPORTED" | "EMPTY" | "FAILED")[] = [];
+  let deferred = false;
+  for (const item of artifacts) {
+    const previous = options.known.get(item.name)?.status;
+    if (
+      previous === "EMPTY" || (previous === "IMPORTED" && !options.force)
+    ) {
+      statuses.push(previous);
+      continue;
+    }
+    if (now() > options.deadline) {
+      deferred = true;
+      statuses.push("PENDING");
+      continue;
+    }
+    try {
+      const reading = await readArtifact(provider, item, now());
+      await options.persist(item, reading);
+      statuses.push(reading.status);
+    } catch (error) {
+      statuses.push("FAILED");
+      try {
+        await options.recordFailure(
+          item,
+          providerErrorCode(error, "google_document_import_failed"),
+        );
+      } catch { /* a falha já ficou no log; o próximo ciclo tenta de novo */ }
+    }
+  }
+  return { statuses, deferred };
+}
+
+/**
+ * Código gravado na sala quando a criação falha. Nos dois casos a sala volta a
+ * ser tentada sozinha (FAILED, espera crescente): recusa do Google e falha
+ * incerta (rede, 5xx, timeout) não deixam link salvo, e só o link salvo é
+ * distribuído — um space criado no Google e não salvo aqui nunca chega a
+ * ninguém, então tentar de novo não produz dois links em uso.
+ */
+export function roomCreationErrorCode(error: unknown): string {
+  if (!(error instanceof GoogleProviderError)) {
+    return "google_room_creation_failed";
+  }
+  if (error.code === "google_request_uncertain" || error.status >= 500) {
+    return "google_room_creation_uncertain";
+  }
+  return /^[a-z_]{1,80}$/.test(error.code)
+    ? error.code
+    : "google_room_creation_failed";
 }
 export async function googleIdentity(
   token: string,

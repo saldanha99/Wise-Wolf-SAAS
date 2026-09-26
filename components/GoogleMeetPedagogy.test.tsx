@@ -48,3 +48,25 @@ describe('Google Meet documentation readiness and human review',()=>{
     expect(invoke.mock.calls.map(([action])=>action)).toEqual(['session_detail']);
   });
 });
+describe('Situação de cada documento e sala que o Google não criou',()=>{
+  it('mostra o documento que falhou, o vazio e a transcrição montada pelas falas',async()=>{
+    invoke.mockResolvedValue({...detail(),room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',sync_status:'PENDING'},imports:[
+      {provider_name:'conferenceRecords/c/smartNotes/n',kind:'SMART_NOTES',status:'FAILED',source:null,last_error_code:'google_document_permission_required',failed_attempts:2},
+      {provider_name:'conferenceRecords/c/transcripts/t',kind:'TRANSCRIPT',status:'IMPORTED',source:'MEET_ENTRIES',last_error_code:'google_document_unavailable',failed_attempts:0},
+      {provider_name:'conferenceRecords/d/transcripts/t2',kind:'TRANSCRIPT',status:'EMPTY',source:'DRIVE_EXPORT',last_error_code:null,failed_attempts:0},
+    ]});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText('Situação dos documentos');
+    expect(screen.getByText(/Não importado: a conta da escola não tem acesso ao documento/)).toBeTruthy();
+    expect(screen.getByText(/Importada pelas falas da reunião \(o Google Docs não entregou o arquivo\)/)).toBeTruthy();
+    expect(screen.getByText(/Sem fala registrada/)).toBeTruthy();
+  });
+  it('sala FAILED: diz o motivo, a próxima tentativa e oferece tentar de novo',async()=>{
+    invoke.mockResolvedValue({...detail(),room:{state:'FAILED',last_error_code:'google_permission_or_edition_required',next_attempt_at:'2026-09-26T15:30:00Z'},artifacts:[],summaries:[],imports:[]});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/O Google não criou a sala \(o Google não liberou o recurso para esta conta\)/);
+    expect(screen.getByText(/Nova tentativa automática às 12:30/)).toBeTruthy();
+    expect(screen.getByText(/a aula usa o link de sempre/)).toBeTruthy();
+    expect((screen.getByRole('button',{name:'Tentar criar a sala de novo'}) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

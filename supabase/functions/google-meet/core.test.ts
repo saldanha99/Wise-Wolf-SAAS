@@ -2,7 +2,9 @@
 import {
   authorizationUrl,
   decryptSecret,
+  documentationSyncOutcome,
   encryptSecret,
+  formatTranscriptEntries,
   GOOGLE_SCOPES,
   grantedRequiredScopes,
   nativeNotesDraft,
@@ -10,6 +12,7 @@ import {
   pkceChallenge,
   runDocumentationTick,
   safeResource,
+  saoPauloDayWindow,
   sha256,
   summaryPrompt,
 } from "./core.ts";
@@ -260,8 +263,15 @@ Deno.test("artifact discovery requests only documents and conference IDs, pagina
       });
     }),
   );
-  const docs = await provider.artifactMetadata("spaces/fixture");
+  const [conference] = await provider.conferences("spaces/fixture");
+  const docs = [
+    ...await provider.artifactsOf(conference, "TRANSCRIPT"),
+    ...await provider.artifactsOf(conference, "SMART_NOTES"),
+  ];
   assert(docs.length === 2 && docs[1].kind === "SMART_NOTES");
+  assert(
+    docs[0].document === "transcript_doc" && docs[0].conference === conference,
+  );
   assert(calls.length === 3);
 });
 Deno.test("Google entitlement denial is fail-closed and does not disclose provider error content", async () => {
@@ -417,6 +427,133 @@ Deno.test("disabled or unconfigured automation performs no provider call, paid c
       "DISABLED",
   );
   assert(loads === 0 && calls === 0);
+  // Com tempo sobrando, a fila inteira anda (antes eram só 3 por chamada).
   const active = await runDocumentationTick(true, true, load, process);
-  assert(active.results.length === 3 && Number(calls) === 3);
+  assert(active.results.length === 5 && Number(calls) === 5);
+  assert(active.deferred === 0);
+});
+
+Deno.test("fila para de começar trabalho novo quando o orçamento de tempo acaba", async () => {
+  let clock = 0;
+  const deadlines: number[] = [];
+  const tick = await runDocumentationTick(
+    true,
+    true,
+    () => Promise.resolve([1, 2, 3, 4, 5]),
+    (_job, deadline) => {
+      deadlines.push(deadline);
+      clock += 40_000; // cada trabalho leva 40 s
+      return Promise.resolve({ ok: true });
+    },
+    { now: () => clock },
+  );
+  // 0 s, 40 s e 80 s começam; aos 120 s o orçamento de 100 s acabou.
+  assert(tick.results.length === 3, `processou ${tick.results.length}`);
+  assert(tick.deferred === 2);
+  // Todo trabalho recebe o mesmo prazo absoluto (125 s depois do início).
+  assert(deadlines.every((deadline) => deadline === 125_000));
+});
+
+Deno.test("dia da aula no fuso da escola vira janela UTC de 24 h", async () => {
+  const day = saoPauloDayWindow("2026-09-26");
+  assert(day.start === "2026-09-26T03:00:00.000Z", day.start);
+  assert(day.end === "2026-09-27T03:00:00.000Z", day.end);
+  await rejects(() => saoPauloDayWindow("26/09/2026"), "invalid_class_date");
+  // Busca a sala no dia inteiro: aula remarcada por fora no mesmo dia aparece.
+  const provider = new GoogleMeetProvider(
+    "synthetic",
+    fakeFetch((url) => {
+      const filter = new URL(url).searchParams.get("filter") || "";
+      assert(
+        filter ===
+          'space.name = "spaces/fixture" AND start_time >= "2026-09-26T03:00:00.000Z" AND start_time <= "2026-09-27T03:00:00.000Z"',
+        filter,
+      );
+      return response({ conferenceRecords: [] });
+    }),
+  );
+  await provider.conferences("spaces/fixture", day);
+});
+
+Deno.test("transcrição pelas falas: ordem de horário, nome de quem falou e hora da escola", () => {
+  const names = new Map([
+    ["conferenceRecords/c/participants/p1", "Teacher Ana"],
+  ]);
+  const text = formatTranscriptEntries([
+    {
+      participant: "conferenceRecords/c/participants/p2",
+      text: "I  am\nfine",
+      startTime: "2026-09-26T13:01:05Z",
+    },
+    {
+      participant: "conferenceRecords/c/participants/p1",
+      text: "How are you?",
+      startTime: "2026-09-26T13:01:00Z",
+    },
+    {
+      participant: "conferenceRecords/c/participants/p1",
+      text: "   ",
+      startTime: "2026-09-26T13:02:00Z",
+    },
+  ], names);
+  assert(
+    text ===
+      "[10:01:00] Teacher Ana: How are you?\n[10:01:05] Participante: I am fine",
+    text,
+  );
+  assert(formatTranscriptEntries([], names) === "");
+});
+
+Deno.test("importação conclui só com tudo importado (ou vazio) e presença avaliada", () => {
+  const base = {
+    listingFailed: false,
+    deferred: false,
+    attendanceRequired: true,
+    attendanceDone: true,
+  };
+  assert(
+    documentationSyncOutcome({ ...base, statuses: ["IMPORTED", "EMPTY"] })
+      .complete,
+  );
+  // Sem documento nenhum não conclui: quem encerra é a janela final no banco.
+  assert(!documentationSyncOutcome({ ...base, statuses: [] }).complete);
+  const failed = documentationSyncOutcome({
+    ...base,
+    statuses: ["IMPORTED", "FAILED"],
+  });
+  assert(!failed.complete && failed.failed === 1);
+  assert(
+    !documentationSyncOutcome({ ...base, statuses: ["IMPORTED", "PENDING"] })
+      .complete,
+  );
+  assert(
+    !documentationSyncOutcome({
+      ...base,
+      statuses: ["IMPORTED"],
+      attendanceDone: false,
+    }).complete,
+  );
+  assert(
+    documentationSyncOutcome({
+      ...base,
+      statuses: ["IMPORTED"],
+      attendanceRequired: false,
+      attendanceDone: false,
+    }).complete,
+  );
+  assert(
+    !documentationSyncOutcome({
+      ...base,
+      statuses: ["IMPORTED"],
+      listingFailed: true,
+    }).complete,
+  );
+  assert(
+    !documentationSyncOutcome({
+      ...base,
+      statuses: ["IMPORTED"],
+      deferred: true,
+    })
+      .complete,
+  );
 });
