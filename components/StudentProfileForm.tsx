@@ -6,6 +6,7 @@ import StudentScheduleManager from './StudentScheduleManager';
 import BillingMethodManager from './BillingMethodManager';
 import StudentManualPixManager from './StudentManualPixManager';
 import ContactQualityManager from './ContactQualityManager';
+import StudentBirthDateField from './StudentBirthDateField';
 
 interface StudentProfileFormProps {
     initialData?: any;
@@ -597,6 +598,11 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                         {initialData?.id && <ContactQualityManager studentId={initialData.id} studentName={formData.name} manager={isDirector || currentUserRole === 'COORDINATOR'} />}
 
+                        {/* Data de nascimento: só a escola cadastra (prova de maioridade do termo de registro das aulas) */}
+                        {initialData?.id && (isDirector || currentUserRole === 'COORDINATOR') && (
+                            <StudentBirthDateField studentId={initialData.id} />
+                        )}
+
                         {/* Aluno KIDS — responsável (relatório semanal aos pais) */}
                         <div className="pt-4 border-t border-brand-border">
                             <label className="flex items-center gap-2 cursor-pointer mb-3">
@@ -609,6 +615,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 />
                                 <span className="text-sm font-bold text-brand-text dark:text-slate-200">🧸 Aluno infantil (KIDS) — enviar relatório semanal aos pais</span>
                             </label>
+                            {!isDirector && (
+                                <p className="-mt-2 mb-3 text-xs text-brand-muted">Só a direção classifica o aluno como infantil.</p>
+                            )}
                             {formData.is_kids && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">

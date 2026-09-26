@@ -1,6 +1,9 @@
 -- Termo de registro das aulas (migration 20260926120000): link do aluno ou do
 -- responsável, aceite do professor no app, e aplicação automática às sessões
 -- das próximas 24 h só com a conta Google conectada e os dois lados aceitos.
+-- Desde 20260926200000 a idade vem da escola (sem data atestada = responsável)
+-- e toda decisão pelo link exige o código do WhatsApp: os detalhes estão em
+-- termo_seguro_do_aluno.sql; aqui o fluxo só passa por eles.
 \set ON_ERROR_STOP on
 
 begin;
@@ -18,7 +21,7 @@ do $privileges$
 begin
   perform pg_temp.rec_assert(
     has_function_privilege('anon', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE')
-    and has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean)', 'EXECUTE')
+    and has_function_privilege('anon', 'public.decide_lesson_recording_consent_public(text,text,text,boolean,text)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.get_lesson_recording_consent_public(text)', 'EXECUTE'),
     'o link público perdeu a rota anônima'
   );
@@ -72,6 +75,7 @@ declare
   v_kid_token text;
   v_blocked boolean;
   v_changed integer;
+  v_issue jsonb;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   insert into public.tenants (id, name) values
@@ -150,6 +154,9 @@ begin
     'token guardado sem hash'
   );
 
+  -- A maioridade do adulto é atestada pela escola (sem isso, responde o responsável).
+  perform public.set_student_birth_date(v_adult, date '1990-01-15', 'Documento conferido');
+
   -- Página pública (anon).
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   v_result := public.get_lesson_recording_consent_public(v_token);
@@ -164,11 +171,16 @@ begin
   );
 
   v_blocked := false;
-  begin perform public.decide_lesson_recording_consent_public(v_token, 'Aluno', 'SELF', true);
+  begin perform public.decide_lesson_recording_consent_public(v_token, 'Aluno', 'SELF', true, '000000');
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.rec_assert(v_blocked, 'aceitou sem nome completo');
 
-  v_result := public.decide_lesson_recording_consent_public(v_token, '  Aluno   Adulto  Fixture ', 'SELF', true);
+  -- Código do WhatsApp: emitido para a edge (service_role) e digitado na página.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_issue := public.issue_lesson_recording_consent_code(v_token, 'SELF');
+  perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.decide_lesson_recording_consent_public(v_token, '  Aluno   Adulto  Fixture ', 'SELF', true, v_issue ->> 'code');
   perform pg_temp.rec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do adulto não registrado');
   perform pg_temp.rec_assert(
     (select signer_name from private.lesson_recording_consents where subject_id = v_adult order by seq desc limit 1)
@@ -179,10 +191,14 @@ begin
   v_result := public.get_lesson_recording_consent_public(v_kid_token);
   perform pg_temp.rec_assert((v_result ->> 'requires_guardian')::boolean, 'menor sem exigência de responsável');
   v_blocked := false;
-  begin perform public.decide_lesson_recording_consent_public(v_kid_token, 'Crianca Fixture', 'SELF', true);
+  begin perform public.decide_lesson_recording_consent_public(v_kid_token, 'Crianca Fixture', 'SELF', true, '000000');
   exception when invalid_parameter_value then v_blocked := true; end;
   perform pg_temp.rec_assert(v_blocked, 'menor aceitou sozinho');
-  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_issue := public.issue_lesson_recording_consent_code(v_kid_token, 'GUARDIAN');
+  perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.decide_lesson_recording_consent_public(v_kid_token, 'Responsavel Fixture', 'GUARDIAN', true, v_issue ->> 'code');
   perform pg_temp.rec_assert(v_result ->> 'decision' = 'ACCEPTED', 'aceite do responsável não registrado');
 
   -- Professor no app.

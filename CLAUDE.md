@@ -256,6 +256,14 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
   próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
   `security_definer_authorization_hardening.sql`.
+- ⚠️ **Termo seguro do lado da família** (migration `20260926200000`, runbook seção "Lado do aluno e do
+  responsável"): **idade desconhecida = responsável** (fail-closed); só vale a data de nascimento
+  cadastrada pela ESCOLA por `set_student_birth_date` (trilha em `private.student_birth_date_records` +
+  `profile_audit_log`; data mudada por outro caminho perde a prova). `is_kids` é da direção (professor
+  barrado na RPC e na API). Toda decisão pelo link exige **código de 6 dígitos no WhatsApp** do cadastro
+  (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas, 3 envios/h por link, telefone
+  congelado quando o link é gerado) e grava `verification`/`verified_phone`. Aceite sem código ou "como
+  aluno" de quem hoje exige responsável **não marca aula**.
 - **Envio do termo em lote** (migration `20260926210000`, seção própria no runbook): a direção confirma
   na tela quantas mensagens e quando saem; fila `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a
   cada 3 min, seg–sáb 9h–20h; menor **ou idade não cadastrada** → responsável, sem telefone dele = "sem
