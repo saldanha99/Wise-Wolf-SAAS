@@ -413,6 +413,41 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
   a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
   `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
+- **Resumo por IA automático depois da aula** (migration `20260927110000`, runbook seção própria): fila
+  `GENERATE_SUMMARY` (uma por rodada) → OpenRouter com `provider.data_collection = "deny"` e JSON estrito →
+  rascunho `PROPOSED`; só o aprovado pelo professor vai para a memória. Teto mensal por escola (padrão US$ 20,
+  "Conta central Google"); atingido, o automático para e o manual segue com aceite de custo. Idempotência pelo
+  hash das fontes calculado NO BANCO (o mesmo conteúdo nunca é pago duas vezes, nem pelo botão). Fila "Aulas
+  para revisar" em "Salas e continuidade" com o prazo de aprovação (fim da retenção das fontes) e
+  `director_pending_counts.resumos_para_revisar` (3+ dias). ⚠️ A fila e as pendências foram remendadas **por
+  âncora**: quem recriar `get_pending_google_meet_sync_sessions` ou `director_pending_counts` mantém o ramo
+  `GENERATE_SUMMARY` e a chave `resumos_para_revisar` (o teste reprova sem eles). ⚠️ `greatest`/`least` são
+  formas especiais como `nullif`: `pg_catalog.greatest(...)` não existe.
+- **Originais no Drive vão para a LIXEIRA 90 dias depois da aula; a direção apaga os registros de um aluno a
+  pedido** (migration `20260927120000`, runbook seção própria, teste `originais_do_drive_para_a_lixeira.sql`).
+  Flag `GOOGLE_MEET_DELETE_ORIGINALS_ENABLED`: ligada, a conexão pede o escopo **`drive`** (escrita) em vez de
+  `drive.readonly` — **ligou → reconectar a conta central** (`scopes_outdated` segue a configuração; `drive`
+  inclui a leitura). ⚠️ **Só vai para a lixeira arquivo com id da Meet API (`docsDestination`) ou da planilha
+  de presença guardada E identificada pelo código da sala no nome — nunca busca por nome**; a planilha do plano B
+  da importação (pelo e-mail do professor) fica fora, para conferência manual (`attendance_unidentified`); e a
+  edge ainda confere `ownedByMe` e o tipo (Documento/Planilha) antes do `files.update trashed=true`. Registro por
+  arquivo em `private.google_meet_drive_originals` (TRASHED/GONE/REFUSED; falha tenta de novo em 1 h dobrando até
+  24 h, sem desistir); a importação registra o que lista (e só fecha a lista com todo documento em arquivo), a
+  planilha entra por gatilho. Fila `PURGE_ORIGINALS` (até 5 por rodada): a **lixeira** só com o escopo `drive`;
+  a **conferência** na Meet API da lista das salas que a importação não fechou (EXPIRED, aceite revogado, pedido
+  de exclusão, COMPLETE com documento pendente 6 h depois) roda **mesmo sem o `drive`** — ⚠️ só até 28 dias da
+  aula (a Meet API guarda ~30), e presa ao `drive` ela nunca rodava com a lixeira desligada (correção da
+  revisão). Revogação desliga também o relatório de presença da sala (2º `PATCH`, não fatal). Exclusão a pedido
+  (`erase_student_lesson_records`, só `SCHOOL_ADMIN`, ficha → Continuidade pedagógica): apaga cópias brutas,
+  planilhas, todas as versões de resumo, memória `MEET_SESSION` e cartão; originais vencem na hora; a aula
+  fica marcada, a importação da sala é encerrada (`sync_status = EXPIRED`, `last_error_code =
+  lesson_records_erased`, mantido por gatilho em `google_meet_rooms` mesmo com importação em andamento) e um
+  gatilho recusa nova cópia, planilha ou rascunho dela. Não mexe em presença, pagamento nem na trilha do aceite.
+  ⚠️ A prévia/resultado só dizem "vai para a lixeira" com a flag ligada E o `drive` concedido (lê o status da
+  edge); o que a conta atual não alcança (conta central anterior, aula antiga, planilha sem registro) a tela manda
+  apagar à mão. ⚠️ `importacao_do_meet_nao_trava_e_termina.sql` ignora `PURGE_ORIGINALS` no "não volta à fila". ⚠️ O ramo `PURGE_ORIGINALS` entrou na fila **pela mesma âncora do
+  resumo** (`) jobs order by jobs.priority_group`), que continua valendo uma vez para a próxima frente — quem
+  recriar a fila mantém `GENERATE_SUMMARY` e `PURGE_ORIGINALS` (os testes reprovam sem eles).
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

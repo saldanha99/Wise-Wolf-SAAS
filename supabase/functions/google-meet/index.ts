@@ -5,7 +5,7 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { authorizeRequest, hasTenantAccess } from "../_shared/request-auth.ts";
-import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
+import { recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   type ArtifactImportStatus,
   type ArtifactToggle,
@@ -14,7 +14,9 @@ import {
   decryptSecret,
   documentationSyncOutcome,
   encryptSecret,
+  estimateSummaryCost,
   grantedRequiredScopes,
+  hasDriveWriteScope,
   identityAuthorizationUrl,
   isRecord,
   JOB_DEADLINE_MS,
@@ -22,6 +24,7 @@ import {
   normalizeSummary,
   type OAuthFlow,
   oauthResultPage,
+  pickSummarySources,
   pkceChallenge,
   randomToken,
   roomClaimNextStep,
@@ -29,15 +32,15 @@ import {
   saoPauloDayWindow,
   sha256,
   type SourceArtifact,
-  SUMMARY_PROMPT_VERSION,
-  summaryPrompt,
+  summaryMessages,
+  summaryModelId,
+  type SummaryPricing,
   text,
   uuid,
 } from "./core.ts";
 import {
   applyRoomArtifacts,
   exchangeToken,
-  geminiSummary,
   googleIdentity,
   GoogleMeetProvider,
   GoogleProviderError,
@@ -57,6 +60,20 @@ import {
   pickAttendanceReports,
   summarizeAttendance,
 } from "./attendance.ts";
+import {
+  importClosesOriginalsList,
+  originalFilesFromArtifacts,
+  type OriginalsBackend,
+  type OriginalsOutcome,
+  runOriginalsPurge,
+} from "./originals.ts";
+import {
+  runAutoSummaryJob,
+  runSummaryGeneration,
+  type SummaryBackend,
+  type SummaryDeps,
+  type SummaryOutcome,
+} from "./summary.ts";
 
 type ConnectionRow = {
   tenant_id?: string;
@@ -64,6 +81,8 @@ type ConnectionRow = {
   organizer_email: string | null;
   refresh_token_ciphertext: string | null;
   status: string;
+  // Escopos concedidos pela conta central (a lixeira exige o drive).
+  granted_scopes?: string[];
 };
 type TokenGrant = { token: string; connection: ConnectionRow };
 // Um token de acesso por escola e por rodada: o lote processa vários trabalhos
@@ -107,13 +126,16 @@ type SessionDetailData = {
 };
 type PendingJob = {
   tenant_id: string;
-  actor_id: string;
+  // Nulo em GENERATE_SUMMARY: o resumo automático é do sistema, não de alguém.
+  actor_id: string | null;
   lesson_session_id: string;
   operation:
     | "PREPARE_ROOM"
     | "SYNC_ARTIFACTS"
     | "DISABLE_ARTIFACTS"
-    | "ENABLE_ARTIFACTS";
+    | "ENABLE_ARTIFACTS"
+    | "GENERATE_SUMMARY"
+    | "PURGE_ORIGINALS";
 };
 // claim_id é a reserva interna da criação; não vai para o navegador.
 const publicRoom = (room: RoomRow | null) => {
@@ -148,6 +170,9 @@ type Config = {
   aiEnabled: boolean;
   aiKey: string;
   aiModel: string;
+  // Originais da aula para a lixeira do Drive 90 dias depois (pede o escopo
+  // drive, de escrita, à conta central).
+  deleteOriginals: boolean;
   retentionDays: number;
   missing: string[];
 };
@@ -173,8 +198,11 @@ function config(): Config {
   } catch {
     missing.push("GOOGLE_MEET_TOKEN_ENCRYPTION_KEY_INVALID");
   }
-  const aiKey = env("GEMINI_API_KEY"),
-    aiModel = env("GOOGLE_MEET_SUMMARY_MODEL");
+  // Resumo por IA pelo OpenRouter (a mesma chave do wolfie-brain e do
+  // lesson-planner). Modelo com barra (fornecedor/modelo); padrão
+  // google/gemini-3.6-flash, o único com preço cadastrado em 26/09/2026.
+  const aiKey = env("OPENROUTER_API_KEY"),
+    aiModel = summaryModelId(env("GOOGLE_MEET_SUMMARY_MODEL"));
   return {
     clientId: env(names[0]),
     clientSecret: env(names[1]),
@@ -185,9 +213,10 @@ function config(): Config {
     // sala nasce sem relatório e nada de presença é lido.
     attendanceEnabled: env("GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED") === "true",
     aiEnabled: env("GOOGLE_MEET_SUMMARY_AI_ENABLED") === "true" && !!aiKey &&
-      /^[a-zA-Z0-9._-]+$/.test(aiModel),
+      !!aiModel,
     aiKey,
-    aiModel,
+    aiModel: aiModel || "",
+    deleteOriginals: env("GOOGLE_MEET_DELETE_ORIGINALS_ENABLED") === "true",
     retentionDays: Math.max(
       7,
       Math.min(365, Number(env("GOOGLE_MEET_RAW_RETENTION_DAYS")) || 90),
@@ -218,24 +247,161 @@ async function storage(
   }
   return data;
 }
+async function loadSummaryPricing(
+  db: SupabaseClient,
+  model: string,
+): Promise<SummaryPricing | null> {
+  if (!model) return null;
+  const { data, error } = await db.from("ai_model_pricing").select(
+    "input_usd_per_1m,output_usd_per_1m,cached_usd_per_1m",
+  ).eq("model", model).maybeSingle();
+  if (error || !data) return null;
+  return {
+    input_usd_per_1m: Number(data.input_usd_per_1m),
+    output_usd_per_1m: Number(data.output_usd_per_1m),
+    cached_usd_per_1m: Number(data.cached_usd_per_1m || 0),
+  };
+}
 async function summaryPricing(
   db: SupabaseClient,
   cfg: Config,
   artifacts: SourceArtifact[] = [],
 ) {
   if (!cfg.aiEnabled) return null;
-  const { data, error } = await db.from("ai_model_pricing").select(
-    "input_usd_per_1m,output_usd_per_1m,updated_at",
-  ).eq("model", cfg.aiModel).maybeSingle();
-  if (error || !data) return null;
-  const input = Math.ceil(summaryPrompt(artifacts.slice(0, 6)).length / 3);
+  const pricing = await loadSummaryPricing(db, cfg.aiModel);
+  if (!pricing) return null;
+  // A mesma conta da reserva: as mesmas fontes e o mesmo prompt.
+  const estimate = estimateSummaryCost(
+    summaryMessages(pickSummarySources(artifacts)).reduce(
+      (sum, message) => sum + message.content.length,
+      0,
+    ),
+    pricing,
+  );
   return {
-    ...data,
-    estimated_input_tokens: input,
-    max_output_tokens: 6000,
-    estimated_usd: (input * Number(data.input_usd_per_1m) +
-      6000 * Number(data.output_usd_per_1m)) / 1000000,
+    ...pricing,
+    estimated_input_tokens: estimate.inputTokens,
+    max_output_tokens: estimate.maxOutputTokens,
+    estimated_usd: estimate.usd,
   };
+}
+// google_meet_summary_backend (só service_role) amarrada à escola e a quem pediu
+// (nulo = o sistema, na geração automática).
+function summaryBackend(
+  db: SupabaseClient,
+  tenantId: string,
+  actorId: string | null,
+): SummaryBackend {
+  return async (action, sessionId, payload = {}) => {
+    const { data, error } = await db.rpc("google_meet_summary_backend", {
+      p_action: action,
+      p_tenant_id: tenantId,
+      p_actor_id: actorId,
+      p_session_id: sessionId,
+      p_payload: payload,
+    });
+    if (error) {
+      throw new Error(
+        /^[a-z_]+$/.test(error.message || "")
+          ? error.message
+          : "google_meet_storage_unavailable",
+      );
+    }
+    return isRecord(data) ? data : {};
+  };
+}
+function summaryDeps(
+  db: SupabaseClient,
+  cfg: Config,
+  tenantId: string,
+  actorId: string | null,
+): SummaryDeps {
+  return {
+    backend: summaryBackend(db, tenantId, actorId),
+    recordUsage: (usage) =>
+      recordAiUsage(db, {
+        tenantId,
+        userId: actorId,
+        feature: "meet_pedagogical_summary",
+        provider: "openrouter",
+        model: cfg.aiModel,
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cachedTokens: usage.cachedTokens,
+          reasoningTokens: usage.reasoningTokens,
+        },
+      }),
+  };
+}
+// google_meet_originals_backend (só service_role) amarrada à escola e à aula.
+function originalsBackend(
+  db: SupabaseClient,
+  tenantId: string,
+  sessionId: string,
+): OriginalsBackend {
+  return async (action, payload = {}) => {
+    const { data, error } = await db.rpc("google_meet_originals_backend", {
+      p_action: action,
+      p_tenant_id: tenantId,
+      p_session_id: sessionId,
+      p_payload: payload,
+    });
+    if (error) {
+      throw new Error(
+        /^[a-z_]+$/.test(error.message || "")
+          ? error.message
+          : "google_meet_storage_unavailable",
+      );
+    }
+    return isRecord(data) ? data : {};
+  };
+}
+/**
+ * PURGE_ORIGINALS: confere a lista de documentos da aula na Meet API (quando o
+ * banco pede) e move para a lixeira do Drive os originais vencidos — só ids
+ * vindos da Meet API ou da planilha de presença guardada.
+ */
+function purgeOriginals(
+  db: SupabaseClient,
+  cfg: Config,
+  tenantId: string,
+  actorId: string,
+  sessionId: string,
+  options: { deadline: number; tokens?: TokenCache },
+): Promise<OriginalsOutcome> {
+  return runOriginalsPurge(
+    { deleteEnabled: cfg.deleteOriginals, deadline: options.deadline },
+    {
+      backend: originalsBackend(db, tenantId, sessionId),
+      access: async () => {
+        const { token, connection } = await tokenFor(
+          db,
+          cfg,
+          tenantId,
+          actorId,
+          options.tokens,
+        );
+        return {
+          provider: new GoogleMeetProvider(token),
+          organizerSub: connection.organizer_sub,
+          grantedScopes: connection.granted_scopes || [],
+        };
+      },
+    },
+  );
+}
+// Resultado da geração que não virou rascunho, com o status HTTP da tela.
+function summaryFailure(outcome: SummaryOutcome): Response | null {
+  if (outcome.status === "SUCCEEDED") return null;
+  const error = outcome.status === "FAILED" ? outcome.error : outcome.reason;
+  const status = error === "google_summary_generation_rate_limited" ||
+      error === "google_summary_rate_limited"
+    ? 429
+    : outcome.status === "FAILED"
+    ? 502
+    : 409;
+  return json({ error }, status);
 }
 function tokenFor(
   db: SupabaseClient,
@@ -380,7 +546,7 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
       code,
       code_verifier: verifier,
     });
-    if (!grantedRequiredScopes(token.scope)) {
+    if (!grantedRequiredScopes(token.scope, cfg.deleteOriginals)) {
       throw new Error("google_required_scopes_missing");
     }
     if (!text(token.refresh_token, 8000)) {
@@ -448,6 +614,15 @@ async function syncSession(
   const room = detail.room;
   if (!room?.space_name || room.state !== "READY") {
     throw new Error("google_room_not_ready");
+  }
+  // "Importar transcrição e notas" numa aula apagada a pedido do aluno: o banco
+  // recusaria cada documento; a tela recebe o motivo de uma vez. (A fila já não
+  // oferece a aula.)
+  if (options.force) {
+    const erased = await originalsBackend(db, tenantId, sessionId)(
+      "session_state",
+    ).then((value) => value.records_erased === true, () => false);
+    if (erased) throw new Error("lesson_records_erased");
   }
   const { token, connection } = await tokenFor(
     db,
@@ -619,6 +794,28 @@ async function syncSession(
     attendanceRequired: cfg.attendanceEnabled,
     attendanceDone,
   });
+  // Originais no Drive (ids da Meet API): registrados para a lixeira de 90 dias
+  // depois da aula. Importação concluída fecha a lista (a fila não confere de
+  // novo) só quando todo documento já tem arquivo: transcrição montada pelas
+  // falas deixa a lista aberta, e a fila confere o documento que o Google
+  // terminar depois. Falha aqui não derruba a importação: a fila confere depois.
+  try {
+    await originalsBackend(db, tenantId, sessionId)("register", {
+      organizer_sub: room.organizer_sub,
+      files: originalFilesFromArtifacts(artifacts),
+      discovered: importClosesOriginalsList(
+        outcome.complete,
+        artifacts,
+        conferences,
+        Date.now(),
+      ),
+    });
+  } catch (error) {
+    console.error("[google-meet] registro dos originais", {
+      sessionId,
+      code: providerErrorCode(error, "google_meet_storage_unavailable"),
+    });
+  }
   const state = outcome.complete ? null : listingError ||
     (artifacts.length === 0
       ? "ARTIFACTS_NOT_AVAILABLE"
@@ -993,7 +1190,18 @@ async function setRoomArtifacts(
     new GoogleMeetProvider(token),
     room.space_name,
     operation === "ENABLE_ARTIFACTS",
+    { attendanceReport: cfg.attendanceEnabled },
   );
+  if (outcome.attendanceErrorCode) {
+    // A transcrição mudou; a planilha de presença, não. Sem nova tentativa
+    // automática: a ficha do aluno mostra a aula sem planilha registrada para
+    // conferência manual no Drive.
+    console.error("[google-meet] relatório de presença da sala", {
+      sessionId,
+      operation,
+      code: outcome.attendanceErrorCode,
+    });
+  }
   const saved: RoomRow = await storage(
     db,
     "room_artifacts_save",
@@ -1049,6 +1257,32 @@ serve(async (req: Request) => {
         async (job, deadline) => {
           try {
             let result: Record<string, unknown>;
+            if (job.operation === "GENERATE_SUMMARY") {
+              // Resumo por IA depois da aula: não fala com o Google (as fontes
+              // já estão no banco) e não tem autor (actor_id nulo).
+              const outcome = await runAutoSummaryJob({
+                sessionId: job.lesson_session_id,
+                aiEnabled: cfg.aiEnabled,
+                key: cfg.aiKey,
+                model: cfg.aiModel,
+                loadPricing: () => loadSummaryPricing(db, cfg.aiModel),
+                deadline,
+              }, summaryDeps(db, cfg, job.tenant_id, null));
+              // Só o estado: a resposta do cron fica guardada no pg_net, e o
+              // texto do rascunho (conteúdo da aula) não pode ir parar lá.
+              return {
+                session_id: job.lesson_session_id,
+                operation: job.operation,
+                ok: outcome.status !== "FAILED",
+                status: outcome.status,
+                ...(outcome.status === "FAILED"
+                  ? { error: outcome.error, cost_usd: outcome.cost_usd }
+                  : outcome.status === "SUCCEEDED"
+                  ? { cost_usd: outcome.cost_usd }
+                  : { reason: outcome.reason }),
+              };
+            }
+            if (!job.actor_id) throw new Error("google_meet_forbidden");
             if (job.operation === "PREPARE_ROOM") {
               result = await createSessionRoom(
                 db,
@@ -1067,6 +1301,17 @@ serve(async (req: Request) => {
                 job.lesson_session_id,
                 { deadline, tokens },
               );
+            } else if (job.operation === "PURGE_ORIGINALS") {
+              // Só contagens e códigos na resposta (nada da aula).
+              const purge = await purgeOriginals(
+                db,
+                cfg,
+                job.tenant_id,
+                job.actor_id,
+                job.lesson_session_id,
+                { deadline, tokens },
+              );
+              result = { ok: purge.status !== "FAILED", ...purge };
             } else if (
               job.operation === "DISABLE_ARTIFACTS" ||
               job.operation === "ENABLE_ARTIFACTS"
@@ -1120,14 +1365,22 @@ serve(async (req: Request) => {
       const connection = status.connection
         ? await storage(db, "connection_get", tenantId, actorId)
         : null;
+      const granted: string[] = Array.isArray(connection?.granted_scopes)
+        ? connection.granted_scopes
+        : [];
+      const hasConnection = !!connection?.tenant_id;
       return json({
         ...status,
-        scopes_outdated: !!connection?.tenant_id &&
-          !grantedRequiredScopes(
-            (Array.isArray(connection.granted_scopes)
-              ? connection.granted_scopes
-              : []).join(" "),
-          ),
+        // Segue a configuração: com a lixeira ligada, conexão só com leitura do
+        // Drive também pede reconexão.
+        scopes_outdated: hasConnection &&
+          !grantedRequiredScopes(granted, cfg.deleteOriginals),
+        drive_read_granted: hasConnection && grantedRequiredScopes(granted),
+        drive_delete_enabled: cfg.deleteOriginals,
+        drive_delete_granted: hasConnection && hasDriveWriteScope(granted),
+        // A ficha do aluno só manda conferir planilha de presença à mão quando
+        // a instalação gera o relatório.
+        attendance_report_enabled: cfg.attendanceEnabled,
         configured: cfg.missing.length === 0,
         missing_configuration: cfg.missing,
         enabled: cfg.enabled,
@@ -1148,12 +1401,38 @@ serve(async (req: Request) => {
         actorId,
         uuid(body.sessionId),
       );
+      // Teto do mês e a última geração desta aula (automática ou manual). Sem a
+      // migration do resumo automático a tela segue sem esse bloco.
+      let budget: Record<string, unknown> | null = null;
+      try {
+        const full = await summaryBackend(db, tenantId, actorId)(
+          "budget",
+          uuid(body.sessionId),
+        );
+        // Valores em dólar são da direção; os demais só sabem se o automático
+        // parou e o que houve com a geração desta aula.
+        budget = {
+          cap_reached: full.cap_reached === true,
+          paused: !!full.paused_until,
+          last_generation: full.last_generation ?? null,
+          ...(isAdmin
+            ? {
+              cap_usd: full.cap_usd,
+              spent_usd: full.spent_usd,
+              pause_reason: full.pause_reason ?? null,
+            }
+            : {}),
+        };
+      } catch {
+        budget = null;
+      }
       return json({
         ...detail,
         enabled: cfg.enabled && cfg.missing.length === 0,
         summary_ai_enabled: cfg.aiEnabled,
         summary_ai_model: cfg.aiModel,
         summary_ai_pricing: await summaryPricing(db, cfg, detail.artifacts),
+        summary_ai_budget: budget,
       });
     }
     if (action === "review_summary") {
@@ -1234,6 +1513,7 @@ serve(async (req: Request) => {
           cfg,
           state,
           await pkceChallenge(verifier),
+          cfg.deleteOriginals,
         ),
       });
     }
@@ -1343,57 +1623,32 @@ serve(async (req: Request) => {
       if (!detail.session.documentation_consent) {
         throw new Error("documentation_consent_required");
       }
-      const artifacts: SourceArtifact[] = detail.artifacts.slice(0, 6);
-      if (!artifacts.length) throw new Error("google_artifacts_required");
-      if (!await summaryPricing(db, cfg, artifacts)) {
-        throw new Error("google_summary_pricing_required");
+      if (detail.raw_access === false) {
+        throw new Error("google_meet_raw_access_required");
       }
-      const recentAi = detail.summaries.find((row: any) =>
-        row.origin === "GEMINI_API" &&
-        Date.parse(row.created_at) > Date.now() - 60000
-      );
-      if (recentAi) {
-        return json({ error: "google_summary_generation_rate_limited" }, 429);
-      }
-      await storage(db, "summary_claim", tenantId, actorId, sessionId);
-      const result = await geminiSummary(
-        summaryPrompt(artifacts),
-        cfg.aiKey,
-        cfg.aiModel,
-      );
-      await recordAiUsage(db, {
-        tenantId,
-        userId: actorId,
-        feature: "meet_pedagogical_summary",
-        provider: "google",
-        model: cfg.aiModel,
-        usage: parseAiUsage(result),
-      });
-      const candidates = Array.isArray(result.candidates)
-        ? result.candidates
+      const artifacts: SourceArtifact[] = Array.isArray(detail.artifacts)
+        ? detail.artifacts
         : [];
-      const candidate = candidates[0];
-      if (
-        !isRecord(candidate) || !isRecord(candidate.content) ||
-        !Array.isArray(candidate.content.parts)
-      ) throw new Error("google_summary_response_invalid");
-      const generated = candidate.content.parts.filter(isRecord).map((part) =>
-        text(part.text, 80000)
-      ).join("");
-      const summary = normalizeSummary(JSON.parse(generated), artifacts);
-      if (!summary.evidence.length) {
-        throw new Error("google_summary_evidence_required");
+      if (!pickSummarySources(artifacts).length) {
+        throw new Error("google_artifacts_required");
       }
-      return json(
-        await storage(db, "summary_save", tenantId, actorId, sessionId, {
-          status: "PROPOSED",
-          origin: "GEMINI_API",
-          content: summary,
-          source_artifact_ids: artifacts.map((artifact) => artifact.id),
-          model_id: cfg.aiModel,
-          prompt_version: SUMMARY_PROMPT_VERSION,
-        }),
-      );
+      const pricing = await loadSummaryPricing(db, cfg.aiModel);
+      if (!pricing) throw new Error("google_summary_pricing_required");
+      // Mesma esteira da automática; o manual não é barrado pelo teto (a pessoa
+      // aceitou o custo na tela), mas entra no gasto do mês e nunca repete o
+      // mesmo conteúdo.
+      const outcome = await runSummaryGeneration({
+        trigger: "MANUAL",
+        sessionId,
+        sources: artifacts,
+        key: cfg.aiKey,
+        model: cfg.aiModel,
+        pricing,
+        deadline: Date.now() + JOB_DEADLINE_MS,
+      }, summaryDeps(db, cfg, tenantId, actorId));
+      const failure = summaryFailure(outcome);
+      if (failure) return failure;
+      return json(outcome.status === "SUCCEEDED" ? outcome.summary : {});
     }
     return json({ error: "unknown_action" }, 400);
   } catch (error) {

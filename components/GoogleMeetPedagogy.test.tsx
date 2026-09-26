@@ -5,6 +5,9 @@ import GoogleMeetSettings from './GoogleMeetSettings';
 import LessonPedagogicalSummary from './LessonPedagogicalSummary';
 const invoke=vi.hoisted(()=>vi.fn());
 vi.mock('../lib/googleMeet',()=>({googleMeetAction:invoke}));
+// O cartão do teto de IA (direção) lê o gasto por RPC direta.
+const rpc=vi.hoisted(()=>vi.fn(()=>Promise.resolve({data:null,error:{message:'fixture'}})));
+vi.mock('../lib/supabase',()=>({supabase:{rpc}}));
 beforeEach(()=>invoke.mockReset());
 const detail=()=>({session:{documentation_consent:true},room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij'},
   enabled:true,summary_ai_enabled:false,artifacts:[{id:'artifact',kind:'SMART_NOTES',source_text:'Exercícios de inglês.',imported_at:'2026-09-12T12:00:00Z',expires_at:'2026-12-12T12:00:00Z'}],
@@ -157,5 +160,34 @@ describe('Parte 2: troca de conta central, transcrição bruta e documentação 
     await screen.findByTestId('cohost-sync');
     expect(screen.getByRole('link',{name:/Entrar na sala oficial/})).toHaveAttribute('href','https://meet.google.com/abc-defg-hij');
     expect(screen.getByTestId('cohost-sync').textContent).toMatch(/Nova tentativa automática às 12:30/);
+  });
+});
+describe('Resumo automático por IA na tela da aula',()=>{
+  const aiDetail=(extra:Record<string,unknown>={})=>({...detail(),raw_access:true,summary_ai_enabled:true,summary_ai_model:'google/gemini-3.6-flash',
+    summary_ai_pricing:{estimated_usd:0.021,max_output_tokens:8000},...extra});
+  it('teto do mês atingido: avisa que o automático não sai e o manual continua com aceite de custo',async()=>{
+    invoke.mockResolvedValue(aiDetail({summary_ai_budget:{cap_reached:true,paused:false,last_generation:null}}));
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('summary-cap-reached');
+    const button=screen.getByRole('button',{name:'Gerar rascunho estruturado'}) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(()=>expect(invoke).toHaveBeenCalledWith('generate_summary',expect.objectContaining({acceptApiUsage:true,sessionId:'session'})));
+  });
+  it('rascunho da IA já existe: diz que só sai outro com fonte nova; mostra até quando aprovar',async()=>{
+    invoke.mockResolvedValue(aiDetail({summaries:[{id:'ai-id',version:2,status:'PROPOSED',origin:'GEMINI_API',source_artifact_ids:['artifact'],
+      content:{narrative:'Rascunho',lesson_objective:'',recommended_next_step:'',content_practiced:[],recurring_errors:[],strengths_observed:[],homework_assigned:'',uncertainties:[],
+        evidence:[{artifact_id:'artifact',quote:'Exercícios de inglês.'}]}}]}));
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/já tem rascunho da IA/);
+    expect(screen.queryByTestId('summary-cap-reached')).toBeNull();
+    expect(screen.getByTestId('summary-deadline').textContent).toMatch(/Aprovar até 12\/12\/2026/);
+  });
+  it('tentativa automática que falhou aparece com o motivo em português',async()=>{
+    invoke.mockResolvedValue(aiDetail({summary_ai_budget:{cap_reached:false,last_generation:{trigger:'AUTOMATIC',status:'FAILED',error_code:'invalid_summary_evidence'}}}));
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/nenhuma citação do rascunho conferia com a transcrição/);
   });
 });

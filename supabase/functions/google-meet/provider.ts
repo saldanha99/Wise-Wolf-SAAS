@@ -4,7 +4,11 @@ import {
   isRecord,
   safeMeetingUri,
   safeResource,
-  SUMMARY_RESPONSE_SCHEMA,
+  SUMMARY_JSON_SCHEMA,
+  SUMMARY_MAX_OUTPUT_TOKENS,
+  summaryModelId,
+  summaryReasoning,
+  type SummaryUsage,
   text,
   type TranscriptEntry,
 } from "./core.ts";
@@ -22,12 +26,31 @@ export type MeetArtifact = {
   document: string | null;
   conference: MeetConference;
 };
+// Originais da aula no Drive da conta central que vão para a lixeira (90 dias
+// depois da aula ou num pedido de exclusão): documentos do Meet e planilha de
+// presença. O tipo esperado no Drive é conferido antes de mover.
+export type OriginalKind = "TRANSCRIPT" | "SMART_NOTES" | "ATTENDANCE_REPORT";
+export const ORIGINAL_MIME_TYPES: Record<OriginalKind, string> = {
+  TRANSCRIPT: "application/vnd.google-apps.document",
+  SMART_NOTES: "application/vnd.google-apps.document",
+  ATTENDANCE_REPORT: "application/vnd.google-apps.spreadsheet",
+};
+// TRASHED: foi para a lixeira; GONE: já não existia para esta conta (404) ou já
+// estava na lixeira; REFUSED: não é da conta central ou não é do tipo esperado —
+// o servidor não mexe (resultado final, visível para a direção).
+export type TrashOutcome = {
+  result: "TRASHED" | "GONE" | "REFUSED";
+  code: string | null;
+};
 // Campos que a revogação desliga na sala já criada (spaces.patch). Mesmo formato
 // do guia do Meet (updateMask=config.accessType), um caminho por campo.
 export const ARTIFACT_UPDATE_MASK = [
   "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration",
   "config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration",
 ].join(",");
+// Relatório de presença da sala (campo de SpaceConfig usado na criação). Vai
+// num PATCH separado, depois da transcrição: a revogação nunca depende dele.
+export const ATTENDANCE_UPDATE_MASK = "config.attendanceReportGenerationType";
 export class GoogleProviderError extends Error {
   constructor(
     public code: string,
@@ -190,6 +213,35 @@ export class GoogleMeetProvider {
         : "",
     ];
     if (returned.some((found) => found && found !== value)) {
+      throw new GoogleProviderError("google_room_update_unconfirmed", 502);
+    }
+  }
+  /**
+   * Liga ou desliga o relatório de presença de uma sala JÁ criada. A revogação
+   * do termo também o desliga (correção da revisão, 26/09/2026): a planilha traz
+   * nome, e-mail e horários do aluno, nunca é importada sem aceite e, sem
+   * importação, nunca entraria na lixeira de 90 dias — ficaria no Drive da
+   * escola para sempre. updateMask só com esse campo; resposta com valor
+   * diferente do pedido não conta.
+   */
+  async setAttendanceReportGeneration(
+    space: string,
+    generate: boolean,
+  ): Promise<void> {
+    const name = safeResource(space, "space");
+    const value = generate ? "GENERATE_REPORT" : "DO_NOT_GENERATE";
+    const url = new URL(`https://meet.googleapis.com/v2/${name}`);
+    url.searchParams.set("updateMask", ATTENDANCE_UPDATE_MASK);
+    const result = await this.json(url.toString(), {
+      method: "PATCH",
+      body: JSON.stringify({
+        config: { attendanceReportGenerationType: value },
+      }),
+    });
+    const returned = isRecord(result.config)
+      ? text(result.config.attendanceReportGenerationType, 60)
+      : "";
+    if (returned && returned !== value) {
       throw new GoogleProviderError("google_room_update_unconfirmed", 502);
     }
   }
@@ -435,6 +487,58 @@ export class GoogleMeetProvider {
       name: text(file.name, 300),
       createdTime: text(file.createdTime, 40),
     }));
+  }
+  /**
+   * Move UM original para a LIXEIRA do Drive (files.update com trashed=true —
+   * o Drive guarda 30 dias e a escola ainda recupera). O id vem só da Meet API
+   * (docsDestination) ou da planilha de presença guardada pelo sistema; nunca de
+   * uma busca por nome. Antes de mover confere que o arquivo é da conta central
+   * (ownedByMe) e do tipo esperado — arquivo de terceiro ou de outro tipo não é
+   * tocado (REFUSED). 404 = a conta já não tem o arquivo (GONE). Outra falha
+   * lança o erro: quem chama registra e tenta de novo com espera.
+   */
+  async trashDriveFile(
+    fileId: string,
+    kind: OriginalKind,
+  ): Promise<TrashOutcome> {
+    const id = safeResource(fileId, "document");
+    const base = `https://www.googleapis.com/drive/v3/files/${id}`;
+    const gone = (error: unknown): boolean =>
+      error instanceof GoogleProviderError && error.status === 404;
+    let file: Record<string, unknown>;
+    try {
+      file = await this.json(`${base}?fields=id,mimeType,trashed,ownedByMe`);
+    } catch (error) {
+      if (gone(error)) {
+        return { result: "GONE", code: "google_drive_file_not_found" };
+      }
+      throw error;
+    }
+    if (file.trashed === true) {
+      return { result: "GONE", code: "google_drive_already_trashed" };
+    }
+    if (file.ownedByMe !== true) {
+      return { result: "REFUSED", code: "google_drive_not_owner" };
+    }
+    if (text(file.mimeType, 120) !== ORIGINAL_MIME_TYPES[kind]) {
+      return { result: "REFUSED", code: "google_drive_unexpected_type" };
+    }
+    let updated: Record<string, unknown>;
+    try {
+      updated = await this.json(`${base}?fields=id,trashed`, {
+        method: "PATCH",
+        body: JSON.stringify({ trashed: true }),
+      });
+    } catch (error) {
+      if (gone(error)) {
+        return { result: "GONE", code: "google_drive_file_not_found" };
+      }
+      throw error;
+    }
+    if (updated.trashed !== true) {
+      throw new GoogleProviderError("google_drive_trash_unconfirmed", 502);
+    }
+    return { result: "TRASHED", code: null };
   }
   async spreadsheetCsv(fileId: string): Promise<string> {
     const id = safeResource(fileId, "document");
@@ -700,18 +804,44 @@ export async function applyRoomArtifacts(
   provider: GoogleMeetProvider,
   space: string,
   enable: boolean,
+  // Instalação com relatório de presença (GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED):
+  // desligar a documentação também desliga a planilha, e religar a religa.
+  options: { attendanceReport?: boolean } = {},
 ): Promise<
-  { result: "ENABLED" | "DISABLED" | "FAILED"; errorCode: string | null }
+  {
+    result: "ENABLED" | "DISABLED" | "FAILED";
+    errorCode: string | null;
+    attendanceErrorCode?: string | null;
+  }
 > {
   try {
     await provider.setArtifactGeneration(space, enable);
-    return { result: enable ? "ENABLED" : "DISABLED", errorCode: null };
   } catch (error) {
     const code = providerErrorCode(error, "google_room_update_failed");
     if (!enable && code === "google_resource_unavailable") {
       return { result: "DISABLED", errorCode: code };
     }
     return { result: "FAILED", errorCode: code };
+  }
+  const done = {
+    result: enable ? "ENABLED" as const : "DISABLED" as const,
+    errorCode: null,
+  };
+  if (!options.attendanceReport) return done;
+  // A transcrição já está no estado pedido: falha na planilha não desfaz isso
+  // nem prende a sala na fila — fica no log, e a ficha do aluno manda conferir
+  // à mão a planilha de aula sem presença registrada.
+  try {
+    await provider.setAttendanceReportGeneration(space, enable);
+    return { ...done, attendanceErrorCode: null };
+  } catch (error) {
+    return {
+      ...done,
+      attendanceErrorCode: providerErrorCode(
+        error,
+        "google_room_update_failed",
+      ),
+    };
   }
 }
 
@@ -754,39 +884,187 @@ export async function googleIdentity(
   ) throw new GoogleProviderError("google_identity_unverified", 403);
   return { sub: text(result.sub, 200), email: googleEmail(result.email) };
 }
-export async function geminiSummary(
-  prompt: string,
-  key: string,
-  model: string,
+
+// Resumo por IA pelo OpenRouter (antes: Gemini API direto, manual e desligado).
+// Fornecedor PAGO e com provider.data_collection = "deny": o OpenRouter só roteia
+// para quem não guarda nem treina com o conteúdo (doc "Provider Routing",
+// conferida em 26/09/2026). A saída é JSON estrito pelo SUMMARY_JSON_SCHEMA.
+export const OPENROUTER_CHAT_URL =
+  "https://openrouter.ai/api/v1/chat/completions";
+
+export type SummaryCallResult =
+  | { ok: true; value: unknown; usage: SummaryUsage | null }
+  | {
+    ok: false;
+    code: string;
+    usage: SummaryUsage | null;
+    // NONE: o provedor recusou antes de gerar (não cobra); UNKNOWN: não dá para
+    // saber (rede, tempo esgotado, corpo ilegível — conta a estimativa);
+    // USAGE: gerou e informou o consumo (vale o usage).
+    charge: "NONE" | "UNKNOWN" | "USAGE";
+  };
+
+const wholeNumber = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0;
+
+/**
+ * Consumo informado pelo OpenRouter (sempre presente desde 2026, sem pedir):
+ * prompt/completion_tokens, completion_tokens_details.reasoning_tokens (já
+ * DENTRO de completion_tokens — são cobrados como saída),
+ * prompt_tokens_details.cached_tokens e cost (US$ cobrado).
+ */
+export function openRouterUsage(payload: unknown): SummaryUsage | null {
+  if (!isRecord(payload) || !isRecord(payload.usage)) return null;
+  const usage = payload.usage;
+  const completion = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : {};
+  const prompt = isRecord(usage.prompt_tokens_details)
+    ? usage.prompt_tokens_details
+    : {};
+  const cost = typeof usage.cost === "number" && Number.isFinite(usage.cost) &&
+      usage.cost >= 0
+    ? usage.cost
+    : null;
+  const result: SummaryUsage = {
+    inputTokens: wholeNumber(usage.prompt_tokens),
+    outputTokens: wholeNumber(usage.completion_tokens),
+    reasoningTokens: wholeNumber(completion.reasoning_tokens),
+    cachedTokens: wholeNumber(prompt.cached_tokens),
+    costUsd: cost,
+  };
+  return result.inputTokens || result.outputTokens || cost !== null
+    ? result
+    : null;
+}
+
+const messageText = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.filter(isRecord).map((part) =>
+    typeof part.text === "string" ? part.text : ""
+  ).join("");
+};
+
+export async function openRouterSummary(
+  input: {
+    messages: { role: "system" | "user"; content: string }[];
+    key: string;
+    model: string;
+    timeoutMs: number;
+  },
   request: Fetcher = fetch,
-): Promise<Record<string, unknown>> {
-  if (!/^[a-zA-Z0-9._-]+$/.test(model)) {
+): Promise<SummaryCallResult> {
+  if (
+    !summaryModelId(input.model) || summaryModelId(input.model) !== input.model
+  ) {
     throw new Error("google_summary_model_invalid");
   }
-  const response = await request(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: SUMMARY_RESPONSE_SCHEMA,
-          temperature: 0.1,
-          maxOutputTokens: 6000,
-        },
-      }),
-      signal: AbortSignal.timeout(50000),
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: input.messages,
+    max_tokens: SUMMARY_MAX_OUTPUT_TOKENS,
+    temperature: 0.1,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "meet_pedagogical_summary",
+        strict: true,
+        schema: SUMMARY_JSON_SCHEMA,
+      },
     },
-  );
-  if (!response.ok) {
-    throw new GoogleProviderError(
-      "google_summary_generation_failed",
-      response.status,
-    );
+    provider: {
+      // O conteúdo da aula não pode ser guardado nem usado para treino.
+      data_collection: "deny",
+      // Sem isso um fornecedor que ignora o schema devolveria texto livre.
+      require_parameters: true,
+      allow_fallbacks: true,
+    },
+  };
+  const reasoning = summaryReasoning(input.model);
+  if (reasoning) body.reasoning = reasoning;
+  let response: Response;
+  try {
+    response = await request(OPENROUTER_CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${input.key}`,
+        "Content-Type": "application/json",
+        "X-OpenRouter-Title": "Wise Wolf Meet Summary",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(Math.max(1000, input.timeoutMs)),
+    });
+  } catch {
+    return {
+      ok: false,
+      code: "google_summary_provider_unavailable",
+      usage: null,
+      charge: "UNKNOWN",
+    };
   }
-  const result = await response.json();
-  if (!isRecord(result)) throw new Error("google_summary_response_invalid");
-  return result;
+  if (!response.ok) {
+    try {
+      await response.body?.cancel();
+    } catch { /* corpo descartado */ }
+    const code = response.status === 401 || response.status === 403
+      ? "google_summary_provider_rejected"
+      : response.status === 402
+      ? "google_summary_provider_credits"
+      : response.status === 429
+      ? "google_summary_rate_limited"
+      : response.status >= 500 || response.status === 408
+      ? "google_summary_provider_unavailable"
+      : "google_summary_provider_rejected";
+    return { ok: false, code, usage: null, charge: "NONE" };
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return {
+      ok: false,
+      code: "google_summary_response_invalid",
+      usage: null,
+      charge: "UNKNOWN",
+    };
+  }
+  const usage = openRouterUsage(payload);
+  const failed = (code: string): SummaryCallResult => ({
+    ok: false,
+    code,
+    usage,
+    charge: usage ? "USAGE" : "UNKNOWN",
+  });
+  if (!isRecord(payload)) return failed("google_summary_response_invalid");
+  if (isRecord(payload.error)) {
+    return usage ? failed("google_summary_generation_failed") : {
+      ok: false,
+      code: "google_summary_generation_failed",
+      usage: null,
+      charge: "NONE",
+    };
+  }
+  const choice = Array.isArray(payload.choices)
+    ? payload.choices.find(isRecord)
+    : null;
+  if (!choice || !isRecord(choice.message)) {
+    return failed("google_summary_response_invalid");
+  }
+  if (isRecord(choice.error)) return failed("google_summary_generation_failed");
+  if (text(choice.message.refusal, 2000)) {
+    return failed("google_summary_refused");
+  }
+  if (choice.finish_reason === "length") {
+    return failed("google_summary_response_truncated");
+  }
+  const content = messageText(choice.message.content).trim();
+  if (!content) return failed("google_summary_response_invalid");
+  try {
+    return { ok: true, value: JSON.parse(content), usage };
+  } catch {
+    return failed("google_summary_response_invalid");
+  }
 }

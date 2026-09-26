@@ -95,4 +95,17 @@ describe('<DirectorPendingCenter />', () => {
       expect(onNavigate).toHaveBeenNthCalledWith(2, 'reconciliation');
     });
   });
+
+  it('resumo de aula parado há 3+ dias leva à fila de revisão', async () => {
+    rpc.mockResolvedValue({ data: { resumos_para_revisar: 4 }, error: null });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    const stale = await screen.findByRole('button', { name: /Resumos de aula parados há 3 dias ou mais/i });
+    expect(stale).toHaveTextContent('4');
+    expect(screen.queryByText(/Tudo em dia/i)).not.toBeInTheDocument();
+    fireEvent.click(stale);
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('lesson-sessions'));
+  });
 });

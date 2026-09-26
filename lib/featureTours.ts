@@ -268,6 +268,61 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-27-resumo-automatico',
+    title: 'Resumo da aula por IA',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'meet-summary-budget',
+        view: 'google-meet',
+        title: 'O rascunho da aula sai sozinho 🤖',
+        text: 'Depois de cada aula documentada, a IA escreve o rascunho — objetivo, o que foi praticado, dificuldades e próximo passo, citando a transcrição — num fornecedor pago que não usa o conteúdo para treinar. Aqui você vê o gasto do mês e define o teto (padrão: US$ 20). Atingido o teto, o automático para; o botão manual da aula continua, com aviso de custo.',
+      },
+      {
+        target: 'meet-review-queue',
+        view: 'lesson-sessions',
+        title: 'Aulas para revisar',
+        text: 'Os rascunhos esperam o professor revisar e aprovar: só o aprovado vai para a memória do aluno. A lista mostra até quando cada um pode ser aprovado (depois disso as fontes são apagadas), e rascunho parado há 3 dias ou mais aparece nas suas pendências.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-27-resumo-automatico-professor',
+    title: 'Aulas para revisar',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'meet-review-queue',
+        view: 'lesson-sessions',
+        title: 'Revise o rascunho das suas aulas 📝',
+        text: 'Depois de cada aula documentada chegam as notas do Gemini (com o próximo passo e a lição já preenchidos) e um rascunho da IA com trechos da transcrição. Confira, complete o objetivo e aprove: só o que você aprova vai para a memória do aluno. Cada aula mostra até quando dá para aprovar.',
+      },
+    ],
+  },
+  {
+    // "retencao" vem depois de "resumo" na ordem alfabética do mesmo dia.
+    id: '2026-09-27-retencao-dos-originais',
+    title: 'Originais na lixeira do Drive',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'meet-originals-retention',
+        view: 'google-meet',
+        // O tour sobe com o deploy, com a lixeira ainda desligada (padrão): o
+        // texto não promete a lixeira nem manda reconectar — o cartão é que diz,
+        // pela configuração de cada instalação, se ela está ligada e o que falta.
+        title: 'Os originais das aulas no Drive 🗑️',
+        text: 'O documento da transcrição, o das anotações do Gemini e a planilha de presença de cada aula ficam no Drive da conta central. Quando a lixeira automática está ligada, eles vão para a lixeira do Drive 90 dias depois da aula (ainda recuperáveis por 30 dias). Só vão os arquivos que o próprio Meet indicou e as planilhas que o sistema identificou pelo código da sala — nada é procurado por nome. Este cartão mostra se a lixeira está ligada, o que já foi, o que espera o prazo e o que precisa ser conferido à mão.',
+      },
+      {
+        target: null,
+        view: 'students',
+        title: 'Aluno pediu para apagar? ✋',
+        text: 'Abra a ficha do aluno e vá em "Continuidade pedagógica" → "Apagar registros das aulas deste aluno". A tela mostra antes o que será apagado — cópias da transcrição e das anotações, relatórios de presença, rascunhos e resumos, memória das aulas no Meet e o cartão do aluno — e o que acontece com os originais no Drive: com a lixeira ligada eles vão para ela na hora; o que ela não alcança, a tela manda apagar à mão. Presença lançada, pagamento e o aceite do termo não mudam. Só a direção vê o botão.',
+      },
+    ],
+  },
+  {
     id: '2026-09-27-termo-v3',
     title: 'Termo das aulas, versão 3',
     roles: ['SCHOOL_ADMIN'],
