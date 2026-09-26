@@ -429,6 +429,33 @@ begin
     and not exists (select 1 from private.student_learning_card_events where student_id = v_teen),
     'cartão vazio virou registro: ' || v_r);
 
+  -- A direção corrige a data de nascimento de um adulto atestado para outra data
+  -- de adulto (erro de digitação na ficha): os campos pessoais continuam. Antes
+  -- (integração da onda 1), set_student_birth_date mudava o cadastro ANTES de
+  -- gravar o atestado novo; o gatilho do cartão rodava no meio, lia o atestado
+  -- antigo contra a data nova ("idade não comprovada" = menor) e apagava estilo,
+  -- "o que evitar" e observações. Só vale com a régua fail-closed do termo.
+  if to_regprocedure('public.set_student_birth_date(uuid,date,text)') is not null then
+    select * into v_card from public.student_learning_cards where tenant_id = v_tid and student_id = v_adult;
+    perform pg_temp.card_assert(
+      v_card.correction_style is not null and v_card.notes <> '' and v_card.avoid_topics <> '{}'::text[],
+      'fixture: o cartão do adulto não tinha campos pessoais antes da correção da data');
+    perform pg_temp.card_attest_birth(v_admin, v_adult, v_adult_birth - 1);
+    perform pg_temp.card_assert(
+      not private.lesson_recording_requires_guardian(v_adult)
+      and (select birth_date = v_adult_birth - 1 from public.profiles where id = v_adult),
+      'fixture: a data corrigida não ficou atestada como adulta');
+    perform pg_temp.card_assert(
+      (select version = v_card.version
+              and correction_style is not distinct from v_card.correction_style
+              and avoid_topics = v_card.avoid_topics
+              and notes = v_card.notes
+         from public.student_learning_cards where tenant_id = v_tid and student_id = v_adult)
+      and not exists (select 1 from private.student_learning_card_events
+                       where student_id = v_adult and actor_role = 'SYSTEM_MINOR_RULE'),
+      'corrigir a data de nascimento de um adulto apagou os campos pessoais do cartão');
+  end if;
+
   -- Adulto que passa a constar como menor: os campos pessoais são APAGADOS na
   -- hora, sem esperar ninguém abrir e salvar o cartão.
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);

@@ -157,6 +157,20 @@ begin
     );
   end if;
 
+  -- O atestado entra ANTES do cadastro (integração da onda 1): os gatilhos
+  -- AFTER UPDATE de birth_date em profiles (o cartão do aluno apaga os campos
+  -- pessoais de quem vira menor, 20260926220000) rodam no fim do UPDATE e leem
+  -- lesson_recording_school_birth_date. Com o atestado depois, eles viam o
+  -- atestado ANTIGO contra a data NOVA — "idade não comprovada", ou seja, menor
+  -- — e a correção de um erro de digitação num adulto apagava estilo de
+  -- correção, "o que evitar" e observações do cartão.
+  insert into private.student_birth_date_records (
+    tenant_id, student_id, birth_date, previous_birth_date, recorded_by, recorded_role, reason
+  ) values (
+    v_student.tenant_id, p_student_id, p_birth_date, v_student.birth_date, v_actor.id, v_actor.role,
+    nullif(v_reason, '')
+  );
+
   -- A troca do valor entra em profile_audit_log pelo trigger log_profile_changes.
   update public.profiles
      set birth_date = p_birth_date
@@ -169,13 +183,6 @@ begin
     values (v_student.tenant_id, p_student_id, v_actor.id, 'birth_date_confirmed',
       p_birth_date::text, p_birth_date::text);
   end if;
-
-  insert into private.student_birth_date_records (
-    tenant_id, student_id, birth_date, previous_birth_date, recorded_by, recorded_role, reason
-  ) values (
-    v_student.tenant_id, p_student_id, p_birth_date, v_student.birth_date, v_actor.id, v_actor.role,
-    nullif(v_reason, '')
-  );
 
   return jsonb_build_object(
     'ok', true,
