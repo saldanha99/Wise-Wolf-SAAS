@@ -1703,26 +1703,51 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
 - **Escrita só por `save_student_learning_card`** (SECURITY DEFINER): quem lê o dossiê
   (`private.can_read_student_pedagogy`) **e** tem papel TEACHER/COORDINATOR/SCHOOL_ADMIN.
   SUPER_ADMIN não escreve. `p_expected_version` recusa sobrescrever o que outra pessoa
-  salvou (`cartao_alterado_por_outra_pessoa`). `service_role` só lê (o Planner).
+  salvou (`cartao_alterado_por_outra_pessoa`). **Ninguém lê a tabela direto** — nem
+  `service_role`: o Planner usa `student_learning_card_for_planner(tenant, aluno)`, que já
+  entrega o cartão de menor sem os campos pessoais. `tenant_id`/`student_id` são
+  imutáveis no UPDATE (`cartao_chave_imutavel`).
 - **Limites no servidor** (`private.student_learning_card_limits()`: objetivo 300, 8 temas,
   6 "evitar", 60 por item, notas 400) — texto longo é **recusado**, não cortado. A tela
   avisa ao lado do formulário: nada de saúde, religião, política, família ou dinheiro.
-- **Menor de idade** (`is_kids` ou nascido há < 18 anos, régua do termo de registro): só
-  objetivo e temas. O gatilho `trg_student_learning_cards_guard` recusa o resto para
-  QUALQUER escritor; se o aluno "vira" menor depois, a leitura esconde os campos pessoais
-  (`hidden_for_minor`) e o próximo salvamento os apaga.
+- **Menor de idade: a régua NÃO é do cartão.** `private.student_learning_card_minor_reason`
+  CHAMA `private.lesson_recording_requires_guardian` (a régua do termo — com
+  `20260926200000` ela vira fail-closed e idade não comprovada passa a contar como menor) e
+  soma **responsável cadastrado** (`guardian_id` de outro perfil ou `guardian_name`). Motivo
+  na tela: `KIDS | MINOR | GUARDIAN | AGE_UNKNOWN`. Medido em 26/09: 47 de 47 ativos sem
+  data nem `is_kids`, e o único com responsável seria "adulto" numa régua só de idade.
+  ⚠️ Não copie a régua de idade para cá: se o termo mudar, o cartão tem de mudar junto.
+  Só objetivo e temas; o gatilho `trg_student_learning_cards_guard` recusa o resto para
+  QUALQUER escritor.
+- **Quem vira menor perde os campos pessoais — apagados, não escondidos:**
+  `private.student_learning_card_purge_minor_fields` zera estilo/evitar/observações,
+  sobe a versão e registra no histórico com papel `SYSTEM_MINOR_RULE` (sem texto). Portas:
+  gatilho `trg_student_learning_card_minor_purge` em `profiles` (is_kids, birth_date,
+  guardian_id, guardian_name — `WHEN IS DISTINCT`, nunca derruba a edição da ficha), cron
+  diário `wisewolf-learning-card-minor-purge` (06:40 UTC, pega mudança da régua do termo
+  que não toca `profiles`) e a própria migration. Entre a mudança e a limpeza a leitura
+  esconde (`hidden_for_minor`). ⚠️ Publique junto com (ou depois de) `20260926200000`: se o
+  cartão for antes, notas de adultos sem data atestada serão apagadas quando a régua
+  fail-closed chegar.
 - **Histórico** (`private.student_learning_card_events`): quem, quando, papel e QUAIS campos —
   **nunca o texto**. A confirmação de leitura do dossiê (`student_handover_reads`) guarda só
   `learning_card_version`, pelo mesmo motivo.
 - **Tela:** aba "Continuidade pedagógica" da ficha (`StudentHandover` → `StudentLearningCard`,
   regras espelhadas em `lib/studentLearningCard.ts`). O cartão chega por
-  `get_student_handover` → `learning_card`.
-- **Planner:** `lesson-planner/teacher-card.ts` — campo preenchido no cartão **substitui** o
-  inferido (objetivo, temas, evitar, estilo); vazio cai no Wolfie/`profiles`. Falha ao ler o
-  cartão não derruba o plano. `student_profile.teacher_reviewed_fields` diz o que veio do
-  professor.
-- Teste: `supabase/tests/cartao_do_aluno_pelo_professor.sql` (acesso, menor, limites,
-  versão, histórico sem texto) e `lesson-planner/teacher-card.test.ts`.
+  `get_student_handover` → `learning_card`. Conflito de versão **não apaga o rascunho**:
+  ao recarregar, o texto digitado fica e a versão nova aparece ao lado ("Manter o meu
+  texto" / "Usar a versão nova"); salvar só volta a valer depois da escolha.
+- **Planner:** `lesson-planner/teacher-card.ts` (`plannerSignalsFor` +
+  `studentProfileSignalFields`) — campo preenchido no cartão **substitui** o inferido
+  (objetivo, temas, evitar, estilo); vazio cai no Wolfie/`profiles`. O banco diz quem é
+  menor; a régua local (is_kids, data, responsável) só endurece. Resposta sem
+  `is_minor: false` explícito = menor. Falha ao ler o cartão não derruba o plano.
+  `student_profile.teacher_reviewed_fields` diz o que veio do professor.
+- Testes: `supabase/tests/cartao_do_aluno_pelo_professor.sql` (acesso, menor por idade e
+  por responsável, régua do termo, limpeza, limites, versão, chave imutável, leitura do
+  Planner, histórico sem texto — passa com e sem `20260926200000`),
+  `lesson-planner/teacher-card.test.ts` e `lesson-planner/source.test.ts` (amarra o
+  `index.ts` à RPC e ao `plannerSignalsFor`; precisa de `--allow-read`).
 
 ---
 

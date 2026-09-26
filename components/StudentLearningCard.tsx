@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   CORRECTION_STYLE_OPTIONS,
   draftFromCard,
+  draftHasChanges,
   learningCardFieldLabel,
+  learningCardHistoryActor,
+  learningCardMinorMessage,
   learningCardSaveArgs,
   learningCardSaveErrorMessage,
   parseTopicList,
@@ -22,12 +25,6 @@ import {
  * idade são decididos no servidor (`save_student_learning_card`); a tela só
  * avisa antes.
  */
-
-const ROLE_LABEL: Record<string, string> = {
-  TEACHER: 'professor',
-  COORDINATOR: 'coordenação',
-  SCHOOL_ADMIN: 'direção',
-};
 
 const fmtDateTime = (iso: string | null) => {
   if (!iso) return '';
@@ -56,20 +53,50 @@ interface Props {
 export default function StudentLearningCard({ studentId, card, onSaved, onReload }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<LearningCardDraft>(() => draftFromCard(card));
+  // Versão sobre a qual o rascunho foi escrito — é ela que vai ao servidor.
+  // Só avança quando a pessoa VÊ a versão nova (ou não tinha nada digitado).
+  const [baseVersion, setBaseVersion] = useState(card.version);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const shownRef = useRef({ studentId, card });
 
-  // Cartão novo do servidor (salvou, recarregou ou trocou de aluno): a edição recomeça dele.
+  const restart = (from: Card) => {
+    setDraft(draftFromCard(from));
+    setBaseVersion(from.version);
+    setError('');
+    setConflict(false);
+  };
+
+  // Cartão novo do servidor (salvou, recarregou, alguém mudou, trocou de aluno).
+  // Outro aluno ou sem edição aberta: recomeça do servidor. Com edição aberta,
+  // o que a pessoa digitou NUNCA some — se não havia nada digitado, só avança a
+  // versão; se havia, o rascunho fica e a versão nova aparece ao lado.
   useEffect(() => {
-    setDraft(draftFromCard(card));
-    setEditing(false);
+    const previous = shownRef.current;
+    shownRef.current = { studentId, card };
+    if (previous.studentId !== studentId || !editingRef.current) {
+      restart(card);
+      setEditing(false);
+      return;
+    }
+    if (!draftHasChanges(draftRef.current, previous.card)) {
+      restart(card);
+      return;
+    }
+    // O aviso "outra pessoa atualizou" já cumpriu o papel: agora o painel de
+    // comparação mostra a versão nova e a decisão é de quem está editando.
     setError('');
     setConflict(false);
   }, [studentId, card.version, card.is_minor]);
 
   const limits = card.limits;
   const minor = card.is_minor;
+  const stale = editing && card.version !== baseVersion;
   const style = CORRECTION_STYLE_OPTIONS.find(option => option.value === card.correction_style);
   const topicsCount = parseTopicList(draft.engaging_topics).length;
   const avoidCount = parseTopicList(draft.avoid_topics).length;
@@ -82,7 +109,7 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
     setSaving(true); setError(''); setConflict(false);
     try {
       const { data, error: rpcError } = await supabase.rpc(
-        'save_student_learning_card', learningCardSaveArgs(studentId, draft, minor, card.version),
+        'save_student_learning_card', learningCardSaveArgs(studentId, draft, minor, baseVersion),
       );
       if (rpcError) {
         setError(learningCardSaveErrorMessage(rpcError.message));
@@ -92,7 +119,7 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
       // Salvar igual não muda a versão: fecha a edição aqui, sem esperar o efeito.
       const saved = readLearningCard(data);
       onSaved(data);
-      if (saved) setDraft(draftFromCard(saved));
+      if (saved) restart(saved);
       setEditing(false);
     } catch {
       setError(learningCardSaveErrorMessage(null));
@@ -117,8 +144,8 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
 
       {minor && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          Aluno menor de idade: o cartão guarda só o objetivo e os temas que engajam.
-          {card.hidden_for_minor && ' Havia observações pessoais de antes — estão ocultas e serão apagadas no próximo salvamento.'}
+          {learningCardMinorMessage(card.minor_reason)}
+          {card.hidden_for_minor && ' Havia observações pessoais de antes: estão ocultas e são apagadas automaticamente.'}
         </p>
       )}
 
@@ -210,18 +237,46 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
             </div>
           </>}
 
+          {stale && (
+            <div role="status" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+              <p>
+                <strong>Versão nova salva{card.updated_by_name ? ` por ${card.updated_by_name}` : ''}{card.updated_at ? ` em ${fmtDateTime(card.updated_at)}` : ''}.</strong>{' '}
+                O que você escreveu continua no formulário. Compare e decida:
+              </p>
+              <dl className="space-y-1">
+                <div><dt className="inline font-medium">Objetivo: </dt><dd className="inline">{card.real_goal || '—'}</dd></div>
+                <div><dt className="inline font-medium">Temas: </dt><dd className="inline">{card.engaging_topics.join(', ') || '—'}</dd></div>
+                {!minor && <>
+                  <div><dt className="inline font-medium">Correção: </dt><dd className="inline">{CORRECTION_STYLE_OPTIONS.find(option => option.value === card.correction_style)?.label ?? '—'}</dd></div>
+                  <div><dt className="inline font-medium">Evitar: </dt><dd className="inline">{card.avoid_topics.join(', ') || '—'}</dd></div>
+                  <div><dt className="inline font-medium">Observações: </dt><dd className="inline whitespace-pre-line">{card.notes || '—'}</dd></div>
+                </>}
+              </dl>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { setBaseVersion(card.version); setError(''); setConflict(false); }}
+                  className="rounded-lg bg-amber-700 px-3 py-1.5 font-semibold text-white">
+                  Manter o meu texto
+                </button>
+                <button type="button" onClick={() => restart(card)}
+                  className="rounded-lg border border-amber-700 px-3 py-1.5 font-semibold">
+                  Usar a versão nova
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <p role="alert" className="text-red-600">
               {error}{' '}
-              {conflict && <button type="button" onClick={onReload} className="font-semibold underline">Recarregar</button>}
+              {conflict && !stale && <button type="button" onClick={onReload} className="font-semibold underline">Recarregar</button>}
             </p>
           )}
 
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+            <button type="submit" disabled={saving || stale} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
               {saving ? 'Salvando…' : 'Salvar cartão'}
             </button>
-            <button type="button" disabled={saving} onClick={() => { setDraft(draftFromCard(card)); setEditing(false); setError(''); setConflict(false); }}
+            <button type="button" disabled={saving} onClick={() => { restart(card); setEditing(false); }}
               className="rounded-lg border border-slate-300 px-4 py-2 font-semibold dark:border-slate-600">
               Cancelar
             </button>
@@ -242,8 +297,7 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
           <ul className="mt-1 space-y-1">
             {card.history.map(entry => (
               <li key={`${entry.version}-${entry.created_at}`}>
-                {fmtDateTime(entry.created_at)} · {entry.actor_name || 'Pessoa removida'}
-                {entry.actor_role && ROLE_LABEL[entry.actor_role] ? ` (${ROLE_LABEL[entry.actor_role]})` : ''}
+                {fmtDateTime(entry.created_at)} · {learningCardHistoryActor(entry)}
                 {' · '}{entry.changed_fields.map(learningCardFieldLabel).join(', ') || 'sem mudança de conteúdo'}
               </li>
             ))}

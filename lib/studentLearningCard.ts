@@ -34,6 +34,16 @@ export const DEFAULT_LEARNING_CARD_LIMITS: LearningCardLimits = {
   notes: 400,
 };
 
+/**
+ * Por que o cartão guarda só objetivo e temas (`minor_reason`, decidido no
+ * servidor): turma infantil, menor pela data de nascimento, responsável
+ * cadastrado ou idade ainda não comprovada pela escola (régua do termo de
+ * registro das aulas).
+ */
+export type LearningCardMinorReason = 'KIDS' | 'MINOR' | 'GUARDIAN' | 'AGE_UNKNOWN';
+
+const MINOR_REASONS: ReadonlyArray<LearningCardMinorReason> = ['KIDS', 'MINOR', 'GUARDIAN', 'AGE_UNKNOWN'];
+
 export interface LearningCardHistoryEntry {
   created_at: string;
   actor_name: string | null;
@@ -45,6 +55,7 @@ export interface LearningCardHistoryEntry {
 export interface StudentLearningCard {
   exists: boolean;
   is_minor: boolean;
+  minor_reason: LearningCardMinorReason | null;
   can_edit: boolean;
   real_goal: string;
   engaging_topics: string[];
@@ -89,6 +100,7 @@ export function readLearningCard(raw: unknown): StudentLearningCard | null {
   return {
     exists: raw.exists === true,
     is_minor: raw.is_minor === true,
+    minor_reason: MINOR_REASONS.find(reason => reason === raw.minor_reason) ?? null,
     can_edit: raw.can_edit === true,
     real_goal: text(raw.real_goal),
     engaging_topics: textList(raw.engaging_topics),
@@ -143,6 +155,20 @@ export function draftFromCard(card: StudentLearningCard): LearningCardDraft {
 const collapse = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 /**
+ * O rascunho tem texto que o servidor ainda não tem? Compara como o servidor
+ * gravaria (espaços colapsados, temas separados), para não chamar de "edição"
+ * um espaço a mais.
+ */
+export function draftHasChanges(draft: LearningCardDraft, card: StudentLearningCard): boolean {
+  const saved = draftFromCard(card);
+  return collapse(draft.real_goal) !== collapse(saved.real_goal)
+    || parseTopicList(draft.engaging_topics).join('\n') !== parseTopicList(saved.engaging_topics).join('\n')
+    || draft.correction_style !== saved.correction_style
+    || parseTopicList(draft.avoid_topics).join('\n') !== parseTopicList(saved.avoid_topics).join('\n')
+    || collapse(draft.notes) !== collapse(saved.notes);
+}
+
+/**
  * Conferência antes do clique, com as mesmas regras do servidor. Devolve a
  * primeira mensagem de problema, ou null quando pode salvar.
  */
@@ -190,6 +216,31 @@ export function learningCardSaveArgs(
   };
 }
 
+/** Aviso ao lado do cartão para quem guarda só objetivo e temas. */
+export function learningCardMinorMessage(reason: LearningCardMinorReason | null): string {
+  const tail = 'o cartão guarda só o objetivo e os temas que engajam.';
+  switch (reason) {
+    case 'KIDS': return `Aluno da turma infantil: ${tail}`;
+    case 'GUARDIAN': return `Aluno com responsável cadastrado: ${tail}`;
+    case 'AGE_UNKNOWN':
+      return `Idade ainda não comprovada pela escola: ${tail} Quando a escola registrar a data de nascimento na ficha, os outros campos voltam.`;
+    default: return `Aluno menor de idade: ${tail}`;
+  }
+}
+
+const HISTORY_ROLE_LABEL: Record<string, string> = {
+  TEACHER: 'professor',
+  COORDINATOR: 'coordenação',
+  SCHOOL_ADMIN: 'direção',
+};
+
+/** Quem aparece no histórico. A limpeza automática de menor não tem autor. */
+export function learningCardHistoryActor(entry: LearningCardHistoryEntry): string {
+  if (entry.actor_role === 'SYSTEM_MINOR_RULE') return 'Limpeza automática (regra de menor de idade)';
+  const role = entry.actor_role ? HISTORY_ROLE_LABEL[entry.actor_role] : undefined;
+  return `${entry.actor_name || 'Pessoa removida'}${role ? ` (${role})` : ''}`;
+}
+
 const FIELD_LABELS: Record<string, string> = {
   real_goal: 'objetivo',
   engaging_topics: 'temas',
@@ -206,11 +257,13 @@ export function learningCardSaveErrorMessage(message: string | undefined | null)
   const field = learningCardFieldLabel(raw.split(':')[1] ?? '');
   if (raw.includes('sem_permissao')) return 'Você não pode editar o cartão deste aluno.';
   if (raw.includes('cartao_alterado_por_outra_pessoa')) {
-    return 'Outra pessoa atualizou este cartão enquanto você editava. Recarregue para ver a versão nova antes de salvar.';
+    return 'Outra pessoa atualizou este cartão enquanto você editava. Recarregue para ver a versão nova — o que você escreveu continua aqui.';
   }
   if (raw.startsWith('cartao_texto_longo')) return `Texto longo demais em "${field}". Resuma.`;
   if (raw.startsWith('cartao_itens_demais')) return `Itens demais em "${field}".`;
-  if (raw.startsWith('cartao_campo_de_menor')) return 'Aluno menor de idade: o cartão guarda só objetivo e temas.';
+  if (raw.startsWith('cartao_campo_de_menor')) {
+    return 'Para este aluno o cartão guarda só objetivo e temas (menor de idade, responsável cadastrado ou idade não comprovada).';
+  }
   if (raw.includes('cartao_estilo_invalido')) return 'Escolha um dos estilos de correção da lista.';
   return 'Não foi possível salvar o cartão. Tente de novo.';
 }

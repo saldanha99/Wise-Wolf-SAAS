@@ -6,10 +6,11 @@
  * conversas (wolf_intelligence) e as colunas antigas de profiles. Campo vazio
  * no cartão não apaga nada: cai no que já existia.
  *
- * Menor de idade (is_kids ou nascido há menos de 18 anos): o cartão só carrega
- * objetivo e temas. Estilo de correção, "o que evitar" e notas do cartão são
- * descartados aqui também — o banco já recusa gravá-los, mas um cartão escrito
- * antes de a data de nascimento chegar ainda pode tê-los.
+ * Quem é menor de idade decide o BANCO: o Planner lê o cartão pela RPC
+ * public.student_learning_card_for_planner, que aplica a régua do termo de
+ * registro das aulas + responsável cadastrado e já entrega o cartão de menor
+ * só com objetivo e temas. A régua local (isMinorStudent) é só um cinto a mais:
+ * se ela OU o banco disserem "menor", os campos pessoais caem.
  */
 
 import { boundedStringArray, boundedText, isRecord } from "./core.ts";
@@ -80,19 +81,43 @@ export function saoPauloTodayIso(now: Date = new Date()): string {
   }).format(now);
 }
 
+/** O que o Planner lê de profiles para a régua local de menor. */
+export interface MinorSignals {
+  studentId?: string | null;
+  isKids: unknown;
+  birthDate: unknown;
+  guardianId?: unknown;
+  guardianName?: unknown;
+}
+
 /**
- * Mesma régua do banco (private.student_learning_card_minor): is_kids, ou
- * data de nascimento posterior a "hoje menos 18 anos". Quem faz 18 hoje já é
- * adulto; quem faz amanhã ainda é menor.
+ * Régua local, só para endurecer a do banco (nunca para afrouxar): is_kids,
+ * data de nascimento posterior a "hoje menos 18 anos", ou responsável
+ * cadastrado (guardian_id de outro perfil ou guardian_name preenchido) — o
+ * mesmo sinal de responsável de private.student_learning_card_minor_reason.
+ * Quem faz 18 hoje já é adulto; quem faz amanhã ainda é menor. Idade não
+ * cadastrada quem decide é o banco (régua do termo).
  */
 export function isMinorStudent(
-  isKids: unknown,
-  birthDate: unknown,
+  signals: MinorSignals,
   todayIso: string,
 ): boolean {
-  if (isKids === true) return true;
-  if (typeof birthDate !== "string") return false;
-  const birth = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthDate);
+  if (signals.isKids === true) return true;
+  if (
+    typeof signals.guardianId === "string" &&
+    signals.guardianId.trim() !== "" &&
+    signals.guardianId !== signals.studentId
+  ) {
+    return true;
+  }
+  if (
+    typeof signals.guardianName === "string" &&
+    signals.guardianName.trim() !== ""
+  ) {
+    return true;
+  }
+  if (typeof signals.birthDate !== "string") return false;
+  const birth = /^(\d{4})-(\d{2})-(\d{2})/.exec(signals.birthDate);
   const today = /^(\d{4})-(\d{2})-(\d{2})$/.exec(todayIso);
   if (!birth || !today) return false;
   const eighteenthBirthday = `${
@@ -199,5 +224,102 @@ export function resolveStudentSignals(
     teacherNotes,
     teacherReviewedFields: reviewed,
     teacherCardUpdatedAt: card?.updatedAt ?? null,
+  };
+}
+
+/** Colunas de profiles que o Planner usa para o que já sabia do aluno. */
+export interface PlannerStudentFacts {
+  id?: string | null;
+  is_kids: boolean | null;
+  birth_date: string | null;
+  guardian_id?: string | null;
+  guardian_name?: string | null;
+  english_for: string | null;
+  learning_objective: string | null;
+  short_term_goal: string | null;
+  interests: unknown;
+  preferred_topics: unknown;
+  avoided_topics: unknown;
+}
+
+const plannerList = (value: unknown): string[] =>
+  boundedStringArray(value, 15, 300);
+
+/** O que o Wolfie inferiu (wolf_intelligence) e o que a ficha já trazia. */
+export function inferStudentSignals(
+  student: PlannerStudentFacts,
+  intelligence: unknown,
+): InferredStudentSignals {
+  const wolfie: Record<string, unknown> = isRecord(intelligence)
+    ? intelligence
+    : {};
+  return {
+    primaryGoal: boundedText(
+      wolfie.primary_goal ??
+        student.short_term_goal ??
+        student.english_for ??
+        student.learning_objective,
+      800,
+    ),
+    preferredTopics: plannerList(
+      wolfie.interests ?? student.preferred_topics ?? student.interests,
+    ),
+    topicsToAvoid: plannerList(student.avoided_topics),
+    preferredCorrectionMode: boundedText(
+      wolfie.preferred_correction_mode,
+      60,
+    ),
+  };
+}
+
+/**
+ * Lê a resposta de student_learning_card_for_planner. O banco decide quem é
+ * menor; sem a marca explícita "is_minor: false", o cartão é tratado como de
+ * menor (resposta estranha não pode liberar nota pessoal para a IA).
+ */
+export function readPlannerCardPayload(
+  payload: unknown,
+  locallyMinor: boolean,
+): TeacherLearningCard | null {
+  if (!isRecord(payload)) return null;
+  const isMinor = payload.is_minor !== false || locallyMinor;
+  return normalizeTeacherCard(payload.card, isMinor);
+}
+
+/**
+ * O student_profile do Planner a partir de (ficha, Wolfie, cartão): é a conta
+ * que buildRetrievalQuery e buildModelInput usam — o cartão vence.
+ */
+export function plannerSignalsFor(
+  student: PlannerStudentFacts,
+  intelligence: unknown,
+  cardPayload: unknown,
+  todayIso: string,
+): ResolvedStudentSignals {
+  const locallyMinor = isMinorStudent({
+    studentId: student.id ?? null,
+    isKids: student.is_kids,
+    birthDate: student.birth_date,
+    guardianId: student.guardian_id,
+    guardianName: student.guardian_name,
+  }, todayIso);
+  return resolveStudentSignals(
+    inferStudentSignals(student, intelligence),
+    readPlannerCardPayload(cardPayload, locallyMinor),
+  );
+}
+
+/** Os campos do student_profile que vêm do cartão (ou, sem ele, do inferido). */
+export function studentProfileSignalFields(signals: ResolvedStudentSignals) {
+  return {
+    primary_goal: signals.primaryGoal,
+    preferred_topics: signals.preferredTopics,
+    topics_to_avoid: signals.topicsToAvoid,
+    preferred_correction_mode: signals.preferredCorrectionMode,
+    // Observação do professor no cartão do aluno (vazia para menor de idade).
+    teacher_card_notes: signals.teacherNotes,
+    // Campos que vieram do cartão revisado pelo professor: são fato dado por
+    // quem dá a aula, não inferência do Wolfie.
+    teacher_reviewed_fields: signals.teacherReviewedFields,
   };
 }

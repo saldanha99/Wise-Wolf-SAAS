@@ -45,7 +45,7 @@ describe('cartão do aluno na continuidade pedagógica', () => {
     rpc.mockResolvedValue({ data: { ...base, is_minor: true, version: 3 }, error: null });
     const minor = readLearningCard({ ...base, is_minor: true, correction_style: null, avoid_topics: [], notes: '', hidden_for_minor: true })!;
     render(<StudentLearningCard studentId="kid" card={minor} onSaved={() => undefined} onReload={() => undefined} />);
-    expect(screen.getByText(/Aluno menor de idade/)).toHaveTextContent('serão apagadas no próximo salvamento');
+    expect(screen.getByText(/Aluno menor de idade/)).toHaveTextContent('apagadas automaticamente');
     expect(screen.queryByText('O que evitar')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
     expect(screen.queryByLabelText('Observações para quem der a aula')).not.toBeInTheDocument();
@@ -69,6 +69,70 @@ describe('cartão do aluno na continuidade pedagógica', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Outra pessoa atualizou este cartão');
     fireEvent.click(screen.getByRole('button', { name: 'Recarregar' }));
     expect(onReload).toHaveBeenCalled();
+  });
+
+  it('recarregar depois do conflito NÃO apaga o que o professor digitou', async () => {
+    const typed = 'Quatrocentos caracteres de observação que a professora não quer redigitar.';
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'cartao_alterado_por_outra_pessoa' } });
+    const onSaved = vi.fn();
+    const view = render(<StudentLearningCard studentId="s1" card={readLearningCard(base)!} onSaved={onSaved} onReload={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Observações para quem der a aula'), { target: { value: typed } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cartão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Recarregar' }));
+
+    // O dossiê recarrega com a versão que a coordenação salvou.
+    const newer = readLearningCard({ ...base, version: 3, notes: 'Nota da coordenação.', updated_by_name: 'Coordenação' })!;
+    view.rerender(<StudentLearningCard studentId="s1" card={newer} onSaved={onSaved} onReload={() => undefined} />);
+
+    expect(screen.getByLabelText('Observações para quem der a aula')).toHaveValue(typed);
+    const panel = screen.getByRole('status');
+    expect(panel).toHaveTextContent('Versão nova salva por Coordenação');
+    expect(panel).toHaveTextContent('Nota da coordenação.');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // Não salva às cegas por cima da versão nova: primeiro decide.
+    expect(screen.getByRole('button', { name: 'Salvar cartão' })).toBeDisabled();
+
+    rpc.mockResolvedValueOnce({ data: { ...base, notes: typed, version: 4 }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Manter o meu texto' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cartão' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(rpc).toHaveBeenLastCalledWith('save_student_learning_card', expect.objectContaining({
+      p_notes: typed, p_expected_version: 3,
+    }));
+  });
+
+  it('"Usar a versão nova" troca o rascunho pelo que foi salvo', () => {
+    const view = render(<StudentLearningCard studentId="s1" card={readLearningCard(base)!} onSaved={() => undefined} onReload={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Observações para quem der a aula'), { target: { value: 'meu texto' } });
+    view.rerender(<StudentLearningCard studentId="s1" card={readLearningCard({ ...base, version: 3, notes: 'Nota nova.' })!} onSaved={() => undefined} onReload={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Usar a versão nova' }));
+    expect(screen.getByLabelText('Observações para quem der a aula')).toHaveValue('Nota nova.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salvar cartão' })).toBeEnabled();
+  });
+
+  it('versão nova sem nada digitado só avança, sem painel de comparação', () => {
+    const view = render(<StudentLearningCard studentId="s1" card={readLearningCard(base)!} onSaved={() => undefined} onReload={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    view.rerender(<StudentLearningCard studentId="s1" card={readLearningCard({ ...base, version: 3, notes: 'Nota nova.' })!} onSaved={() => undefined} onReload={() => undefined} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Observações para quem der a aula')).toHaveValue('Nota nova.');
+  });
+
+  it('explica por que o cartão guarda só objetivo e temas', () => {
+    const view = render(<StudentLearningCard studentId="s1" card={readLearningCard({ ...base, is_minor: true, minor_reason: 'GUARDIAN' })!} onSaved={() => undefined} onReload={() => undefined} />);
+    expect(screen.getByText(/Aluno com responsável cadastrado/)).toBeInTheDocument();
+    view.rerender(<StudentLearningCard studentId="s1" card={readLearningCard({ ...base, is_minor: true, minor_reason: 'AGE_UNKNOWN' })!} onSaved={() => undefined} onReload={() => undefined} />);
+    expect(screen.getByText(/Idade ainda não comprovada/)).toHaveTextContent('data de nascimento');
+  });
+
+  it('a limpeza automática de menor aparece no histórico sem autor inventado', () => {
+    const history = [{ created_at: '2026-09-26T16:00:00Z', actor_name: null, actor_role: 'SYSTEM_MINOR_RULE', changed_fields: ['notes'], version: 3 }];
+    render(<StudentLearningCard studentId="s1" card={readLearningCard({ ...base, history })!} onSaved={() => undefined} onReload={() => undefined} />);
+    expect(screen.getByText(/Limpeza automática \(regra de menor de idade\) · observações/)).toBeInTheDocument();
+    expect(screen.queryByText(/Pessoa removida/)).not.toBeInTheDocument();
   });
 
   it('texto longo demais é barrado antes de chamar o servidor', async () => {

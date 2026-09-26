@@ -10,9 +10,17 @@
 --   * nunca guardar saúde, religião, política, família ou dinheiro. A tela diz
 --     isso junto do formulário; o servidor recusa texto longo demais (limite de
 --     tamanho por campo), que é onde esse tipo de relato costuma aparecer;
---   * aluno menor de idade (is_kids ou nascido há menos de 18 anos, a mesma
---     régua do termo de registro das aulas): só os campos pedagógicos —
---     objetivo e temas. Nada de "o que evitar", estilo de correção ou notas;
+--   * aluno menor de idade: só os campos pedagógicos — objetivo e temas. Nada de
+--     "o que evitar", estilo de correção ou notas. "Menor" NÃO é régua própria:
+--     é a do termo de registro das aulas (private.lesson_recording_requires_guardian,
+--     chamada, não copiada — se o termo passar a exigir responsável também para
+--     idade não comprovada, o cartão acompanha) MAIS responsável cadastrado
+--     (guardian_id ou guardian_name). Em 26/09/2026 nenhum dos 47 alunos ativos
+--     tinha birth_date nem is_kids, e uma régua só de idade trataria como
+--     adulto o único aluno com responsável cadastrado;
+--   * quem passa a ser menor depois (data de nascimento, is_kids, responsável,
+--     ou a régua do termo que mudou) tem os campos pessoais APAGADOS — não só
+--     escondidos: gatilho em profiles + varredura diária;
 --   * escrita só por esta RPC: professor vinculado ao aluno (a mesma regra do
 --     dossiê de continuidade, private.can_read_student_pedagogy), coordenação e
 --     direção da escola. O suporte da plataforma (SUPER_ADMIN) não escreve.
@@ -64,9 +72,10 @@ comment on table public.student_learning_cards is
 alter table public.student_learning_cards owner to postgres;
 alter table public.student_learning_cards enable row level security;
 revoke all on table public.student_learning_cards from public, anon, authenticated, service_role;
--- O Planner (edge lesson-planner) lê com a chave de serviço; ninguém escreve
--- por fora da RPC.
-grant select on table public.student_learning_cards to service_role;
+-- Ninguém lê nem escreve a tabela direto: a tela passa por
+-- get_student_handover/save_student_learning_card e o Planner (edge
+-- lesson-planner, chave de serviço) por student_learning_card_for_planner, que
+-- já entrega o cartão de menor sem os campos pessoais.
 
 -- ---------------------------------------------------------------------------
 -- 2. Histórico: quem, quando e quais campos — nunca o conteúdo
@@ -106,17 +115,42 @@ language sql immutable security definer set search_path = '' as $$
   );
 $$;
 
--- Menor de idade: is_kids ou nascido há menos de 18 anos (fuso da escola).
+-- Por que o cartão deste aluno guarda só objetivo e temas (nulo = adulto).
+-- QUEM DECIDE é a régua do termo (private.lesson_recording_requires_guardian),
+-- chamada e não copiada; aqui só se dá nome ao motivo para a tela explicar.
+-- Responsável cadastrado soma: "menor de idade sempre com responsável" (decisão
+-- da direção), e quem tem responsável na ficha é tratado como menor até a
+-- escola dizer o contrário.
+--   KIDS        turma infantil (is_kids)
+--   MINOR       a data de nascimento do cadastro dá menos de 18 anos
+--   AGE_UNKNOWN a régua do termo exige responsável sem que o cadastro mostre
+--               criança ou menor — hoje, idade não comprovada pela escola
+--   GUARDIAN    responsável cadastrado (guardian_id ou guardian_name)
+create or replace function private.student_learning_card_minor_reason(p_student uuid)
+returns text
+language sql stable security definer set search_path = '' as $$
+  select case
+    when student.id is null then null
+    when private.lesson_recording_requires_guardian(student.id) then
+      case
+        when coalesce(student.is_kids, false) then 'KIDS'
+        when student.birth_date is not null
+          and student.birth_date > (pg_catalog.now() at time zone 'America/Sao_Paulo')::date - interval '18 years'
+          then 'MINOR'
+        else 'AGE_UNKNOWN'
+      end
+    when student.guardian_id is not null and student.guardian_id <> student.id then 'GUARDIAN'
+    when btrim(coalesce(student.guardian_name, '')) <> '' then 'GUARDIAN'
+    else null
+  end
+  from (select 1) as anchor
+  left join public.profiles as student on student.id = p_student;
+$$;
+
 create or replace function private.student_learning_card_minor(p_student uuid)
 returns boolean
 language sql stable security definer set search_path = '' as $$
-  select coalesce((
-    select coalesce(student.is_kids, false)
-      or (student.birth_date is not null
-        and student.birth_date > (now() at time zone 'America/Sao_Paulo')::date - interval '18 years')
-    from public.profiles as student
-    where student.id = p_student
-  ), false);
+  select private.student_learning_card_minor_reason(p_student) is not null;
 $$;
 
 -- Espaço repetido, quebra de linha e caractere de controle viram um espaço só.
@@ -155,14 +189,15 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 -- O cartão como a tela e o dossiê o enxergam. Para menor, os campos pessoais
--- saem sempre vazios — mesmo que tenham sido escritos antes de a data de
--- nascimento chegar (hidden_for_minor avisa, e o próximo salvamento apaga).
+-- saem sempre vazios — mesmo no intervalo entre o aluno passar a constar como
+-- menor e a limpeza apagá-los (hidden_for_minor avisa).
 create or replace function private.student_learning_card_view(p_tenant text, p_student uuid)
 returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
   v_card public.student_learning_cards%rowtype;
-  v_minor boolean := private.student_learning_card_minor(p_student);
+  v_reason text := private.student_learning_card_minor_reason(p_student);
+  v_minor boolean := v_reason is not null;
   v_hidden boolean := false;
 begin
   select * into v_card
@@ -178,6 +213,7 @@ begin
   return jsonb_build_object(
     'exists', v_card.student_id is not null,
     'is_minor', v_minor,
+    'minor_reason', v_reason,
     'can_edit', private.student_learning_card_can_edit(p_tenant, p_student),
     'real_goal', coalesce(v_card.real_goal, ''),
     'engaging_topics', to_jsonb(coalesce(v_card.engaging_topics, '{}'::text[])),
@@ -224,15 +260,31 @@ declare
   v_limits jsonb := private.student_learning_card_limits();
   v_item text;
 begin
-  -- Só o conteúdo é validado. Atualização que não mexe no texto (ex.: ajuste
-  -- técnico) não pode ser barrada pela regra de menor.
-  if tg_op = 'UPDATE'
-     and new.real_goal is not distinct from old.real_goal
-     and new.engaging_topics is not distinct from old.engaging_topics
-     and new.correction_style is not distinct from old.correction_style
-     and new.avoid_topics is not distinct from old.avoid_topics
-     and new.notes is not distinct from old.notes then
-    return new;
+  if tg_op = 'UPDATE' then
+    -- O cartão é de UM aluno numa escola: trocar a chave penduraria o texto em
+    -- escola (ou aluno) diferente, sem passar pela conferência abaixo.
+    if new.tenant_id is distinct from old.tenant_id
+       or new.student_id is distinct from old.student_id then
+      raise exception 'cartao_chave_imutavel' using errcode = '22023';
+    end if;
+    -- Só o conteúdo é validado. Atualização que não mexe no texto (ex.: ajuste
+    -- técnico) não pode ser barrada pela regra de menor.
+    if new.real_goal is not distinct from old.real_goal
+       and new.engaging_topics is not distinct from old.engaging_topics
+       and new.correction_style is not distinct from old.correction_style
+       and new.avoid_topics is not distinct from old.avoid_topics
+       and new.notes is not distinct from old.notes then
+      return new;
+    end if;
+    -- Apagar os campos pessoais (a limpeza de quem virou menor) nunca é
+    -- barrado — nem se o aluno já mudou de escola ou de papel depois.
+    if new.real_goal is not distinct from old.real_goal
+       and new.engaging_topics is not distinct from old.engaging_topics
+       and new.correction_style is null
+       and cardinality(new.avoid_topics) = 0
+       and new.notes = '' then
+      return new;
+    end if;
   end if;
 
   if not exists (
@@ -318,11 +370,18 @@ begin
     end if;
   end if;
 
+  -- A limpeza automática de menor se identifica pelo papel SYSTEM_MINOR_RULE
+  -- (ajuste local à transação feito por student_learning_card_purge_minor_fields);
+  -- actor_id fica com quem mexeu na ficha que a disparou, quando houver.
   insert into private.student_learning_card_events (
     tenant_id, student_id, actor_id, actor_role, card_version, changed_fields
   ) values (
     new.tenant_id, new.student_id, coalesce(new.updated_by, auth.uid()),
-    public._my_role(), new.version, v_fields
+    coalesce(
+      nullif(pg_catalog.current_setting('app.student_learning_card_actor_role', true), ''),
+      public._my_role()
+    ),
+    new.version, v_fields
   );
   return null;
 end;
@@ -337,6 +396,77 @@ drop trigger if exists trg_student_learning_cards_log on public.student_learning
 create trigger trg_student_learning_cards_log
   after insert or update on public.student_learning_cards
   for each row execute function private.student_learning_card_log();
+
+-- ---------------------------------------------------------------------------
+-- 4b. Quem passa a ser menor perde os campos pessoais — apagados, não escondidos
+-- ---------------------------------------------------------------------------
+-- Esconder na leitura não basta: o texto continuaria na tabela, nos dumps e nos
+-- backups até alguém salvar o cartão daquele aluno de novo. A limpeza zera
+-- estilo de correção, "o que evitar" e observações, sobe a versão (quem estiver
+-- editando recebe "outra pessoa atualizou") e registra no histórico com o papel
+-- SYSTEM_MINOR_RULE, sem texto. Três portas:
+--   1. gatilho em profiles quando is_kids, birth_date ou responsável mudam;
+--   2. varredura diária (a régua do termo pode mudar sem tocar em profiles —
+--      ex.: passar a exigir responsável para idade não comprovada);
+--   3. esta migration, uma vez, sobre o que já existir.
+-- p_student nulo = todos os cartões.
+create or replace function private.student_learning_card_purge_minor_fields(p_student uuid default null)
+returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_count integer;
+begin
+  perform pg_catalog.set_config('app.student_learning_card_actor_role', 'SYSTEM_MINOR_RULE', true);
+  with purged as (
+    update public.student_learning_cards as card
+       set correction_style = null,
+           avoid_topics = '{}'::text[],
+           notes = '',
+           version = card.version + 1,
+           updated_by = null,
+           updated_at = pg_catalog.now()
+     where (p_student is null or card.student_id = p_student)
+       and (card.correction_style is not null
+         or cardinality(card.avoid_topics) > 0
+         or card.notes <> '')
+       and private.student_learning_card_minor(card.student_id)
+    returning 1
+  )
+  select count(*)::integer into v_count from purged;
+  perform pg_catalog.set_config('app.student_learning_card_actor_role', '', true);
+  return v_count;
+end;
+$$;
+
+-- Gatilho em profiles: nunca derruba a edição da ficha. Se a limpeza falhar, a
+-- leitura continua escondendo (hidden_for_minor) e a varredura diária repete.
+create or replace function private.student_learning_card_minor_purge_on_profile()
+returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  begin
+    perform private.student_learning_card_purge_minor_fields(new.id);
+  exception when others then
+    raise warning 'cartão do aluno: limpeza de menor falhou para %: %', new.id, sqlerrm;
+  end;
+  return null;
+end;
+$$;
+
+-- WHEN com IS DISTINCT: as telas antigas mandam o formulário inteiro, e
+-- "UPDATE OF" dispararia em todo salvamento de ficha mesmo sem mudança.
+drop trigger if exists trg_student_learning_card_minor_purge on public.profiles;
+create trigger trg_student_learning_card_minor_purge
+  after update of is_kids, birth_date, guardian_id, guardian_name on public.profiles
+  for each row
+  when (
+    new.role = 'STUDENT'
+    and (new.is_kids is distinct from old.is_kids
+      or new.birth_date is distinct from old.birth_date
+      or new.guardian_id is distinct from old.guardian_id
+      or new.guardian_name is distinct from old.guardian_name)
+  )
+  execute function private.student_learning_card_minor_purge_on_profile();
 
 -- ---------------------------------------------------------------------------
 -- 5. RPC de escrita
@@ -418,6 +548,46 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- 5b. Leitura do Planner (edge lesson-planner, chave de serviço)
+-- ---------------------------------------------------------------------------
+-- A edge já conferiu que quem pede o plano pode ver o aluno. Aqui a regra de
+-- menor é a do banco — a mesma do gatilho e do dossiê —, e o cartão de menor
+-- sai sem os campos pessoais. O Planner não precisa (nem deve) ter régua própria.
+create or replace function public.student_learning_card_for_planner(p_tenant text, p_student uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_card public.student_learning_cards%rowtype;
+  v_reason text;
+begin
+  if p_tenant is null or p_student is null or not exists (
+    select 1 from public.profiles as student
+     where student.id = p_student and student.tenant_id = p_tenant and student.role = 'STUDENT'
+  ) then
+    return null;
+  end if;
+
+  v_reason := private.student_learning_card_minor_reason(p_student);
+  select * into v_card
+    from public.student_learning_cards as card
+   where card.tenant_id = p_tenant and card.student_id = p_student;
+
+  return jsonb_build_object(
+    'is_minor', v_reason is not null,
+    'minor_reason', v_reason,
+    'card', case when v_card.student_id is null then null else jsonb_build_object(
+      'real_goal', v_card.real_goal,
+      'engaging_topics', to_jsonb(v_card.engaging_topics),
+      'correction_style', case when v_reason is null then v_card.correction_style end,
+      'avoid_topics', case when v_reason is null then to_jsonb(v_card.avoid_topics) else '[]'::jsonb end,
+      'notes', case when v_reason is null then v_card.notes else '' end,
+      'updated_at', v_card.updated_at
+    ) end
+  );
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 6. Dossiê de continuidade devolve o cartão (definição viva de 26/09/2026 +
 --    'learning_card'). A confirmação de leitura guarda só a versão do cartão.
 -- ---------------------------------------------------------------------------
@@ -450,6 +620,7 @@ declare
 begin
   foreach v_signature in array array[
     'private.student_learning_card_limits()',
+    'private.student_learning_card_minor_reason(uuid)',
     'private.student_learning_card_minor(uuid)',
     'private.student_learning_card_clean_text(text)',
     'private.student_learning_card_clean_list(text[])',
@@ -457,7 +628,10 @@ begin
     'private.student_learning_card_view(text,uuid)',
     'private.student_learning_card_guard()',
     'private.student_learning_card_log()',
+    'private.student_learning_card_purge_minor_fields(uuid)',
+    'private.student_learning_card_minor_purge_on_profile()',
     'public.save_student_learning_card(uuid,text,text[],text,text[],text,integer)',
+    'public.student_learning_card_for_planner(text,uuid)',
     'public.get_student_handover(uuid,boolean)'
   ] loop
     execute format('alter function %s owner to postgres', v_signature);
@@ -468,6 +642,7 @@ $owners$;
 
 -- As internas não são rota de navegador nem de serviço.
 revoke all on function private.student_learning_card_limits() from service_role;
+revoke all on function private.student_learning_card_minor_reason(uuid) from service_role;
 revoke all on function private.student_learning_card_minor(uuid) from service_role;
 revoke all on function private.student_learning_card_clean_text(text) from service_role;
 revoke all on function private.student_learning_card_clean_list(text[]) from service_role;
@@ -475,7 +650,24 @@ revoke all on function private.student_learning_card_can_edit(text,uuid) from se
 revoke all on function private.student_learning_card_view(text,uuid) from service_role;
 revoke all on function private.student_learning_card_guard() from service_role;
 revoke all on function private.student_learning_card_log() from service_role;
+revoke all on function private.student_learning_card_purge_minor_fields(uuid) from service_role;
+revoke all on function private.student_learning_card_minor_purge_on_profile() from service_role;
 
 -- A checagem de papel, escola e vínculo é interna.
 grant execute on function public.save_student_learning_card(uuid,text,text[],text,text[],text,integer) to authenticated;
 grant execute on function public.get_student_handover(uuid,boolean) to authenticated, service_role;
+-- O Planner lê pela chave de serviço; o navegador não tem essa porta.
+grant execute on function public.student_learning_card_for_planner(text,uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 8. Limpeza: agora (o que já existir) e todo dia (03:40 BRT)
+-- ---------------------------------------------------------------------------
+select private.student_learning_card_purge_minor_fields(null);
+
+do $cron$ begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.unschedule(jobid) from cron.job where jobname = 'wisewolf-learning-card-minor-purge';
+    perform cron.schedule('wisewolf-learning-card-minor-purge', '40 6 * * *',
+      'select private.student_learning_card_purge_minor_fields(null);');
+  end if;
+end $cron$;

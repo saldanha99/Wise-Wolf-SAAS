@@ -4,8 +4,12 @@ import {
   type InferredStudentSignals,
   isMinorStudent,
   normalizeTeacherCard,
+  plannerSignalsFor,
+  type PlannerStudentFacts,
+  readPlannerCardPayload,
   resolveStudentSignals,
   saoPauloTodayIso,
+  studentProfileSignalFields,
 } from "./teacher-card.ts";
 
 function assert(
@@ -152,19 +156,37 @@ Deno.test("o Planner respeita os limites do banco mesmo com linha fora deles", (
   assertEquals(card.notes.length, 400);
 });
 
-Deno.test("menor pela data de nascimento, na mesma régua do banco", () => {
+const minor = (
+  isKids: unknown,
+  birthDate: unknown,
+  today: string,
+  extra: { guardianId?: unknown; guardianName?: unknown } = {},
+) =>
+  isMinorStudent({ studentId: "aluno-1", isKids, birthDate, ...extra }, today);
+
+Deno.test("régua local: data de nascimento como o banco faz", () => {
   const today = "2026-09-26";
-  assert(isMinorStudent(true, null, today), "is_kids é menor");
-  assert(!isMinorStudent(false, null, today), "sem data é adulto");
-  assert(!isMinorStudent(null, "1990-05-01", today));
-  assert(isMinorStudent(false, "2011-03-10", today), "15 anos");
+  assert(minor(true, null, today), "is_kids é menor");
+  assert(!minor(false, null, today), "sem data, localmente, fica para o banco");
+  assert(!minor(null, "1990-05-01", today));
+  assert(minor(false, "2011-03-10", today), "15 anos");
   // Faz 18 hoje: adulto. Faz 18 amanhã: ainda menor.
-  assert(!isMinorStudent(false, "2008-09-26", today));
-  assert(isMinorStudent(false, "2008-09-27", today));
+  assert(!minor(false, "2008-09-26", today));
+  assert(minor(false, "2008-09-27", today));
   // Nascido em 29/02: vira adulto em 01/03 de ano não bissexto.
-  assert(isMinorStudent(false, "2008-02-29", "2026-02-28"));
-  assert(!isMinorStudent(false, "2008-02-29", "2026-03-01"));
-  assert(!isMinorStudent(false, "data-invalida", today));
+  assert(minor(false, "2008-02-29", "2026-02-28"));
+  assert(!minor(false, "2008-02-29", "2026-03-01"));
+  assert(!minor(false, "data-invalida", today));
+});
+
+Deno.test("régua local: responsável cadastrado é menor, com ou sem data", () => {
+  const today = "2026-09-26";
+  // O caso real de 26/09/2026: guardian_id preenchido, sem data, sem is_kids.
+  assert(minor(false, null, today, { guardianId: "responsavel-1" }));
+  assert(minor(false, "1990-05-01", today, { guardianName: "Mãe do aluno" }));
+  assert(!minor(false, null, today, { guardianName: "   " }), "nome vazio");
+  assert(!minor(false, null, today, { guardianId: "aluno-1" }), "ele mesmo");
+  assert(!minor(false, null, today, { guardianId: null, guardianName: null }));
 });
 
 Deno.test("hoje é a data de São Paulo, não a de UTC", () => {
@@ -173,4 +195,121 @@ Deno.test("hoje é a data de São Paulo, não a de UTC", () => {
     saoPauloTodayIso(new Date("2026-09-27T02:00:00Z")),
     "2026-09-26",
   );
+});
+
+// ---------------------------------------------------------------------------
+// O que o index.ts do Planner usa (plannerSignalsFor): ficha + Wolfie + a
+// resposta de student_learning_card_for_planner.
+// ---------------------------------------------------------------------------
+const adultStudent: PlannerStudentFacts = {
+  id: "aluno-1",
+  is_kids: false,
+  birth_date: "1990-05-01",
+  guardian_id: null,
+  guardian_name: null,
+  english_for: "Trabalho",
+  learning_objective: "Fluência",
+  short_term_goal: "Entrevista em inglês",
+  interests: ["culinária"],
+  preferred_topics: ["cinema"],
+  avoided_topics: ["assunto do cadastro"],
+};
+
+const wolfieRow = {
+  primary_goal: "Inferido pelo Wolfie: viagem",
+  interests: ["games"],
+  preferred_correction_mode: "immediate",
+};
+
+const adultPayload = {
+  is_minor: false,
+  minor_reason: null,
+  card: fullCardRow,
+};
+
+Deno.test("Planner: o cartão vence o Wolfie e a ficha no student_profile", () => {
+  const signals = plannerSignalsFor(
+    adultStudent,
+    wolfieRow,
+    adultPayload,
+    "2026-09-26",
+  );
+  const fields = studentProfileSignalFields(signals);
+  assertEquals(fields.primary_goal, "Apresentar resultados em reuniões");
+  assertEquals(fields.preferred_topics, ["futebol", "séries"]);
+  assertEquals(fields.topics_to_avoid, ["spoilers"]);
+  assertEquals(fields.preferred_correction_mode, "selective");
+  assertEquals(fields.teacher_card_notes, "Rende mais com roleplay.");
+  assertEquals(fields.teacher_reviewed_fields, [
+    "primary_goal",
+    "preferred_topics",
+    "topics_to_avoid",
+    "preferred_correction_mode",
+    "teacher_notes",
+  ]);
+});
+
+Deno.test("Planner: sem cartão, Wolfie antes da ficha, como sempre foi", () => {
+  const fields = studentProfileSignalFields(
+    plannerSignalsFor(
+      adultStudent,
+      wolfieRow,
+      { is_minor: false, card: null },
+      "2026-09-26",
+    ),
+  );
+  assertEquals(fields.primary_goal, "Inferido pelo Wolfie: viagem");
+  assertEquals(fields.preferred_topics, ["games"]);
+  assertEquals(fields.topics_to_avoid, ["assunto do cadastro"]);
+  assertEquals(fields.preferred_correction_mode, "immediate");
+  assertEquals(fields.teacher_card_notes, "");
+  assertEquals(fields.teacher_reviewed_fields, []);
+  // Sem Wolfie: a ficha.
+  const fromProfile = studentProfileSignalFields(
+    plannerSignalsFor(adultStudent, null, null, "2026-09-26"),
+  );
+  assertEquals(fromProfile.primary_goal, "Entrevista em inglês");
+  assertEquals(fromProfile.preferred_topics, ["cinema"]);
+});
+
+Deno.test("Planner: o banco diz menor, os campos pessoais caem", () => {
+  const fields = studentProfileSignalFields(
+    plannerSignalsFor(
+      adultStudent,
+      wolfieRow,
+      { is_minor: true, minor_reason: "AGE_UNKNOWN", card: fullCardRow },
+      "2026-09-26",
+    ),
+  );
+  assertEquals(fields.primary_goal, "Apresentar resultados em reuniões");
+  assertEquals(fields.teacher_card_notes, "");
+  assertEquals(fields.topics_to_avoid, ["assunto do cadastro"]);
+  assertEquals(fields.preferred_correction_mode, "immediate");
+  assertEquals(fields.teacher_reviewed_fields, [
+    "primary_goal",
+    "preferred_topics",
+  ]);
+});
+
+Deno.test("Planner: responsável na ficha derruba os campos pessoais mesmo se o banco disser adulto", () => {
+  const fields = studentProfileSignalFields(
+    plannerSignalsFor(
+      { ...adultStudent, birth_date: null, guardian_id: "responsavel-1" },
+      wolfieRow,
+      adultPayload,
+      "2026-09-26",
+    ),
+  );
+  assertEquals(fields.teacher_card_notes, "");
+  assertEquals(fields.preferred_correction_mode, "immediate");
+});
+
+Deno.test("Planner: resposta sem is_minor explícito não libera nota pessoal", () => {
+  const card = readPlannerCardPayload({ card: fullCardRow }, false);
+  assert(card);
+  assertEquals(card.notes, "");
+  assertEquals(card.avoidTopics, []);
+  assertEquals(card.correctionStyle, null);
+  assertEquals(readPlannerCardPayload(null, false), null);
+  assertEquals(readPlannerCardPayload("erro", false), null);
 });

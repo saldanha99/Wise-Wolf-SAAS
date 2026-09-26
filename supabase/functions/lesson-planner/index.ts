@@ -41,11 +41,10 @@ import {
   WISE_WOLF_TRAINING_ENGINE_PROMPT,
 } from "./wise-wolf-training-engine.ts";
 import {
-  isMinorStudent,
-  normalizeTeacherCard,
+  plannerSignalsFor,
   type ResolvedStudentSignals,
-  resolveStudentSignals,
   saoPauloTodayIso,
+  studentProfileSignalFields,
 } from "./teacher-card.ts";
 
 const corsHeaders = {
@@ -91,6 +90,9 @@ interface StudentProfileRow {
   personality: string | null;
   is_kids: boolean | null;
   birth_date: string | null;
+  // Só para a régua de menor do cartão (nunca vão para o modelo).
+  guardian_id: string | null;
+  guardian_name: string | null;
   student_category: string | null;
   interests: unknown;
   preferred_topics: unknown;
@@ -216,6 +218,8 @@ async function requireStudentAccess(
         "personality",
         "is_kids",
         "birth_date",
+        "guardian_id",
+        "guardian_name",
         "student_category",
         "interests",
         "preferred_topics",
@@ -430,10 +434,12 @@ async function loadPlannerContext(
     ).eq("tenant_id", tenantId).eq("purpose", "WISE_WOLF_PLANNER")
       .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
       .order("version", { ascending: false }).limit(1).maybeSingle(),
-    // Cartão do aluno preenchido pelo professor (migration 20260926220000).
-    db.from("student_learning_cards").select(
-      "real_goal,engaging_topics,correction_style,avoid_topics,notes,updated_at",
-    ).eq("tenant_id", tenantId).eq("student_id", studentId).maybeSingle(),
+    // Cartão do aluno preenchido pelo professor (migration 20260926220000),
+    // pela RPC que já aplica a regra de menor do banco.
+    db.rpc("student_learning_card_for_planner", {
+      p_tenant: tenantId,
+      p_student: studentId,
+    }),
   ]);
 
   const namedResults = [
@@ -487,33 +493,11 @@ function plannerStudentSignals(
   student: StudentProfileRow,
   context: Awaited<ReturnType<typeof loadPlannerContext>>,
 ): ResolvedStudentSignals {
-  const intelligence: Record<string, unknown> = isRecord(context.intelligence)
-    ? context.intelligence
-    : {};
-  const isMinor = isMinorStudent(
-    student.is_kids,
-    student.birth_date,
+  return plannerSignalsFor(
+    student,
+    context.intelligence,
+    context.teacherCard,
     saoPauloTodayIso(),
-  );
-  return resolveStudentSignals(
-    {
-      primaryGoal: boundedText(
-        intelligence.primary_goal ??
-          student.short_term_goal ??
-          student.english_for ??
-          student.learning_objective,
-        800,
-      ),
-      preferredTopics: safeArray(
-        intelligence.interests ?? student.preferred_topics ?? student.interests,
-      ),
-      topicsToAvoid: safeArray(student.avoided_topics),
-      preferredCorrectionMode: boundedText(
-        intelligence.preferred_correction_mode,
-        60,
-      ),
-    },
-    normalizeTeacherCard(context.teacherCard, isMinor),
   );
 }
 
@@ -544,7 +528,9 @@ function buildModelInput(
       60,
       "não informado",
     ),
-    primary_goal: signals.primaryGoal,
+    // Objetivo, temas, o que evitar, estilo de correção e observação do
+    // professor: o cartão vence (teacher-card.ts).
+    ...studentProfileSignalFields(signals),
     secondary_goals: safeArray(intelligence.secondary_goals),
     profession_or_context: boundedText(
       intelligence.job_role ??
@@ -553,16 +539,8 @@ function buildModelInput(
       400,
     ),
     industry: boundedText(intelligence.industry, 300),
-    preferred_topics: signals.preferredTopics,
-    topics_to_avoid: signals.topicsToAvoid,
     long_term_goal: boundedText(student.long_term_goal, 800),
     learning_style_note: boundedText(student.personality, 500),
-    preferred_correction_mode: signals.preferredCorrectionMode,
-    // Observação do professor no cartão do aluno (vazia para menor de idade).
-    teacher_card_notes: signals.teacherNotes,
-    // Campos acima que vieram do cartão revisado pelo professor: são fato
-    // dado por quem dá a aula, não inferência do Wolfie.
-    teacher_reviewed_fields: signals.teacherReviewedFields,
     preferred_language_mode: boundedText(
       intelligence.preferred_language_mode,
       60,

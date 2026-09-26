@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LEARNING_CARD_LIMITS,
   draftFromCard,
+  draftHasChanges,
+  learningCardHistoryActor,
+  learningCardMinorMessage,
   learningCardSaveArgs,
   learningCardSaveErrorMessage,
   parseTopicList,
@@ -99,10 +102,38 @@ describe('cartão do aluno — erro do servidor em português', () => {
     ['cartao_alterado_por_outra_pessoa', /Outra pessoa/],
     ['cartao_texto_longo:notes', /observações/],
     ['cartao_itens_demais:engaging_topics', /temas/],
-    ['cartao_campo_de_menor:notes', /menor de idade/],
+    ['cartao_campo_de_menor:notes', /só objetivo e temas/],
     ['cartao_estilo_invalido', /estilos/],
     ['erro qualquer', /Não foi possível/],
   ])('%s', (message, expected) => {
     expect(learningCardSaveErrorMessage(message)).toMatch(expected);
+  });
+});
+
+describe('cartão do aluno — menor, rascunho e histórico', () => {
+  it('lê o motivo de menor do servidor e ignora valor inventado', () => {
+    expect(readLearningCard({ ...serverCard, is_minor: true, minor_reason: 'GUARDIAN' })?.minor_reason).toBe('GUARDIAN');
+    expect(readLearningCard({ ...serverCard, minor_reason: 'OUTRO' })?.minor_reason).toBeNull();
+    expect(learningCardMinorMessage('AGE_UNKNOWN')).toMatch(/data de nascimento/);
+    expect(learningCardMinorMessage('KIDS')).toMatch(/turma infantil/);
+    expect(learningCardMinorMessage(null)).toMatch(/menor de idade/);
+  });
+
+  it('rascunho só "mudou" quando o servidor gravaria algo diferente', () => {
+    const card = readLearningCard(serverCard)!;
+    const draft = draftFromCard(card);
+    expect(draftHasChanges(draft, card)).toBe(false);
+    expect(draftHasChanges({ ...draft, notes: '  Rende mais   com roleplay. ' }, card)).toBe(false);
+    expect(draftHasChanges({ ...draft, engaging_topics: 'futebol,séries,' }, card)).toBe(false);
+    expect(draftHasChanges({ ...draft, notes: 'Outra coisa' }, card)).toBe(true);
+    expect(draftHasChanges({ ...draft, correction_style: 'end' }, card)).toBe(true);
+  });
+
+  it('histórico: papel em português e limpeza automática sem autor', () => {
+    const entry = { created_at: '', actor_name: 'Professora Titular', actor_role: 'TEACHER', changed_fields: [], version: 1 };
+    expect(learningCardHistoryActor(entry)).toBe('Professora Titular (professor)');
+    expect(learningCardHistoryActor({ ...entry, actor_name: null, actor_role: 'SYSTEM_MINOR_RULE' }))
+      .toBe('Limpeza automática (regra de menor de idade)');
+    expect(learningCardHistoryActor({ ...entry, actor_name: null, actor_role: null })).toBe('Pessoa removida');
   });
 });
