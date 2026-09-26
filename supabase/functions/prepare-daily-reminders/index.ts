@@ -1,34 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { authorizeAutomation } from '../_shared/automation-auth.ts'
+import {
+    canonicalLessonReminder,
+    DEFAULT_CLASS_REMINDER_TEMPLATE,
+    renderReminderTemplate,
+} from '../send-class-notification/core.ts'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
-
-Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
-
-Te espero! 🐺`;
-
-/**
- * Marcador cru NUNCA pode chegar ao aluno.
- *
- * Em 16/09/2026 saiu "Oi {student name}, ... às {class time}" para alunos de uma
- * professora: o modelo dela tinha espaço no lugar do underline, e o regex antigo
- * não substituía nem limpava. Agora o nome do marcador é normalizado e o que
- * sobrar é apagado.
- */
-function renderTemplate(template: string, vars: Record<string, string>): string {
-    const chave = (bruto: string) => bruto.trim().toLowerCase().replace(/[\s-]+/g, '_');
-    return template
-        .replace(/\{([^{}]{1,60})\}/g, (_, bruto) => vars[chave(bruto)] ?? '')
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
+// O texto que vai para a fila aqui é só a PRÉVIA: na hora do envio o
+// process-notification-queue remonta o lembrete pelo renderizador do banco
+// (public.render_lesson_reminder_message) e a cerca confere com ele. A prévia usa
+// o mesmo renderizador para a fila mostrar o que o aluno vai receber — inclusive
+// a sala oficial da escola — e só cai no renderizador local se o banco falhar.
 
 /**
  * Edge function: roda a cada N minutos via pg_cron.
@@ -105,12 +93,11 @@ serve(async (req) => {
                 let studentName = cls.student_name_override;
                 let studentPhone = cls.student_phone_override;
                 let studentId: string | null = null;
-                let classLink = '';
 
                 if (cls.student_id) {
                     const { data: student } = await supabaseClient
                     .from('profiles')
-                    .select('id, full_name, phone, attendance_phone, meeting_link, lifecycle_status')
+                    .select('id, full_name, phone, attendance_phone, lifecycle_status')
                     .eq('id', cls.student_id)
                     .single();
                     // Aluno suspenso/desligado não recebe lembrete (horário fixo pode continuar na grade)
@@ -122,7 +109,6 @@ serve(async (req) => {
                         studentName = student.full_name;
                         studentPhone = student.attendance_phone || student.phone;
                         studentId = student.id;
-                        classLink = student.meeting_link || '';
                     }
                 }
 
@@ -138,19 +124,41 @@ serve(async (req) => {
                     .eq('id', cls.tenant_id)
                     .single();
 
-                // Renderizar template
-                const template = teacher.lesson_reminder_template?.trim() || DEFAULT_REMINDER_TEMPLATE;
-                const classTime = cls.time_text || '';
-                const messageBody = renderTemplate(template, {
-                    student_name: (studentName || '').split(' ')[0],
-                    class_time: classTime,
-                    teacher_name: teacher.full_name || '',
-                    tenant_name: tenant?.name || '',
-                    // O link da sala saiu do lembrete (decisão da direção em
-                    // 16/09/2026): quem combina a sala é o professor. Modelo
-                    // antigo com {class_link} passa a render nada.
-                    class_link: '',
-                });
+                // Renderizar template (prévia; ver o comentário no topo)
+                const classTime = String(cls.time_text || '').slice(0, 5);
+                const firstName = (studentName || '').split(' ')[0];
+                const canonical = await canonicalLessonReminder(
+                    (fn, args) => supabaseClient.rpc(fn, args),
+                    {
+                        tenantId: cls.tenant_id,
+                        sourceType: String(cls.source_type || ''),
+                        sourceId: String(cls.source_id || ''),
+                        classDate: String(cls.class_date || ''),
+                        classTime,
+                        studentId,
+                        teacherId: cls.teacher_id ? String(cls.teacher_id) : null,
+                        template: teacher.lesson_reminder_template ?? null,
+                        studentName: firstName,
+                        teacherName: teacher.full_name || '',
+                        tenantName: tenant?.name || '',
+                        // O link pessoal saiu do lembrete (decisão da direção em
+                        // 16/09/2026): quem combina a sala é o professor. Só a
+                        // sala oficial da escola entra.
+                        personalLink: null,
+                    },
+                );
+                const messageBody = canonical.ok
+                    ? canonical.message
+                    : renderReminderTemplate(
+                        teacher.lesson_reminder_template?.trim() || DEFAULT_CLASS_REMINDER_TEMPLATE,
+                        {
+                            student_name: firstName,
+                            class_time: classTime,
+                            teacher_name: teacher.full_name || '',
+                            tenant_name: tenant?.name || '',
+                            class_link: '',
+                        },
+                    );
 
                 // 3. Enqueue (idempotente)
                 const { error: queueErr } = await supabaseClient

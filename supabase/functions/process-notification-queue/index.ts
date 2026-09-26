@@ -18,11 +18,10 @@ import {
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
+  canonicalLessonReminder,
   dateInSaoPaulo,
-  DEFAULT_CLASS_REMINDER_TEMPLATE,
   normalizeStudentPhone,
   recurringBookingMatchesDate,
-  renderReminderTemplate,
   timeInSaoPaulo,
 } from "../send-class-notification/core.ts";
 import {
@@ -125,7 +124,6 @@ type ActiveMember = {
   full_name: string | null;
   phone: string | null;
   attendance_phone: string | null;
-  meeting_link: string | null;
   lifecycle_status: string | null;
   is_test_account: boolean | null;
   date_automation_enabled: boolean | null;
@@ -187,7 +185,7 @@ async function loadActiveMember(
 ): Promise<ActiveMember> {
   const [profileResult, membershipResult] = await Promise.all([
     supabase.from("profiles").select(
-      "id,tenant_id,role,full_name,phone,attendance_phone,meeting_link,lifecycle_status,is_test_account,date_automation_enabled,birth_date,lesson_reminder_template",
+      "id,tenant_id,role,full_name,phone,attendance_phone,lifecycle_status,is_test_account,date_automation_enabled,birth_date,lesson_reminder_template",
     ).eq("id", userId).maybeSingle(),
     supabase.from("tenant_memberships").select("user_id")
       .eq("tenant_id", tenantId).eq("user_id", userId)
@@ -462,7 +460,6 @@ async function prepareLessonReminder(
 
   let studentName = appointmentName;
   let destination = appointmentPhone;
-  let classLink = safeCommunicationText(teacher.meeting_link, 300);
   if (studentId) {
     const student = await loadActiveMember(
       supabase,
@@ -474,7 +471,6 @@ async function prepareLessonReminder(
     studentName = safeCommunicationText(student.full_name, 180);
     destination = normalizeStudentPhone(student.attendance_phone) ||
       normalizeStudentPhone(student.phone) || "";
-    classLink = safeCommunicationText(student.meeting_link, 300) || classLink;
   }
   if (!studentName || !destination) {
     invalid("lesson_canonical_recipient_unavailable");
@@ -485,17 +481,33 @@ async function prepareLessonReminder(
   if (tenantError) unavailable("tenant_revalidation_unavailable");
   if (!tenant) invalid("tenant_no_longer_available");
 
-  const message = renderReminderTemplate(
-    safeCommunicationText(teacher.lesson_reminder_template, 4096) ||
-      DEFAULT_CLASS_REMINDER_TEMPLATE,
+  // O texto sai do MESMO renderizador que a cerca do envio usa para conferir
+  // (public.render_lesson_reminder_message). Antes o worker achatava o modelo
+  // do professor e punha o link pessoal no {class_link}; a cerca, que não faz
+  // nenhum dos dois, recusou todo lembrete da Débora de 16/09 a 25/09/2026.
+  // Aula com sala oficial da escola pronta leva o link dela; sem sala, a
+  // mensagem de sempre, sem link (decisão de 16/09).
+  const reminder = await canonicalLessonReminder(
+    (fn, args) => supabase.rpc(fn, args),
     {
-      student_name: studentName.split(/\s+/)[0] || studentName,
-      class_time: canonicalClassTime,
-      teacher_name: safeCommunicationText(teacher.full_name, 180),
-      tenant_name: safeCommunicationText(tenant.name, 180),
-      class_link: classLink,
+      tenantId,
+      sourceType,
+      sourceId,
+      classDate: canonicalClassDate,
+      classTime: canonicalClassTime,
+      studentId: studentId || null,
+      // O mesmo professor que a cerca confere (booking/reposição/experimental):
+      // a sala só vale se a sessão for de quem dá a aula.
+      teacherId,
+      template: teacher.lesson_reminder_template,
+      studentName: studentName.split(/\s+/)[0] || studentName,
+      teacherName: safeCommunicationText(teacher.full_name, 180),
+      tenantName: safeCommunicationText(tenant.name, 180),
+      personalLink: null,
     },
   );
+  if (reminder.ok === false) unavailable(reminder.reason);
+  const message = reminder.message;
   if (!message) invalid("lesson_canonical_message_empty");
   return {
     teacherId,

@@ -41,6 +41,10 @@ export type ManualReminderWindow =
 // O link da sala saiu do lembrete em 16/09/2026, por decisão da direção: quem
 // combina a sala com o aluno é o professor. O marcador {class_link} continua
 // sendo aceito em modelo antigo — só que agora ele é substituído por nada.
+// Exceção (26/09/2026): aula com sala OFICIAL da escola pronta (termo de registro
+// aceito) leva o link dela — no {class_link} ou numa linha própria no fim. Quem
+// monta o texto é o banco (public.render_lesson_reminder_message); este padrão é
+// só a cópia usada na prévia da fila.
 export const DEFAULT_CLASS_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
 
 Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
@@ -48,6 +52,181 @@ Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
 Te espero! 🐺`;
 
 export const SCHEDULE_CONFIRMATION_REF_DATE = "2000-01-01";
+
+/**
+ * Frase que acompanha a sala oficial da escola quando o modelo do professor não
+ * tem {class_link}. É a MESMA de public.render_lesson_reminder_message (migration
+ * 20260926190000): o lembrete automático é conferido byte a byte pela cerca do
+ * banco, e o aviso de reposição (montado aqui) tem de dizer a mesma coisa.
+ */
+export const OFFICIAL_ROOM_NOTICE =
+  "Esta aula é na sala da escola no Google Meet. Entre por este link:";
+
+const OFFICIAL_MEET_LINK = /^https:\/\/meet\.google\.com\/[a-z-]+$/;
+
+/** Só sala do Google Meet criada pela conta da escola passa como sala oficial. */
+export function officialMeetLink(value: unknown): string | null {
+  const link = typeof value === "string" ? value.trim() : "";
+  return OFFICIAL_MEET_LINK.test(link) ? link : null;
+}
+
+/**
+ * Chamada de RPC do supabase-js reduzida ao que estes helpers usam — permite
+ * testar com dublê, sem banco.
+ */
+export type LessonReminderRpc = (
+  fn: string,
+  args: Record<string, unknown>,
+) => PromiseLike<{ data: unknown; error: unknown }>;
+
+export interface OfficialLessonIdentity {
+  tenantId: string;
+  /** booking | reschedule | appointment (antecipação é booking na data nova). */
+  sourceType: string;
+  sourceId: string;
+  classDate: string;
+  /** HH:MM anunciado na mensagem; a sala tem de ser a desse horário. */
+  classTime: string;
+  studentId: string | null;
+  /**
+   * Professor da agenda (booking/reposição/experimental), o mesmo que a cerca do
+   * envio usa. A sala só vale se a sessão for de quem dá a aula: depois de
+   * cobertura confirmada, reposição com professor trocado ou agendamento
+   * transferido, a sessão congelada continua com o coanfitrião antigo.
+   */
+  teacherId: string | null;
+}
+
+export type OfficialLessonLinkResult =
+  | { ok: true; link: string | null }
+  | { ok: false; reason: "official_lesson_link_unavailable" };
+
+/**
+ * Sala oficial da aula (public.official_lesson_link, só service_role). Falha de
+ * consulta NÃO vira "sem sala": numa aula com aceite isso mandaria o aluno para
+ * o link de sempre, fora da sala que registra a aula. Quem chama decide adiar.
+ */
+export async function loadOfficialLessonLink(
+  rpc: LessonReminderRpc,
+  identity: OfficialLessonIdentity,
+): Promise<OfficialLessonLinkResult> {
+  const classTime = identity.classTime.trim().slice(0, 5);
+  try {
+    const { data, error } = await rpc("official_lesson_link", {
+      p_tenant: identity.tenantId,
+      p_source_type: identity.sourceType.trim().toLowerCase(),
+      p_source_id: identity.sourceId,
+      p_class_date: identity.classDate,
+      p_teacher_id: identity.teacherId || null,
+      p_start_time: /^\d{2}:\d{2}$/.test(classTime) ? classTime : null,
+      p_student_id: identity.studentId || null,
+    });
+    if (error) return { ok: false, reason: "official_lesson_link_unavailable" };
+    return { ok: true, link: officialMeetLink(data) };
+  } catch {
+    return { ok: false, reason: "official_lesson_link_unavailable" };
+  }
+}
+
+export interface LessonReminderText {
+  /** Modelo cru do professor; o banco limpa (preservando linha e negrito). */
+  template: string | null;
+  studentName: string;
+  classTime: string;
+  teacherName: string;
+  tenantName: string;
+  officialLink: string | null;
+  /** Só o botão "Disparar" passa: é o comportamento que ele já tinha. */
+  personalLink: string | null;
+}
+
+export type LessonReminderRenderResult =
+  | { ok: true; message: string }
+  | { ok: false; reason: "lesson_reminder_render_unavailable" };
+
+/**
+ * Texto do lembrete pelo MESMO renderizador que a cerca do envio usa
+ * (public.render_lesson_reminder_message). Dois renderizadores divergiram antes:
+ * o TypeScript achatava o modelo e a cerca recusava o lembrete inteiro.
+ */
+export async function renderLessonReminderMessage(
+  rpc: LessonReminderRpc,
+  input: LessonReminderText,
+): Promise<LessonReminderRenderResult> {
+  try {
+    const { data, error } = await rpc("render_lesson_reminder_message", {
+      p_template: input.template,
+      p_student_name: input.studentName,
+      p_class_time: input.classTime,
+      p_teacher_name: input.teacherName,
+      p_tenant_name: input.tenantName,
+      p_official_link: officialMeetLink(input.officialLink),
+      p_personal_link: input.personalLink || null,
+    });
+    // Sem aparar: a cerca do envio compara byte a byte com o MESMO renderizador.
+    // Aparar aqui (e não lá) já fez a cerca recusar lembrete de modelo que
+    // termina em {class_link} numa aula sem sala. Quem limpa as pontas é o
+    // banco; assim o worker e a cerca sempre veem o mesmo texto.
+    const message = typeof data === "string" ? data : "";
+    if (error || !message.trim()) {
+      return { ok: false, reason: "lesson_reminder_render_unavailable" };
+    }
+    return { ok: true, message };
+  } catch {
+    return { ok: false, reason: "lesson_reminder_render_unavailable" };
+  }
+}
+
+export type CanonicalLessonReminderResult =
+  | { ok: true; message: string; officialLink: string | null }
+  | {
+    ok: false;
+    reason:
+      | "official_lesson_link_unavailable"
+      | "lesson_reminder_render_unavailable";
+  };
+
+export async function canonicalLessonReminder(
+  rpc: LessonReminderRpc,
+  input:
+    & OfficialLessonIdentity
+    & Omit<LessonReminderText, "officialLink" | "classTime">,
+): Promise<CanonicalLessonReminderResult> {
+  const room = await loadOfficialLessonLink(rpc, input);
+  if (room.ok === false) return room;
+  const rendered = await renderLessonReminderMessage(rpc, {
+    template: input.template,
+    studentName: input.studentName,
+    classTime: input.classTime,
+    teacherName: input.teacherName,
+    tenantName: input.tenantName,
+    officialLink: room.link,
+    personalLink: input.personalLink,
+  });
+  if (rendered.ok === false) return rendered;
+  return { ok: true, message: rendered.message, officialLink: room.link };
+}
+
+/**
+ * Aviso de reposição marcada (botão do professor). Com sala oficial pronta, vai
+ * ela com a frase da sala; sem sala, o link de sempre, como antes.
+ */
+export function rescheduleScheduledMessage(input: {
+  firstName: string;
+  teacherName: string;
+  classDate: string;
+  classTime: string;
+  officialLink: string | null;
+  personalLink: string | null;
+}): string {
+  const official = officialMeetLink(input.officialLink);
+  const head = `Oi ${input.firstName}, aqui é o ${input.teacherName}! ` +
+    `Reposição agendada para ${
+      input.classDate.split("-").reverse().join("/")
+    } às ${input.classTime}.`;
+  if (official) return `${head}\n\n${OFFICIAL_ROOM_NOTICE}\n${official}`;
+  return input.personalLink ? `${head}\n\n${input.personalLink}` : head;
+}
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
