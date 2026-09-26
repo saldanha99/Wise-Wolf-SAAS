@@ -272,7 +272,8 @@ language sql immutable set search_path = '' as $$
     'grandfather*', 'grandma', 'grandpa', 'grandparent*', 'grandson*', 'granddaughter*',
     'grandchild', 'grandchildren', 'uncle', 'uncles', 'aunt', 'aunts', 'auntie', 'cousin',
     'cousins', 'nephew', 'nephews', 'niece', 'nieces', 'in law', 'married', 'marriage', 'wedding',
-    'weddings', 'spouse', 'spouses', 'baby', 'babies', 'child', 'children', 'parent', 'parents',
+    'weddings', 'spouse', 'spouses', 'baby', 'babies', 'child', 'children', 'kid', 'kids', 'parent',
+    'parents',
     'relatives', 'stepmother', 'stepfather', 'stepson', 'stepdaughter',
     -- dinheiro
     'dinheiro*', 'salari*', 'salary', 'salaries', 'renda', 'rendas', 'income*', 'divida*', 'debt*',
