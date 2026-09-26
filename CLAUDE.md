@@ -1693,6 +1693,37 @@ experimentais, fechamentos e reconciliação, e **ignorava reposição por compl
 - `LessonPlannerAI.handleGeneratePlan` chama `supabase.functions.invoke('lesson-planner', { student_id, custom_prompt })` (não mais template). Salva em `lesson_plans` (memória p/ continuidade).
 - Guardrails: só sugere materiais da lista fornecida; usa dados reais (anti-genérico). Auth: TEACHER/admin.
 
+### Cartão do aluno — o professor escreve, a IA não inventa (migration `20260926220000`)
+
+Objetivo real, temas que engajam, estilo de correção (`immediate|end|selective|examiner`, o
+mesmo vocabulário de `wolf_intelligence.preferred_correction_mode`), o que evitar e
+observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_id, student_id`) —
+**não é coluna de `profiles`** (e `correction_preference` continua não sendo).
+
+- **Escrita só por `save_student_learning_card`** (SECURITY DEFINER): quem lê o dossiê
+  (`private.can_read_student_pedagogy`) **e** tem papel TEACHER/COORDINATOR/SCHOOL_ADMIN.
+  SUPER_ADMIN não escreve. `p_expected_version` recusa sobrescrever o que outra pessoa
+  salvou (`cartao_alterado_por_outra_pessoa`). `service_role` só lê (o Planner).
+- **Limites no servidor** (`private.student_learning_card_limits()`: objetivo 300, 8 temas,
+  6 "evitar", 60 por item, notas 400) — texto longo é **recusado**, não cortado. A tela
+  avisa ao lado do formulário: nada de saúde, religião, política, família ou dinheiro.
+- **Menor de idade** (`is_kids` ou nascido há < 18 anos, régua do termo de registro): só
+  objetivo e temas. O gatilho `trg_student_learning_cards_guard` recusa o resto para
+  QUALQUER escritor; se o aluno "vira" menor depois, a leitura esconde os campos pessoais
+  (`hidden_for_minor`) e o próximo salvamento os apaga.
+- **Histórico** (`private.student_learning_card_events`): quem, quando, papel e QUAIS campos —
+  **nunca o texto**. A confirmação de leitura do dossiê (`student_handover_reads`) guarda só
+  `learning_card_version`, pelo mesmo motivo.
+- **Tela:** aba "Continuidade pedagógica" da ficha (`StudentHandover` → `StudentLearningCard`,
+  regras espelhadas em `lib/studentLearningCard.ts`). O cartão chega por
+  `get_student_handover` → `learning_card`.
+- **Planner:** `lesson-planner/teacher-card.ts` — campo preenchido no cartão **substitui** o
+  inferido (objetivo, temas, evitar, estilo); vazio cai no Wolfie/`profiles`. Falha ao ler o
+  cartão não derruba o plano. `student_profile.teacher_reviewed_fields` diz o que veio do
+  professor.
+- Teste: `supabase/tests/cartao_do_aluno_pelo_professor.sql` (acesso, menor, limites,
+  versão, histórico sem texto) e `lesson-planner/teacher-card.test.ts`.
+
 ---
 
 ## Convenções do Projeto

@@ -183,6 +183,20 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    // Ordem alfabética dentro do mesmo dia (o teste exige a lista ordenada).
+    id: '2026-09-26-cartao-do-aluno',
+    title: 'Cartão do aluno',
+    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    steps: [
+      {
+        target: null,
+        view: 'students',
+        title: 'Novidade: o cartão do aluno 🗂️',
+        text: 'Abra a ficha de um aluno e vá em "Continuidade pedagógica": o cartão guarda o objetivo real, os temas que engajam, como ele prefere ser corrigido, o que evitar e observações para quem der a aula. Quem escreve é o professor (ou a coordenação e a direção), sem IA — e o Planner passa a usar o cartão antes do que o Wolfie deduziu. Aluno menor de idade guarda só objetivo e temas. Não registre saúde, religião, política, família ou dinheiro.',
+      },
+    ],
+  },
+  {
     id: '2026-09-26-registro-das-aulas',
     title: 'Autorização do registro das aulas',
     roles: ['SCHOOL_ADMIN'],
