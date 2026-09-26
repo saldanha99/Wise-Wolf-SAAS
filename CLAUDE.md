@@ -2000,6 +2000,32 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   `lesson-planner/teacher-card.test.ts` e `lesson-planner/source.test.ts` (amarra o
   `index.ts` à RPC e ao `plannerSignalsFor`; precisa de `--allow-read`).
 
+### Sugestões da IA para o cartão (migration `20260928130000`, edge `student-card-suggestions`)
+
+A IA lê a aula cujo resumo o professor APROVOU (fila a cada 15 min, ou o botão "Sugerir a partir da
+aula de dd/mm" no dossiê) e sugere objetivo, temas, estilo de correção e o que evitar, **cada um com a
+frase literal da aula** conferida contra a fonte. **Nada entra no cartão sozinho:** o professor aceita
+(`decide_student_card_suggestion` → `save_student_learning_card`, com a versão carregada) ou descarta.
+Runbook: seção "Sugestões da IA para o cartão do aluno".
+
+- ⚠️ **IA só com o termo v3 do aluno E do professor, no fim da aula E hoje**
+  (`private.student_card_suggestion_ai_allowed`); quem revogou depois da aula não tem a aula relida.
+- ⚠️ **A lista de exclusão existe duas vezes e tem de bater:** `BLOCKED_TERMS` (edge `core.ts`) =
+  `private.student_card_suggestion_blocked_terms()` (banco, entre `termos-bloqueados:inicio/fim`);
+  `source.test.ts` reprova divergência. Vale no valor E na citação; o banco confere de novo no `finish`.
+- **Menor** (a régua do cartão): o schema do modelo só tem `real_goal`/`engaging_topics` no enum, o banco
+  recusa o resto, e quem vira menor perde as pendentes pessoais (gatilho em `profiles`).
+- **Mesmo teto do resumo por IA:** `meet_summary_month_spend` e `get_meet_summary_budget` foram
+  remendadas por âncora — quem recriar mantém `student_card_suggestion_month_spend` e
+  `card_suggestion_count` (o teste reprova sem eles). O botão também para no teto.
+- **Texto só enquanto espera decisão** (constraint): decidida, vencida (citação: 90 dias depois da
+  aula) ou retirada (resumo rejeitado, menor) fica só o hash. Exclusão a pedido apaga por gatilho em
+  `google_meet_original_sessions.records_erased_at`. Nunca `wolfie_memory_items`.
+- Env: `STUDENT_CARD_SUGGESTIONS_ENABLED=true` (padrão desligado), `STUDENT_CARD_SUGGESTIONS_MODEL`
+  (ausente = o do resumo) e a `OPENROUTER_API_KEY` de sempre; o modelo precisa de preço em
+  `ai_model_pricing`. Testes: `supabase/tests/sugestoes_do_cartao_pela_ia.sql`,
+  `student-card-suggestions/{core,runner}.test.ts` e `source.test.ts` (`--allow-read`).
+
 ### Planner a partir das aulas aprovadas (migration `20260927130000`)
 
 - **Memória do Meet só aprovada:** o Planner lê à parte até **6** memórias
