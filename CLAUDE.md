@@ -291,16 +291,25 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `supabase/tests/termo_v3_versao_e_retencao.sql`, RIPD em `docs/lgpd/ripd-memoria-das-aulas.md` — **rascunho
   para o jurídico**): o texto v3 diz o que o sistema faz depois das ondas 1–3 (IA com aprovação do professor,
   dossiê por link com login, cartão sem dado sensível, extrato de pontualidade sem ranking, OpenRouter pago sem
-  treino, prazos de 90 dias) e identifica a escola **só por marcadores** (`{escola_nome}`, `{escola_documento}`,
-  `{escola_contato_privacidade}`) que a página e o cartão preenchem com `school_identity` (dados de
-  Configurações → Escola e legal, com o campo novo "Encarregado de dados"). **Aceite de versão anterior não
-  vale** (aluno E professor — `lesson_recording_teacher_consent_effective`): o job desmarca a aula que o termo
-  antigo marcou, com o motivo "o termo mudou de versão". Retenção própria (`private.purge_lesson_memory_retention`,
-  cron diário): rascunho não aprovado perde o texto bruto 90 dias depois da aula; quem **deixou a escola**
-  (`lifecycle_status = 'offboarded'` + `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão e resumos
-  90 dias depois; trilha só com contagens. ⚠️ Publicar versão nova do termo derruba todos os aceites na hora —
-  é o comportamento certo, mas avise a direção antes. ⚠️ `list_lesson_recording_consents` e
-  `apply_standing_lesson_recording_consent` foram remendadas por âncora: não recrie a partir de texto antigo.
+  treino, **suporte técnico do fornecedor do sistema lendo resumo aprovado e cartão**, prazos de 90 dias) e
+  identifica a escola **só por marcadores** (`{escola_nome}`, `{escola_documento}`, `{escola_contato_privacidade}`)
+  que o **servidor** preenche (`private.lesson_recording_fill_term`, dados de Configurações → Escola e legal, com
+  o campo novo "Encarregado de dados"). ⚠️ Rota nova que devolva o texto do termo passa por
+  `lesson_recording_fill_term` — o teste varre o código das funções `public` e reprova `…current_term(…).body`
+  cru. **Aceite de versão anterior não vale** (aluno E professor — `lesson_recording_teacher_consent_effective`),
+  mas a versão exigida é a do **fim da aula** (`lesson_recording_active_at`): a aula futura e a em andamento
+  caem e o job as desmarca ("o termo mudou de versão"); a que já terminou segue importável. **O aceite grava a
+  versão lida**: `set_my_lesson_recording_consent(p_accept, p_term_version)` e
+  `decide_lesson_recording_consent_public(…, p_code, p_term_version)` recusam com `termo_mudou` a versão que não é
+  a vigente (a página não gasta o código); recusar vale sempre. Assinaturas antigas derrubadas. Retenção própria
+  (`private.purge_lesson_memory_retention`, cron diário): **toda versão de resumo** (rascunho e aprovada) perde
+  `narrative`/`evidence` 90 dias depois da aula; quem **deixou a escola** (`lifecycle_status = 'offboarded'` +
+  `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão e resumos 90 dias depois; trilha só com
+  contagens. ⚠️ Publicar versão nova do termo derruba os aceites na hora — avise a direção antes. ⚠️ Os
+  **originais no Drive** que o termo promete apagar dependem de `wave2/retencao-drive` (escopo de escrita; hoje
+  `drive.readonly`): o primeiro vence 90 dias depois da primeira aula transcrita. ⚠️ `list_lesson_recording_consents`,
+  `apply_standing_lesson_recording_consent` e `get_lesson_recording_consent_public` foram remendadas por âncora:
+  não recrie a partir de texto antigo.
 - **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
   **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
   `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
