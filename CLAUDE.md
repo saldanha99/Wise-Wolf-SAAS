@@ -1894,6 +1894,41 @@ observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_i
   `lesson-planner/teacher-card.test.ts` e `lesson-planner/source.test.ts` (amarra o
   `index.ts` à RPC e ao `plannerSignalsFor`; precisa de `--allow-read`).
 
+### Planner a partir das aulas aprovadas (migration `20260927130000`)
+
+- **Memória do Meet só aprovada:** o Planner lê à parte até **6** memórias
+  `MEET_SESSION` + `VERIFIED` (as que o professor aprovou na revisão do resumo), com a
+  DATA da aula no fuso da escola; a consulta geral de memórias passou a excluir
+  `MEET_SESSION` — resumo do Meet sem aprovação não chega ao modelo nem como hipótese.
+  Regra pura em `lesson-planner/approved-lessons.ts`: só campos pedagógicos
+  (`APPROVED_LESSON_COLUMNS` — nada de `metadata`, `notes_to_verify`, `source_ref`,
+  revisor), texto passa por `redactDirectIdentifiers`.
+- **A base é do código, não do modelo:** `lesson_basis` ("Baseado nas aulas de 20/09 e
+  23/09", o próximo passo aprovado de onde o plano continua e, no modo `homework`, os
+  erros recorrentes que a lição ataca) sai de `approvedLessonBasis`, vai na resposta, no
+  plano salvo (`structured_plan.lesson_basis`) e na primeira linha do `content`. A tela
+  mostra em "Base do plano" (`data-tour="planner-lesson-basis"`).
+- **Regra das aulas para o modelo** numa mensagem de sistema PRÓPRIA do lesson-planner
+  (`APPROVED_LESSONS_SYSTEM_PROMPT`): o prompt base é compartilhado com o planner do Hub,
+  que não tem aula do Meet. `prompt_version` vira `<base>+aulas-aprovadas-2026-09-27`.
+- **Quem planeja** (`private.planner_student_access`, variante com `p_teacher_id` da regra
+  de `_teacher_can_access_student`, que NÃO foi alterada): agenda viva, **segundo
+  professor** (`professor_id2`, sempre), titular sem agenda (o fallback de sempre) e — só
+  **do dia anterior ao seguinte da aula** — cobertura **confirmada** e reposição **com
+  data** (a encerrada pela direção, `closed_reason`, não conta; a dada por lançamento vale
+  até o dia seguinte). A edge pergunta por `planner_teacher_can_access_student` (só
+  service_role; motivo ou nulo, `lesson-planner/access.ts` fecha em resposta estranha); a
+  tela lista por `my_planner_students()` com "cobertura até dd/mm" ao lado do nome
+  (`lib/plannerStudents.ts`). ⚠️ A regra de leitura de perfis aceita cobertura de 7 dias
+  atrás e **qualquer** data futura — o Planner não: acesso acaba.
+- ⚠️ O segundo professor pode não ler a ficha pela RLS (o aluno tem agenda viva com o
+  titular): o painel de perfil some, o plano sai igual. A tela não trata mais ficha
+  ausente como erro.
+- Testes: `supabase/tests/planner_a_partir_das_aulas_aprovadas.sql` (cada motivo, cada
+  borda da janela, fantasma, encerrada, inativo, outra escola, lista por pessoa,
+  privilégios), `lesson-planner/approved-lessons.test.ts`, `lesson-planner/access.test.ts`,
+  `lesson-planner/source.test.ts`, `components/LessonPlannerAI.teacher.test.tsx`.
+
 ---
 
 ## Convenções do Projeto
