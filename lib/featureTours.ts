@@ -409,6 +409,26 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // Migration 20260928110000: a sessão congelada passa para quem dá a aula.
+    id: '2026-09-28-sala-da-troca',
+    title: 'A sala acompanha a troca de professor',
+    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    steps: [
+      {
+        target: 'meet-review-queue',
+        view: 'lesson-sessions',
+        title: 'Cobriu a aula? A sala da escola vai junto 🔁',
+        text: 'Quando a cobertura de uma aula que tem sala da escola é confirmada, a aula passa para quem vai dá-la: a conta Google que o substituto confirmou vira a coanfitriã da sala e a do titular sai, o lançamento dele fecha a aula e é ele quem revisa o resumo — que aparece nesta lista. Enquanto a conta dele não entra, o link da sala não é mandado a ninguém e a aula usa o link de sempre. Substituto sem conta Google confirmada ou sem o termo de registro autorizado: a aula passa para ele do mesmo jeito, mas a transcrição daquela sala fica desligada.',
+      },
+      {
+        target: null,
+        view: 'lesson-sessions',
+        title: 'Remarcou ou cancelou? A sala antiga sai',
+        text: 'Aula com sala da escola que sai da agenda antes de acontecer — reposição remarcada ou encerrada, antecipação, aula cancelada — é arquivada sozinha: o link antigo deixa de valer, a transcrição da sala é desligada e o novo horário ganha sessão própria. Não sobra pendência de lançamento de uma aula que não existe mais. Agendamento transferido de vez para outro professor continua pedindo que a escola replaneje a sessão futura; até lá, a sala antiga não é entregue.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

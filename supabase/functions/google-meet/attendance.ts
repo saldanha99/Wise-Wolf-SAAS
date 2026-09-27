@@ -20,7 +20,14 @@ export type AttendanceRow = {
   durationSeconds: number | null;
 };
 
-export type ParticipantRole = "TEACHER" | "ORGANIZER" | "STUDENT";
+// OTHER_TEACHER: conta de quem passou esta aula adiante (cobertura, reposição
+// com outro professor). Entra na sala sem ser "o professor" da aula — e sem
+// virar minutos do aluno (20260928110000).
+export type ParticipantRole =
+  | "TEACHER"
+  | "ORGANIZER"
+  | "STUDENT"
+  | "OTHER_TEACHER";
 
 export type AttendanceSummary = {
   teacherFirstJoinAt: string | null;
@@ -382,21 +389,68 @@ const emailList = (value: string | string[] | null | undefined): string[] => [
 ];
 
 /**
+ * Contas que o relatório reconhece, vindas do banco (`session_state.attendance_identity`,
+ * migration 20260928110000): `teacher_emails` = a conta confirmada de quem DÁ a
+ * aula e a coanfitriã da sala quando ela é dele; `other_teacher_emails` = as de
+ * quem passou a aula adiante. Numa aula coberta, a titular que entra na sala
+ * não "deu" a aula da substituta — e a sala pode seguir com ela de coanfitriã
+ * quando a cobertura chega depois da aula. Banco anterior (sem o campo): a
+ * regra da onda 1, conta confirmada do professor da sessão + coanfitriã.
+ */
+export function attendanceIdentity(detail: {
+  attendance_identity?: unknown;
+  teacher_google_email?: string | null;
+  room?: { cohost_email?: string | null } | null;
+}): { teacherEmails: string[]; otherTeacherEmails: string[] } {
+  const identity = detail.attendance_identity;
+  if (
+    identity && typeof identity === "object" && !Array.isArray(identity) &&
+    Array.isArray((identity as Record<string, unknown>).teacher_emails)
+  ) {
+    const record = identity as Record<string, unknown>;
+    const teacherEmails = emailList(
+      (record.teacher_emails as unknown[]).map((email) => String(email ?? "")),
+    );
+    const others = Array.isArray(record.other_teacher_emails)
+      ? (record.other_teacher_emails as unknown[]).map((email) =>
+        String(email ?? "")
+      )
+      : [];
+    return {
+      teacherEmails,
+      otherTeacherEmails: emailList(others).filter((email) =>
+        !teacherEmails.includes(email)
+      ),
+    };
+  }
+  return {
+    teacherEmails: emailList([
+      detail.teacher_google_email || "",
+      detail.room?.cohost_email || "",
+    ]),
+    otherTeacherEmails: [],
+  };
+}
+
+/**
  * Quem é quem numa sala exclusiva da aula: o organizador é a conta da escola,
  * o professor é a conta Google que ELE confirmou por login (a coanfitriã da
- * sala; o e-mail do cadastro não conta), e qualquer outra pessoa é o aluno (ou
- * o responsável, na aula de criança). Participante sem e-mail nunca é o
- * professor: antes o nome servia de reserva, e qualquer convidado que digitasse
- * o nome do professor "estava" na aula por ele.
+ * sala; o e-mail do cadastro não conta), quem passou a aula adiante é "outro
+ * professor" (não conta nem como professor nem como aluno), e qualquer outra
+ * pessoa é o aluno (ou o responsável, na aula de criança). Participante sem
+ * e-mail nunca é o professor: antes o nome servia de reserva, e qualquer
+ * convidado que digitasse o nome do professor "estava" na aula por ele.
  */
 export function summarizeAttendance(
   rows: AttendanceRow[],
   identity: {
     teacherEmails: string[];
     organizerEmail: string | null;
+    otherTeacherEmails?: string[];
   },
 ): AttendanceSummary {
   const teacherEmails = new Set(emailList(identity.teacherEmails));
+  const otherTeacherEmails = new Set(emailList(identity.otherTeacherEmails));
   const organizerEmail = identity.organizerEmail?.toLowerCase() || null;
   const participants = rows.map((row) => {
     let role: ParticipantRole = "STUDENT";
@@ -405,6 +459,8 @@ export function summarizeAttendance(
       role = "ORGANIZER";
     } else if (email && teacherEmails.has(email)) {
       role = "TEACHER";
+    } else if (email && otherTeacherEmails.has(email)) {
+      role = "OTHER_TEACHER";
     }
     return { ...row, role };
   });

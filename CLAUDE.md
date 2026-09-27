@@ -494,6 +494,27 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   direção usa "Apagar registros das aulas deste aluno" na ficha (`erase_student_lesson_records`, acima); a tela
   do aluno lista o que aquela RPC apaga e o que fica. ⚠️ Não apague "à mão" só `student_learning_memories`:
   `get_my_lesson_records` lê `lesson_summary_versions`, e o resumo continuaria na tela dele.
+- **A sala acompanha a troca de professor** (migration `20260928110000`, runbook seção própria, teste
+  `supabase/tests/sala_acompanha_a_troca_de_professor.sql`): a sessão CONGELADA (aceite ou sala) passa para quem
+  **dá** a aula quando a troca é de UMA aula — cobertura confirmada (e a volta ao titular quando ela é desfeita),
+  reposição, antecipação ou experimental com outro professor —, com trilha em
+  `private.lesson_session_teacher_handovers` + revisão `TEACHER_HANDOVER`. Novo professor **pronto** (conta Google
+  confirmada + aceite do termo que vale no fim da aula): a sala fica **retida** (`teacher_handover_pending`, fora do
+  app e do lembrete) até a fila pôr a conta dele como coanfitriã (`room_claim` → `SYNC_COHOST` → `ensureCohost`, sai a
+  do titular); o lançamento dele se liga à sessão (acabou o `MISSING_LOG` falso) e é ele quem revisa o resumo. **Não
+  pronto**: a sessão passa assim mesmo, mas `lesson_session_handover_unconsented` entrou na régua única → sala com a
+  transcrição desligada e link de sempre. Aula dada por outro professor e ainda não trocada também é barrada
+  (`lesson_session_taught_by_other` na régua). ⚠️ **Agendamento recorrente transferido não troca sozinho**: segue o
+  "Replanejar sessão futura" de 12/09. **Sessão congelada que sai da agenda** (remarcada, desmarcada, encerrada pela
+  direção, cancelada) até 24 h depois do fim vira `SUPERSEDED` com a sala desligada; aula com lançamento, auditoria de
+  presença ou documento do Meet não. Roda no `sync_lesson_quality_sessions` (remendo por âncora) e na hora por
+  gatilhos em `class_coverages`/`reschedules`/`lesson_advances` que **nunca derrubam a escrita de origem** (falha =
+  `WARNING [sala da troca]`, a rodada de 15 min refaz). Presença: `session_state.attendance_identity` — quem passou a
+  aula adiante é `OTHER_TEACHER` (nem professor nem aluno). ⚠️ `lesson_session_documentation_blocked`,
+  `sync_lesson_quality_sessions`, `lesson_quality_sources`, `get_my_lesson_rooms`, `official_lesson_link`,
+  `google_meet_backend` e `apply_standing_lesson_recording_consent` foram remendadas por âncora — o teste reprova quem
+  as recriar sem os remendos. `private.google_meet_rooms` é do `supabase_admin`: a troca (dono `postgres`) tem grant
+  só na coluna `teacher_handover_pending`.
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

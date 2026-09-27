@@ -52,6 +52,7 @@ import {
   roomCreationErrorCode,
 } from "./provider.ts";
 import {
+  attendanceIdentity,
   type AttendanceSource,
   combineAttendanceReports,
   looksLikeAttendanceReport,
@@ -101,6 +102,9 @@ type RoomRow = {
   // A conta confirmada do professor mudou: falta acertar os membros (a sala
   // continua READY).
   cohost_sync_pending?: boolean;
+  // A aula mudou de professor (cobertura, reposição com outro professor) e a
+  // conta dele ainda não é a coanfitriã: o link não é entregue até o acerto.
+  teacher_handover_pending?: boolean;
 };
 type ImportRow = {
   provider_name: string;
@@ -123,6 +127,12 @@ type SessionDetailData = {
   attendance_saved_reports?: number;
   // Conta Google confirmada pelo professor da aula (login Google).
   teacher_google_email?: string | null;
+  // Quem o relatório de presença reconhece como professor e como "outro
+  // professor" (quem passou a aula adiante) — decidido no banco (20260928110000).
+  attendance_identity?: {
+    teacher_emails?: unknown;
+    other_teacher_emails?: unknown;
+  } | null;
 };
 type PendingJob = {
   tenant_id: string;
@@ -881,10 +891,11 @@ async function syncAttendance(
   conferences: MeetConference[],
 ): Promise<Record<string, unknown>> {
   const room = detail.room!;
-  // O professor é a conta Google que ele confirmou por login (e a coanfitriã
-  // gravada na sala, que nasce dela). O nome nunca identifica o professor.
-  const teacherEmails = [detail.teacher_google_email || "", room.cohost_email]
-    .filter(Boolean);
+  // O professor é a conta Google que QUEM DÁ A AULA confirmou por login (e a
+  // coanfitriã gravada na sala, quando ela é dele). Numa aula coberta, a conta
+  // de quem passou a aula adiante é "outro professor" — nem professor nem aluno.
+  // O banco decide (attendance_identity); o nome nunca identifica o professor.
+  const { teacherEmails, otherTeacherEmails } = attendanceIdentity(detail);
   let reportFound = false;
   // Conferência ainda aberta: o relatório dela não existe; o que estiver no Drive
   // é de outra aula. Espera o próximo ciclo (a avaliação só abre caso sem
@@ -944,6 +955,7 @@ async function syncAttendance(
           ? null
           : summarizeAttendance(combined.rows, {
             teacherEmails,
+            otherTeacherEmails,
             organizerEmail: connection.organizer_email || null,
           });
         await attendanceStorage(db, "attendance_save", tenantId, sessionId, {
