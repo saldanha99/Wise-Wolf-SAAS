@@ -72,6 +72,9 @@ const renderMarketingHtml = (template, metadata, canonicalUrl) => {
   html = upsertMeta(html, 'property', 'og:title', metadata.title);
   html = upsertMeta(html, 'property', 'og:description', metadata.description);
   html = upsertMeta(html, 'property', 'og:image', socialImageUrl);
+  const imageType = metadata.imagePath.endsWith('.webp') ? 'image/webp' : metadata.imagePath.endsWith('.png') ? 'image/png' : null;
+  if (imageType) html = upsertMeta(html, 'property', 'og:image:type', imageType);
+  else html = removeMeta(html, 'property', 'og:image:type');
   html = upsertMeta(html, 'property', 'og:image:alt', metadata.imageAlt);
   html = upsertMeta(html, 'property', 'og:site_name', 'Wise Wolf Hub');
   html = upsertMeta(html, 'name', 'twitter:card', 'summary_large_image');

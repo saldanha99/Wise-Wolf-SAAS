@@ -126,3 +126,9 @@ test('school link previews are generic, private and available without JavaScript
   }
   assert.throws(() => renderPortalLinkHtml(template, {...pages.matricula, path: '/matricula?token=private'}), /Invalid portal/);
 });
+
+
+test('marketing previews use the image format of their own asset', () => {
+  const html = renderHubMarketingHtml(template, {...metadata, imagePath: '/hub.webp'});
+  assert.match(html, /og:image:type" content="image\/webp"/);
+});
