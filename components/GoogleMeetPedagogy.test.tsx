@@ -198,6 +198,27 @@ describe('A sala acompanha a troca de professor (20260928110000)',()=>{
     // Sem aceite, não se promete o acerto do coanfitrião.
     expect(screen.queryByTestId('handover-cohost')).toBeNull();
   });
+  it('registro autorizado pela escola: substituto sem conta Google ouve que falta a conta, não um aceite do termo',async()=>{
+    // 20260929100000: no modo da escola não há "Li e autorizo"; o remédio é a
+    // conta Google de quem recebeu a aula (ou desfazer o pedido dele).
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      teacher_handover:{...handover,documentation_ready:false,authorization_mode:'SCHOOL_DEFAULT',to_teacher_google_confirmed:false},
+      session:{documentation_consent:false,documentation_blocked:true,documentation_blocked_reason:'HANDOVER_UNCONSENTED'},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',teacher_handover_pending:true}});
+    const {unmount}=render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/Esta aula passou para Bruna, que ainda não confirmou a conta Google em “Salas e continuidade”/);
+    expect(screen.queryByText(/versão vigente do termo/)).toBeNull();
+    expect(screen.queryByText(/se o aceite chegar/)).toBeNull();
+    unmount();
+    // Com a conta confirmada, o que sobra é o pedido para não registrar (ou a saída da escola).
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      teacher_handover:{...handover,documentation_ready:false,authorization_mode:'SCHOOL_DEFAULT',to_teacher_google_confirmed:true},
+      session:{documentation_consent:false,documentation_blocked:true,documentation_blocked_reason:'HANDOVER_UNCONSENTED'},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',teacher_handover_pending:true}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/Esta aula passou para Bruna, que pediu para não ter as aulas registradas/);
+    expect(screen.queryByText(/versão vigente do termo/)).toBeNull();
+  });
   it('aula dada por outro professor ainda sem a troca: diz o motivo, não "revogou"',async()=>{
     invoke.mockResolvedValue({...detail(),raw_access:true,
       session:{documentation_consent:false,documentation_blocked:true,documentation_blocked_reason:'TAUGHT_BY_OTHER'},

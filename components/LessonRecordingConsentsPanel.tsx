@@ -81,6 +81,8 @@ type TeacherRow = {
   decided_term_version?: string | null;
   /** Conta Google confirmada por login (20260929100000): sem ela, a sala não nasce. */
   google_identity_confirmed?: boolean;
+  /** O pedido para não registrar foi do próprio professor, no app: só ele desfaz. */
+  objection_by_self?: boolean;
 };
 type Overview = {
   google_connected: boolean;
@@ -407,6 +409,10 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
   const teachers = data?.teachers || [];
   const authorization = asAuthorizationSummary(data?.authorization);
   const schoolDefault = authorization.mode === 'SCHOOL_DEFAULT';
+  // Desfazer o pedido volta a ligar sala, importação e IA: só a direção
+  // (withdraw_lesson_recording_objection recusa a coordenação). A coordenação
+  // registra o pedido, que só restringe.
+  const canUndoObjection = authorization.canChange;
   // No modo da escola conta quem está autorizado (ativo, sem pedido) e quem pediu.
   const authorizedStudents = students.filter(s => !isObjection(s.decision) && s.effective !== false).length;
   const objectedStudents = students.filter(s => isObjection(s.decision)).length;
@@ -659,16 +665,18 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
             </p>}
             {minorReason === 'AGE_UNKNOWN' && (ageEditor === student.student_id
               ? <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                  <StudentBirthDateField studentId={student.student_id} compact onSaved={() => { setAgeEditor(''); void load(); }} />
+                  <StudentBirthDateField studentId={student.student_id} compact authorizationMode="SCHOOL_DEFAULT" onSaved={() => { setAgeEditor(''); void load(); }} />
                 </div>
               : <button type="button" onClick={() => setAgeEditor(student.student_id)} className="mt-2 text-xs font-semibold text-blue-600">
                   Cadastrar data de nascimento
                 </button>)}
             <div className="mt-3 flex flex-wrap gap-3 text-sm">
               {objected
-                ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(student.student_id, student.name)} className="font-semibold text-blue-600 disabled:opacity-40">
-                    Desfazer pedido
-                  </button>
+                ? (canUndoObjection
+                  ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(student.student_id, student.name)} className="font-semibold text-blue-600 disabled:opacity-40">
+                      Desfazer pedido
+                    </button>
+                  : <span className="text-xs text-slate-500">Só a direção desfaz o pedido.</span>)
                 : <button type="button" data-tour="recording-objection" disabled={!!busy} onClick={() => void registerObjection(student.student_id, student.name)} className="text-amber-700 disabled:opacity-40">
                     Registrar pedido para não registrar
                   </button>}
@@ -784,9 +792,14 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
           <div className="flex items-center gap-3">
             <SchoolDefaultBadge decision={teacher.decision} effective={teacher.effective} />
             {objected
-              ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(teacher.teacher_id, teacher.name)} className="text-sm font-semibold text-blue-600 disabled:opacity-40">
-                  Desfazer pedido
-                </button>
+              ? (teacher.objection_by_self
+                // O pedido é do próprio professor, pelo app: só ele desfaz.
+                ? <span className="text-xs text-slate-500">Pedido feito por ele no app: só ele desfaz, em “Salas e continuidade”.</span>
+                : canUndoObjection
+                  ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(teacher.teacher_id, teacher.name)} className="text-sm font-semibold text-blue-600 disabled:opacity-40">
+                      Desfazer pedido
+                    </button>
+                  : <span className="text-xs text-slate-500">Só a direção desfaz o pedido.</span>)
               : <button type="button" disabled={!!busy} onClick={() => void registerObjection(teacher.teacher_id, teacher.name)} className="text-sm text-amber-700 disabled:opacity-40">
                   Registrar pedido para não registrar
                 </button>}

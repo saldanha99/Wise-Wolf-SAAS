@@ -139,7 +139,14 @@ import { ShortcutRail } from './components/shell/ShortcutRail';
 import { useNavLayout } from './components/shell/useNavLayout';
 import { UserMenu } from './components/shell/UserMenu';
 import { flattenTour } from './lib/tours';
-import { flattenFeatureTour, latestFeatureTourFor, pendingFeatureTours, type FeatureTour } from './lib/featureTours';
+import {
+  asRecordingAuthorizationMode,
+  flattenFeatureTour,
+  latestFeatureTourFor,
+  pendingFeatureTours,
+  type FeatureTour,
+  type RecordingAuthorizationMode,
+} from './lib/featureTours';
 import { activeMenuIdFor, buildMenuItems } from './lib/navModel';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -329,6 +336,10 @@ const App: React.FC = () => {
   // o de boas-vindas: quem está no primeiro acesso vê o produto inteiro como
   // novo, e dois balões ao mesmo tempo é o oposto de "levar pela mão".
   const [featureTour, setFeatureTour] = useState<FeatureTour | null>(null);
+  // Como a escola autoriza o registro das aulas (migration 20260929100000):
+  // decide entre os tours do termo e os do registro autorizado pela escola.
+  // Nulo = desconhecido (nenhum tour que dependa do modo abre).
+  const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -354,11 +365,17 @@ const App: React.FC = () => {
     let vivo = true;
     void (async () => {
       const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
+      // Modo do registro das aulas da escola (também para "Novidades"). Falha
+      // na leitura não derruba as outras novidades: só os tours que dependem
+      // do modo ficam de fora.
+      const { data: mode, error: modeError } = await supabase.rpc('my_lesson_recording_authorization_mode');
       if (!vivo) return;
+      const recording = modeError ? null : asRecordingAuthorizationMode(mode);
+      setRecordingMode(recording);
       if (data?.onboarded === false) { setTourOpen(true); return; }
       const { data: seen, error } = await supabase.from('feature_tour_views').select('tour_id').eq('user_id', uid);
       if (!vivo || error) { if (error) console.warn('[tour] novidades indisponíveis', error.message); return; }
-      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id))[0];
+      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id), { recordingMode: recording })[0];
       if (next) setFeatureTour(next);
     })();
     return () => { vivo = false; };
@@ -1826,7 +1843,7 @@ const App: React.FC = () => {
                   onProfile={() => setActiveTab('profile')}
                   onLogout={handleLogout}
                   onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
-                  onOpenNews={latestFeatureTourFor(user.role) ? () => { const t = latestFeatureTourFor(user.role); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
+                  onOpenNews={latestFeatureTourFor(user.role, { recordingMode }) ? () => { const t = latestFeatureTourFor(user.role, { recordingMode }); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
                 />
               </div>
             </div>

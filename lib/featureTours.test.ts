@@ -129,6 +129,63 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(teacherText).toContain('não precisa mais tocar em "Li e autorizo"');
   });
 
+  it('cada escola vê os tours do seu modo de registro das aulas (termo x autorizado pela escola)', () => {
+    // Migration 20260929100000. A Wise Wolf passou ao modo da escola com 6 dos 7
+    // professores sem ter visto os tours do termo: sem o filtro, o próximo login
+    // abriria "Leia o termo e responda aqui" num cartão que não tem mais aceite.
+    const school = { recordingMode: 'SCHOOL_DEFAULT' as const };
+    const individual = { recordingMode: 'INDIVIDUAL_CONSENT' as const };
+    const unknown = { recordingMode: null };
+    const termTours = FEATURE_TOURS.filter(t => t.recordingMode === 'INDIVIDUAL_CONSENT').map(t => t.id);
+    const schoolTours = FEATURE_TOURS.filter(t => t.recordingMode === 'SCHOOL_DEFAULT').map(t => t.id);
+    expect(termTours).toEqual(expect.arrayContaining([
+      '2026-09-26-registro-das-aulas', '2026-09-26-registro-das-aulas-professor', '2026-09-26-termo-seguro',
+      '2026-09-26-termo-seguro-envio', '2026-09-26-termo-seguro-professor', '2026-09-27-termo-v3',
+      '2026-09-27-termo-v3-professor',
+    ]));
+    expect(schoolTours).toEqual(['2026-09-29-registro-autorizado-pela-escola', '2026-09-29-registro-autorizado-pela-escola-professor']);
+
+    for (const role of ['TEACHER', 'SCHOOL_ADMIN']) {
+      const inSchool = pendingFeatureTours(role, [], school).map(t => t.id);
+      const inIndividual = pendingFeatureTours(role, [], individual).map(t => t.id);
+      const inUnknown = pendingFeatureTours(role, [], unknown).map(t => t.id);
+      expect(inSchool.some(id => termTours.includes(id)), role).toBe(false);
+      expect(inSchool.some(id => schoolTours.includes(id)), role).toBe(true);
+      expect(inIndividual.some(id => schoolTours.includes(id)), role).toBe(false);
+      expect(inIndividual.some(id => termTours.includes(id)), role).toBe(true);
+      expect(inUnknown.some(id => termTours.includes(id) || schoolTours.includes(id)), role).toBe(false);
+      // O que não depende do modo aparece nos três.
+      expect(inUnknown.length).toBeGreaterThan(0);
+      for (const id of inUnknown) expect(inSchool).toContain(id);
+    }
+
+    // O professor da Wise Wolf que só viu o primeiro tour do termo recebe, no
+    // próximo login, o do modo da escola — não os do termo.
+    const next = pendingFeatureTours('TEACHER', FEATURE_TOURS
+      .filter(t => t.roles.includes('TEACHER') && !t.recordingMode && t.id < '2026-09-29')
+      .map(t => t.id).concat('2026-09-26-registro-das-aulas-professor'), school)[0];
+    expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
+
+    // "Novidades" também segue o modo.
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
+    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-09-28-sugestoes-do-cartao');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-09-28-tempo-na-sala');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-09-28-tempo-na-sala');
+  });
+
+  it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {
+    // Texto que só faz sentido com o termo por pessoa não pode abrir para quem
+    // está no registro autorizado pela escola.
+    const termOnly = /link do termo|Enviar termo|Leia o termo e responda|botão de autorizar|precisa aceitar o texto novo|ler e autorizar de novo/;
+    for (const tour of FEATURE_TOURS) {
+      const text = tour.steps.map(step => step.text).join(' ');
+      if (termOnly.test(text)) expect(tour.recordingMode, tour.id).toBe('INDIVIDUAL_CONSENT');
+    }
+    const student = FEATURE_TOURS.find(t => t.id === '2026-09-27-minhas-aulas-registradas');
+    expect(student?.recordingMode).toBeUndefined();
+    expect(student?.steps.map(step => step.text).join(' ')).toContain('pedir para não ser registrado');
+  });
+
   it('achatar põe todos os passos sob o capítulo "Novidade"', () => {
     const flat = flattenFeatureTour(FEATURE_TOURS[0]);
     expect(flat).toHaveLength(FEATURE_TOURS[0].steps.length);

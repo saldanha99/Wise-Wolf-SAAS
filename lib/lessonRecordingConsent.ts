@@ -400,15 +400,33 @@ const ERRORS: Record<string, string> = {
   aviso_nao_publicado: 'O aviso do registro das aulas ainda não foi publicado. Fale com o suporte da plataforma.',
   nao_ha_pedido_para_desfazer: 'Não há pedido para não registrar a desfazer.',
   so_no_registro_autorizado_pela_escola: 'Desfazer o pedido só existe quando a escola autoriza o registro. No aceite individual, a pessoa responde de novo pelo termo.',
+  // O pedido que o professor fez no app só ele desfaz (migration 20260929100000).
+  pedido_do_proprio_professor: 'O próprio professor pediu, no app, para não ter as aulas registradas: só ele desfaz, em “Salas e continuidade”.',
+};
+
+/**
+ * No registro autorizado pela escola não existe "link novo": a escola não gera
+ * link nem manda termo (a página só serve a quem recebeu um link antes). Onde o
+ * texto do aceite individual manda pedir um link novo, aqui a pessoa fala com a
+ * escola pelo WhatsApp — é por lá que o pedido para não registrar chega.
+ */
+const SCHOOL_DEFAULT_ERRORS: Record<string, string> = {
+  link_bloqueado:
+    'Este link foi bloqueado por segurança (muitos códigos pedidos ou digitados errado). Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  link_expirado:
+    'Este link expirou ou foi substituído. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  telefone_nao_cadastrado:
+    'A escola não tem este WhatsApp no cadastro. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
 };
 
 /** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */
-export function consentErrorMessage(raw: string | null | undefined): string {
+export function consentErrorMessage(raw: string | null | undefined, mode: AuthorizationMode = 'INDIVIDUAL_CONSENT'): string {
   const text = String(raw || '');
-  const code = Object.keys(ERRORS)
+  const table = mode === 'SCHOOL_DEFAULT' ? { ...ERRORS, ...SCHOOL_DEFAULT_ERRORS } : ERRORS;
+  const code = Object.keys(table)
     .sort((a, b) => b.length - a.length)
     .find(key => text.includes(key));
-  return code ? ERRORS[code] : 'Algo deu errado. Tente de novo em instantes.';
+  return code ? table[code] : 'Algo deu errado. Tente de novo em instantes.';
 }
 
 /** Erro do código com as tentativas restantes ou a espera, quando o servidor diz. */
@@ -416,6 +434,8 @@ export function codeErrorMessage(input: {
   error?: string | null;
   attemptsLeft?: number | null;
   retryAfterSeconds?: number | null;
+  /** Modo da escola do link: no registro autorizado pela escola não há link novo a pedir. */
+  mode?: AuthorizationMode;
 }): string {
   const code = String(input.error || '');
   if (code === 'codigo_incorreto' && Number(input.attemptsLeft) > 0) {
@@ -423,9 +443,9 @@ export function codeErrorMessage(input: {
     return `Código incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`} para este código.`;
   }
   if ((code === 'limite_de_envios' || code === 'limite_diario' || code === 'aguarde') && input.retryAfterSeconds) {
-    return `${consentErrorMessage(code)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
+    return `${consentErrorMessage(code, input.mode)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
   }
-  return consentErrorMessage(code);
+  return consentErrorMessage(code, input.mode);
 }
 
 export function formatDecisionDate(value: string | null | undefined): string {

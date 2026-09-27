@@ -363,5 +363,19 @@ describe('modo de autorização por escola', () => {
     expect(consentErrorMessage('nao_ha_pedido_para_desfazer')).toMatch(/Não há pedido/);
     expect(consentErrorMessage('somente_a_direcao')).toMatch(/Só a direção/);
     expect(notSentReasonLabel('registro_autorizado_pela_escola')).toBe('a escola passou a autorizar o registro das aulas');
+    expect(consentErrorMessage('ERROR: pedido_do_proprio_professor')).toMatch(/só ele desfaz/);
+  });
+
+  it('no modo da escola não existe "link novo": link bloqueado, vencido ou telefone fora do cadastro mandam falar com a escola', () => {
+    // A escola não gera link no modo dela (create_lesson_recording_consent_link recusa).
+    for (const code of ['link_bloqueado', 'link_expirado', 'telefone_nao_cadastrado']) {
+      expect(consentErrorMessage(code), code).toMatch(/link novo|Peça um novo/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).toMatch(/fale com a escola pelo WhatsApp/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).not.toMatch(/link novo|Peça um novo/);
+      expect(codeErrorMessage({ error: code, mode: 'SCHOOL_DEFAULT' }), code).toMatch(/fale com a escola pelo WhatsApp/);
+    }
+    // O resto é igual nos dois modos.
+    expect(consentErrorMessage('codigo_expirado', 'SCHOOL_DEFAULT')).toBe(consentErrorMessage('codigo_expirado'));
+    expect(codeErrorMessage({ error: 'limite_de_envios', retryAfterSeconds: 120, mode: 'SCHOOL_DEFAULT' })).toMatch(/Tente em 2 minutos/);
   });
 });

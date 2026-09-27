@@ -153,6 +153,57 @@ describe('<LessonRecordingConsentsPanel /> — registro autorizado pela escola',
     expect(screen.queryByRole('button', { name: 'Voltar ao aceite individual' })).not.toBeInTheDocument();
   });
 
+  it('só a direção desfaz o pedido: a coordenação registra, mas não vê "Desfazer pedido"', async () => {
+    // withdraw_lesson_recording_objection recusa a coordenação (somente_a_direcao):
+    // desfazer religa sala, importação e IA de quem pediu para não ser registrado.
+    overview = defaultOverview();
+    (overview.authorization as Record<string, unknown>).can_change = false;
+    render(<LessonRecordingConsentsPanel schoolName="Escola Fixture" />);
+    await screen.findByText('Adulta Pediu');
+    expect(screen.queryByRole('button', { name: 'Desfazer pedido' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Só a direção desfaz o pedido.').length).toBe(2);
+    expect(screen.getAllByRole('button', { name: 'Registrar pedido para não registrar' }).length).toBeGreaterThan(0);
+  });
+
+  it('o pedido que o próprio professor fez no app só ele desfaz', async () => {
+    overview = defaultOverview();
+    (overview.teachers as Array<Record<string, unknown>>)[1].objection_by_self = true;
+    render(<LessonRecordingConsentsPanel schoolName="Escola Fixture" />);
+    const row = (await screen.findByText('Professor Pediu')).closest('article') as HTMLElement;
+    expect(within(row).queryByRole('button', { name: 'Desfazer pedido' })).not.toBeInTheDocument();
+    expect(within(row).getByText(/Pedido feito por ele no app: só ele desfaz/)).toBeInTheDocument();
+    // O do aluno (registrado pela escola) a direção desfaz.
+    const student = screen.getByText('Adulta Pediu').closest('article') as HTMLElement;
+    expect(within(student).getByRole('button', { name: 'Desfazer pedido' })).toBeInTheDocument();
+  });
+
+  it('data de nascimento no modo da escola: fala de quem pode pedir para não registrar, sem termo nem código', async () => {
+    overview = defaultOverview();
+    (overview.students as Array<Record<string, unknown>>).push({
+      ...base, student_id: 'unknown-1', name: 'Idade Desconhecida', requires_guardian: true, guardian_reason: 'AGE_UNKNOWN',
+      school_birth_date: null, decision: 'NONE', effective: true,
+    });
+    rpc.mockImplementation(async (name: string) => {
+      if (name === 'list_lesson_recording_consents') return { data: overview, error: null };
+      if (name === 'list_lesson_recording_consent_requests') {
+        return { data: { ok: true, can_send: false, authorization_mode: 'SCHOOL_DEFAULT', term_version: 'v3', students: [] }, error: null };
+      }
+      if (name === 'get_student_birth_date_record') {
+        return { data: { ok: true, profile_birth_date: null, school_birth_date: null, recorded_at: null, recorded_by_name: null,
+          is_kids: false, guardian_reason: 'AGE_UNKNOWN', guardian_code_phone_masked: null, guardian_phone_unconfirmed: false,
+          authorization_mode: 'SCHOOL_DEFAULT' }, error: null };
+      }
+      return { data: { ok: true }, error: null };
+    });
+    render(<LessonRecordingConsentsPanel schoolName="Escola Fixture" />);
+    const row = (await screen.findByText('Idade Desconhecida')).closest('article') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Cadastrar data de nascimento' }));
+    expect(await within(row).findByText(/o registro das aulas é autorizado pela escola, e o pedido para não registrar pode vir do responsável/))
+      .toBeInTheDocument();
+    expect(within(row).queryByText(/termo de registro das aulas é respondido/)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/código do termo/)).not.toBeInTheDocument();
+  });
+
   it('no aceite individual o painel continua o de antes, com a opção de passar ao modo da escola', async () => {
     overview = {
       ...defaultOverview(),

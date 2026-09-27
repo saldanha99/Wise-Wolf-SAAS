@@ -37,6 +37,10 @@ describe('<StudentLessonRecords /> — registro autorizado pela escola', () => {
     expect(decodeURIComponent(link.getAttribute('href') || '')).toContain('peço que as minhas aulas não sejam registradas');
     expect(screen.getByText(/peça para não registrar \(acima\)/)).toBeInTheDocument();
     expect(screen.queryByText(/revogue a autorização/)).not.toBeInTheDocument();
+    // O texto é aviso, não termo.
+    expect(screen.getByText(/O aviso \(logo abaixo\) diz em quanto tempo/)).toBeInTheDocument();
+    expect(screen.queryByText(/O termo \(logo abaixo\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/respostas ao termo/)).not.toBeInTheDocument();
   });
 
   it('quem pediu vê o pedido e como voltar a registrar, sem o botão de pedir de novo', async () => {

@@ -38,7 +38,9 @@ import {
 // código, e a página recarrega o texto novo para ela confirmar.
 // Desde 29/09/2026 (migration 20260929100000), na escola que autoriza o
 // registro por padrão a página mostra o AVISO (não um termo de aceite) e só
-// grava o pedido para não registrar — com o mesmo código do WhatsApp.
+// grava o pedido para não registrar — com o mesmo código do WhatsApp. Nesse
+// modo a escola não gera link: onde o aceite individual manda pedir "um link
+// novo", a página manda falar com a escola pelo WhatsApp.
 
 type Relation = 'SELF' | 'GUARDIAN';
 
@@ -63,8 +65,11 @@ interface ConsentPublic {
   decided_term_version?: string | null;
   /** Valores dos marcadores {escola_nome}, {escola_documento} e {escola_contato_privacidade}. */
   school_identity?: unknown;
-  /** SCHOOL_DEFAULT: registro autorizado pela escola — aviso e pedido para não registrar. */
-  authorization_mode?: string;
+  /**
+   * SCHOOL_DEFAULT: registro autorizado pela escola — aviso e pedido para não
+   * registrar. Vem também com o link bloqueado, vencido ou revogado.
+   */
+  authorization_mode?: string | null;
 }
 
 interface CodeResponse {
@@ -136,6 +141,7 @@ export default function LessonRecordingConsentPage() {
   const phoneFieldKnown = !!data && (relation === 'SELF' ? 'student_phone_masked' in data : 'guardian_phone_masked' in data);
   const canSendCode = !!targetPhone || !phoneFieldKnown;
   const codeReady = !!sentTo && sentTo.relation === relation;
+  const pageMode = asAuthorizationMode(data?.authorization_mode);
 
   function chooseRelation(value: Relation) {
     setRelation(value);
@@ -151,7 +157,7 @@ export default function LessonRecordingConsentPage() {
     const result = await requestCode(token, relation);
     setBusy('');
     if (!result.ok) {
-      setError(codeErrorMessage({ error: result.error, retryAfterSeconds: result.retry_after_seconds }));
+      setError(codeErrorMessage({ error: result.error, retryAfterSeconds: result.retry_after_seconds, mode: pageMode }));
       return;
     }
     setCode('');
@@ -185,9 +191,9 @@ export default function LessonRecordingConsentPage() {
       return;
     }
     setBusy('');
-    if (rpcError) { setError(consentErrorMessage(rpcError.message)); return; }
+    if (rpcError) { setError(consentErrorMessage(rpcError.message, pageMode)); return; }
     if (!response.ok) {
-      setError(codeErrorMessage({ error: response.error, attemptsLeft: response.attempts_left }));
+      setError(codeErrorMessage({ error: response.error, attemptsLeft: response.attempts_left, mode: pageMode }));
       if (response.error === 'codigo_expirado' || response.error === 'codigo_bloqueado') setCode('');
       // A escola passou a autorizar o registro com a página aberta: mostra o
       // aviso (o código não foi gasto e serve para o pedido de não registrar).
@@ -212,7 +218,11 @@ export default function LessonRecordingConsentPage() {
         <p className="text-sm text-slate-500">
           {data?.blocked
             ? 'Por segurança, este link foi bloqueado: pediram ou digitaram códigos errados vezes demais.'
-            : data?.expired ? 'Este link expirou ou foi substituído por um mais novo.' : 'Não encontramos este link.'} Peça um novo à escola pelo WhatsApp.
+            : data?.expired ? 'Este link expirou ou foi substituído por um mais novo.' : 'Não encontramos este link.'}
+          {pageMode === 'SCHOOL_DEFAULT'
+            // Registro autorizado pela escola: não há link novo a pedir.
+            ? ' O registro das aulas é autorizado pela escola. Para pedir que as aulas não sejam registradas (ou voltem a ser), fale com a escola pelo WhatsApp.'
+            : ' Peça um novo à escola pelo WhatsApp.'}
         </p>
       </div>
     </div>;
@@ -329,7 +339,9 @@ export default function LessonRecordingConsentPage() {
               ? <span>Para confirmar que é você, mandamos um código de 6 dígitos para o WhatsApp {whoLabel} cadastrado na escola: <b>{targetPhone}</b>.</span>
               : canSendCode
                 ? <span>Para confirmar que é você, mandamos um código de 6 dígitos para o WhatsApp {whoLabel} cadastrado na escola.</span>
-                : <span>A escola não tem o WhatsApp {whoLabel} no cadastro. Peça à escola para cadastrar e mandar um link novo.</span>}
+                : schoolDefault
+                  ? <span>A escola não tem o WhatsApp {whoLabel} no cadastro. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.</span>
+                  : <span>A escola não tem o WhatsApp {whoLabel} no cadastro. Peça à escola para cadastrar e mandar um link novo.</span>}
           </p>
           {canSendCode && <button type="button" disabled={!!busy} onClick={() => void sendCode()}
             className="w-full rounded-2xl border border-emerald-600 py-3 text-[11px] font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">
