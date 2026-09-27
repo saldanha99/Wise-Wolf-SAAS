@@ -578,6 +578,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/tenant-legal-assets/index.test.ts \
   supabase/functions/register-vendor/index.ts \
   supabase/functions/register-vendor/index.test.ts \
+  supabase/functions/register-teacher/contract-terms.ts \
+  supabase/functions/register-teacher/contract-terms.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
@@ -853,6 +855,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/asaas-adjudication/core.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
   supabase/functions/student-card-suggestions/source.test.ts \
+  supabase/functions/register-teacher/contract-terms.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
@@ -1477,6 +1480,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260927120000_originais_do_drive_para_a_lixeira.sql"
   "supabase/migrations/20260927130000_planner_a_partir_das_aulas_aprovadas.sql"
   "supabase/migrations/20260927140000_aluno_ve_o_proprio_registro.sql"
+  "supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql"
   "supabase/migrations/20260928100000_substituto_e_novo_titular_recebem_o_dossie.sql"
   "supabase/migrations/20260928110000_sala_acompanha_a_troca_de_professor.sql"
   "supabase/migrations/20260928120000_extrato_de_pontualidade_do_professor.sql"
@@ -1504,6 +1508,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/sugestoes_do_cartao_pela_ia.sql"
   "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
   "supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql"
+  "supabase/tests/versao_do_contrato_no_aceite.sql"
   "supabase/tests/registro_autorizado_pela_escola.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
