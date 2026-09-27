@@ -1,4 +1,5 @@
 import React from 'react';
+import { createHash } from 'node:crypto';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
@@ -162,5 +163,163 @@ describe('termos comerciais do contrato do aluno', () => {
     expect(html).not.toContain('Plano Semestral');
     expect(html).not.toContain('6 (seis) meses');
     expect(html).not.toContain('1 (uma) aula por mês');
+  });
+});
+
+/**
+ * Cláusula do registro das aulas (decisão da direção de 27/09/2026) e a regra
+ * que protege quem já assinou: contrato assinado NUNCA muda de texto.
+ *
+ * Os hashes abaixo são do texto das cláusulas (das partes até a declaração
+ * final — sem data de assinatura, que depende do fuso) renderizado pelos
+ * componentes de 59dda7b4, ANTES da cláusula nova, com as mesmas props. Na
+ * troca, o HTML do contrato assinado sem versão foi conferido byte a byte com
+ * o componente antigo (a4 e tela; aluno recorrente e avulso; professor por
+ * aula e horista antigo). Se um destes testes falhar, o texto de um contrato
+ * JÁ ASSINADO mudou: não edite o texto antigo — crie versão nova em
+ * lib/contractTerms.ts.
+ */
+describe('versão do texto do contrato: a cláusula do registro das aulas', () => {
+  const LEGACY_CLAUSES_SHA256 = {
+    student: '74045a8d1f360ae8ada153c72d825c7fec862bf28a26a404df648908ee2c0e32',
+    studentOneTime: '8880eb71dc3ee9ebd58fc703e01338991535707ff9bfb623633df903edf65e35',
+    teacher: '76fbe0bd9f9e1194dde9e047bb4ac6d646a795eb9e42cff2658bb0cc55b4a1ac',
+    teacherHourly: '911ece8b5aed8710bc22bcebc8420e8c38d67789cbdb40c8859f0b0312591c46',
+  };
+
+  const school = completeSchool({ legalName: 'Escola Tenant Exemplo Ltda.', address: 'Endereço jurídico configurado pelo tenant' });
+  const studentProps = {
+    studentName: 'Aluna de teste', studentCPF: '52998224725', studentAddress: 'Endereço de teste',
+    studentEmail: 'aluna@example.test', studentPhone: '5511999999999', planName: 'Plano Semestral',
+    planValue: '261,00', totalValue: '1.566,00', planDuration: 6, startDate: '23/09/2026',
+    endDate: '23/03/2027', dueDay: 10, classFrequency: 2, school, showPrintButton: false,
+    userIp: '203.0.113.9', subscriptionId: 'sub_legacy_0001',
+  };
+  const teacherProps = {
+    teacherName: 'Professor de teste', teacherRG: '12.345.678-9', teacherCPF: '529.982.247-25',
+    teacherAddress: 'Rua Teste, 1', teacherBirthDate: '01/01/1990', school, hourlyRate: 8,
+    rateUnit: 'PER_LESSON', showPrintButton: false, userIp: '203.0.113.10',
+    subscriptionId: 'teacher-legacy-0001',
+  };
+  const SIGNED_AT = '2026-09-20T15:00:00Z';
+
+  const text = (html: string) => html
+    .replace(/<style>[\s\S]*?<\/style>/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const clausesOf = (html: string, start: string, end: string) => {
+    const content = text(html);
+    const from = content.indexOf(start);
+    const to = content.indexOf(end);
+    expect(from, `marcador "${start}"`).toBeGreaterThanOrEqual(0);
+    expect(to, `marcador "${end}"`).toBeGreaterThan(from);
+    return content.slice(from, to);
+  };
+  const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+  const student = (extra: Record<string, unknown> = {}) =>
+    renderToStaticMarkup(React.createElement(ContractDocument, { ...studentProps, ...extra }));
+  const teacher = (extra: Record<string, unknown> = {}) =>
+    renderToStaticMarkup(React.createElement(TeacherContractDocument, { ...teacherProps, ...extra }));
+  const studentClauses = (html: string) => clausesOf(html, 'I. Das Partes', 'Por estarem justas');
+  const teacherClauses = (html: string) => clausesOf(html, 'CONTRATANTE:', 'E, por estarem justos');
+
+  it('aluno que assinou antes (sem versão gravada) vê exatamente o texto que assinou', () => {
+    const html = student({ acceptedAt: SIGNED_AT });
+    expect(sha256(studentClauses(html))).toBe(LEGACY_CLAUSES_SHA256.student);
+    expect(sha256(studentClauses(student({ acceptedAt: SIGNED_AT, planDuration: 0 }))))
+      .toBe(LEGACY_CLAUSES_SHA256.studentOneTime);
+    expect(html).toContain('Cláusula 8 — Do Foro');
+    expect(html).not.toContain('Registro das Aulas');
+    expect(html).not.toContain('Versão do texto');
+  });
+
+  it('versão 1 gravada e versão desconhecida valem como o texto de antes', () => {
+    const legacy = student({ acceptedAt: SIGNED_AT });
+    expect(student({ acceptedAt: SIGNED_AT, termsVersion: 1 })).toBe(legacy);
+    expect(student({ acceptedAt: SIGNED_AT, termsVersion: 99 })).toBe(legacy);
+  });
+
+  it('contrato ainda não assinado mostra a versão atual: Cláusula 8 do registro e o Foro na 9', () => {
+    const html = student();
+    const clauses = studentClauses(html);
+    expect(clauses).toContain('Cláusula 8 — Do Registro das Aulas');
+    expect(clauses).toContain('Cláusula 9 — Do Foro');
+    expect(clauses).not.toContain('Cláusula 8 — Do Foro');
+    expect(clauses.indexOf('Cláusula 7 — Da Proteção de Dados')).toBeLessThan(clauses.indexOf('Cláusula 8 — Do Registro das Aulas'));
+    expect(clauses.indexOf('Cláusula 8 — Do Registro das Aulas')).toBeLessThan(clauses.indexOf('Cláusula 9 — Do Foro'));
+    // As cláusulas 1 a 7 não mudam uma vírgula.
+    const legacyClauses = studentClauses(student({ acceptedAt: SIGNED_AT }));
+    const upToLgpd = (value: string) => value.slice(0, value.indexOf('Cláusula 8'));
+    expect(upToLgpd(clauses)).toBe(upToLgpd(legacyClauses));
+  });
+
+  it('quem assinou a versão 2 continua vendo a cláusula, com a versão no selo', () => {
+    const html = student({ acceptedAt: SIGNED_AT, termsVersion: 2 });
+    expect(studentClauses(html)).toBe(studentClauses(student({ termsVersion: 2 })));
+    expect(html).toContain('Cláusula 8 — Do Registro das Aulas');
+    expect(text(html)).toContain('Versão do texto: 2');
+  });
+
+  it('a cláusula do aluno resume o essencial do aviso completo', () => {
+    const clause = studentClauses(student());
+    for (const expected of [
+      'sem gravação em vídeo',
+      'transcrição automática',
+      'relatório com os horários de entrada e saída',
+      'aprovado pelo professor',
+      'planejar as próximas aulas e as tarefas',
+      'link que só abre com login',
+      'Google Workspace',
+      'OpenRouter',
+      'treinar modelos desligado',
+      '90 (noventa) dias',
+      'pedir, pelo WhatsApp da CONTRATADA, que as aulas deixem de ser registradas',
+      'a exclusão do que já foi registrado',
+      'menor de 18 (dezoito) anos, este contrato é assinado pelo seu responsável legal',
+      'aviso completo',
+    ]) {
+      expect(clause, expected).toContain(expected);
+    }
+  });
+
+  it('professor que assinou antes (sem versão gravada) vê exatamente o texto que assinou', () => {
+    const html = teacher({ acceptedAt: SIGNED_AT });
+    expect(sha256(teacherClauses(html))).toBe(LEGACY_CLAUSES_SHA256.teacher);
+    expect(sha256(teacherClauses(teacher({ acceptedAt: SIGNED_AT, hourlyRate: 16, rateUnit: undefined }))))
+      .toBe(LEGACY_CLAUSES_SHA256.teacherHourly);
+    expect(html).not.toContain('REGISTRO DAS AULAS');
+    expect(html).not.toContain('Versão do texto');
+    expect(teacher({ acceptedAt: SIGNED_AT, termsVersion: 1 })).toBe(html);
+  });
+
+  it('contrato do professor ainda não assinado traz a Cláusula 11ª no fim, sem renumerar nada', () => {
+    const clauses = teacherClauses(teacher());
+    expect(clauses).toContain('CLÁUSULA 11ª – REGISTRO DAS AULAS');
+    expect(clauses.indexOf('CLÁUSULA 10ª')).toBeLessThan(clauses.indexOf('CLÁUSULA 11ª'));
+    const legacy = teacherClauses(teacher({ acceptedAt: SIGNED_AT }));
+    expect(clauses.slice(0, clauses.indexOf('CLÁUSULA 11ª')).trim()).toBe(legacy.trim());
+    for (const expected of [
+      'sem gravação em vídeo',
+      'coanfitrião pela conta Google',
+      'aprovado pelo CONTRATADO',
+      'EXTRATO DE PONTUALIDADE',
+      'sem nota, sem ranking e sem comparação com outros professores',
+      'não altera a remuneração prevista na Cláusula 3ª',
+      'nenhum ajuste de pagamento é automático',
+      'Google Workspace',
+      'OpenRouter',
+      '90 (noventa) dias',
+      'que as suas aulas deixem de ser registradas',
+      'aviso completo',
+    ]) {
+      expect(clauses, expected).toContain(expected);
+    }
+  });
+
+  it('professor que assinou a versão 2 continua vendo a Cláusula 11ª', () => {
+    const html = teacher({ acceptedAt: SIGNED_AT, termsVersion: 2 });
+    expect(html).toContain('CLÁUSULA 11ª – REGISTRO DAS AULAS');
+    expect(text(html)).toContain('Versão do texto: 2');
   });
 });

@@ -85,7 +85,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
     expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-27-termo-v3-professor');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-27-termo-v3');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-27-versao-do-contrato-com-registro');
     expect(latestFeatureTourFor('STUDENT')?.id).toBe('2026-09-27-minhas-aulas-registradas');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });

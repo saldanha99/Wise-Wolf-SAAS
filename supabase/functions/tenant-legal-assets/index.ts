@@ -340,6 +340,11 @@ async function resolveContract(
     birth_date: party.birthDate,
     hourly_rate: commercial.hourlyRate,
     rateUnit: commercial.rateUnit,
+    // Versão do texto assinado (register-teacher grava desde 27/09/2026).
+    // Ausente = contrato de antes: a tela mostra o texto antigo.
+    contractTermsVersion: Number.isInteger(commercial.contractTermsVersion)
+      ? commercial.contractTermsVersion
+      : null,
     contract_accepted: true,
     accepted_at: data.accepted_at,
     user_ip: data.accepted_ip,

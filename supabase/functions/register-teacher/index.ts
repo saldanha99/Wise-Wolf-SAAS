@@ -10,6 +10,7 @@ import {
   releaseInviteClaim,
 } from "../_shared/invite-registration.ts";
 import { loadTenantCentralWhatsAppContext } from "../_shared/tenant-communication.ts";
+import { acceptedTeacherContractTermsVersion } from "./contract-terms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -158,6 +159,14 @@ async function handleRequest(req: Request): Promise<Response> {
     if (body.rateUnit !== "PER_LESSON") {
       return json({ error: "Atualize a pagina para revisar o valor por aula antes de assinar." }, 409);
     }
+    // A pagina antiga mostrava (e congelava no PDF) o contrato sem a clausula
+    // do registro das aulas: contrato novo so nasce com a versao atual.
+    const contractTermsVersion = acceptedTeacherContractTermsVersion(
+      body.contractTermsVersion,
+    );
+    if (contractTermsVersion === null) {
+      return json({ error: "Atualize a pagina para revisar o contrato atualizado antes de assinar." }, 409);
+    }
     const email = normalizedEmail(body.email);
     const password = requiredString(body.password, "password", 8, 128);
     const name = requiredString(body.name, "name", 2, 120);
@@ -251,12 +260,31 @@ async function handleRequest(req: Request): Promise<Response> {
           birthDate,
         },
         legal_snapshot: schoolInfo,
-        commercial_snapshot: { hourlyRate, subject, rateUnit: "PER_LESSON" },
+        commercial_snapshot: {
+          hourlyRate,
+          subject,
+          rateUnit: "PER_LESSON",
+          contractTermsVersion,
+        },
         signed_document_path: signedDocumentPath,
         accepted_at: acceptedAt,
         accepted_ip: trustedIp,
       });
     if (contractRecordError) throw new Error("contract_snapshot_failed");
+    // Mesma versao na tabela de aceites (migration 20260927150000), onde
+    // aluno e professor ficam com a mesma regra de leitura.
+    const { error: termsAcceptanceError } = await admin
+      .from("contract_terms_acceptances")
+      .insert({
+        tenant_id: invite.tenantId,
+        user_id: userId,
+        contract_kind: "TEACHER",
+        terms_version: contractTermsVersion,
+        source: "TEACHER_INVITE",
+        source_id: invite.offerId,
+        accepted_at: acceptedAt,
+      });
+    if (termsAcceptanceError) throw new Error("contract_terms_record_failed");
     const { error: documentUpdateError } = await admin.from("profiles")
       .update({ signed_document_url: signedDocumentPath })
       .eq("id", userId)

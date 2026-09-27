@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { LessonRecordingClauseNotice } from './LessonRecordingClauseNotice';
+import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
 import {
     AlertTriangle,
     ArrowRight,
@@ -35,6 +37,8 @@ interface ContractModalProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    /** Versão do texto que está sendo assinada (lib/contractTerms.ts). */
+    termsVersion?: number;
     school?: SchoolInfo;
     dependentName?: string;
     enrollmentFee?: number;
@@ -58,6 +62,14 @@ const ContractModal: React.FC<ContractModalProps> = ({
     const schoolIdentity = getSchoolContractIdentity(contractProps.school);
     const isValidSignature = typedName.trim().toLowerCase()
         === contractProps.studentName.trim().toLowerCase();
+    // Mesma regra do documento: é esta a versão que está sendo assinada.
+    const signingWithLessonRecording = contractIncludesLessonRecording(
+        'STUDENT',
+        resolveContractTermsVersion('STUDENT', {
+            signed: Boolean(contractProps.acceptedAt),
+            recordedVersion: contractProps.termsVersion,
+        }),
+    );
 
     // Floating Button State & Observer
     const signatureRef = useRef<HTMLDivElement>(null);
@@ -214,6 +226,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     acceptedAt={contractProps.acceptedAt}
                                     userIp={contractProps.userIp}
                                     subscriptionId={contractProps.subscriptionId}
+                                    termsVersion={contractProps.termsVersion}
                                     school={contractProps.school}
                                     dependentName={contractProps.dependentName}
                                     displayMode="responsive"
@@ -391,6 +404,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                         )}
 
                         <div className="mt-auto space-y-4 pt-4 border-t border-brand-border">
+                            {signingWithLessonRecording && <LessonRecordingClauseNotice clauseLabel="Cláusula 8" />}
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                                 <input
                                     type="checkbox"

@@ -7,6 +7,8 @@ import type { SchoolInfo } from './ContractDocument';
 import { AlertTriangle, CheckCircle2, Loader2, PencilLine, ShieldCheck, Sparkles, Type, X } from 'lucide-react';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import { CURRENT_CONTRACT_TERMS_VERSION } from '../lib/contractTerms';
+import { LessonRecordingClauseNotice } from './LessonRecordingClauseNotice';
 
 // Aceite de contrato PJ para professor JÁ logado que nunca aceitou (contract_accepted=false).
 // Contas criadas pelo caminho manual (create-teacher-account) nascem sem aceite e não passam
@@ -239,13 +241,19 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                 setError('Não foi possível obter um nome válido para registro da assinatura.');
                 return;
             }
-            const { data, error } = await supabase.rpc('accept_teacher_contract', { p_typed_signature: finalSignature });
+            // Grava junto a versão do texto que esta tela mostrou (Cláusula 11ª —
+            // registro das aulas).
+            const { data, error } = await supabase.rpc('accept_teacher_contract', {
+                p_typed_signature: finalSignature,
+                p_terms_version: CURRENT_CONTRACT_TERMS_VERSION.TEACHER,
+            });
             if (error) throw error;
             if (!data?.ok) {
                 const map: Record<string, string> = {
                     nao_autenticado: 'Sessão expirada. Entre novamente.',
                     apenas_professor: 'Apenas professores podem aceitar este contrato.',
                     assinatura_invalida: 'Assinatura inválida. Digite seu nome completo.',
+                    versao_invalida: 'O contrato foi atualizado. Recarregue a página para ler a versão atual antes de assinar.',
                 };
                 setError(map[data?.error] || 'Não foi possível registrar o aceite. Tente novamente.');
                 return;
@@ -325,6 +333,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             school={school}
                                             hourlyRate={Number(profile?.hourly_rate) || undefined}
                                             subscriptionId={profile?.subscription_id || undefined}
+                                            termsVersion={CURRENT_CONTRACT_TERMS_VERSION.TEACHER}
                                             displayMode="responsive"
                                             showPrintButton={false}
                                         />
@@ -456,6 +465,8 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     </div>
                                 </div>
                             )}
+
+                            <LessonRecordingClauseNotice clauseLabel="Cláusula 11ª" />
 
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                                 <input

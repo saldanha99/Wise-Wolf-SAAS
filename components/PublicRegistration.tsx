@@ -4,6 +4,8 @@ import { asaasService } from '../services/asaasService';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import { recordEnrollmentContractTerms } from '../services/contractTermsService';
+import { CURRENT_CONTRACT_TERMS_VERSION } from '../lib/contractTerms';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
 import {
@@ -265,7 +267,9 @@ const PublicRegistration: React.FC = () => {
     const [couponState, setCouponState] = useState<'IDLE' | 'APPLYING' | 'APPLIED'>('IDLE');
     const [couponError, setCouponError] = useState<string | null>(null);
     // Signature Data for PDF
-    const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string } | null>(null);
+    const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string; termsVersion?: number } | null>(null);
+    // Versão do texto assinado nesta matrícula (gravada no servidor logo depois do aceite).
+    const [signedTermsVersion, setSignedTermsVersion] = useState<number | null>(null);
     const [signedPdfUrl, setSignedPdfUrl] = useState<string>('');
 
     // Form Fields
@@ -735,6 +739,16 @@ const PublicRegistration: React.FC = () => {
             }
             setCorrelationId(String(claimResult.correlation_id || ''));
 
+            // A página mostrou a versão atual do contrato (com a cláusula do
+            // registro das aulas): grava essa versão ANTES da cobrança. Sem
+            // ela, o contrato assinado seria lido depois como o texto de antes.
+            const recordedTermsVersion = await recordEnrollmentContractTerms({
+                offerId: contractData._offerId,
+                userId,
+                alreadyCompleted: claimResult.already_completed === true,
+            });
+            setSignedTermsVersion(recordedTermsVersion);
+
             enrollmentData = {
                 ...contractData,
                 ...claimResult.payload,
@@ -838,7 +852,8 @@ const PublicRegistration: React.FC = () => {
             setSignatureData({
                 acceptedAt: new Date().toISOString(),
                 ip: 'Registrado no servidor',
-                subId: confirmedSubId
+                subId: confirmedSubId,
+                termsVersion: recordedTermsVersion ?? undefined,
             });
 
             if (signatureDataObj?.url) {
@@ -1567,6 +1582,7 @@ const PublicRegistration: React.FC = () => {
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
                                 subscriptionId={signatureData?.subId}
+                                termsVersion={signatureData?.termsVersion ?? signedTermsVersion ?? undefined}
                                 school={school || undefined}
                             />
                         </div>
@@ -2043,6 +2059,7 @@ const PublicRegistration: React.FC = () => {
                     processingStage={processingStage}
                     processingError={error}
                     correlationId={correlationId}
+                    termsVersion={CURRENT_CONTRACT_TERMS_VERSION.STUDENT}
                 />
             )}
 
@@ -2069,6 +2086,7 @@ const PublicRegistration: React.FC = () => {
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}
                         subscriptionId={signatureData?.subId}
+                        termsVersion={signatureData?.termsVersion ?? signedTermsVersion ?? undefined}
                         school={school || undefined}
                     />
                 </div>

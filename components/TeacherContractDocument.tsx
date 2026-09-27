@@ -2,6 +2,49 @@ import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLÁUSULA DO REGISTRO DAS AULAS (versão 2 em diante)
+// ─────────────────────────────────────────────────────────────────────────────
+// Resume o aviso completo do registro das aulas (termo v3 em
+// private.lesson_recording_terms, público TEACHER) e remete a ele. O registro é
+// decisão da escola (27/09/2026): quem assina este contrato já concorda.
+// Entra no FIM (11ª), depois da 10ª, para não renumerar nada: a 3ª, a 7.3 e a
+// 9ª são citadas pelo número em outras cláusulas.
+// ⚠️ Texto de contrato assinado não muda: qualquer alteração aqui é versão
+// nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
+function TeacherLessonRecordingClause() {
+    return (
+        <div data-contract-clause="registro-das-aulas">
+            <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 11ª – REGISTRO DAS AULAS</h3>
+            <p className="text-justify">
+                11.1 As aulas ministradas pelo CONTRATADO em salas do Google Meet criadas pela conta da CONTRATANTE, nas quais o CONTRATADO atua como coanfitrião pela conta Google que confirmar na plataforma, são registradas por decisão da CONTRATANTE, <strong>sem gravação em vídeo</strong>: transcrição automática do que foi falado, anotações automáticas geradas pelo Google e relatório com os horários de entrada e saída de cada participante.
+            </p>
+            <p className="text-justify">
+                11.2 O registro é usado exclusivamente para: a) continuidade pedagógica do aluno; b) resumo de cada aula, preparado com auxílio de inteligência artificial, que só integra a ficha do aluno depois de lido, corrigido quando necessário e aprovado pelo CONTRATADO; c) planejamento das próximas aulas e das tarefas, com auxílio de inteligência artificial, a partir do resumo aprovado; d) entrega do histórico pedagógico (dossiê) ao professor que assumir o aluno ou o substituir, por link que só abre com login na plataforma da CONTRATANTE; e) confirmação de que a aula aconteceu, pelos horários de entrada e saída.
+            </p>
+            <p className="text-justify">
+                11.3 <strong>EXTRATO DE PONTUALIDADE.</strong> Quando a CONTRATANTE ativar o recurso, o CONTRATADO terá acesso a um extrato com o horário em que entrou na sala em cada aula, para acompanhamento próprio, sem nota, sem ranking e sem comparação com outros professores. O extrato não altera a remuneração prevista na Cláusula 3ª. Divergências apuradas a partir do registro (por exemplo, aula lançada sem ninguém na sala) geram apenas um aviso para conversa com a coordenação: nenhum ajuste de pagamento é automático, e qualquer ajuste passa pela direção.
+            </p>
+            <p className="text-justify">
+                11.4 A transcrição completa das aulas só é acessível ao CONTRATADO (quanto às suas aulas), à coordenação e à direção da CONTRATANTE. Outros professores do aluno veem apenas o resumo aprovado, e o suporte técnico do fornecedor da plataforma pode ver o resumo aprovado e o cartão do aluno somente para resolver problema técnico.
+            </p>
+            <p className="text-justify">
+                11.5 Além da CONTRATANTE, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino, que armazena os dados e presta suporte técnico; e o provedor de inteligência artificial contratado pela CONTRATANTE (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado.
+            </p>
+            <p className="text-justify">
+                11.6 A transcrição, as anotações e o relatório de presença, inclusive os trechos copiados para o resumo, são eliminados em até 90 (noventa) dias após a aula, na plataforma e na conta Google da CONTRATANTE (os arquivos originais passam pela lixeira do Google, que os elimina em até 30 dias). O resumo aprovado e o cartão do aluno são mantidos enquanto o aluno estudar na CONTRATANTE e eliminados 90 (noventa) dias após a sua saída.
+            </p>
+            <p className="text-justify">
+                11.7 O CONTRATADO pode, a qualquer tempo, ver no aplicativo o registro das suas aulas e pedir, pelo WhatsApp da CONTRATANTE, que as suas aulas deixem de ser registradas ou que o que já foi registrado seja excluído, nos termos da Lei 13.709/2018 (LGPD).
+            </p>
+            <p className="text-justify">
+                11.8 O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATANTE.
+            </p>
+        </div>
+    );
+}
 
 interface TeacherContractProps {
     teacherName: string;
@@ -16,6 +59,13 @@ interface TeacherContractProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    /**
+     * Versão do texto que o professor assinou (gravada no aceite — ver
+     * `lib/contractTerms.ts`). Ausente: contrato assinado mostra o texto de
+     * antes (versão 1) e contrato ainda não assinado mostra a versão atual.
+     * Quem está assinando na tela passa a versão atual explicitamente.
+     */
+    termsVersion?: number;
     displayMode?: 'responsive' | 'a4';
     showPrintButton?: boolean;
     innerRef?: React.RefObject<HTMLDivElement>;
@@ -48,6 +98,7 @@ export function TeacherContractDocument({
     acceptedAt,
     userIp,
     subscriptionId,
+    termsVersion,
     displayMode = 'a4',
     showPrintButton = true,
     innerRef,
@@ -56,6 +107,13 @@ export function TeacherContractDocument({
     const documentRef = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
     const isResponsive = displayMode === 'responsive';
     const schoolIdentity = getTeacherContractReadiness(school, hourlyRate);
+    // Contrato assinado nunca muda de texto: sem versão gravada no aceite, é o
+    // texto de antes da cláusula do registro das aulas.
+    const contractVersion = resolveContractTermsVersion('TEACHER', {
+        signed: Boolean(acceptedAt),
+        recordedVersion: termsVersion,
+    });
+    const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractVersion);
 
     const handlePrint = useReactToPrint({
         contentRef: documentRef,
@@ -298,6 +356,8 @@ export function TeacherContractDocument({
                             10.2 O CONTRATADO compromete-se a utilizar referido material exclusivamente para a execução das aulas vinculadas à CONTRATANTE, sendo vedada sua reprodução, distribuição, compartilhamento, adaptação, comercialização ou utilização para fins próprios ou de terceiros.
                         </p>
                     </div>
+
+                    {withLessonRecording && <TeacherLessonRecordingClause />}
                 </div>
 
                 <p className="mt-4 text-justify italic text-gray-500">
@@ -373,6 +433,8 @@ export function TeacherContractDocument({
                                 <p><strong>Data:</strong> {new Date(acceptedAt).toLocaleString('pt-BR')}</p>
                                 <p><strong>IP:</strong> {userIp || 'Não registrado'}</p>
                                 <p><strong>ID:</strong> {subscriptionId || 'PENDING'}</p>
+                                {/* Só a partir da versão 2: o selo dos contratos de antes fica como era. */}
+                                {contractVersion > 1 && <p><strong>Versão do texto:</strong> {contractVersion}</p>}
                             </div>
                         </div>
                     </div>
