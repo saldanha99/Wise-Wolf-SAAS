@@ -1,5 +1,7 @@
 /// <reference lib="deno.ns" />
 import {
+  attendanceEvaluationPayload,
+  attendanceIdentity,
   combineAttendanceReports,
   findHeader,
   looksLikeAttendanceReport,
@@ -156,6 +158,104 @@ Deno.test("professor só é reconhecido pela conta Google confirmada, nunca pelo
     organizerEmail: null,
   });
   assertEquals(semIdentidade.teacherSeconds, 0);
+});
+
+// ===== A sala acompanha a troca de professor (20260928110000) ================
+
+Deno.test("aula coberta: a substituta é a professora; a titular que entra é 'outro professor', não aluno", () => {
+  // O que session_state devolve depois da troca: a conta confirmada da
+  // substituta é a professora; a da titular (que passou a aula adiante) não.
+  const identity = attendanceIdentity({
+    attendance_identity: {
+      teacher_emails: ["Substituta@Example.com"],
+      other_teacher_emails: ["titular@example.com"],
+    },
+    teacher_google_email: "substituta@example.com",
+    // A sala ainda tinha a titular de coanfitriã (cobertura atestada depois).
+    room: { cohost_email: "titular@example.com" },
+  });
+  assertEquals(identity, {
+    teacherEmails: ["substituta@example.com"],
+    otherTeacherEmails: ["titular@example.com"],
+  });
+  const rows = [
+    {
+      name: "Titular",
+      email: "titular@example.com",
+      joinedAt: START,
+      leftAt: null,
+      durationSeconds: 300,
+    },
+    {
+      name: "Substituta",
+      email: "substituta@example.com",
+      joinedAt: "2026-09-26T13:02:00.000Z",
+      leftAt: null,
+      durationSeconds: 1680,
+    },
+    {
+      name: "Aluno",
+      email: "aluno@example.com",
+      joinedAt: "2026-09-26T13:03:00.000Z",
+      leftAt: null,
+      durationSeconds: 1620,
+    },
+  ];
+  const summary = summarizeAttendance(rows, {
+    ...identity,
+    organizerEmail: "escola@example.com",
+  });
+  assertEquals(summary.participants.map((p) => p.role), [
+    "OTHER_TEACHER",
+    "TEACHER",
+    "STUDENT",
+  ]);
+  // A titular não vira "professor na sala" nem minutos do aluno.
+  assertEquals(summary.teacherSeconds, 1680);
+  assertEquals(summary.teacherFirstJoinAt, "2026-09-26T13:02:00.000Z");
+  assertEquals(summary.studentSeconds, 1620);
+  assertEquals(summary.studentFirstJoinAt, "2026-09-26T13:03:00.000Z");
+});
+
+Deno.test("identidade da presença: banco anterior (sem o campo) segue a regra da onda 1; lista estranha não vira professor", () => {
+  assertEquals(
+    attendanceIdentity({
+      teacher_google_email: "Prof@Example.com",
+      room: { cohost_email: "prof.antiga@example.com" },
+    }),
+    {
+      teacherEmails: ["prof@example.com", "prof.antiga@example.com"],
+      otherTeacherEmails: [],
+    },
+  );
+  // O campo do banco manda: sem conta de professor, ninguém é o professor —
+  // nem a coanfitriã que era de outra pessoa.
+  assertEquals(
+    attendanceIdentity({
+      attendance_identity: { teacher_emails: [], other_teacher_emails: [] },
+      teacher_google_email: null,
+      room: { cohost_email: "titular@example.com" },
+    }),
+    { teacherEmails: [], otherTeacherEmails: [] },
+  );
+  // Conta que aparece nas duas listas é da professora (a volta ao titular).
+  assertEquals(
+    attendanceIdentity({
+      attendance_identity: {
+        teacher_emails: ["titular@example.com"],
+        other_teacher_emails: ["titular@example.com", "substituta@example.com"],
+      },
+    }),
+    {
+      teacherEmails: ["titular@example.com"],
+      otherTeacherEmails: ["substituta@example.com"],
+    },
+  );
+  // Forma inesperada: cai na regra antiga, sem inventar professor.
+  assertEquals(
+    attendanceIdentity({ attendance_identity: "x", room: null }),
+    { teacherEmails: [], otherTeacherEmails: [] },
+  );
 });
 
 Deno.test("duração ausente sai de entrada × saída; planilha sem cabeçalho é erro", () => {
@@ -383,4 +483,30 @@ Deno.test("relatórios combinados: ordem de criação, ids guardados e planilha 
   );
   assertEquals(nenhuma.parseError, "attendance_header_not_found");
   assertEquals(nenhuma.rows, []);
+});
+
+Deno.test("avaliação de presença diz ao banco quando a reunião ainda está aberta (extrato não mede aula em andamento)", () => {
+  const fechada = {
+    name: "conferenceRecords/a",
+    startTime: "2026-09-26T13:00:00Z",
+    endTime: "2026-09-26T13:31:00Z",
+  };
+  assertEquals(
+    attendanceEvaluationPayload([fechada], true),
+    { conference_count: 1, report_found: true, conference_open: false },
+  );
+  // Queda e reentrada: a segunda conferência ainda não terminou.
+  assertEquals(
+    attendanceEvaluationPayload([fechada, {
+      name: "conferenceRecords/b",
+      startTime: "2026-09-26T13:33:00Z",
+      endTime: "",
+    }], false),
+    { conference_count: 2, report_found: false, conference_open: true },
+  );
+  // Sala que nem abriu: nada aberto, zero conferências.
+  assertEquals(
+    attendanceEvaluationPayload([], false),
+    { conference_count: 0, report_found: false, conference_open: false },
+  );
 });

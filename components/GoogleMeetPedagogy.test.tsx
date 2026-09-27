@@ -162,6 +162,62 @@ describe('Parte 2: troca de conta central, transcrição bruta e documentação 
     expect(screen.getByTestId('cohost-sync').textContent).toMatch(/Nova tentativa automática às 12:30/);
   });
 });
+describe('A sala acompanha a troca de professor (20260928110000)',()=>{
+  beforeEach(()=>invoke.mockReset());
+  const handover={from_teacher_name:'Flávio',to_teacher_name:'Bruna',cause:'COVERAGE',at:'2026-09-28T12:00:00Z',documentation_ready:true,after_lesson:false};
+  it('aula coberta com a conta da substituta ainda entrando: sem sala oficial, diz quem entra e quem sai',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,teacher_handover:handover,
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',
+        cohost_sync_pending:true,teacher_handover_pending:true,cohost_error_code:'google_rate_limited',cohost_next_attempt_at:'2026-09-26T15:30:00Z'}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('handover-cohost');
+    expect(screen.getByTestId('teacher-handover').textContent).toMatch(/Aula passada de Flávio para Bruna em .* \(cobertura confirmada\)\. Quem revisa o resumo desta aula é quem a deu\./);
+    expect(screen.getByTestId('handover-cohost').textContent).toMatch(/A conta Google de Bruna entra como coanfitriã desta sala e a de Flávio sai\. Até isso acontecer, o link da sala não é mandado a ninguém/);
+    expect(screen.getByTestId('handover-cohost').textContent).toMatch(/Nova tentativa automática às 12:30/);
+    // O aluno esperaria numa sala que só o ausente abre: nada de "Entrar na sala oficial".
+    expect(screen.queryByText(/Entrar na sala oficial/)).toBeNull();
+    expect(screen.queryByTestId('cohost-sync')).toBeNull();
+  });
+  it('depois do acerto a sala volta a ser oferecida',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,teacher_handover:handover,
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',
+        cohost_sync_pending:false,teacher_handover_pending:false}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByTestId('teacher-handover');
+    expect(screen.getByRole('link',{name:/Entrar na sala oficial/})).toHaveAttribute('href','https://meet.google.com/abc-defg-hij');
+    expect(screen.queryByTestId('handover-cohost')).toBeNull();
+  });
+  it('substituto sem conta ou sem termo: explica que a transcrição fica desligada e a aula segue pelo link de sempre',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,teacher_handover:{...handover,documentation_ready:false},
+      session:{documentation_consent:false,documentation_blocked:true,documentation_blocked_reason:'HANDOVER_UNCONSENTED'},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED',teacher_handover_pending:true}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/Esta aula passou para Bruna, que ainda não confirmou a conta Google ou não autorizou a versão vigente do termo/);
+    expect(screen.queryByText(/revogou o registro/)).toBeNull();
+    expect(screen.queryByText(/Entrar na sala oficial/)).toBeNull();
+    // Sem aceite, não se promete o acerto do coanfitrião.
+    expect(screen.queryByTestId('handover-cohost')).toBeNull();
+  });
+  it('aula dada por outro professor ainda sem a troca: diz o motivo, não "revogou"',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,
+      session:{documentation_consent:false,documentation_blocked:true,documentation_blocked_reason:'TAUGHT_BY_OTHER'},
+      room:{state:'READY',meeting_uri:'https://meet.google.com/abc-defg-hij',space_name:'spaces/x',artifacts_state:'ENABLED'}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText(/Esta aula é dada por outro professor e a sessão ainda não passou para ele/);
+    expect(screen.queryByText(/revogou o registro/)).toBeNull();
+    expect(screen.queryByTestId('teacher-handover')).toBeNull();
+  });
+  it('presença: a conta de quem passou a aula aparece como tal, não como aluno',async()=>{
+    invoke.mockResolvedValue({...detail(),raw_access:true,teacher_handover:handover,
+      attendance:{teacher_first_join_at:'2026-09-26T13:02:00Z',teacher_seconds:1680,student_first_join_at:'2026-09-26T13:03:00Z',student_seconds:1620,parse_error:null,
+        participants:[{role:'OTHER_TEACHER',name:'Flávio',joinedAt:'2026-09-26T13:00:00Z',leftAt:'2026-09-26T13:05:00Z',durationSeconds:300},
+          {role:'TEACHER',name:'Bruna',joinedAt:'2026-09-26T13:02:00Z',leftAt:'2026-09-26T13:30:00Z',durationSeconds:1680}]}});
+    render(<LessonPedagogicalSummary sessionId="session"/>);
+    await screen.findByText('Presença pelo relatório do Google');
+    expect(screen.getByText(/Professor que passou a aula: Flávio/)).toBeTruthy();
+    expect(screen.getByText(/Professor: Bruna/)).toBeTruthy();
+  });
+});
 describe('Resumo automático por IA na tela da aula',()=>{
   const aiDetail=(extra:Record<string,unknown>={})=>({...detail(),raw_access:true,summary_ai_enabled:true,summary_ai_model:'google/gemini-3.6-flash',
     summary_ai_pricing:{estimated_usd:0.021,max_output_tokens:8000},...extra});

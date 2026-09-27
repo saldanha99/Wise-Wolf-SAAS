@@ -12,6 +12,7 @@ import {
   readArtifact,
   roomCreationErrorCode,
 } from "./provider.ts";
+import { roomClaimNextStep } from "./core.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message = "") {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -844,6 +845,48 @@ Deno.test("conta nova era membro comum: é promovida, e a antiga sai", async () 
   ]);
   assertEquals(google.calls[1].url.searchParams.get("updateMask"), "role");
   assertEquals(google.calls[1].body, { role: "COHOST" });
+});
+
+Deno.test("aula coberta (troca de professor): a sala pronta acerta o coanfitrião — entra a substituta, sai a titular", async () => {
+  // O que room_claim devolve depois da troca (20260928110000): sala READY com a
+  // conta da substituta gravada e o acerto pendente; até o SYNCED a sala fica
+  // retida (teacher_handover_pending) e não é entregue a ninguém.
+  assertEquals(
+    roomClaimNextStep({
+      claimed: false,
+      room: {
+        state: "READY",
+        space_name: "spaces/nLYkAE855egB",
+        cohost_sync_pending: true,
+      },
+    }),
+    "SYNC_COHOST",
+  );
+  const google = fakePatch([
+    json({
+      members: [
+        member("titular", "titular@gmail.com", "COHOST"),
+        member("aluno", "aluno@gmail.com", "MEMBER"),
+      ],
+    }),
+    json(member("subst", "substituta@gmail.com", "COHOST")),
+    json({}),
+  ]);
+  await new GoogleMeetProvider("t", google.request).ensureCohost(
+    "spaces/nLYkAE855egB",
+    "Substituta@gmail.com",
+  );
+  // A conta nova entra PRIMEIRO (a sala nunca fica sem quem admita o aluno) e só
+  // depois a titular sai; o aluno que estava na lista fica.
+  assertEquals(callsOf(google.calls), [
+    `GET ${MEMBERS_PATH}`,
+    `POST ${MEMBERS_PATH}`,
+    `DELETE ${MEMBERS_PATH}/titular`,
+  ]);
+  assertEquals(google.calls[1].body, {
+    email: "substituta@gmail.com",
+    role: "COHOST",
+  });
 });
 
 Deno.test("falha ao tirar a conta antiga é erro (a fila tenta de novo), com a nova já dentro", async () => {

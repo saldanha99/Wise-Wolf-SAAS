@@ -15,6 +15,7 @@ import { WolfieAssignButton } from './WolfieAssignButton';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
+import TeacherPunctualityCard from './TeacherPunctualityCard';
 import TeacherContractAccept from './TeacherContractAccept';
 
 interface TeacherDashboardProps {
@@ -692,6 +693,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
           {/* Affiliate Link Card */}
           <TeacherAffiliateCard user={user} />
+
+          {/* Extrato de pontualidade: só aparece com o extrato ligado para a escola
+              (desligado até o jurídico liberar — migration 20260928120000). */}
+          <TeacherPunctualityCard />
 
           {/* Schedule Section */}
           <div data-tour="today-lessons" className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">

@@ -518,6 +518,49 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
   desde 22/09 (o gatilho `bookings_sync_student_primary_teacher` já trocava o `professor_id` antes da trava
   da função) — remendada por âncora aqui.
+- **A sala acompanha a troca de professor** (migration `20260928110000`, runbook seção própria, teste
+  `supabase/tests/sala_acompanha_a_troca_de_professor.sql`): a sessão CONGELADA (aceite ou sala) passa para quem
+  **dá** a aula quando a troca é de UMA aula — cobertura confirmada (e a volta ao titular quando ela é desfeita),
+  reposição, antecipação ou experimental com outro professor —, com trilha em
+  `private.lesson_session_teacher_handovers` + revisão `TEACHER_HANDOVER`. Novo professor **pronto** (conta Google
+  confirmada + aceite do termo que vale no fim da aula): a sala fica **retida** (`teacher_handover_pending`, fora do
+  app e do lembrete) até a fila pôr a conta dele como coanfitriã (`room_claim` → `SYNC_COHOST` → `ensureCohost`, sai a
+  do titular); o lançamento dele se liga à sessão (acabou o `MISSING_LOG` falso) e é ele quem revisa o resumo. **Não
+  pronto**: a sessão passa assim mesmo, mas `lesson_session_handover_unconsented` entrou na régua única → sala com a
+  transcrição desligada e link de sempre. Aula dada por outro professor e ainda não trocada também é barrada
+  (`lesson_session_taught_by_other` na régua). ⚠️ **Agendamento recorrente transferido não troca sozinho**: segue o
+  "Replanejar sessão futura" de 12/09. **Sessão congelada que sai da agenda** (remarcada, desmarcada, encerrada pela
+  direção, cancelada) até 24 h depois do fim vira `SUPERSEDED` com a sala desligada; aula com lançamento, auditoria de
+  presença ou documento do Meet não. Roda no `sync_lesson_quality_sessions` (remendo por âncora) e na hora por
+  gatilhos em `class_coverages`/`reschedules`/`lesson_advances` que **nunca derrubam a escrita de origem** (falha =
+  `WARNING [sala da troca]`, a rodada de 15 min refaz). Presença: `session_state.attendance_identity` — quem passou a
+  aula adiante é `OTHER_TEACHER` (nem professor nem aluno). ⚠️ `lesson_session_documentation_blocked`,
+  `sync_lesson_quality_sessions`, `lesson_quality_sources`, `get_my_lesson_rooms`, `official_lesson_link`,
+  `google_meet_backend` e `apply_standing_lesson_recording_consent` foram remendadas por âncora — o teste reprova quem
+  as recriar sem os remendos. `private.google_meet_rooms` é do `supabase_admin`: a troca (dono `postgres`) tem grant
+  só na coluna `teacher_handover_pending`.
+- **Extrato de pontualidade do professor — DESLIGADO até o jurídico** (migration `20260928120000`, runbook seção
+  própria, teste `supabase/tests/extrato_de_pontualidade_do_professor.sql`): `public.teacher_lesson_presence` guarda só
+  números do professor por aula (entrada, minutos na sala, atraso, saída antecipada, status `FOUND`/`NOT_FOUND`/
+  `UNPARSED`/`NO_CONFERENCE`/`NO_ROOM`/`TEACHER_NOT_READY`), sem CSV nem dado do aluno, RLS sem policy e sem grant a
+  ninguém. Alimentada
+  pela avaliação de presença (remendo por âncora em `google_meet_attendance_backend` → `attendance_evaluate`, que nunca
+  derruba a avaliação) e pela varredura de hora em hora (aula sem sala, importação que terminou sem avaliação, troca
+  de professor depois da medição); números recalculados com a conta de quem DÁ a aula — ⚠️ **nunca** os `teacher_*`
+  da importação (eram do titular): sem conta que identifique o professor de hoje, `TEACHER_NOT_READY`. Falta do
+  professor, aula de antes de ligar e **aula que não é do professor da sessão** (`teacher_lesson_presence_given_by_other`:
+  régua única, lançamento de outro professor, agendamento transferido sem lançamento dele) não entram; sala **retida pela
+  troca** no início da aula (`teacher_handover_released_at` > início) é `NO_ROOM` e não abre caso na Central
+  (`meet_attendance_evaluate` remendada por âncora); 90 dias depois da aula (o prazo do relatório no termo v3), purga diária. Leitura só por
+  `get_my_punctuality_extract` (o professor, o dele — cartão no painel) e `get_teacher_punctuality_extract` (direção e
+  coordenação, **um professor por vez**, lista só de nomes em ordem alfabética — aba "Pontualidade" da Central de
+  Qualidade). **Sem nota, média, ranking ou comparação; não toca `class_logs`, folha nem pagamento.** Desligado (sem
+  linha em `private.teacher_punctuality_settings`, o padrão): nada é calculado, as RPCs devolvem `{enabled: false}` e a
+  Central mostra que o extrato depende da liberação do jurídico. ⚠️ **Ligar é fora de qualquer API**:
+  `select private.set_teacher_punctuality_enabled('<escola>', true, 'Parecer do jurídico …')` na VPS, com a referência do
+  parecer; vale para as aulas que começam depois; desligar apaga o extrato da escola. Ao ligar, publique o tour do
+  professor (`data-tour="teacher-punctuality"`) — o `2026-09-28-tempo-na-sala` é só da direção. O `LATE_START` do
+  sistema aparece na Central como "Atraso detectado pelo Meet" (o da família segue "Atraso relatado").
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 

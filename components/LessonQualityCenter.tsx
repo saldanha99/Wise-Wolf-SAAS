@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import StudentHandover from './StudentHandover';
+import TeacherPunctualityPanel from './TeacherPunctualityPanel';
+import { qualityCaseLabel } from '../lib/teacherPunctuality';
 
-type QualityCase = { id: string; student_id: string; student_name: string; teacher_name: string; category: string; status: string; description: string; assigned_to: string | null; created_at: string; events: { id: string; event_type: string; created_at: string; details: Record<string, unknown> }[] };
+type QualityCase = { id: string; student_id: string; student_name: string; teacher_name: string; category: string; source?: string | null; status: string; description: string; assigned_to: string | null; created_at: string; events: { id: string; event_type: string; created_at: string; details: Record<string, unknown> }[] };
 const categories: Record<string, string> = { LATE_START: 'Atraso relatado', EARLY_END: 'Término antecipado', SCHEDULE_CHANGE: 'Mudança de horário', DID_NOT_HAPPEN: 'Aula não realizada', OTHER: 'Relato da família', MISSING_LOG: 'Lançamento pendente', DELIVERY_FAILURE: 'Falha de entrega', MEET_ATTENDANCE: 'Presença no Meet diverge do lançamento', OUTSIDE_ROOM: 'Aula fora da sala da escola' };
 const statuses: Record<string, string> = { OPEN: 'Aberto', IN_REVIEW: 'Em análise', WAITING: 'Aguardando retorno', RESOLVED: 'Resolvido', FOLLOWUP: 'Acompanhamento' };
 const dateOnly = (daysAgo: number) => { const date = new Date(); date.setDate(date.getDate() - daysAgo); return date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); };
@@ -19,6 +21,8 @@ export default function LessonQualityCenter() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [handover, setHandover] = useState<string | null>(null);
+  // Aba do extrato de pontualidade (20260928120000): um professor por vez.
+  const [tab, setTab] = useState<'cases' | 'punctuality'>('cases');
   const load = useCallback(async () => {
     setBusy(true); setError('');
     try {
@@ -40,6 +44,11 @@ export default function LessonQualityCenter() {
   const metrics = [['planned', 'Sessões previstas'], ['eligible', 'Auditorias criadas'], ['sent', 'Enviadas'], ['delivered', 'Entregues'], ['read', 'Lidas'], ['responded', 'Com retorno'], ['unknown', 'Não acompanhadas'], ['failed', 'Falhas / incertas'], ['missing_log', 'Sem lançamento há 24h'], ['unverified_contact', 'Contato não verificado']];
   return <div className="space-y-5 text-slate-800 dark:text-slate-100">
     <header><h1 className="text-2xl font-bold">Central de qualidade</h1><p className="mt-2 text-sm text-slate-500">Relatos da família, registros operacionais e o relatório de presença do Meet para análise humana. Silêncio não significa satisfação; nenhum desses avisos altera o pagamento — são para conversar com o professor.</p></header>
+    <div role="tablist" aria-label="Central de qualidade" className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+      <button type="button" role="tab" aria-selected={tab === 'cases'} onClick={() => setTab('cases')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'cases' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Casos e indicadores</button>
+      <button type="button" role="tab" data-tour="quality-punctuality-tab" aria-selected={tab === 'punctuality'} onClick={() => setTab('punctuality')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'punctuality' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Pontualidade</button>
+    </div>
+    {tab === 'punctuality' ? <TeacherPunctualityPanel /> : <>
     <div className="flex flex-wrap items-end gap-3">
       <label className="text-sm">De<input aria-label="Data inicial" type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>
       <label className="text-sm">Até<input aria-label="Data final" type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>
@@ -51,7 +60,7 @@ export default function LessonQualityCenter() {
     <h2 className="text-lg font-semibold">Fila de acompanhamento ({cases.filter(c => c.status !== 'RESOLVED').length} em aberto)</h2>
     {!cases.length && !busy && <p className="rounded-xl border p-5 text-slate-500">Nenhum caso na fila. Confira também os indicadores de entrega e ausência de retorno.</p>}
     <div className="space-y-3">{cases.map(c => <article key={c.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-      <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{categories[c.category] || c.category} · {c.student_name}</h3><span className="text-xs text-slate-500">{statuses[c.status]} · {new Date(c.created_at).toLocaleDateString('pt-BR')}</span></div>
+      <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{qualityCaseLabel(c.category, c.source, categories)} · {c.student_name}</h3><span className="text-xs text-slate-500">{statuses[c.status]} · {new Date(c.created_at).toLocaleDateString('pt-BR')}</span></div>
       <p className="mt-1 text-xs text-slate-500">Professor: {c.teacher_name || 'Não identificado'}</p><p className="mt-2 whitespace-pre-wrap text-sm">{c.description}</p>
       <div className="mt-3 flex gap-4 text-sm"><button className="font-semibold text-blue-600" onClick={() => { setSelected(c); setStatus(c.status === 'OPEN' ? 'IN_REVIEW' : c.status); setAssigned(c.assigned_to || ''); setNote(''); }}>Analisar e registrar decisão</button><button className="text-blue-600" onClick={() => setHandover(c.student_id)}>Dossiê pedagógico</button></div>
     </article>)}</div>
@@ -65,5 +74,6 @@ export default function LessonQualityCenter() {
       <details><summary className="cursor-pointer text-sm">Histórico de evidências e decisões</summary>{selected.events.map(e => <div key={e.id} className="mt-2 border-t py-2 text-xs"><p>{e.event_type} · {new Date(e.created_at).toLocaleString('pt-BR')}</p><pre className="whitespace-pre-wrap break-words font-sans">{JSON.stringify(e.details, null, 2)}</pre></div>)}</details>
     </form>}
     {handover && <div className="rounded-xl border p-5"><button className="mb-3 text-sm underline" onClick={() => setHandover(null)}>Fechar dossiê</button><StudentHandover studentId={handover} /></div>}
+    </>}
   </div>;
 }
