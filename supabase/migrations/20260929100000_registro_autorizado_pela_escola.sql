@@ -103,7 +103,7 @@ Para que usamos
 • Resumo da aula: depois de cada aula, um resumo é preparado automaticamente com ajuda de inteligência artificial (IA). Ele só entra na ficha do aluno depois que o professor lê, corrige se precisar e aprova.
 • Planejar a próxima aula e a tarefa de casa, com ajuda de IA, a partir do resumo aprovado.
 • Troca de professor: se o aluno passar para outro professor ou tiver aula com um substituto, esse professor recebe o histórico pedagógico (o dossiê) por um link que só abre com login na plataforma da escola.
-• Cartão do aluno: o professor anota o objetivo do aluno, os temas que o engajam e como ele prefere ser corrigido. A IA pode sugerir itens, mas só entra o que o professor revisar. Nunca guardamos informação sobre saúde, religião, política, família ou dinheiro. Para menores de 18 anos, o cartão guarda só interesses pedagógicos (objetivo e temas).
+• Cartão do aluno: o professor anota o objetivo do aluno, os temas que o engajam, os temas a evitar, como ele prefere ser corrigido e observações pedagógicas. A IA pode sugerir itens, mas só entra o que o professor revisar. Nunca guardamos informação sobre saúde, religião, política, família ou dinheiro. Para menores de 18 anos, o cartão guarda só interesses pedagógicos (objetivo e temas).
 • Confirmar que a aula aconteceu, pelos horários de entrada e saída da sala.
 
 Quem vê
@@ -121,6 +121,7 @@ Por quanto tempo
 • No sistema da escola: a transcrição, as anotações e o relatório de presença ficam 90 dias, contados de quando chegam ao sistema (logo depois da aula). Os trechos da aula copiados para o resumo (o texto das anotações e as citações da transcrição) são apagados 90 dias depois da aula, no rascunho e no resumo aprovado.
 • Na conta Google da escola: os arquivos originais (transcrição, anotações e relatório de presença) são apagados 90 dias depois da aula. Eles vão para a lixeira do Google, que os elimina de vez em até 30 dias.
 • O resumo aprovado (objetivo, conteúdos, dificuldades, tarefa e próximo passo) e o cartão do aluno ficam enquanto o aluno estudar na escola e são apagados 90 dias depois que ele deixar a escola.
+• Quando o relatório de presença não bate com o lançamento da aula, o caso aberto para a coordenação guarda os horários de entrada e saída daquela aula pelo tempo necessário para resolvê-lo (e para a escola exercer seus direitos).
 
 Quando este aviso mudar
 • A escola avisa de novo. O pedido para não ser registrado continua valendo.
@@ -128,7 +129,7 @@ Quando este aviso mudar
 Seus direitos
 • Ver o seu registro: os resumos aprovados das suas aulas ficam no aplicativo da escola.
 • Pedir para não ser registrado, a qualquer momento, pelo WhatsApp da escola. A partir daí as aulas seguintes deixam de ser transcritas.
-• Pedir a exclusão do que já foi registrado, pelo WhatsApp da escola.
+• Pedir a exclusão do que já foi registrado, pelo WhatsApp da escola (menos o caso de presença aberto para a coordenação, descrito acima).
 • Pedir informação, correção ou cópia dos seus dados pelo contato de privacidade abaixo.
 
 Quem é responsável pelos dados
@@ -152,7 +153,7 @@ Para que usamos
 • Resumo da aula: depois de cada aula, um resumo é preparado automaticamente com ajuda de inteligência artificial (IA). Ele só entra na ficha do aluno depois que você lê, corrige se precisar e aprova.
 • Planejar a próxima aula e a tarefa de casa, com ajuda de IA, a partir do resumo aprovado.
 • Troca de professor: se o aluno passar para outro professor ou tiver aula com um substituto, esse professor recebe o dossiê pedagógico por um link que só abre com login na plataforma da escola.
-• Cartão do aluno: você anota o objetivo, os temas que engajam e como o aluno prefere ser corrigido. A IA pode sugerir itens, mas só entra o que você revisar. Nunca registre saúde, religião, política, família ou dinheiro. Para menores de 18 anos, só interesses pedagógicos (objetivo e temas).
+• Cartão do aluno: você anota o objetivo, os temas que engajam, os temas a evitar, como o aluno prefere ser corrigido e observações pedagógicas. A IA pode sugerir itens, mas só entra o que você revisar. Nunca registre saúde, religião, política, família ou dinheiro. Para menores de 18 anos, só interesses pedagógicos (objetivo e temas).
 • Confirmar que a aula aconteceu: o Google informa a que horas cada participante entrou e saiu da sala.
 
 Extrato de pontualidade
@@ -177,14 +178,16 @@ Por quanto tempo
 • No sistema da escola: transcrição, anotações e relatório de presença ficam 90 dias, contados de quando chegam ao sistema (logo depois da aula). Os trechos da aula copiados para o resumo (o texto das anotações e as citações da transcrição) são apagados 90 dias depois da aula, no rascunho e no resumo aprovado.
 • Na conta Google da escola: os arquivos originais são apagados 90 dias depois da aula. Eles vão para a lixeira do Google, que os elimina de vez em até 30 dias.
 • O resumo aprovado (objetivo, conteúdos, dificuldades, tarefa e próximo passo) e o cartão do aluno ficam enquanto o aluno estudar na escola e são apagados 90 dias depois que ele deixar a escola.
+• Quando o relatório de presença não bate com o lançamento da aula, o caso aberto para a coordenação guarda os horários de entrada e saída daquela aula pelo tempo necessário para resolvê-lo (e para as partes exercerem seus direitos).
 
 Quando este aviso mudar
 • A escola avisa de novo. O seu pedido para não ser registrado continua valendo.
 
 Seus direitos
 • Ver o registro das suas aulas no aplicativo.
-• Pedir para não ser registrado quando quiser, nesta mesma tela. A partir daí, as suas aulas deixam de ser transcritas.
-• Pedir a exclusão do que já foi registrado, pelo WhatsApp da escola.
+• Pedir para não ser registrado quando quiser, nesta mesma tela ou pelo WhatsApp da escola. A partir daí, as suas aulas deixam de ser transcritas.
+• Pedir a exclusão do que já foi registrado, pelo WhatsApp da escola (menos o caso de presença aberto para a coordenação, descrito acima).
+• Pedir informação, correção ou cópia dos seus dados pelo contato de privacidade abaixo.
 
 Quem é responsável pelos dados
 • A escola: {escola_nome}, {escola_documento}. Contato para assuntos de privacidade: {escola_contato_privacidade}.$notice$,
@@ -209,6 +212,20 @@ begin
     where term.version = 'v4' and (term.kind <> 'NOTICE' or term.body ~* 'autorizo')
   ) then
     raise exception 'aviso_v4_nao_e_aviso';
+  end if;
+  -- O aviso diz o mesmo que a cláusula dos contratos novos: o cartão inteiro
+  -- (temas a evitar e observações) e o caso de presença que fica com a
+  -- coordenação (e a ressalva na exclusão).
+  if exists (
+    select 1 from private.lesson_recording_terms as term
+    where term.version = 'v4' and term.kind = 'NOTICE'
+      and not (term.body like '%temas a evitar%'
+        and term.body like '%observações pedagógicas%'
+        and term.body like '%caso aberto para a coordenação%'
+        and term.body like '%menos o caso de presença%'
+        and term.body like '%contato de privacidade%')
+  ) then
+    raise exception 'aviso_v4_diverge_da_clausula_do_contrato';
   end if;
 end
 $notice_check$;

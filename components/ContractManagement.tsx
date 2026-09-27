@@ -370,7 +370,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                     {offeredTermsVersion === null
                         ? 'A coluna “Contrato” mostra a versão do texto que cada aluno assinou — contrato assinado continua com o texto que foi assinado.'
                         : contractIncludesLessonRecording('STUDENT', offeredTermsVersion)
-                            ? 'Os contratos novos desta escola trazem a Cláusula 8 — Do Registro das Aulas: quem assina já concorda com a transcrição e as anotações automáticas do Google Meet (sem vídeo), o resumo com IA aprovado pelo professor e o relatório de presença. Contrato assinado antes continua com o texto que foi assinado — a coluna “Contrato” mostra a versão de cada um.'
+                            ? 'Os contratos novos desta escola trazem a Cláusula 8 — Do Registro das Aulas: a transcrição e as anotações automáticas do Google Meet (sem vídeo), o resumo com IA aprovado pelo professor e o relatório de presença fazem parte do contrato, e quem assina fica ciente e pode pedir, pelo WhatsApp da escola, para não ser registrado. Contrato assinado antes continua com o texto que foi assinado — a coluna “Contrato” mostra a versão de cada um.'
                             : 'Os contratos novos desta escola não trazem a cláusula do registro das aulas. A coluna “Contrato” mostra a versão do texto que cada aluno assinou.'}
                 </p>
             </div>

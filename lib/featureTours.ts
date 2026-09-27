@@ -455,7 +455,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'contracts-recording-clause',
         view: 'contracts',
         title: 'Os contratos novos já trazem o registro das aulas 📄',
-        text: 'Na escola que decidiu registrar as aulas, o contrato novo do aluno traz a Cláusula 8 — Do Registro das Aulas, e o do professor, a Cláusula 11ª: transcrição e anotações automáticas do Google Meet (sem vídeo), resumo com IA aprovado pelo professor, relatório de presença, quem processa, prazos de 90 dias e direitos. Quem assina já concorda. Contrato assinado antes continua com o texto que foi assinado — a coluna "Contrato" mostra a versão de cada aluno, e o aviso aqui diz o que os contratos novos desta escola trazem.',
+        text: 'Na escola que decidiu registrar as aulas, o contrato novo do aluno traz a Cláusula 8 — Do Registro das Aulas, e o do professor, a Cláusula 11ª: transcrição e anotações automáticas do Google Meet (sem vídeo), resumo com IA aprovado pelo professor, relatório de presença, quem processa, prazos de 90 dias e direitos. O registro faz parte do contrato, e quem assina fica ciente e pode pedir, pelo WhatsApp da escola, para não ser registrado — o mesmo que diz o aviso do registro no app. Contrato assinado antes continua com o texto que foi assinado — a coluna "Contrato" mostra a versão de cada aluno, e o aviso aqui diz o que os contratos novos desta escola trazem.',
       },
     ],
   },

@@ -7,9 +7,10 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3
  * congelou no PDF assinado.
  *
  * A versão 2 traz a Cláusula 11ª — Registro das Aulas (decisão da direção de
- * 27/09/2026: as aulas são registradas por decisão da escola e quem assina o
- * contrato já concorda). A cláusula diz que a CONTRATANTE grava as aulas no
- * Google Meet e contrata o provedor de IA, então só a escola que decidiu isso
+ * 27/09/2026: as aulas são registradas por decisão da escola, o registro
+ * integra a execução do contrato e quem assina fica ciente, com o direito de
+ * pedir para não ser registrado). A cláusula diz que a CONTRATANTE grava as
+ * aulas no Google Meet e contrata o provedor de IA, então só a escola que decidiu isso
  * a oferece (`public.contract_terms_offered_version`, tabela
  * `tenant_contract_terms`; sem decisão = versão 1). A página recebe a versão
  * oferecida junto do convite (edge `tenant-legal-assets`) e devolve a que

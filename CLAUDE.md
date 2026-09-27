@@ -285,7 +285,8 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `list_lesson_recording_consents` (×2),
   `get_my_lesson_records` (×3), roster, snapshot, os três do lote, `create_…_link`, `list_…_requests`,
   `director_pending_counts` — não recrie a partir de texto antigo. ⚠️ **Nada comunica o aviso às famílias atuais**
-  (J13 no RIPD): não dispare lote sem o jurídico.
+  (J13 no RIPD): não dispare lote sem o jurídico. O aviso v4 e a cláusula dos contratos novos
+  (`20260927150000`) dizem a mesma coisa — ver "Contrato com o registro das aulas".
 - **Termo de registro** (migration `20260926120000`): aluno/responsável aceita uma vez por link
   (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
   próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
@@ -624,8 +625,11 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 ## Contrato com o registro das aulas — e o texto assinado que não muda ✅
 
 > Decisão da direção (27/09/2026): as aulas são registradas por decisão da escola e os **novos**
-> contratos trazem a cláusula — quem assina já concorda. Migration `20260927150000`, teste
-> `supabase/tests/versao_do_contrato_no_aceite.sql`. **Não mexe na regra de autorização** (outra frente).
+> contratos trazem a cláusula — o registro integra a execução do contrato e quem assina fica ciente,
+> com direito de pedir para não ser registrado (o modelo "autorizado pela escola com direito de
+> recusa" da migration `20260929100000`, mesma release). Migration `20260927150000`, teste
+> `supabase/tests/versao_do_contrato_no_aceite.sql`. **Não mexe na regra de autorização** — ver
+> "Cláusula × modos de autorização" abaixo.
 
 - **Cláusula:** aluno = `Cláusula 8 — Do Registro das Aulas` (o Foro passa a ser a 9); professor =
   `CLÁUSULA 11ª – REGISTRO DAS AULAS`, no fim, para não renumerar a 3ª/7.3/9ª citadas por número. Resume o
@@ -636,8 +640,24 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `expires_at` nasce na importação); trechos copiados e originais contam da aula. O caso da Central de
   Qualidade guarda os horários da aula divergente (`lesson_quality_case_events.details`) pelo tempo do caso —
   a cláusula diz isso e ressalva na exclusão a pedido. Fornecedores são **operadores**, não "terceiros" da
-  Cláusula 7 (aluno) / 8ª (professor), e a assinatura vale como consentimento expresso. O cartão aparece
-  inteiro (temas a evitar e observações do professor).
+  Cláusula 7 (aluno) / 8ª (professor); o tratamento **integra a execução do contrato** e quem assina fica
+  ciente — **não é termo de consentimento** (a v2 dizia "consente expressamente"; corrigida na integração de
+  27/09, antes de qualquer assinatura: `contract_terms_acceptances` nem existia em produção). O cartão
+  aparece inteiro (temas a evitar e observações do professor) e as sugestões da IA para ele entram nas
+  finalidades.
+- **Cláusula = aviso v4.** A cláusula v2 e o aviso v4 (`private.lesson_recording_terms`, `kind = 'NOTICE'`)
+  dizem a mesma coisa: o que, para quê, quem vê, quem processa, prazos (inclusive o caso de presença),
+  direitos (pedir para não ser registrado pelo WhatsApp da escola — professor também pelo app —, sem
+  prejuízo das aulas nem da remuneração; exclusão; informação/correção/cópia pelo contato de privacidade).
+  `ContractDocument.test.ts` ("cláusula do contrato novo × aviso v4") compara os dois; a migration
+  `20260929100000` recusa aviso v4 sem esses pontos (`aviso_v4_diverge_da_clausula_do_contrato`). Mudou um,
+  mude o outro — contrato já assinado só muda por versão nova.
+- **Cláusula × modos de autorização.** O contrato **não é chave técnica**: no `SCHOOL_DEFAULT` quem tem
+  contrato v1 é registrado igual e o pedido para não registrar vale igual para quem assinou a v2; no
+  `INDIVIDUAL_CONSENT` só o aceite do termo (TERM) autoriza — **o contrato com a cláusula não conta como
+  aceite** (decisão da frente de autorização). `private.contract_lesson_recording_accepted_at` fica sem uso
+  em regra nenhuma. Ao ligar a v2 (`tenant_contract_terms`) em outra escola, ponha-a também no
+  `SCHOOL_DEFAULT` — senão o contrato descreve mais registro do que o sistema faz.
 - **A cláusula é da escola que decidiu, não da plataforma.** `tenant_contract_terms` diz qual versão cada
   escola oferece aos contratos NOVOS (sem linha = 1); só `school-wise-wolf` nasce com a 2 (one-shot
   `contrato_registro_das_aulas_wise_wolf_20260927`). Mudar a de uma escola é SQL da plataforma e só vale para
@@ -677,8 +697,10 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - ⚠️ Versão nova de texto = número novo em **três** lugares: `lib/contractTerms.ts`, a tabela
   `contract_terms_versions` (migration nova) e `register-teacher/contract-terms.ts`.
   `lib/contractTerms.test.ts` confere os três.
-- ⚠️ **Registro no `release.sh`** (o arquivo não foi editado nesta frente): `MIGRATION_RELATIVES` ←
-  `supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql`; testes SQL ←
+- **Registro no `release.sh`** (feito na integração de 27/09): `MIGRATION_RELATIVES` ←
+  `supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql` (pela ordem do nome, antes das
+  `20260928*` já aplicadas — o release roda as pendentes na ordem do nome, então ela vem ANTES da
+  `20260929100000`; as duas não tocam objeto em comum); testes SQL ←
   `supabase/tests/versao_do_contrato_no_aceite.sql`; `deno test --allow-read --frozen` ←
   `supabase/functions/register-teacher/contract-terms.test.ts`; `deno fmt --check` ←
   `register-teacher/contract-terms.ts` e `.test.ts`. Sem a migration no ar, a matrícula para

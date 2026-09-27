@@ -3,8 +3,10 @@
 -- Decisão da direção: as aulas da escola são registradas (transcrição e
 -- anotações automáticas do Google Meet, resumo pedagógico com IA revisado pelo
 -- professor, relatório de presença) por decisão da escola, e os NOVOS contratos
--- de aluno e de professor trazem a cláusula que diz isso — quem assina já
--- concorda.
+-- de aluno e de professor trazem a cláusula que diz isso — o registro integra a
+-- execução do contrato e quem assina fica ciente, com o direito de pedir para
+-- não ser registrado (o modelo "autorizado pela escola com direito de recusa"
+-- da migration 20260929100000; a cláusula diz o mesmo que o aviso v4).
 --
 -- O texto dos contratos é montado na tela (components/ContractDocument.tsx e
 -- components/TeacherContractDocument.tsx). Sem versão, colocar a cláusula
@@ -40,10 +42,13 @@
 --     com "function digest(text, unknown) does not exist". Aqui ela é refeita
 --     com search_path vazio e extensions.digest.
 --
--- ⚠️ Esta migration NÃO muda a regra de autorização do registro das aulas. Ela
--- só guarda a base (private.contract_lesson_recording_accepted_at) para quando
--- a direção decidir usá-la — isso é outra frente. A base já segue a regra do
--- termo para menor: aluno de quem a escola exige responsável
+-- ⚠️ Esta migration NÃO muda a regra de autorização do registro das aulas (a
+-- frente dela é 20260929100000, que roda DEPOIS desta pela ordem do nome e não
+-- toca objeto nenhum daqui). Ela só guarda a base
+-- (private.contract_lesson_recording_accepted_at), que regra nenhuma usa: no
+-- SCHOOL_DEFAULT a autorização não depende do contrato; no INDIVIDUAL_CONSENT
+-- o contrato não conta como aceite do termo. A base segue a regra do termo
+-- para menor: aluno de quem a escola exige responsável
 -- (private.lesson_recording_guardian_reason — KIDS, MINOR ou AGE_UNKNOWN) só
 -- conta com contrato assinado pelo responsável.
 --
@@ -277,8 +282,13 @@ create trigger trg_contract_terms_acceptance_immutable
   for each row execute function private.contract_terms_acceptance_is_immutable();
 
 -- ---------------------------------------------------------------------------
--- 4. Base da autorização futura (NÃO usada por regra nenhuma ainda)
+-- 4. Base registrada (NÃO usada por regra nenhuma)
 -- ---------------------------------------------------------------------------
+-- Decidido na integração com 20260929100000 (registro autorizado pela escola):
+-- no SCHOOL_DEFAULT a autorização vem do modo da escola (contrato OU decisão,
+-- com direito de recusa) e não depende do contrato; no INDIVIDUAL_CONSENT só o
+-- aceite do termo (kind TERM) autoriza — o contrato com a cláusula NÃO conta
+-- como aceite. Esta função fica como base registrada, para consulta.
 -- Quando a pessoa aceitou, pela última vez, um contrato cujo texto traz a
 -- cláusula do registro das aulas. Nulo = nunca aceitou. Para aluno de quem a
 -- escola exige responsável (a mesma régua do termo:

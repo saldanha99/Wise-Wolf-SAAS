@@ -1,5 +1,7 @@
 import React from 'react';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
@@ -295,15 +297,25 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
       // O caso aberto pela divergência de presença guarda os horários.
       'registro do caso aberto para a coordenação',
       'ressalvado o registro de caso previsto no Parágrafo 4º',
-      // O cartão inteiro, inclusive o texto livre do professor.
+      // O cartão inteiro, inclusive o texto livre do professor, e as sugestões da IA.
       'temas a evitar',
       'observações pedagógicas anotados pelo professor',
-      // A Cláusula 7 exige consentimento expresso para terceiros.
+      'itens para o cartão pedagógico do aluno',
+      // Operadores não são "terceiros" da Cláusula 7, e o registro integra a
+      // execução do contrato — o modelo "autorizado pela escola com direito de
+      // recusa" (aviso v4), não um termo de consentimento.
       'não são terceiros para os fins da Cláusula 7',
-      'consente expressamente',
+      'integra a execução deste contrato',
+      'sem prejuízo das aulas',
+      'pelo contato de privacidade da CONTRATADA',
+      'inclusive o pedido para que as aulas deixem de ser registradas',
     ]) {
       expect(clause, expected).toContain(expected);
     }
+    // A versão 2 ainda não foi assinada por ninguém (27/09/2026) e deixou de
+    // falar como termo de consentimento: quem assina fica ciente e pode recusar.
+    expect(clause).not.toMatch(/consente|autorizo/i);
+    expect(clause).not.toContain('que concorda, em nome do aluno');
     // A primeira redação prometia 90 dias depois da aula para tudo, e o
     // sistema conta as cópias de quando chegam.
     expect(clause).not.toContain('inclusive os trechos copiados para o resumo, são eliminados');
@@ -344,9 +356,18 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
       'ressalvado o registro de caso previsto no item 11.6',
       'atuam como operadores',
       'Para os fins da Cláusula 8ª',
+      // O cartão inteiro e as sugestões da IA, como no aviso v4.
+      'temas a evitar',
+      'observações pedagógicas',
+      'itens para o cartão do aluno',
+      // Direito de recusa pelo app ou pelo WhatsApp, sem prejuízo, e o contato de privacidade.
+      'sem prejuízo das suas aulas nem da remuneração prevista na Cláusula 3ª',
+      'no aplicativo da CONTRATANTE ou pelo WhatsApp dela',
+      'pelo contato de privacidade da CONTRATANTE',
     ]) {
       expect(clauses, expected).toContain(expected);
     }
+    expect(clauses).not.toMatch(/consente|autorizo|de forma expressa/i);
     expect(clauses).not.toContain('inclusive os trechos copiados para o resumo, são eliminados');
   });
 
@@ -354,5 +375,88 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
     const html = teacher({ acceptedAt: SIGNED_AT, termsVersion: 2 });
     expect(html).toContain('CLÁUSULA 11ª – REGISTRO DAS AULAS');
     expect(text(html)).toContain('Versão do texto: 2');
+  });
+});
+
+/**
+ * O contrato novo (versão 2) e o aviso v4 do registro das aulas autorizado pela
+ * escola (private.lesson_recording_terms, kind NOTICE, migration 20260929100000)
+ * falam do MESMO registro: o que é registrado, para quê, quem processa, prazos e
+ * direitos — inclusive o pedido para não ser registrado pelo WhatsApp da escola.
+ * Mudou um, mude o outro (e, no contrato já assinado, crie versão nova).
+ */
+describe('cláusula do contrato novo × aviso v4 do registro das aulas', () => {
+  const migration = readFileSync(
+    join(__dirname, '..', 'supabase', 'migrations', '20260929100000_registro_autorizado_pela_escola.sql'),
+    'utf8',
+  );
+  const notices = [...migration.matchAll(/\$notice\$([\s\S]*?)\$notice\$/g)].map(match => match[1]);
+  const [studentNotice, teacherNotice] = notices;
+  const school = completeSchool();
+  const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  const studentClause = plain(renderToStaticMarkup(React.createElement(ContractDocument, {
+    studentName: 'Aluna de teste', studentCPF: '52998224725', studentAddress: 'Endereço de teste',
+    studentEmail: 'aluna@example.test', studentPhone: '5511999999999', planName: 'Plano Semestral',
+    planValue: '261,00', totalValue: '1.566,00', planDuration: 6, startDate: '23/09/2026',
+    endDate: '23/03/2027', dueDay: 10, classFrequency: 2, school, showPrintButton: false, termsVersion: 2,
+  })));
+  const teacherClause = plain(renderToStaticMarkup(React.createElement(TeacherContractDocument, {
+    teacherName: 'Professor de teste', teacherRG: '', teacherCPF: '', teacherAddress: '', teacherBirthDate: '',
+    school, hourlyRate: 8, rateUnit: 'PER_LESSON', showPrintButton: false, termsVersion: 2,
+  })));
+
+  it('o aviso v4 existe para aluno e professor', () => {
+    expect(notices).toHaveLength(2);
+    expect(studentNotice).toContain('Aviso sobre o registro das aulas');
+    expect(teacherNotice).toContain('Aviso sobre o registro das suas aulas');
+  });
+
+  it.each([
+    ['aluno', () => studentNotice, () => studentClause],
+    ['professor', () => teacherNotice, () => teacherClause],
+  ])('%s: o que, para quê, quem processa, prazos e direitos batem', (_label, notice, clause) => {
+    const pairs: Array<[RegExp, RegExp]> = [
+      [/não é gravada em vídeo/, /sem gravação em vídeo/],
+      [/transcreve a aula/, /transcrição automática/],
+      [/anotações automáticas/, /anotações automáticas/],
+      [/entrou e saiu|entrada e saída/, /entrada e saída/],
+      [/inteligência artificial \(IA\)/, /inteligência artificial/],
+      [/Planejar a próxima aula/, /planeja(r as|mento das) próximas aulas/],
+      [/link que só abre com login/, /link que só abre com login/],
+      [/temas a evitar/, /temas a evitar/],
+      [/observações pedagógicas/, /observações pedagógicas/],
+      [/saúde, religião, política, família ou dinheiro/, /saúde, religião, política, família ou dinheiro/],
+      [/Google Workspace/, /Google Workspace/],
+      [/OpenRouter/, /OpenRouter/],
+      [/treinar modelos desligado/, /treinar modelos desligado/],
+      [/suporte técnico/, /suporte técnico/],
+      [/90 dias, contados de quando chegam ao sistema/, /90 \(noventa\) dias, contados de quando chegam ao sistema/],
+      [/lixeira do Google, que os elimina de vez em até 30 dias/, /lixeira do Google, que os elimina de vez em até 30 \(trinta\) dias/],
+      [/90 dias depois que ele deixar a escola/, /90 \(noventa\) dias após a sua saída/],
+      [/caso aberto para a coordenação/, /caso aberto para a coordenação/],
+      [/pedir para não ser registrado/i, /deixem de ser registradas/],
+      [/WhatsApp da escola/, /WhatsApp da CONTRATAD[AO]|WhatsApp dela/],
+      [/exclusão do que já foi registrado/, /exclu(são|ído)/],
+      [/contato de privacidade/, /contato de privacidade/],
+    ];
+    for (const [inNotice, inClause] of pairs) {
+      expect(notice(), `aviso: ${inNotice}`).toMatch(inNotice);
+      expect(clause(), `cláusula: ${inClause}`).toMatch(inClause);
+    }
+    // Nenhum dos dois é termo de consentimento.
+    expect(notice()).not.toMatch(/autorizo|consente/i);
+    expect(clause()).not.toMatch(/autorizo|consente/i);
+  });
+
+  it('professor: sem prejuízo do pagamento e recusa também no app, nos dois textos', () => {
+    expect(teacherNotice).toContain('sem prejuízo das suas aulas nem do seu pagamento');
+    expect(teacherClause).toContain('sem prejuízo das suas aulas nem da remuneração');
+    expect(teacherNotice).toContain('pelo WhatsApp da escola');
+    expect(teacherClause).toContain('no aplicativo da CONTRATANTE ou pelo WhatsApp dela');
+  });
+
+  it('aluno: o responsável pelo menor pode pedir para não registrar, nos dois textos', () => {
+    expect(studentNotice).toContain('o pedido pode ser feito pelo responsável legal');
+    expect(studentClause).toContain('inclusive o pedido para que as aulas deixem de ser registradas');
   });
 });
