@@ -487,3 +487,59 @@ Deno.test("botão: sem aula aprovada, teto ou IA desligada não chamam a IA", as
     assert(h.urls.length === 0, `chamou a IA (${expected})`);
   }
 });
+
+Deno.test("botão com a IA desligada ou sem preço pausa a escola: o botão some em vez de falhar a cada clique", async () => {
+  for (
+    const [aiEnabled, pricing, reason, minutes] of [
+      [false, PRICING, "card_suggestions_not_configured", 360],
+      [true, null, "card_suggestions_pricing_required", 60],
+    ] as const
+  ) {
+    const h = harness({});
+    const outcome = await runManualSuggestions({
+      tenantId: "escola-a",
+      actorId: "55555555-5555-4555-8555-555555555555",
+      studentId: "66666666-6666-4666-8666-666666666666",
+      aiEnabled,
+      key: "chave-falsa",
+      model: "google/gemini-3.6-flash",
+      loadPricing: () => Promise.resolve(pricing),
+      deadline: 120_000,
+    }, h.deps);
+    assert(
+      outcome.status === "SKIPPED" && outcome.reason === reason,
+      JSON.stringify(outcome),
+    );
+    const paused = h.calls.find((call) => call.action === "auto_pause");
+    assert(
+      paused?.scope.tenantId === "escola-a" &&
+        paused.payload.reason === reason &&
+        paused.payload.minutes === minutes,
+      `botão não pausou a escola (${reason}): ${JSON.stringify(h.calls)}`,
+    );
+    assert(h.urls.length === 0, `chamou a IA (${reason})`);
+  }
+  // A pausa que falha não muda a resposta ao professor.
+  const h = harness({});
+  const outcome = await runManualSuggestions({
+    tenantId: "escola-a",
+    actorId: "55555555-5555-4555-8555-555555555555",
+    studentId: "66666666-6666-4666-8666-666666666666",
+    aiEnabled: false,
+    key: "",
+    model: "",
+    loadPricing: () => Promise.resolve(null),
+    deadline: 120_000,
+  }, {
+    ...h.deps,
+    backend: (action) =>
+      action === "auto_pause"
+        ? Promise.reject(new Error("card_suggestions_storage_unavailable"))
+        : Promise.resolve({}),
+  });
+  assert(
+    outcome.status === "SKIPPED" &&
+      outcome.reason === "card_suggestions_not_configured",
+    JSON.stringify(outcome),
+  );
+});

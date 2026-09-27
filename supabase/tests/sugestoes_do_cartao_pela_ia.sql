@@ -15,6 +15,14 @@
 -- Não depende de dado real nem da fila global: a fila é lida só para a escola
 -- da fixture. Horários relativos a now(); o gasto do mês é conferido antes de
 -- qualquer recuo de created_at (o recuo de 2 min só testa a espera do botão).
+-- O texto do termo é dado de migration: o teste garante uma v2 (a versão que
+-- não declara a IA) e uma vigente que declara a IA (v3 em diante), e usa a
+-- vigente nas fixtures — numa cópia só-estrutura, e quando sair a v4, também.
+--
+-- Correções da revisão (27/09): a frase da aula só chega a quem pode ler a
+-- transcrição daquela aula (o segundo professor do aluno não vê, não decide,
+-- não pede leitura); namoro/luto/HIV/droga caem na lista; sugestão fechada
+-- some 90 dias depois; com a IA desligada o botão não aparece.
 \set ON_ERROR_STOP on
 
 begin;
@@ -68,6 +76,28 @@ exception when others then
 end;
 $$;
 
+-- ===== Termos: uma v2 (sem IA) e uma vigente que declara a IA ==================
+do $terms$
+declare
+  v_audience text;
+  v_next integer;
+begin
+  foreach v_audience in array array['STUDENT', 'TEACHER'] loop
+    insert into private.lesson_recording_terms (audience, version, body, published_at)
+    values (v_audience, 'v2', repeat('Termo v2 provisório do teste das sugestões do cartão. ', 6),
+      now() - interval '500 days')
+    on conflict (audience, version) do nothing;
+    if not private.lesson_recording_term_declares_ai((private.lesson_recording_current_term(v_audience)).version) then
+      select greatest(3, coalesce(max(substring(term.version from '^v([0-9]+)$')::integer), 0) + 1) into v_next
+        from private.lesson_recording_terms as term where term.audience = v_audience;
+      insert into private.lesson_recording_terms (audience, version, body, published_at)
+      values (v_audience, 'v' || v_next, repeat('Termo provisório que declara a IA (teste das sugestões do cartão). ', 6),
+        now() - interval '1 day');
+    end if;
+  end loop;
+end
+$terms$;
+
 -- ===== 0. Privilégios e remendos ==============================================
 do $privileges$
 begin
@@ -101,8 +131,13 @@ begin
     'régua interna ou gatilho da fila executável de fora');
   perform pg_temp.sug_assert(
     strpos(pg_get_functiondef('private.meet_summary_month_spend(text)'::regprocedure), 'student_card_suggestion_month_spend') > 0
-    and strpos(pg_get_functiondef('public.get_meet_summary_budget()'::regprocedure), 'card_suggestion_count') > 0,
-    'o teto do resumo não conta as leituras para o cartão');
+    and strpos(pg_get_functiondef('public.get_meet_summary_budget()'::regprocedure), 'card_suggestion_count') > 0
+    and strpos(pg_get_functiondef('public.get_meet_summary_budget()'::regprocedure), 'card_suggestions_pause_reason') > 0,
+    'o teto do resumo não conta as leituras para o cartão (ou a tela não sabe da pausa)');
+  perform pg_temp.sug_assert(
+    not has_function_privilege('authenticated', 'private.student_card_suggestion_source_visible(uuid,uuid)', 'EXECUTE')
+    and not has_function_privilege('service_role', 'private.student_card_suggestion_source_visible(uuid,uuid)', 'EXECUTE'),
+    'régua de quem lê a frase da aula executável de fora');
 end
 $privileges$;
 
@@ -121,6 +156,21 @@ begin
     and private.student_card_suggestion_text_blocked('meu amigo João gosta de rock')
     and private.student_card_suggestion_text_blocked('o chefe dele cobra inglês'),
     'termo sensível passou pela lista de exclusão');
+  -- O prompt proíbe namoro (família), saúde, morte e droga; a lista não pegava.
+  perform pg_temp.sug_assert(
+    private.student_card_suggestion_text_blocked('namoro')
+    and private.student_card_suggestion_text_blocked('Please, I don''t want to talk about dating anymore.')
+    and private.student_card_suggestion_text_blocked('relacionamentos')
+    and private.student_card_suggestion_text_blocked('we broke up')
+    and private.student_card_suggestion_text_blocked('HIV')
+    and private.student_card_suggestion_text_blocked('Covid-19')
+    and private.student_card_suggestion_text_blocked('My dog died last week.')
+    and private.student_card_suggestion_text_blocked('my grandma passed away')
+    and private.student_card_suggestion_text_blocked('está de luto')
+    and private.student_card_suggestion_text_blocked('álcool')
+    and private.student_card_suggestion_text_blocked('drugs')
+    and private.student_card_suggestion_text_blocked('rehab'),
+    'namoro, luto, doença ou droga passou pela lista de exclusão');
   perform pg_temp.sug_assert(
     private.student_card_suggestion_text_blocked('ligar para 11 98765-4321')
     and private.student_card_suggestion_text_blocked('fulano@exemplo.com')
@@ -155,6 +205,8 @@ declare
   v_teacher uuid := gen_random_uuid();
   v_teacher_none uuid := gen_random_uuid();
   v_other_teacher uuid := gen_random_uuid();
+  -- Segundo professor do aluno adulto: edita o cartão, mas não deu as aulas.
+  v_teacher2 uuid := gen_random_uuid();
   v_outsider uuid := gen_random_uuid();
   v_adult uuid := gen_random_uuid();
   v_minor uuid := gen_random_uuid();
@@ -180,16 +232,19 @@ declare
     || E'[10:00:40] Aluno Adulto: Please correct me only at the end, I lose my train of thought.\n'
     || E'[10:01:00] Aluno Adulto: My mother is sick and I am worried.\n'
     || E'[10:01:30] Aluno Adulto: Please do not spoil the series for me.\n'
-    || E'[10:02:00] Aluno Adulto: I want to travel to Canada next year.';
+    || E'[10:02:00] Aluno Adulto: I want to travel to Canada next year.\n'
+    || E'[10:02:30] Aluno Adulto: Please, I don''t want to talk about dating anymore.';
   v_result jsonb; v_run uuid; v_run_old uuid; v_card jsonb; v_list jsonb;
   v_spent_before numeric; v_spent_after numeric;
   v_goal uuid; v_topic uuid; v_style uuid; v_avoid uuid;
   v_version integer;
   v_blocked boolean;
   v_count integer;
+  v_term_student text := (private.lesson_recording_current_term('STUDENT')).version;
+  v_term_teacher text := (private.lesson_recording_current_term('TEACHER')).version;
 begin
   perform pg_temp.sug_as(null);
-  v_all := array[v_admin, v_coord, v_teacher, v_teacher_none, v_other_teacher, v_outsider,
+  v_all := array[v_admin, v_coord, v_teacher, v_teacher_none, v_other_teacher, v_teacher2, v_outsider,
     v_adult, v_minor, v_v2, v_revoked, v_turning, v_left];
   insert into public.tenants (id, name) values (v_tid, 'Cartão IA fixture'), ('cartao-ia-outra', 'Outra escola');
   insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data)
@@ -199,12 +254,14 @@ begin
      set tenant_id = case when id = v_outsider then 'cartao-ia-outra' else v_tid end,
          lifecycle_status = 'active', is_test_account = true,
          role = case when id in (v_admin, v_outsider) then 'SCHOOL_ADMIN' when id = v_coord then 'COORDINATOR'
-           when id in (v_teacher, v_teacher_none, v_other_teacher) then 'TEACHER' else 'STUDENT' end,
+           when id in (v_teacher, v_teacher_none, v_other_teacher, v_teacher2) then 'TEACHER' else 'STUDENT' end,
          full_name = case when id = v_adult then 'Aluno Adulto' when id = v_minor then 'Aluna Menor'
            when id = v_teacher then 'Professora Cartao' when id = v_teacher_none then 'Professor Sem Termo'
-           when id = v_other_teacher then 'Professor Outro' else 'Fixture Cartao IA' end,
+           when id = v_other_teacher then 'Professor Outro' when id = v_teacher2 then 'Professor Segundo'
+           else 'Fixture Cartao IA' end,
          birth_date = case when id in (v_adult, v_v2, v_revoked, v_turning, v_left) then v_adult_birth end,
-         professor_id = case when id in (v_adult, v_minor, v_v2, v_revoked, v_turning, v_left) then v_teacher end
+         professor_id = case when id in (v_adult, v_minor, v_v2, v_revoked, v_turning, v_left) then v_teacher end,
+         professor_id2 = case when id = v_adult then v_teacher2 end
    where id = any (v_all);
   insert into public.tenant_memberships (tenant_id, user_id, role, status)
     select tenant_id, id, role, 'ACTIVE' from public.profiles where id = any (v_all)
@@ -216,20 +273,23 @@ begin
   perform pg_temp.sug_as(null);
   perform pg_temp.sug_assert(not private.student_learning_card_minor(v_adult)
     and private.student_learning_card_minor(v_minor), 'fixture: régua de menor do cartão diferente do esperado');
+  perform pg_temp.sug_assert(private.lesson_recording_term_declares_ai(v_term_student)
+    and private.lesson_recording_term_declares_ai(v_term_teacher), 'fixture: termo vigente não declara a IA');
 
   -- Aceites do termo, antes de todas as aulas (a mais antiga é de 20 dias
-  -- atrás): v3 (declara a IA) para quase todos; v2 para um aluno; o menor pelo
-  -- responsável; o professor sem termo não respondeu. Um aluno revoga DEPOIS
-  -- da aula.
+  -- atrás): a vigente (v3 em diante, declara a IA) para quase todos; v2 para um
+  -- aluno; o menor pelo responsável; o professor sem termo não respondeu. Um
+  -- aluno revoga DEPOIS da aula.
   insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
     signer_relation, term_audience, term_version, source, verification, verified_phone, recorded_by, decided_at)
   select v_tid, fixture.subject, 'STUDENT', 'ACCEPTED', 'Fixture', fixture.relation, 'STUDENT', fixture.version, 'APP',
     'WHATSAPP_CODE', '(11) •••••-3333', null, now() - interval '30 days'
-  from (values (v_adult, 'SELF', 'v3'), (v_minor, 'GUARDIAN', 'v3'), (v_v2, 'SELF', 'v2'),
-    (v_revoked, 'SELF', 'v3'), (v_turning, 'SELF', 'v3'), (v_left, 'SELF', 'v3')) as fixture(subject, relation, version);
+  from (values (v_adult, 'SELF', v_term_student), (v_minor, 'GUARDIAN', v_term_student), (v_v2, 'SELF', 'v2'),
+    (v_revoked, 'SELF', v_term_student), (v_turning, 'SELF', v_term_student), (v_left, 'SELF', v_term_student))
+    as fixture(subject, relation, version);
   insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
     signer_relation, term_audience, term_version, source, recorded_by, decided_at) values
-    (v_tid, v_teacher, 'TEACHER', 'ACCEPTED', 'Professora Cartao', 'SELF', 'TEACHER', 'v3', 'APP', v_teacher, now() - interval '30 days');
+    (v_tid, v_teacher, 'TEACHER', 'ACCEPTED', 'Professora Cartao', 'SELF', 'TEACHER', v_term_teacher, 'APP', v_teacher, now() - interval '30 days');
   insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
     signer_relation, source, recorded_by, reason, decided_at) values
     (v_tid, v_revoked, 'STUDENT', 'REVOKED', 'Direcao Fixture', 'SCHOOL', 'SCHOOL', v_admin,
@@ -318,6 +378,12 @@ begin
   v_result := pg_temp.sug_backend('sources', v_tid, v_other_teacher, s_adult, '{"trigger":"MANUAL"}');
   perform pg_temp.sug_assert(v_result ->> 'error' = 'sem_permissao',
     'professor sem vínculo leu a aula pelo botão: ' || v_result::text);
+  -- Segundo professor do aluno: edita o cartão, mas a transcrição desta aula é
+  -- da professora que a deu (a régua da fonte bruta de session_detail).
+  v_result := pg_temp.sug_backend('sources', v_tid, v_teacher2, s_adult, '{"trigger":"MANUAL"}');
+  perform pg_temp.sug_assert(v_result ->> 'error' = 'sem_permissao'
+    and strpos(v_result::text, 'football') = 0,
+    'segundo professor pediu à IA a leitura da aula de outra professora: ' || left(v_result::text, 300));
 
   -- ===== 5. Reserva: modelo, fontes, hash, uma por vez ============================
   v_result := pg_temp.sug_backend('claim', v_tid, null, s_adult, jsonb_build_object('trigger', 'AUTOMATIC',
@@ -379,9 +445,12 @@ begin
         'artifact_id', a_minor, 'quote', 'I want to travel to Canada next year.'),
       -- Campo que não existe.
       jsonb_build_object('field', 'notes', 'value', 'observação livre',
-        'artifact_id', a_adult, 'quote', 'Please do not spoil the series for me.'))));
+        'artifact_id', a_adult, 'quote', 'Please do not spoil the series for me.'),
+      -- Namoro (família), com citação que existe na aula: a lista derruba.
+      jsonb_build_object('field', 'avoid_topics', 'value', 'namoro',
+        'artifact_id', a_adult, 'quote', 'Please, I don''t want to talk about dating anymore.'))));
   perform pg_temp.sug_assert(v_result ->> 'status' = 'SUCCEEDED' and (v_result ->> 'saved')::int = 4
-    and (v_result ->> 'dropped')::int = 9, 'conferência das sugestões errada: ' || v_result::text);
+    and (v_result ->> 'dropped')::int = 10, 'conferência das sugestões errada: ' || v_result::text);
   perform pg_temp.sug_assert(
     (select count(*) from private.student_card_suggestions where run_id = v_run and status = 'PENDING') = 4
     and (select bool_and(evidence_expires_at = now() - interval '120 minutes' + interval '90 days'
@@ -392,10 +461,11 @@ begin
       and value = 'Apresentar resultados em reuniões com o time dos EUA'),
     'sugestões gravadas sem a evidência, sem o prazo ou sem normalizar');
   perform pg_temp.sug_assert(not exists (select 1 from private.student_card_suggestions
-      where student_id = v_adult and (value ilike '%mãe%' or evidence_quote ilike '%mother%' or value ilike '%Cartao%')),
-    'sugestão com família, saúde ou nome de pessoa foi gravada');
+      where student_id = v_adult and (value ilike '%mãe%' or evidence_quote ilike '%mother%' or value ilike '%Cartao%'
+        or value = 'namoro' or evidence_quote ilike '%dating%')),
+    'sugestão com família, namoro, saúde ou nome de pessoa foi gravada');
   perform pg_temp.sug_assert((select status = 'SUCCEEDED' and cost_usd = 0.0012 and suggestions_saved = 4
-      and suggestions_dropped = 9 and reasoning_tokens = 120 from private.student_card_suggestion_runs where id = v_run),
+      and suggestions_dropped = 10 and reasoning_tokens = 120 from private.student_card_suggestion_runs where id = v_run),
     'livro da leitura sem custo ou contagens');
   -- Custo real no lugar da estimativa, no teto do resumo.
   v_spent_after := private.meet_summary_month_spend(v_tid);
@@ -438,8 +508,48 @@ begin
     and pg_temp.sug_list(v_outsider, v_adult) ->> 'error' = 'sem_permissao'
     and pg_temp.sug_list(v_adult, v_adult) ->> 'error' = 'sem_permissao',
     'quem não edita o cartão viu as sugestões (e as frases da aula)');
-  perform pg_temp.sug_assert((pg_temp.sug_list(v_coord, v_adult) ->> 'ok')::boolean,
+  perform pg_temp.sug_assert((pg_temp.sug_list(v_coord, v_adult) ->> 'ok')::boolean
+    and jsonb_array_length(pg_temp.sug_list(v_coord, v_adult) -> 'suggestions') = 4,
     'coordenação não viu as sugestões');
+  -- A frase é trecho literal da transcrição: o segundo professor (que edita o
+  -- cartão, mas não deu a aula) não a vê — só a contagem —, e o botão não lê
+  -- aula de outro professor para ele.
+  v_list := pg_temp.sug_list(v_teacher2, v_adult);
+  perform pg_temp.sug_assert((v_list ->> 'ok')::boolean
+    and jsonb_array_length(v_list -> 'suggestions') = 0
+    and (v_list ->> 'other_lessons_pending')::int = 4
+    and strpos(v_list::text, 'football') = 0 and strpos(v_list::text, 'meetings') = 0
+    and not (v_list ->> 'can_request')::boolean
+    and v_list ->> 'request_reason' = 'aula_de_outro_professor',
+    'segundo professor leu a frase da aula de outra professora: ' || left(v_list::text, 400));
+  perform pg_temp.sug_assert((pg_temp.sug_list(v_teacher, v_adult) ->> 'other_lessons_pending')::int = 0,
+    'a professora da aula não viu as próprias sugestões');
+  -- Quem lê as frases fica registrado por aula (sem texto); quem não leu, não.
+  perform pg_temp.sug_assert(
+    exists (select 1 from private.google_meet_access_events
+      where actor_id = v_teacher and lesson_session_id = s_adult and action = 'CARD_SUGGESTIONS_READ')
+    and not exists (select 1 from private.google_meet_access_events
+      where actor_id = v_teacher2 and action = 'CARD_SUGGESTIONS_READ'),
+    'leitura das frases da aula sem registro (ou registrada para quem não leu)');
+  -- IA desligada na instalação: a edge pausa a escola e o botão some, com o
+  -- motivo — em vez de aparecer e falhar a cada clique.
+  perform pg_temp.sug_backend('auto_pause', v_tid, null, null,
+    '{"reason":"card_suggestions_not_configured","minutes":360}');
+  v_list := pg_temp.sug_list(v_teacher, v_adult);
+  perform pg_temp.sug_assert(not (v_list ->> 'can_request')::boolean
+    and v_list ->> 'request_reason' = 'card_suggestions_not_configured'
+    and v_list -> 'request_class_date' = 'null'::jsonb
+    and jsonb_array_length(v_list -> 'suggestions') = 4,
+    'botão apareceu com a IA desligada: ' || left(v_list::text, 300));
+  perform pg_temp.sug_as(v_admin);
+  perform pg_temp.sug_assert(public.get_meet_summary_budget() ->> 'card_suggestions_pause_reason'
+      = 'card_suggestions_not_configured',
+    'a tela da direção anuncia as sugestões com a IA desligada');
+  perform pg_temp.sug_as(null);
+  update private.student_card_suggestion_settings set paused_until = null, pause_reason = null
+   where tenant_id = v_tid;
+  perform pg_temp.sug_assert((pg_temp.sug_list(v_teacher, v_adult) ->> 'can_request')::boolean,
+    'botão não voltou depois da pausa');
   v_list := pg_temp.sug_list(v_teacher, v_minor);
   perform pg_temp.sug_assert((v_list ->> 'is_minor')::boolean and jsonb_array_length(v_list -> 'suggestions') = 1
     and v_list -> 'suggestions' -> 0 ->> 'field' = 'engaging_topics', 'lista do menor errada');
@@ -451,6 +561,10 @@ begin
   select id into v_avoid from private.student_card_suggestions where student_id = v_adult and field = 'avoid_topics' and status = 'PENDING';
   perform pg_temp.sug_assert(pg_temp.sug_decide(v_other_teacher, v_goal, true, 0) ->> 'error' = 'sem_permissao',
     'professor sem vínculo aceitou sugestão');
+  perform pg_temp.sug_assert(pg_temp.sug_decide(v_teacher2, v_goal, true, 0) ->> 'error' = 'sem_permissao'
+    and pg_temp.sug_decide(v_teacher2, v_avoid, false, 0) ->> 'error' = 'sem_permissao'
+    and (select status = 'PENDING' from private.student_card_suggestions where id = v_goal),
+    'segundo professor decidiu sugestão da aula de outra professora');
   v_result := pg_temp.sug_decide(v_teacher, v_goal, true, 0);
   perform pg_temp.sug_assert((v_result ->> 'ok')::boolean
     and v_result -> 'learning_card' ->> 'real_goal' = 'Apresentar resultados em reuniões com o time dos EUA'
@@ -490,6 +604,14 @@ begin
   -- ===== 10. Botão do professor: permissão, espera, repetida não volta ============
   v_result := pg_temp.sug_backend('target', v_tid, v_other_teacher, null, jsonb_build_object('student_id', v_adult));
   perform pg_temp.sug_assert(v_result ->> 'error' = 'sem_permissao', 'professor sem vínculo usou o botão');
+  v_result := pg_temp.sug_backend('target', v_tid, v_teacher2, null, jsonb_build_object('student_id', v_adult));
+  perform pg_temp.sug_assert(v_result -> 'session_id' = 'null'::jsonb
+    and v_result ->> 'reason' = 'aula_de_outro_professor',
+    'botão do segundo professor escolheu aula de outra professora: ' || v_result::text);
+  v_result := pg_temp.sug_backend('claim', v_tid, v_teacher2, s_adult_old, jsonb_build_object('trigger', 'MANUAL',
+    'model_id', 'google/gemini-3.6-flash', 'estimated_usd', 0.004, 'source_artifact_ids', jsonb_build_array(a_adult_old)));
+  perform pg_temp.sug_assert(v_result ->> 'error' = 'sem_permissao',
+    'segundo professor reservou leitura da aula de outra professora: ' || v_result::text);
   v_result := pg_temp.sug_backend('target', v_tid, v_teacher, null, jsonb_build_object('student_id', v_adult));
   perform pg_temp.sug_assert(v_result ->> 'session_id' = s_adult_old::text and (v_result ->> 'budget_ok')::boolean,
     'botão não escolheu a aula aprovada ainda não lida: ' || v_result::text);
@@ -582,7 +704,16 @@ begin
      set lifecycle_status = 'offboarded', status = 'Inativo', offboarding_status = 'COMPLETED',
          offboarding_completed_at = now() - interval '100 days'
    where id = v_left;
+  -- Fechada guarda só o hash do valor (reversível por dicionário) e quem
+  -- decidiu: a descartada há 91 dias some; a aceita há 89 fica.
+  update private.student_card_suggestions set closed_at = now() - interval '91 days' where id = v_avoid;
+  update private.student_card_suggestions set closed_at = now() - interval '89 days' where id = v_goal;
   v_result := private.purge_student_card_suggestions();
+  perform pg_temp.sug_assert(
+    not exists (select 1 from private.student_card_suggestions where id = v_avoid)
+    and exists (select 1 from private.student_card_suggestions where id = v_goal)
+    and (v_result ->> 'closed_deleted')::int >= 1,
+    'sugestão fechada há mais de 90 dias continuou guardando o hash: ' || v_result::text);
   perform pg_temp.sug_assert(
     (select status = 'EXPIRED' and close_reason = 'evidence_retention' and value = '' and evidence_quote is null
        from private.student_card_suggestions where student_id = v_turning and field = 'engaging_topics')

@@ -28,7 +28,13 @@
 --     trechos da aula nos resumos (private.lesson_memory_retention_policy); o
 --     texto de uma sugestão só vive enquanto ela espera decisão — aceita,
 --     descartada, vencida ou retirada, fica só o hash (para não sugerir de novo)
---     e quem decidiu.
+--     e quem decidiu, e a linha inteira some 90 dias depois de fechar (o hash
+--     sem sal de um valor curto se reverte por dicionário);
+--   * a FRASE da aula só chega a quem pode ler a transcrição daquela aula — a
+--     régua da fonte bruta de session_detail (20260926180000): o professor da
+--     própria aula, a coordenação e a direção. Outro professor do aluno (segundo
+--     professor, agenda, transferência pendente) edita o cartão, mas não vê,
+--     não decide nem pede leitura de sugestão de aula alheia.
 --
 -- Não usa wolfie_memory_items (é lido pelo Wolfie, outra finalidade).
 --
@@ -110,7 +116,8 @@ comment on table private.student_card_suggestion_runs is
 
 -- As sugestões. O texto (valor e citação) só existe enquanto a sugestão espera
 -- decisão; fechada (aceita, descartada, vencida ou retirada), fica o hash do
--- valor — para não sugerir de novo o que o professor já decidiu — e quem/quando.
+-- valor — para não sugerir de novo o que o professor já decidiu — e quem/quando,
+-- por 90 dias (purge_student_card_suggestions apaga a linha depois).
 create table if not exists private.student_card_suggestions (
   id uuid primary key default gen_random_uuid(),
   tenant_id text not null,
@@ -167,7 +174,7 @@ alter table private.student_card_suggestions owner to postgres;
 alter table private.student_card_suggestions enable row level security;
 revoke all on private.student_card_suggestions from public, anon, authenticated, service_role;
 comment on table private.student_card_suggestions is
-  'Sugestões da IA para o cartão do aluno, cada uma com a frase da aula que a sustenta. Só entram no cartão pelo aceite do professor (decide_student_card_suggestion). Texto só enquanto PENDING; a citação vence 90 dias depois da aula.';
+  'Sugestões da IA para o cartão do aluno, cada uma com a frase da aula que a sustenta. Só entram no cartão pelo aceite do professor (decide_student_card_suggestion). Texto só enquanto PENDING; a citação vence 90 dias depois da aula; fechada, a linha (só hash e quem decidiu) some 90 dias depois.';
 
 -- Pausa automática por escola (edge sem IA configurada: flag, chave, modelo ou
 -- preço) e a última estimativa (a fila só oferece trabalho que cabe no teto).
@@ -197,6 +204,10 @@ language sql immutable set search_path = '' as $$
   select pg_catalog.jsonb_build_object(
     -- A citação é trecho da aula: o mesmo prazo dos trechos nos resumos.
     'evidence_days', (private.lesson_memory_retention_policy() ->> 'lesson_excerpts_days')::integer,
+    -- Sugestão fechada (aceita, descartada, vencida, retirada) guarda só o hash
+    -- do valor — que um dicionário de palavras curtas reverte ("avoid_topics:
+    -- namoro") — e quem decidiu: some 90 dias depois de fechar.
+    'closed_days', (private.lesson_memory_retention_policy() ->> 'lesson_excerpts_days')::integer,
     'after_leaving_days', (private.lesson_memory_retention_policy() ->> 'after_leaving_days')::integer,
     -- Automática: resumo aprovado nos últimos 14 dias.
     'auto_window_days', 14,
@@ -227,8 +238,11 @@ $$;
 -- acento, minúsculas). "*" no fim = prefixo de palavra; com espaço = expressão.
 -- A lista é CONSERVADORA de propósito: falso positivo só descarta uma sugestão
 -- (o professor escreve à mão, se quiser); falso negativo guardaria dado
--- sensível. ⚠️ A edge tem a MESMA lista (student-card-suggestions/core.ts,
--- BLOCKED_TERMS); source.test.ts reprova se as duas divergirem.
+-- sensível. Exemplo aceito: 'relacionament*'/'relationship*' derruba também
+-- "relacionamento com clientes" — sem eles, "não quero falar de relacionamento"
+-- (namoro) entrava no "o que evitar". ⚠️ A edge tem a MESMA lista
+-- (student-card-suggestions/core.ts, BLOCKED_TERMS); source.test.ts reprova se
+-- as duas divergirem.
 create or replace function private.student_card_suggestion_blocked_terms()
 returns text[]
 language sql immutable set search_path = '' as $$
@@ -242,7 +256,9 @@ language sql immutable set search_path = '' as $$
     'dores', 'lesao', 'lesoes', 'mental', 'health*', 'sick*', 'ill', 'illness*', 'disease*',
     'doctor*', 'medicine*', 'medication*', 'therap*', 'psycholog*', 'psychiatr*', 'anxi*',
     'autism*', 'autistic', 'adhd', 'disabilit*', 'disabled', 'allerg*', 'pregnan*', 'surger*',
-    'symptom*', 'injur*', 'pain', 'painful', 'hurt*',
+    'symptom*', 'injur*', 'pain', 'painful', 'hurt*', 'hiv', 'aids', 'covid*', 'morte', 'mortes',
+    'morreu', 'morrer', 'falec*', 'luto', 'velorio', 'funeral*', 'died', 'death', 'deaths',
+    'passed away', 'grief', 'grieving', 'mourning', 'alcool*', 'alcohol*', 'drogas', 'drug*', 'rehab',
     -- religião
     'religi*', 'igreja*', 'church*', 'deus', 'deuses', 'god', 'gods', 'jesus', 'cristo',
     'christian*', 'cristao', 'crista', 'cristaos', 'cristas', 'cristianismo', 'biblia*', 'bible*',
@@ -261,7 +277,8 @@ language sql immutable set search_path = '' as $$
     -- família
     'familia', 'familias', 'familiares', 'family', 'families', 'pai', 'mae', 'papai', 'mamae',
     'filho', 'filha', 'filhos', 'filhas', 'enteado*', 'enteada*', 'esposa', 'esposo', 'marido',
-    'maridos', 'namorad*', 'noivo', 'noiva', 'noivad*', 'irmao', 'irma', 'irmaos', 'irmas', 'avo',
+    'maridos', 'namorad*', 'namoro', 'namoros', 'namorar', 'dating', 'relationship*', 'relacionament*',
+    'breakup', 'breakups', 'break up', 'broke up', 'noivo', 'noiva', 'noivad*', 'irmao', 'irma', 'irmaos', 'irmas', 'avo',
     'avos', 'neto', 'neta', 'netos', 'netas', 'tio', 'tia', 'tios', 'tias', 'primo', 'prima',
     'primos', 'primas', 'sogr*', 'cunhad*', 'genro', 'nora', 'casament*', 'casado', 'casada',
     'casados', 'divorc*', 'bebe', 'bebes', 'meus pais', 'seus pais', 'os pais', 'dos pais',
@@ -542,21 +559,31 @@ do $patch_budget$
 declare
   v_def text;
   v_anchor constant text := '''failed_count'', (select pg_catalog.count(*) from private.google_meet_summary_generations as generation';
+  v_spend constant text :=
+    E'-- Sugestões da IA para o cartão do aluno (20260928130000): já dentro de spent_usd.\n'
+    || E'    ''card_suggestion_count'', (select pg_catalog.count(*) from private.student_card_suggestion_runs as card_run\n'
+    || E'      where card_run.tenant_id = v_tenant and card_run.created_at >= private.meet_summary_month_start()),\n'
+    || E'    ''card_suggestion_spent_usd'', pg_catalog.round(private.student_card_suggestion_month_spend(v_tenant), 4),\n';
+  -- Pausa das sugestões (IA não configurada, sem preço, provedor recusou): a
+  -- tela não anuncia o recurso desligado.
+  v_pause constant text :=
+    E'    ''card_suggestions_pause_reason'', (select card_settings.pause_reason\n'
+    || E'      from private.student_card_suggestion_settings as card_settings\n'
+    || E'      where card_settings.tenant_id = v_tenant and card_settings.paused_until > pg_catalog.now()),\n    ';
 begin
   v_def := pg_catalog.pg_get_functiondef('public.get_meet_summary_budget()'::regprocedure);
-  if pg_catalog.strpos(v_def, 'card_suggestion_count') > 0 then
+  if pg_catalog.strpos(v_def, 'card_suggestions_pause_reason') > 0 then
     return;
   end if;
   if (pg_catalog.length(v_def) - pg_catalog.length(pg_catalog.replace(v_def, v_anchor, '')))
        / pg_catalog.length(v_anchor) <> 1 then
     raise exception 'sugestoes_do_cartao_ancora_mudou: get_meet_summary_budget';
   end if;
+  -- Cópia de ensaio com a primeira versão desta migration: o gasto já entrou,
+  -- falta só a pausa. Produção nunca teve essa versão.
   execute pg_catalog.replace(v_def, v_anchor,
-    E'-- Sugestões da IA para o cartão do aluno (20260928130000): já dentro de spent_usd.\n'
-    || E'    ''card_suggestion_count'', (select pg_catalog.count(*) from private.student_card_suggestion_runs as card_run\n'
-    || E'      where card_run.tenant_id = v_tenant and card_run.created_at >= private.meet_summary_month_start()),\n'
-    || E'    ''card_suggestion_spent_usd'', pg_catalog.round(private.student_card_suggestion_month_spend(v_tenant), 4),\n    '
-    || v_anchor);
+    case when pg_catalog.strpos(v_def, 'card_suggestion_count') > 0 then '' else v_spend end
+    || v_pause || v_anchor);
 end
 $patch_budget$;
 
@@ -588,15 +615,39 @@ begin
 end;
 $$;
 
+-- Quem vê a FRASE da aula de uma sugestão (trecho literal da transcrição que
+-- ninguém revisou): a régua da fonte bruta de session_detail (20260926180000,
+-- v_raw) — coordenação e direção DESTA escola, ou o professor da própria aula —,
+-- com perfil ativo, como a reserva manual do resumo (20260927110000). Outro
+-- professor do aluno edita o cartão (private.student_learning_card_can_edit
+-- admite segundo professor, agenda e transferência pendente), mas lê só o
+-- resumo aprovado daquela aula; aqui ele não vê, não decide nem pede leitura.
+create or replace function private.student_card_suggestion_source_visible(p_session uuid, p_viewer uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select pg_catalog.lower(coalesce(viewer.lifecycle_status, '')) = 'active'
+      and ((viewer.role in ('SCHOOL_ADMIN', 'COORDINATOR') and viewer.tenant_id = session.tenant_id)
+        or (viewer.role = 'TEACHER' and session.teacher_id = viewer.id))
+    from public.lesson_sessions as session
+    join public.profiles as viewer on viewer.id = p_viewer
+    where session.id = p_session
+  ), false);
+$$;
+
 -- A aula que o botão lê: a aprovada mais recente do aluno (últimos 90 dias)
--- que a IA pode ler e que ainda não teve leitura bem-sucedida. Sem ela, o
--- motivo: já sugerido, sem aceite do termo que declara a IA, ou sem aula
--- aprovada com a transcrição ainda guardada.
-create or replace function private.student_card_suggestion_target(p_tenant text, p_student uuid)
+-- que a IA pode ler, cuja fonte quem pede pode ler (a régua acima) e que ainda
+-- não teve leitura bem-sucedida. Sem ela, o motivo: já sugerido, sem aceite do
+-- termo que declara a IA, aula dada por outro professor, ou sem aula aprovada
+-- com a transcrição ainda guardada. (A versão de dois argumentos, sem quem
+-- pede, escolhia aula de qualquer professor do aluno: sai, onde existir.)
+drop function if exists private.student_card_suggestion_target(text, uuid);
+create or replace function private.student_card_suggestion_target(p_tenant text, p_student uuid, p_viewer uuid)
 returns jsonb
 language sql stable security definer set search_path = '' as $$
   with candidates as (
     select session.id, session.class_date, session.scheduled_end_at,
+      private.student_card_suggestion_source_visible(session.id, p_viewer) as visible,
       private.student_card_suggestion_block(session.id) as block,
       exists (select 1 from private.student_card_suggestion_runs as run
         where run.lesson_session_id = session.id and run.status = 'SUCCEEDED') as done,
@@ -612,7 +663,7 @@ language sql stable security definer set search_path = '' as $$
   ), chosen as (
     select candidate.id, candidate.class_date
     from candidates as candidate
-    where candidate.block is null and not candidate.done and not candidate.running
+    where candidate.visible and candidate.block is null and not candidate.done and not candidate.running
     order by candidate.scheduled_end_at desc
     limit 1
   )
@@ -620,12 +671,14 @@ language sql stable security definer set search_path = '' as $$
     when exists (select 1 from chosen) then (
       select pg_catalog.jsonb_build_object('session_id', chosen.id, 'class_date', chosen.class_date, 'reason', null)
       from chosen)
-    when exists (select 1 from candidates where block is null and not done and running) then
+    when exists (select 1 from candidates where visible and block is null and not done and running) then
       pg_catalog.jsonb_build_object('session_id', null, 'reason', 'em_andamento')
-    when exists (select 1 from candidates where block is null and done) then
+    when exists (select 1 from candidates where visible and block is null and done) then
       pg_catalog.jsonb_build_object('session_id', null, 'reason', 'ja_sugerido')
-    when exists (select 1 from candidates where block = 'sem_aceite_da_ia') then
+    when exists (select 1 from candidates where visible and block = 'sem_aceite_da_ia') then
       pg_catalog.jsonb_build_object('session_id', null, 'reason', 'sem_aceite_da_ia')
+    when exists (select 1 from candidates where not visible and block is null) then
+      pg_catalog.jsonb_build_object('session_id', null, 'reason', 'aula_de_outro_professor')
     else pg_catalog.jsonb_build_object('session_id', null, 'reason', 'sem_aula_aprovada')
   end;
 $$;
@@ -753,7 +806,7 @@ begin
     if not private.student_card_suggestion_actor_can_edit(p_tenant_id, v_student, p_actor_id) then
       raise exception 'sem_permissao' using errcode = '42501';
     end if;
-    return private.student_card_suggestion_target(p_tenant_id, v_student)
+    return private.student_card_suggestion_target(p_tenant_id, v_student, p_actor_id)
       || pg_catalog.jsonb_build_object('budget_ok', private.student_card_suggestion_budget_ok(p_tenant_id, 0.01));
   end if;
 
@@ -767,8 +820,12 @@ begin
     if v_trigger is null or v_trigger not in ('AUTOMATIC', 'MANUAL') then
       raise exception 'invalid_suggestion_trigger' using errcode = '22023';
     end if;
+    -- Botão: quem pede edita o cartão E pode ler a fonte DESTA aula (a régua
+    -- da transcrição bruta) — senão a IA leria, a pedido dele, a aula de outro
+    -- professor, e ele veria as frases dela.
     if v_trigger = 'MANUAL'
-       and not private.student_card_suggestion_actor_can_edit(s.tenant_id, s.student_id, p_actor_id) then
+       and (not private.student_card_suggestion_actor_can_edit(s.tenant_id, s.student_id, p_actor_id)
+         or not private.student_card_suggestion_source_visible(s.id, p_actor_id)) then
       raise exception 'sem_permissao' using errcode = '42501';
     end if;
     v_reason := case when v_trigger = 'AUTOMATIC' then private.student_card_suggestion_auto_block(s.id)
@@ -982,66 +1039,105 @@ $$;
 -- ---------------------------------------------------------------------------
 
 -- Sugestões esperando decisão, com a frase da aula e a data. Só para quem pode
--- editar o cartão (a mesma régua do cartão). Menor: só objetivo e temas — os
--- outros campos nem saem daqui (e são apagados pela varredura). Aula que
--- deixou de estar aprovada ou foi apagada a pedido não mostra sugestão.
+-- editar o cartão (a mesma régua do cartão) e, de cada aula, só as sugestões
+-- cuja FRASE a pessoa pode ler (private.student_card_suggestion_source_visible:
+-- professor da aula, coordenação, direção); das outras vai só a contagem. Cada
+-- aula cujas frases saem daqui fica em google_meet_access_events
+-- (CARD_SUGGESTIONS_READ), como a leitura da documentação em session_detail.
+-- Menor: só objetivo e temas — os outros campos nem saem daqui (e são apagados
+-- pela varredura). Aula que deixou de estar aprovada ou foi apagada a pedido
+-- não mostra sugestão. Sem a IA configurada (a edge pausou a escola por
+-- configuração), o botão não aparece: o motivo vai em request_reason.
 create or replace function public.get_student_card_suggestions(p_student_id uuid)
 returns jsonb
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql security definer set search_path = '' as $$
 declare
+  v_uid uuid := (select auth.uid());
   v_tenant text := public._my_tenant_id();
   v_fields text[];
   v_target jsonb;
+  v_pause text;
+  v_suggestions jsonb;
+  v_other integer;
+  v_sessions uuid[];
 begin
-  if (select auth.uid()) is null or v_tenant is null or p_student_id is null
+  if v_uid is null or v_tenant is null or p_student_id is null
      or not private.student_learning_card_can_edit(v_tenant, p_student_id) then
     raise exception 'sem_permissao' using errcode = '42501';
   end if;
   v_fields := private.student_card_suggestion_fields(p_student_id);
-  v_target := private.student_card_suggestion_target(v_tenant, p_student_id);
+  v_target := private.student_card_suggestion_target(v_tenant, p_student_id, v_uid);
+  -- A edge pausou a escola porque a IA não está configurada (flag, chave,
+  -- modelo, preço, crédito): o botão só falharia.
+  select settings.pause_reason into v_pause
+    from private.student_card_suggestion_settings as settings
+   where settings.tenant_id = v_tenant
+     and settings.paused_until > pg_catalog.now()
+     and settings.pause_reason in ('card_suggestions_not_configured', 'card_suggestions_pricing_required',
+       'card_suggestions_provider_rejected', 'card_suggestions_provider_credits');
+
+  with listed as (
+    select suggestion.*,
+      private.student_card_suggestion_source_visible(suggestion.lesson_session_id, v_uid) as visible
+    from private.student_card_suggestions as suggestion
+    where suggestion.tenant_id = v_tenant and suggestion.student_id = p_student_id
+      and suggestion.status = 'PENDING'
+      and suggestion.field = any (v_fields)
+      and suggestion.evidence_expires_at > pg_catalog.now()
+      and private.student_card_suggestion_approved_version(suggestion.lesson_session_id) is not null
+      and not private.google_meet_session_records_erased(suggestion.lesson_session_id)
+  )
+  select
+    coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', listed.id,
+        'field', listed.field,
+        'value', listed.value,
+        'quote', listed.evidence_quote,
+        'class_date', session.class_date,
+        'teacher_name', teacher.full_name,
+        'already_in_card', private.student_card_suggestion_in_card(
+          v_tenant, p_student_id, listed.field, listed.value_sha256),
+        'evidence_expires_at', listed.evidence_expires_at,
+        'created_at', listed.created_at)
+      order by session.class_date desc,
+        pg_catalog.array_position(array['real_goal', 'engaging_topics', 'correction_style', 'avoid_topics']::text[],
+          listed.field),
+        listed.created_at, listed.id) filter (where listed.visible), '[]'::jsonb),
+    (pg_catalog.count(*) filter (where not listed.visible))::integer,
+    coalesce(pg_catalog.array_agg(distinct listed.lesson_session_id) filter (where listed.visible), '{}'::uuid[])
+    into v_suggestions, v_other, v_sessions
+    from listed
+    join public.lesson_sessions as session
+      on session.id = listed.lesson_session_id and session.tenant_id = listed.tenant_id
+    left join public.profiles as teacher on teacher.id = session.teacher_id;
+
+  -- Leitura das frases registrada por aula (sem texto).
+  insert into private.google_meet_access_events (tenant_id, actor_id, lesson_session_id, action)
+  select v_tenant, v_uid, session_id, 'CARD_SUGGESTIONS_READ'
+    from pg_catalog.unnest(v_sessions) as visible_session(session_id);
+
   return pg_catalog.jsonb_build_object(
     'ok', true,
     'is_minor', private.student_learning_card_minor(p_student_id),
     'allowed_fields', pg_catalog.to_jsonb(v_fields),
-    'can_request', v_target ->> 'session_id' is not null,
-    'request_reason', v_target -> 'reason',
-    'request_class_date', v_target -> 'class_date',
+    'can_request', v_pause is null and v_target ->> 'session_id' is not null,
+    'request_reason', case when v_pause is not null then pg_catalog.to_jsonb(v_pause) else v_target -> 'reason' end,
+    'request_class_date', case when v_pause is null then v_target -> 'class_date' end,
     'budget_reached', not private.student_card_suggestion_budget_ok(v_tenant, 0.01),
-    'suggestions', coalesce((
-      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
-          'id', suggestion.id,
-          'field', suggestion.field,
-          'value', suggestion.value,
-          'quote', suggestion.evidence_quote,
-          'class_date', session.class_date,
-          'teacher_name', teacher.full_name,
-          'already_in_card', private.student_card_suggestion_in_card(
-            v_tenant, p_student_id, suggestion.field, suggestion.value_sha256),
-          'evidence_expires_at', suggestion.evidence_expires_at,
-          'created_at', suggestion.created_at)
-        order by session.class_date desc,
-          pg_catalog.array_position(array['real_goal', 'engaging_topics', 'correction_style', 'avoid_topics']::text[],
-            suggestion.field),
-          suggestion.created_at, suggestion.id)
-      from private.student_card_suggestions as suggestion
-      join public.lesson_sessions as session
-        on session.id = suggestion.lesson_session_id and session.tenant_id = suggestion.tenant_id
-      left join public.profiles as teacher on teacher.id = session.teacher_id
-      where suggestion.tenant_id = v_tenant and suggestion.student_id = p_student_id
-        and suggestion.status = 'PENDING'
-        and suggestion.field = any (v_fields)
-        and suggestion.evidence_expires_at > pg_catalog.now()
-        and private.student_card_suggestion_approved_version(suggestion.lesson_session_id) is not null
-        and not private.google_meet_session_records_erased(suggestion.lesson_session_id)
-    ), '[]'::jsonb));
+    -- Sugestões de aula dada por outro professor: esperam quem deu a aula, a
+    -- coordenação ou a direção. Só a contagem.
+    'other_lessons_pending', v_other,
+    'suggestions', v_suggestions);
 end;
 $$;
 
--- Aceitar ou descartar UMA sugestão. Aceitar grava no cartão pela RPC do
--- cartão (save_student_learning_card): permissão, limites, regra de menor,
--- conferência de versão (p_expected_version = a versão que a tela carregou) e
--- histórico sem texto. Objetivo e estilo substituem; tema e "o que evitar"
--- entram na lista. Fechada, a sugestão perde o texto.
+-- Aceitar ou descartar UMA sugestão. Decide quem edita o cartão E pode ler a
+-- frase da aula (professor da aula, coordenação, direção — a régua da lista).
+-- Aceitar grava no cartão pela RPC do cartão (save_student_learning_card):
+-- permissão, limites, regra de menor, conferência de versão (p_expected_version
+-- = a versão que a tela carregou) e histórico sem texto. Objetivo e estilo
+-- substituem; tema e "o que evitar" entram na lista. Fechada, a sugestão perde
+-- o texto.
 create or replace function public.decide_student_card_suggestion(
   p_suggestion_id uuid, p_accept boolean, p_expected_version integer default null
 ) returns jsonb
@@ -1064,7 +1160,8 @@ begin
    where suggestion.id = p_suggestion_id
    for update;
   if v_row.id is null or v_row.tenant_id is distinct from v_tenant
-     or not private.student_learning_card_can_edit(v_tenant, v_row.student_id) then
+     or not private.student_learning_card_can_edit(v_tenant, v_row.student_id)
+     or not private.student_card_suggestion_source_visible(v_row.lesson_session_id, (select auth.uid())) then
     raise exception 'sem_permissao' using errcode = '42501';
   end if;
   if v_row.status <> 'PENDING' then
@@ -1230,7 +1327,11 @@ create trigger trg_student_card_suggestions_minor_purge
 --   (b) aluno que deixou a escola há mais de 90 dias: as sugestões saem
 --       inteiras (como o cartão e a memória, purge_lesson_memory_retention);
 --   (c) regra de menor (a régua do termo pode mudar sem tocar em profiles);
---   (d) aula que deixou de estar aprovada: retirada.
+--   (d) aula que deixou de estar aprovada: retirada;
+--   (e) sugestão fechada há 90 dias (aceita, descartada, vencida, retirada):
+--       a linha some — ela guardava só o hash do valor, que um dicionário de
+--       palavras curtas reverte, e quem decidiu. Até lá, o hash impede a IA de
+--       repetir o que o professor acabou de decidir.
 -- Só contagens no retorno. Re-executável.
 create or replace function private.purge_student_card_suggestions()
 returns jsonb
@@ -1241,6 +1342,7 @@ declare
   v_left integer := 0;
   v_minor integer := 0;
   v_unapproved integer := 0;
+  v_closed integer := 0;
 begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('student-card-suggestions-retention', 0));
   update private.student_card_suggestions as suggestion
@@ -1263,8 +1365,14 @@ begin
      and private.student_card_suggestion_approved_version(suggestion.lesson_session_id) is null;
   get diagnostics v_unapproved = row_count;
 
+  delete from private.student_card_suggestions as suggestion
+   where suggestion.status <> 'PENDING'
+     and suggestion.closed_at <= pg_catalog.now() - pg_catalog.make_interval(
+       days => (v_policy ->> 'closed_days')::integer);
+  get diagnostics v_closed = row_count;
+
   return pg_catalog.jsonb_build_object('expired', v_expired, 'left_school_deleted', v_left,
-    'minor_withdrawn', v_minor, 'unapproved_withdrawn', v_unapproved);
+    'minor_withdrawn', v_minor, 'unapproved_withdrawn', v_unapproved, 'closed_deleted', v_closed);
 end;
 $$;
 
@@ -1316,7 +1424,8 @@ begin
     'private.student_card_suggestion_month_spend(text)',
     'private.student_card_suggestion_budget_ok(text,numeric)',
     'private.student_card_suggestion_actor_can_edit(text,uuid,uuid)',
-    'private.student_card_suggestion_target(text,uuid)',
+    'private.student_card_suggestion_source_visible(uuid,uuid)',
+    'private.student_card_suggestion_target(text,uuid,uuid)',
     'private.student_card_suggestion_in_card(text,uuid,text,text)',
     'private.student_card_suggestions_on_summary_rejected()',
     'private.student_card_suggestions_on_records_erased()',

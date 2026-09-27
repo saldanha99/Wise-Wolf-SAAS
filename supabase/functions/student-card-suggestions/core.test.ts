@@ -73,6 +73,61 @@ Deno.test("lista de exclusão: saúde, religião, política, família, dinheiro,
   ) assert(textBlocked(blocked), `passou pela lista: ${blocked}`);
 });
 
+Deno.test("lista de exclusão: namoro, luto, doença e droga que o prompt proíbe também caem", () => {
+  // O prompt classifica namoro como família e proíbe saúde; a lista por
+  // palavras tinha só "namorad*" e deixava "namoro"/"dating" passar.
+  for (
+    const blocked of [
+      "namoro",
+      "Please, I don't want to talk about dating anymore.",
+      "não gosta de falar de namoro",
+      "relacionamentos",
+      "My relationship ended last month.",
+      "we broke up",
+      "after the breakup",
+      "HIV",
+      "Covid-19",
+      "a morte do cachorro",
+      "My dog died last week.",
+      "my grandma passed away",
+      "está de luto",
+      "funerals",
+      "falecimento",
+      "alcohol",
+      "álcool",
+      "drogas",
+      "drugs",
+      "rehab",
+    ]
+  ) assert(textBlocked(blocked), `passou pela lista: ${blocked}`);
+  // A sugestão do caso real (valor "namoro", citação com "dating") é descartada.
+  const source = {
+    id: "11111111-1111-4111-8111-111111111111",
+    kind: "TRANSCRIPT",
+    provider_name: "conferenceRecords/a/transcripts/t",
+    imported_at: "2026-09-26T10:00:00Z",
+    source_text:
+      "[10:00:01] Aluno: Please, I don't want to talk about dating anymore.",
+  };
+  const result = normalizeSuggestions(
+    {
+      suggestions: [{
+        field: "avoid_topics",
+        value: "namoro",
+        artifact_id: source.id,
+        quote: "Please, I don't want to talk about dating anymore.",
+      }],
+    },
+    [source],
+    ["avoid_topics"],
+    [],
+  );
+  assert(
+    result.kept.length === 0 && result.reasons.blocked === 1,
+    JSON.stringify(result),
+  );
+});
+
 Deno.test("lista de exclusão: identificadores e nomes de pessoas da aula", () => {
   assert(textBlocked("ligar para 11 98765-4321"), "telefone passou");
   assert(textBlocked("fulano@exemplo.com"), "e-mail passou");

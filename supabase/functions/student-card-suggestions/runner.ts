@@ -264,7 +264,19 @@ export async function runManualSuggestions(
   },
   deps: SuggestionDeps,
 ): Promise<SuggestionOutcome> {
+  // Sem a IA configurada, a escola pausa como na fila: get_student_card_
+  // suggestions lê a pausa e o botão some, em vez de falhar a cada clique.
+  const pause = async (reason: string, minutes: number) => {
+    try {
+      await deps.backend("auto_pause", {
+        tenantId: input.tenantId,
+        actorId: null,
+        sessionId: null,
+      }, { reason, minutes });
+    } catch { /* a resposta ao professor não depende da pausa */ }
+  };
   if (!input.aiEnabled) {
+    await pause("card_suggestions_not_configured", 360);
     return { status: "SKIPPED", reason: "card_suggestions_not_configured" };
   }
   // Permissão conferida no banco como a própria pessoa (a régua do cartão).
@@ -285,6 +297,7 @@ export async function runManualSuggestions(
   }
   const pricing = await input.loadPricing();
   if (!pricing) {
+    await pause("card_suggestions_pricing_required", 60);
     return { status: "SKIPPED", reason: "card_suggestions_pricing_required" };
   }
   return runCardSuggestions({
