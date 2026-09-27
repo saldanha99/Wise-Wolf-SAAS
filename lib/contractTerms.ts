@@ -22,6 +22,12 @@
  *   - contrato assinado com versão gravada no aceite → a versão gravada;
  *   - contrato assinado sem versão gravada → versão 1, o texto de antes.
  *
+ * "Ainda não assinado" só existe na tela que ASSINA. Tela que só mostra
+ * ("Meu contrato" do aluno, Contratos da direção) passa `signed: true`: sem
+ * versão gravada é o texto de antes — também para a matrícula feita à mão
+ * pela escola, que nunca passou pela página de matrícula e nunca assinou a
+ * cláusula nova.
+ *
  * A tela que ASSINA mostra e grava a mesma versão (a oferecida): a página de
  * matrícula e o convite do professor recebem da edge `tenant-legal-assets`;
  * o professor que regulariza pelo app lê por `get_contract_terms`. O servidor

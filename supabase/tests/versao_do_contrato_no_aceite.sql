@@ -8,12 +8,14 @@
 -- oferece, e ninguém grava pela oferta de outra pessoa nem depois da
 -- matrícula concluída; o aceite guarda se quem assinou foi o responsável
 -- (link de dependente, lido da oferta) e a data da assinatura DESTA matrícula
--- (rematrícula não herda a data da assinatura antiga do perfil); a base da
+-- (rematrícula, nova assinatura depois de "versao_desatualizada" e oferta
+-- retomada não herdam a data da assinatura de antes); a base da
 -- autorização futura não conta aceite do próprio aluno de quem a escola exige
 -- responsável; só a própria pessoa e a direção/coordenação da escola leem; o
 -- registro é imutável; a auditoria de matrículas mostra versão e data; o
 -- professor regulariza o aceite (o digest volta a funcionar) com a versão que
--- a escola dele oferece — sem versão, é a 1.
+-- a escola dele oferece — sem versão, é a 1 — e fica com a cópia do que
+-- assinou (tenant_contract_records, sem mexer na régua de pagamento).
 -- Contra o código anterior reprova no primeiro bloco (sem tabelas, sem as
 -- RPCs, e com a accept_teacher_contract(text) de 11/07 no ar); contra o
 -- rascunho desta frente reprova também no primeiro bloco (sem
@@ -23,8 +25,10 @@
 -- assinatura: a versão de 11/07 morria com "function digest(text, unknown)
 -- does not exist" (search_path = public e o pgcrypto em "extensions" —
 -- conferido na produção em 27/09/2026).
--- Não depende de dado real nem do horário: tudo é fixture (a única leitura de
--- dado real — a Wise Wolf oferece a versão 2 — só roda onde a escola existe).
+-- Não depende de dado real nem do horário: tudo é fixture. A única leitura de
+-- dado real (a semente da Wise Wolf) só roda onde a escola existe, e o VALOR
+-- da versão só é conferido no release que aplica a semente: depois, mudar a
+-- versão de uma escola é decisão legítima e não pode travar o release.
 \set ON_ERROR_STOP on
 
 begin;
@@ -121,11 +125,28 @@ begin
 
   -- Decisão da direção da Wise Wolf (27/09/2026): só confere onde a escola
   -- existe (no clone só de estrutura ela não existe e a semente não roda).
+  -- O que o release pode exigir para sempre é que a semente RODOU (a marca
+  -- do one-shot é imutável). O VALOR é decisão de negócio que muda por SQL da
+  -- plataforma (a escola volta ao aceite individual, a linha é apagada): só é
+  -- conferido na transação em que a semente acabou de rodar — o release que
+  -- aplica a migration, que roda os testes na mesma transação (applied_at =
+  -- now()). Conferir sempre travaria todo release depois de uma mudança
+  -- legítima.
   if exists (select 1 from public.tenants where id = 'school-wise-wolf') then
-    perform pg_temp.ctr_assert(
-      private.contract_terms_offered_version('school-wise-wolf', 'STUDENT') = 2
-      and private.contract_terms_offered_version('school-wise-wolf', 'TEACHER') = 2,
-      'a Wise Wolf não oferece a versão com o registro das aulas nos contratos novos');
+    perform pg_temp.ctr_assert(exists (
+        select 1 from public.schema_one_shots
+         where key = 'contrato_registro_das_aulas_wise_wolf_20260927'),
+      'a semente da versão do contrato da Wise Wolf não rodou');
+    if exists (
+      select 1 from public.schema_one_shots
+       where key = 'contrato_registro_das_aulas_wise_wolf_20260927'
+         and applied_at = now()
+    ) then
+      perform pg_temp.ctr_assert(
+        private.contract_terms_offered_version('school-wise-wolf', 'STUDENT') = 2
+        and private.contract_terms_offered_version('school-wise-wolf', 'TEACHER') = 2,
+        'a Wise Wolf não oferece a versão com o registro das aulas nos contratos novos');
+    end if;
   end if;
 end
 $privileges$;
@@ -147,6 +168,8 @@ declare
   v_returning_student uuid := gen_random_uuid();
   v_plain_student uuid := gen_random_uuid();
   v_legacy_student uuid := gen_random_uuid();
+  v_stale_student uuid := gen_random_uuid();
+  v_first_student uuid := gen_random_uuid();
   v_intruder uuid := gen_random_uuid();
   v_offer uuid := gen_random_uuid();
   v_done_offer uuid := gen_random_uuid();
@@ -154,7 +177,11 @@ declare
   v_dependent_offer uuid := gen_random_uuid();
   v_return_offer uuid := gen_random_uuid();
   v_plain_offer uuid := gen_random_uuid();
+  v_stale_offer uuid := gen_random_uuid();
+  v_first_offer uuid := gen_random_uuid();
   v_old_signature timestamptz := now() - interval '200 days';
+  -- Primeira tentativa de assinatura desta matrícula, 10 minutos atrás.
+  v_first_attempt timestamptz := now() - interval '10 minutes';
   v_all uuid[];
   v_r jsonb;
   v_version integer;
@@ -166,11 +193,15 @@ begin
   v_all := array[v_admin, v_coordinator, v_other_admin, v_teacher, v_teacher_old_app,
                  v_teacher_bad, v_plain_teacher, v_student, v_adult_student,
                  v_dependent_student, v_returning_student, v_plain_student,
-                 v_legacy_student, v_intruder];
+                 v_legacy_student, v_stale_student, v_first_student, v_intruder];
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
-  insert into public.tenants (id, name, slug, saas_status) values
-    (v_tid, 'Versão do contrato fixture', v_tid, 'active'),
-    (v_plain_tid, 'Versão do contrato outra escola', v_plain_tid, 'active');
+  -- Identidade jurídica da escola (o que o contrato do professor mostra e a
+  -- cópia do aceite pelo app guarda).
+  insert into public.tenants (id, name, slug, saas_status, school_info) values
+    (v_tid, 'Versão do contrato fixture', v_tid, 'active',
+     '{"legalName": "Escola Versao Contrato Fixture Ltda.", "cnpj": "11.222.333/0001-81", "city": "Cidade Fixture", "state": "SP"}'::jsonb),
+    (v_plain_tid, 'Versão do contrato outra escola', v_plain_tid, 'active',
+     '{"legalName": "Outra Escola Fixture Ltda.", "cnpj": "11.222.333/0001-81", "city": "Cidade Fixture", "state": "SP"}'::jsonb);
   -- A escola da fixture decidiu o registro das aulas; a outra não decidiu nada.
   insert into public.tenant_contract_terms (tenant_id, contract_kind, terms_version)
   values (v_tid, 'STUDENT', 2), (v_tid, 'TEACHER', 2);
@@ -197,6 +228,15 @@ begin
   insert into public.tenant_memberships (tenant_id, user_id, role, status)
     select tenant_id, id, role, 'ACTIVE' from public.profiles where id = any (v_all)
   on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
+  -- Valor por aula (o que o contrato do professor mostra) e dados das partes
+  -- de uma das professoras; as outras ficam sem, como os 3 professores da Wise
+  -- Wolf que regularizam o aceite pelo app (27/09/2026).
+  update public.profiles set hourly_rate = 8
+   where id in (v_teacher, v_teacher_old_app, v_teacher_bad, v_plain_teacher);
+  update public.profiles
+     set cpf = '52998224725', rg = '12.345.678-9', address = 'Rua Fixture',
+         address_number = '10', postal_code = '01000-000', birth_date = date '1990-05-10'
+   where id = v_teacher;
 
   -- Aluna que já assinou antes desta migration: aceite no perfil, versão nenhuma.
   update public.profiles
@@ -221,6 +261,8 @@ begin
       (v_dependent_offer, v_tid,
        '{"isDependent": true, "guardianName": "Responsavel Fixture"}'::jsonb, v_admin),
       (v_return_offer, v_tid, '{}'::jsonb, v_admin),
+      (v_stale_offer, v_tid, '{}'::jsonb, v_admin),
+      (v_first_offer, v_tid, '{}'::jsonb, v_admin),
       (v_plain_offer, v_plain_tid, '{}'::jsonb, v_other_admin)
     ) as fixture(offer_id, tenant_id, extra, creator);
 
@@ -244,6 +286,20 @@ begin
      set contract_accepted = true, accepted_at = now(),
          typed_signature = full_name
    where id in (v_student, v_adult_student, v_dependent_student, v_plain_student);
+  -- Duas matrículas cuja assinatura (o begin) foi 10 minutos atrás: o begin
+  -- grava processing_started_at/processing_updated_at = now() e, na mesma
+  -- transação, accepted_at = clock_timestamp() (um pouco depois).
+  update public.offers as offer
+     set processing_by = fixture.student, processing_state = 'PROFILE_READY',
+         processing_started_at = v_first_attempt - interval '1 second',
+         processing_updated_at = v_first_attempt - interval '1 second'
+    from (values (v_stale_offer, v_stale_student), (v_first_offer, v_first_student))
+      as fixture(offer_id, student)
+   where offer.id = fixture.offer_id;
+  update public.profiles
+     set contract_accepted = true, accepted_at = v_first_attempt,
+         typed_signature = full_name
+   where id in (v_stale_student, v_first_student);
 
   -- 1. Antes de qualquer gravação: nada gravado (a tela mostra o texto de antes),
   -- e cada escola oferece a sua versão aos contratos novos.
@@ -337,6 +393,33 @@ begin
     and (v_r ->> 'accepted_at')::timestamptz = now()
     and (v_r ->> 'accepted_at')::timestamptz > v_old_signature,
     'rematrícula aparece com a data da assinatura antiga: ' || v_r::text);
+
+  -- 4b. A página mostrava o texto antigo: a gravação é recusada, a pessoa
+  -- recarrega, lê a versão 2 e assina de novo (um begin novo, que mantém a
+  -- data da primeira tentativa no perfil e atualiza processing_updated_at).
+  -- O aceite da versão 2 não pode herdar a data (e o IP) de quando ela viu o
+  -- texto antigo.
+  perform pg_temp.ctr_as(v_stale_student);
+  v_r := public.record_enrollment_contract_terms(v_stale_offer, 1);
+  perform pg_temp.ctr_assert(v_r ->> 'error' = 'versao_desatualizada',
+    'página desatualizada gravou a versão: ' || v_r::text);
+  update public.offers set processing_updated_at = now() where id = v_stale_offer;
+  v_r := public.record_enrollment_contract_terms(v_stale_offer, 2);
+  perform pg_temp.ctr_assert(v_r ->> 'ok' = 'true' and (v_r ->> 'terms_version')::int = 2,
+    'nova assinatura depois da recusa não gravou: ' || v_r::text);
+  v_r := public.get_contract_terms(v_stale_student, 'STUDENT');
+  perform pg_temp.ctr_assert((v_r ->> 'accepted_at')::timestamptz = now()
+    and (v_r ->> 'accepted_at')::timestamptz > v_first_attempt,
+    'o aceite da versão 2 herdou a data da tentativa em que a página mostrava o texto antigo: '
+      || v_r::text);
+  -- Controle: a mesma matrícula gravada logo depois do próprio begin mantém a
+  -- data do perfil (a do hash da assinatura), mesmo 10 minutos depois.
+  perform pg_temp.ctr_as(v_first_student);
+  v_r := public.record_enrollment_contract_terms(v_first_offer, 2);
+  perform pg_temp.ctr_assert(v_r ->> 'ok' = 'true', 'matrícula de controle não gravou: ' || v_r::text);
+  perform pg_temp.ctr_assert(
+    (public.get_contract_terms(v_first_student, 'STUDENT') ->> 'accepted_at')::timestamptz = v_first_attempt,
+    'a gravação logo depois do begin perdeu a data da assinatura do perfil');
 
   -- 5. Matrícula concluída sem versão gravada terminou com o texto de antes.
   perform pg_temp.ctr_as(v_student);
@@ -445,6 +528,25 @@ begin
   perform pg_temp.ctr_assert(
     (select not coalesce(contract_accepted, false) from public.profiles where id = v_teacher_bad),
     'versão recusada e mesmo assim o aceite ficou gravado');
+  -- A tela só libera a assinatura com o valor por aula e a identidade da
+  -- escola; o servidor recusa igual, antes de gravar qualquer coisa.
+  update public.profiles set hourly_rate = null where id = v_teacher_bad;
+  v_r := public.accept_teacher_contract('Fixture Versao Contrato', 2);
+  perform pg_temp.ctr_assert(v_r ->> 'error' = 'valor_por_aula_ausente',
+    'aceite sem valor por aula: ' || v_r::text);
+  update public.profiles set hourly_rate = 8 where id = v_teacher_bad;
+  update public.tenants set school_info = null where id = v_tid;
+  v_r := public.accept_teacher_contract('Fixture Versao Contrato', 2);
+  perform pg_temp.ctr_assert(v_r ->> 'error' = 'escola_sem_identidade_juridica',
+    'aceite sem a identidade jurídica da escola: ' || v_r::text);
+  update public.tenants
+     set school_info = '{"legalName": "Escola Versao Contrato Fixture Ltda.", "cnpj": "11.222.333/0001-81", "city": "Cidade Fixture", "state": "SP"}'::jsonb
+   where id = v_tid;
+  perform pg_temp.ctr_assert(
+    (select not coalesce(contract_accepted, false) from public.profiles where id = v_teacher_bad)
+    and not exists (select 1 from public.tenant_contract_records where user_id = v_teacher_bad)
+    and not exists (select 1 from public.contract_terms_acceptances where user_id = v_teacher_bad),
+    'aceite recusado deixou perfil, cópia ou versão gravados');
 
   perform pg_temp.ctr_as(v_teacher);
   perform pg_temp.ctr_assert(
@@ -464,8 +566,38 @@ begin
                  where user_id = v_teacher and source = 'TEACHER_CONTRACT_ACCEPT'
                    and source_id is null and tenant_id = v_tid and not signed_as_guardian),
     'a versão do aceite do professor não foi gravada: ' || v_r::text);
+  -- A cópia do que foi assinado: é o que o "Meu Contrato" do professor lê
+  -- (tenant-legal-assets). Sem ela, o professor assinava e ficava sem ver o
+  -- contrato ("Contrato não encontrado").
+  perform pg_temp.ctr_assert(exists (
+      select 1 from public.tenant_contract_records as record
+        join public.profiles as profile on profile.id = record.user_id
+       where record.user_id = v_teacher and record.tenant_id = v_tid
+         and record.contract_kind = 'TEACHER'
+         and record.accepted_at = profile.accepted_at
+         and record.signed_document_path is null
+         and record.party_snapshot ->> 'fullName' = 'Professora Versao Contrato'
+         and record.party_snapshot ->> 'cpf' = '52998224725'
+         and record.party_snapshot ->> 'rg' = '12.345.678-9'
+         and record.party_snapshot ->> 'address' = 'Rua Fixture, 10 - 01000-000'
+         and record.party_snapshot ->> 'birthDate' = '10/05/1990'
+         and record.legal_snapshot = (select school_info from public.tenants where id = v_tid)
+         and (record.commercial_snapshot ->> 'hourlyRate')::numeric = 8
+         and (record.commercial_snapshot ->> 'contractTermsVersion')::int = 2
+         and record.commercial_snapshot ->> 'acceptedVia' = 'TEACHER_CONTRACT_ACCEPT'
+         and record.commercial_snapshot ->> 'displayRateUnit' = 'PER_LESSON'),
+    'o aceite pelo app não guardou a cópia do contrato assinado (partes, escola, valor e versão)');
+  -- Sem "rateUnit": teacher_student_rate lê rateUnit = 'PER_LESSON' desse
+  -- registro para trocar a régua de pagamento, e o aceite não muda pagamento.
+  perform pg_temp.ctr_assert(not exists (
+      select 1 from public.tenant_contract_records
+       where user_id = v_teacher and commercial_snapshot ? 'rateUnit'),
+    'a cópia do aceite pelo app trocou a régua de pagamento do professor (rateUnit)');
   v_r := public.accept_teacher_contract('Professora Versao Contrato', 2);
   perform pg_temp.ctr_assert(v_r ->> 'already' = 'true', 'segundo aceite do professor não foi idempotente');
+  perform pg_temp.ctr_assert(
+    (select count(*) from public.tenant_contract_records where user_id = v_teacher) = 1,
+    'segundo aceite do professor criou outra cópia');
   select count(*) into v_count from public.contract_terms_acceptances where user_id = v_teacher;
   perform pg_temp.ctr_assert(v_count = 1, 'segundo aceite do professor criou outro registro');
 
@@ -483,6 +615,14 @@ begin
   v_r := public.accept_teacher_contract('Fixture Versao Contrato');
   perform pg_temp.ctr_assert(v_r ->> 'ok' = 'true' and (v_r ->> 'terms_version')::int = 1,
     'aceite do app antigo não virou versão 1: ' || v_r::text);
+  -- Sem dados de documento no perfil: a cópia mostra "---", como a tela.
+  perform pg_temp.ctr_assert(exists (
+      select 1 from public.tenant_contract_records
+       where user_id = v_teacher_old_app
+         and (commercial_snapshot ->> 'contractTermsVersion')::int = 1
+         and party_snapshot ->> 'cpf' = '---' and party_snapshot ->> 'rg' = '---'
+         and party_snapshot ->> 'address' = '---' and party_snapshot ->> 'birthDate' = '---'),
+    'a cópia do aceite do app antigo não guardou a versão 1 ou os campos vazios como a tela');
   perform pg_temp.ctr_assert(
     private.contract_lesson_recording_accepted_at(v_teacher_old_app, 'TEACHER', v_tid) is null
     and private.contract_lesson_recording_accepted_at(v_teacher, 'TEACHER', v_tid) is not null,

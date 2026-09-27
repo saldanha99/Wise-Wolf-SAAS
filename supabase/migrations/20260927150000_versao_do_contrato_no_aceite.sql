@@ -31,8 +31,9 @@
 --     cobrança (a cadeia de begin_enrollment_offer não foi tocada). Grava
 --     também se quem assinou foi o RESPONSÁVEL (link de dependente, lido da
 --     oferta no servidor) e a data da assinatura desta matrícula — numa
---     rematrícula o perfil mantém a assinatura antiga, e o contrato novo não
---     pode aparecer com a data dela;
+--     rematrícula, ou numa nova assinatura depois de "versao_desatualizada",
+--     o perfil mantém a assinatura de antes, e o contrato novo não pode
+--     aparecer com a data dela;
 --   * professor por convite: a edge register-teacher grava aqui e em
 --     tenant_contract_records.commercial_snapshot.contractTermsVersion (junto
 --     do PDF assinado, que já é a cópia fiel);
@@ -40,7 +41,9 @@
 --     versão). Ela nunca funcionou em produção: com search_path = public o
 --     digest (pgcrypto mora em "extensions") não resolvia, e todo aceite morria
 --     com "function digest(text, unknown) does not exist". Aqui ela é refeita
---     com search_path vazio e extensions.digest.
+--     com search_path vazio e extensions.digest, e grava também a CÓPIA do
+--     contrato em tenant_contract_records (o "Meu Contrato" do professor só lê
+--     dali), sem rateUnit para não mudar a régua de pagamento.
 --
 -- ⚠️ Esta migration NÃO muda a regra de autorização do registro das aulas (a
 -- frente dela é 20260929100000, que roda DEPOIS desta pela ordem do nome e não
@@ -455,7 +458,7 @@ begin
 
   select offer.id, offer.tenant_id, offer.kind, offer.processing_by,
          offer.processing_state, offer.processing_started_at,
-         offer.consumed_at, offer.payload
+         offer.processing_updated_at, offer.consumed_at, offer.payload
     into v_offer
     from public.offers as offer
    where offer.id = p_offer_id;
@@ -509,14 +512,23 @@ begin
     and (v_offer.payload ->> 'isDependent')::boolean;
 
   -- Data da assinatura desta matrícula. begin_enrollment_offer só grava
-  -- profiles.accepted_at na primeira assinatura do perfil (coalesce): assinado
-  -- agora (depois do início desta oferta) → a mesma data do perfil, a que o
-  -- hash da assinatura usa; rematrícula (perfil com assinatura de antes) →
-  -- agora, para o contrato novo não aparecer com a data da assinatura antiga.
+  -- profiles.accepted_at na primeira assinatura do perfil (coalesce) e, a
+  -- CADA chamada, processing_updated_at = now() — na mesma transação em que
+  -- a primeira assinatura grava accepted_at = clock_timestamp(). Então a data
+  -- do perfil é a desta assinatura só quando foi gravada pelo begin que
+  -- acabou de rodar (accepted_at >= processing_updated_at): é a data que o
+  -- hash da assinatura usa. Senão vale agora:
+  --   * rematrícula (perfil com a assinatura de antes desta oferta);
+  --   * nova assinatura depois de "versao_desatualizada" (a página mostrava o
+  --     texto antigo, a pessoa recarregou, leu a versão nova e assinou de
+  --     novo: o begin manteve a data da primeira tentativa);
+  --   * oferta retomada depois de a escola mudar a versão (idem).
+  -- Nos três casos o perfil guarda a data (e o IP) de quando a pessoa viu
+  -- OUTRO texto, e o contrato novo não pode aparecer com ela.
   v_accepted_at := case
     when v_profile.accepted_at is not null
-     and v_offer.processing_started_at is not null
-     and v_profile.accepted_at >= v_offer.processing_started_at
+     and coalesce(v_offer.processing_updated_at, v_offer.processing_started_at) is not null
+     and v_profile.accepted_at >= coalesce(v_offer.processing_updated_at, v_offer.processing_started_at)
       then v_profile.accepted_at
     else now()
   end;
@@ -564,6 +576,21 @@ grant execute on function public.record_enrollment_contract_terms(uuid, integer)
 -- ambiguidade. Sem p_terms_version (app antigo, que mostrava o texto de antes)
 -- o aceite é gravado como versão 1. Com a versão, ela tem de ser a que a escola
 -- do professor oferece hoje (a tela lê por get_contract_terms).
+--
+-- A CÓPIA do que foi assinado: o "Meu Contrato" do professor (edge
+-- tenant-legal-assets → PublicContractView) lê só tenant_contract_records, que
+-- até aqui só o convite (register-teacher) criava. Sem ela, quem aceita pelo
+-- app assinaria a versão 2 e cairia em "Contrato não encontrado" (em 27/09/2026:
+-- 3 professores ativos da Wise Wolf com contract_accepted = false, todos sem
+-- registro). O aceite grava, na mesma transação, o registro com o que a tela
+-- mostrou: partes (os campos do perfil, com "---" onde a tela mostrava "---"),
+-- a identidade da escola (tenants.school_info, a mesma que a tela carrega) e o
+-- valor por aula. ⚠️ Sem "rateUnit" no commercial_snapshot: teacher_student_rate
+-- lê rateUnit = 'PER_LESSON' desse registro para trocar a régua de pagamento
+-- (valor fixo do perfil em vez das faixas), e um aceite pelo app não muda
+-- pagamento. A tela assinada mostrou o valor POR AULA (texto de contrato não
+-- assinado); displayRateUnit diz à edge como exibir a cópia igual.
+-- Registro que já existe (convite antigo) não é sobrescrito.
 drop function if exists public.accept_teacher_contract(text);
 
 create or replace function public.accept_teacher_contract(
@@ -584,13 +611,16 @@ declare
   v_sig text := btrim(coalesce(p_typed_signature, ''));
   v_version integer := coalesce(p_terms_version, 1);
   v_now timestamptz := now();
+  v_school jsonb;
+  v_hourly_rate numeric;
 begin
   if v_uid is null then
     return jsonb_build_object('ok', false, 'error', 'nao_autenticado');
   end if;
 
-  select profile.role, profile.tenant_id, profile.contract_accepted
-    into v_role, v_tenant, v_accepted
+  select profile.role, profile.tenant_id, profile.contract_accepted,
+         profile.hourly_rate
+    into v_role, v_tenant, v_accepted, v_hourly_rate
     from public.profiles as profile
    where profile.id = v_uid;
 
@@ -620,6 +650,19 @@ begin
     return jsonb_build_object('ok', false, 'error', 'versao_invalida');
   end if;
 
+  -- O que a tela exige antes de liberar a assinatura (identidade da escola e
+  -- valor por aula) é o que a cópia guarda: sem isso não há contrato a gravar.
+  select tenant.school_info
+    into v_school
+    from public.tenants as tenant
+   where tenant.id = v_tenant;
+  if v_school is null or jsonb_typeof(v_school) is distinct from 'object' then
+    return jsonb_build_object('ok', false, 'error', 'escola_sem_identidade_juridica');
+  end if;
+  if v_hourly_rate is null or v_hourly_rate <= 0 then
+    return jsonb_build_object('ok', false, 'error', 'valor_por_aula_ausente');
+  end if;
+
   -- IP real do cliente via headers propagados pelo PostgREST (x-forwarded-for
   -- cai no primeiro IP).
   begin
@@ -642,18 +685,49 @@ begin
          )
    where id = v_uid;
 
-  if v_tenant is not null then
-    insert into public.contract_terms_acceptances (
-      tenant_id, user_id, contract_kind, terms_version, source, source_id,
-      accepted_at
-    )
-    values (
-      v_tenant, v_uid, 'TEACHER', v_version, 'TEACHER_CONTRACT_ACCEPT', null,
-      v_now
-    )
-    on conflict on constraint contract_terms_acceptances_one_per_source
-    do nothing;
-  end if;
+  insert into public.contract_terms_acceptances (
+    tenant_id, user_id, contract_kind, terms_version, source, source_id,
+    accepted_at
+  )
+  values (
+    v_tenant, v_uid, 'TEACHER', v_version, 'TEACHER_CONTRACT_ACCEPT', null,
+    v_now
+  )
+  on conflict on constraint contract_terms_acceptances_one_per_source
+  do nothing;
+
+  -- A cópia do contrato assinado (ver o comentário acima da função).
+  insert into public.tenant_contract_records (
+    tenant_id, user_id, contract_kind, party_snapshot, legal_snapshot,
+    commercial_snapshot, signed_document_path, accepted_at, accepted_ip
+  )
+  select
+    v_tenant, v_uid, 'TEACHER',
+    jsonb_build_object(
+      'fullName', coalesce(nullif(btrim(profile.full_name), ''), 'Professor'),
+      'rg', coalesce(nullif(btrim(profile.rg), ''), '---'),
+      'cpf', coalesce(nullif(btrim(profile.cpf), ''), '---'),
+      'address', coalesce(nullif(btrim(
+        coalesce(profile.address, '')
+        || case when nullif(profile.address_number, '') is not null
+             then ', ' || profile.address_number else '' end
+        || case when nullif(profile.postal_code, '') is not null
+             then ' - ' || profile.postal_code else '' end
+      ), ''), '---'),
+      'birthDate', coalesce(to_char(profile.birth_date, 'DD/MM/YYYY'), '---')
+    ),
+    v_school,
+    jsonb_build_object(
+      'hourlyRate', v_hourly_rate,
+      'subject', profile.module,
+      'contractTermsVersion', v_version,
+      'acceptedVia', 'TEACHER_CONTRACT_ACCEPT',
+      'displayRateUnit', 'PER_LESSON'
+    ),
+    null, v_now, nullif(v_ip, '')
+  from public.profiles as profile
+  where profile.id = v_uid
+  on conflict (tenant_id, user_id, contract_kind) do nothing;
 
   return jsonb_build_object('ok', true, 'accepted_at', v_now, 'terms_version', v_version);
 end;

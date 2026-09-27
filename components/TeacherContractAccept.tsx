@@ -264,6 +264,10 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     apenas_professor: 'Apenas professores podem aceitar este contrato.',
                     assinatura_invalida: 'Assinatura inválida. Digite seu nome completo.',
                     versao_invalida: 'O contrato foi atualizado. Recarregue a página para ler a versão atual antes de assinar.',
+                    // O servidor confere o mesmo que esta tela antes de gravar a
+                    // cópia do contrato (tenant_contract_records).
+                    escola_sem_identidade_juridica: 'A escola ainda não configurou os dados jurídicos do contrato. Avise a direção.',
+                    valor_por_aula_ausente: 'Seu valor por aula ainda não foi cadastrado. Avise a direção antes de assinar.',
                 };
                 setError(map[data?.error] || 'Não foi possível registrar o aceite. Tente novamente.');
                 return;

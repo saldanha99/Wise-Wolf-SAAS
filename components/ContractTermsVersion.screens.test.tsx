@@ -9,9 +9,14 @@ import { SUPABASE_URL } from '../lib/supabase-config';
  * registro das aulas a quem assinou o texto de antes.
  */
 
-const { rpc, from, getSession } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), getSession: vi.fn() }));
+const { rpc, from, getSession, getUser, teacherContract } = vi.hoisted(() => ({
+  rpc: vi.fn(), from: vi.fn(), getSession: vi.fn(), getUser: vi.fn(), teacherContract: vi.fn(),
+}));
 vi.mock('../lib/supabase', () => ({
-  supabase: { rpc, from, storage: { from: vi.fn() }, auth: { getSession } },
+  supabase: { rpc, from, storage: { from: vi.fn() }, auth: { getSession, getUser } },
+}));
+vi.mock('../services/tenantLegalAssetsService', () => ({
+  tenantLegalAssetsService: { teacherContract },
 }));
 
 const school = {
@@ -24,6 +29,7 @@ vi.mock('../lib/schoolInfo', () => ({ getSchoolInfo: vi.fn(async () => school) }
 
 import ContractView from './ContractView';
 import ContractManagement from './ContractManagement';
+import PublicContractView from './PublicContractView';
 
 /** Consulta encadeada do supabase-js que resolve com `result` no fim. */
 const chain = (result: unknown) => {
@@ -96,12 +102,17 @@ describe('Meu contrato (ContractView)', () => {
     expect(seal).toContain('Versão do texto: 2');
   });
 
-  it('contrato ainda não assinado mostra a versão que a escola oferece', async () => {
+  it('matrícula feita à mão (sem aceite digital) mostra o texto de antes, mesmo na escola que oferece a versão 2', async () => {
+    // "Meu contrato" só mostra: a versão que a escola oferece aos contratos
+    // novos é das telas que assinam. Em 27/09/2026 eram 8 alunos ativos da
+    // Wise Wolf com contract_accepted = false e accepted_at nulo — nenhum deles
+    // assinou a Cláusula 8, e o PDF baixado daqui parece ser o contrato deles.
     const unsigned = studentProfile({ accepted_at: null, contract_accepted: false });
     const offered = renderFor(unsigned, terms(null, null, 2));
-    await waitFor(() => expect(offered.container.textContent).toContain('Cláusula 8 — Do Registro das Aulas'));
+    await waitFor(() => expect(offered.container.textContent).toContain('Cláusula 8 — Do Foro'));
+    expect(offered.container.textContent).not.toContain('Do Registro das Aulas');
+    expect(offered.container.textContent).not.toContain('Versão do texto');
     offered.unmount();
-    // Escola que não decidiu registrar as aulas: sem a cláusula.
     const plain = renderFor(unsigned, terms(null, null, 1));
     await waitFor(() => expect(plain.container.textContent).toContain('Cláusula 8 — Do Foro'));
     expect(plain.container.textContent).not.toContain('Do Registro das Aulas');
@@ -190,5 +201,30 @@ describe('Contratos da direção (ContractManagement)', () => {
     const { container } = render(<ContractManagement tenantId="tenant-b" />);
     await waitFor(() => expect(container.textContent).toContain('Os contratos novos desta escola não trazem a cláusula'));
     expect(container.textContent).not.toContain('Os contratos novos desta escola trazem a Cláusula 8');
+  });
+});
+
+describe('Meu Contrato do professor (PublicContractView)', () => {
+  beforeEach(() => {
+    getUser.mockReset();
+    teacherContract.mockReset();
+    getUser.mockResolvedValue({ data: { user: { id: 'prof-1' } } });
+  });
+
+  it('quem aceitou pelo app vê a cópia da versão 2, com o valor por aula que a tela mostrou', async () => {
+    // O que tenant-legal-assets devolve para a cópia gravada por
+    // accept_teacher_contract: sem rateUnit no registro (a folha não muda) e
+    // exibida por aula (displayRateUnit → rateUnit na resposta).
+    teacherContract.mockResolvedValue({
+      full_name: 'Professora do App', rg: '---', cpf: '---', address: '---', birth_date: '---',
+      hourly_rate: 8, rateUnit: 'PER_LESSON', contractTermsVersion: 2, contract_accepted: true,
+      accepted_at: '2026-09-28T15:00:00Z', user_ip: '203.0.113.20', schoolInfo: school,
+    });
+    const { container } = render(<PublicContractView id="prof-1" />);
+    await waitFor(() => expect(container.textContent).toContain('CLÁUSULA 11ª – REGISTRO DAS AULAS'));
+    expect(teacherContract).toHaveBeenCalledWith('prof-1');
+    expect(container.textContent).toContain('R$ 8,00 por aula de 30 (trinta) minutos ministrada');
+    expect(container.textContent).not.toContain('R$ 4,00');
+    expect(container.textContent).toContain('Versão do texto: 2');
   });
 });

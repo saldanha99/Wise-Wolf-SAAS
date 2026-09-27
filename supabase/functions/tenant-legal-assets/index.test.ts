@@ -3,6 +3,7 @@ import {
   offeredContractTermsVersion,
   offerKindMatches,
   publicSchoolBrand,
+  teacherContractRateUnit,
 } from "./index.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -89,4 +90,31 @@ Deno.test("versao do contrato da oferta vem da escola, e resposta estranha nao v
     }
     assert(rejected, `versao ${JSON.stringify(value)} virou contrato`);
   }
+});
+
+Deno.test("copia do aceite pelo app mostra o valor por aula sem mudar a regua de pagamento", () => {
+  // Convite (register-teacher): rateUnit gravado, e e o que a folha le.
+  assert(
+    teacherContractRateUnit({ rateUnit: "PER_LESSON" }) === "PER_LESSON",
+    "contrato por convite perdeu a unidade",
+  );
+  // Aceite pelo app: sem rateUnit (a folha nao muda), exibido por aula como
+  // a tela assinada mostrou.
+  assert(
+    teacherContractRateUnit({
+      acceptedVia: "TEACHER_CONTRACT_ACCEPT",
+      displayRateUnit: "PER_LESSON",
+    }) === "PER_LESSON",
+    "copia do aceite pelo app exibida como contrato antigo por hora",
+  );
+  // Contrato antigo por hora: nada gravado, continua como era.
+  assert(
+    teacherContractRateUnit({}) === undefined,
+    "contrato antigo ganhou unidade",
+  );
+  // So PER_LESSON e aceito como exibicao.
+  assert(
+    teacherContractRateUnit({ displayRateUnit: "PER_HOUR" }) === undefined,
+    "unidade de exibicao desconhecida aceita",
+  );
 });

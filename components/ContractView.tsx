@@ -47,8 +47,9 @@ const ContractView: React.FC<ContractViewProps> = ({
     const [profile, setProfile] = useState<any>(null);
     const [contractUrl, setContractUrl] = useState<string | null>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
-    // Versão gravada no aceite (null = nada gravado: texto de antes), a data
-    // desse aceite e a versão que a escola oferece aos contratos novos.
+    // Versão gravada no aceite (null = nada gravado: texto de antes) e a data
+    // desse aceite. A versão que a escola oferece não é usada aqui (tela que
+    // só mostra; ver termsVersion abaixo).
     const [contractTerms, setContractTerms] = useState<ContractTermsRecord | null>(null);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
@@ -247,13 +248,16 @@ const ContractView: React.FC<ContractViewProps> = ({
         classFrequency: profile.class_frequency ? parseInt(String(profile.class_frequency)) : classFrequency,
         acceptedAt: signature.acceptedAt,
         userIp: signature.userIp,
-        // Aceito sem data (matrícula migrada, contract_accepted sem accepted_at)
-        // também é contrato assinado: nunca ganha cláusula que não leu. Ainda
-        // não assinado: a versão que a escola oferece.
+        // "Meu contrato" só MOSTRA: aqui não se assina nada. Sem versão gravada
+        // no aceite, é o texto de antes — também para quem nunca assinou pela
+        // página de matrícula (matrícula feita à mão pela escola: em 27/09/2026,
+        // 8 alunos ativos da Wise Wolf sem aceite digital). A versão que a
+        // escola oferece aos contratos novos vale só nas telas que assinam
+        // (matrícula, convite e aceite do professor): mostrá-la aqui daria a
+        // esses alunos um contrato com a Cláusula 8 que eles nunca assinaram.
         termsVersion: resolveContractTermsVersion('STUDENT', {
-            signed: Boolean(profile.accepted_at) || profile.contract_accepted === true,
+            signed: true,
             recordedVersion: contractTerms?.recordedVersion,
-            offeredVersion: contractTerms?.offeredVersion,
         }),
     };
 

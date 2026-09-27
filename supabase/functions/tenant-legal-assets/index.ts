@@ -382,6 +382,24 @@ async function resolveCurrent(
   return json({ tenantId: tenant.tenantId, schoolInfo });
 }
 
+/**
+ * Como o contrato do professor exibe o valor. `rateUnit` e o que o convite
+ * (register-teacher) grava e o que a folha le (teacher_student_rate troca a
+ * regua de pagamento com rateUnit = PER_LESSON). O aceite pelo app
+ * (accept_teacher_contract, migration 20260927150000) NAO grava rateUnit, para
+ * nao mudar pagamento, e grava displayRateUnit = PER_LESSON: a tela assinada
+ * mostrou o valor por aula, e sem isso a copia mostraria metade dele (a regra
+ * do contrato antigo por hora). So PER_LESSON e aceito como exibicao.
+ */
+export function teacherContractRateUnit(
+  commercial: Record<string, unknown>,
+): string | undefined {
+  if (typeof commercial.rateUnit === "string" && commercial.rateUnit) {
+    return commercial.rateUnit;
+  }
+  return commercial.displayRateUnit === "PER_LESSON" ? "PER_LESSON" : undefined;
+}
+
 async function resolveContract(
   body: Record<string, unknown>,
   context: RequestAuthContext,
@@ -430,7 +448,7 @@ async function resolveContract(
     address: party.address,
     birth_date: party.birthDate,
     hourly_rate: commercial.hourlyRate,
-    rateUnit: commercial.rateUnit,
+    rateUnit: teacherContractRateUnit(commercial),
     // Versão do texto assinado (register-teacher grava desde 27/09/2026).
     // Ausente = contrato de antes: a tela mostra o texto antigo.
     contractTermsVersion: Number.isInteger(commercial.contractTermsVersion)
