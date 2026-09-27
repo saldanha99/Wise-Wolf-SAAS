@@ -838,9 +838,21 @@ onClick texto → sendMessage() → unlockAudio()
 - **Convite:** `VendorInviteGenerator` → `create_affiliate_invite(comissão, nome, cupom)` —
   passa pela porta de sempre (`create_invite_offer`, que confere papel e escola) e **reserva
   o cupom** até o convite ser usado ou vencer (`affiliate_code_in_use` se já é de alguém).
-  `/vendor-onboarding` explica o programa inteiro (cupom, liquidação, saque) antes do
-  formulário e exige o aceite das regras (`acceptedTerms`, conferido no `register-vendor`).
-  Cupom tomado entre o convite e o cadastro não trava: a conta nasce com cupom gerado.
+  `/vendor-onboarding` exige o aceite das regras (`acceptedTerms`, conferido no
+  `register-vendor`). ⚠️ **A ordem mudou (27/09):** no celular vêm primeiro o resumo
+  (comissão e cupom) e o formulário com o aceite; "Como funciona" e as regras completas
+  ficam ABAIXO (o link "Ler as regras completas" leva até elas), e os prazos de liquidação
+  (Pix, boleto, cartão até ~30 dias) ficam recolhidos na etapa "A 1ª mensalidade é
+  liquidada". Não parta do pressuposto de que quem marcou a caixa leu os prazos: o texto
+  do aceite é que carrega o essencial (comissão, liberação na 1ª mensalidade liquidada,
+  saque aprovado). Cor e logo vêm da escola (`tenant-legal-assets` → `brandPrimary`,
+  `brandSecondary`, `schoolLogoUrl`); cor que não dá 4,5:1 com branco SÓLIDO cai no padrão,
+  e a página só escreve branco sólido sobre ela. **O cupom do convite ainda não vale na
+  matrícula** (`private.active_affiliate_by_code` só acha perfil SALESPERSON, que nasce no
+  cadastro): a página o mostra "Reservado para você", sem copiar; o Copiar fica na tela de
+  conclusão, com o cupom que o `register-vendor` devolve (`affiliateCode`, lido do perfil).
+  Cupom tomado entre o convite e o cadastro não trava: a conta nasce com cupom gerado —
+  e é esse que a conclusão mostra.
 - **Atribuição — três portas, um benefício** (`private.grant_affiliate_benefit`: taxa 0 +
   comissão congelada em `offers.metadata.affiliate_commission_cents`):
   1. o aluno digita o cupom na página de matrícula (`apply_affiliate_coupon`, service role

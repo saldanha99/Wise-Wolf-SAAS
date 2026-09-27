@@ -44,6 +44,10 @@ export function contrastWithWhite(hex: string): number {
  * Marca da escola vinda do convite. A faixa do topo, o cupom e o botão levam
  * texto branco sobre a cor principal — cor clara demais (amarelo, rosa-bebê)
  * cai no padrão do app em vez de deixar o texto ilegível.
+ *
+ * ⚠️ A trava mede BRANCO SÓLIDO sobre a cor. Por isso a página escreve sobre a
+ * cor da escola só em branco sólido e escurece (nunca clareia) o fundo por
+ * decoração: branco a 75% sobre #2563EB — o azul do próprio app — dá 3,6:1.
  */
 export function resolveAffiliateBrand(offer: {
     brandPrimary?: unknown;
@@ -62,6 +66,18 @@ export function resolveAffiliateBrand(offer: {
         ? offer.schoolLogoUrl
         : null;
     return { primary, primaryRgb: channels(primary).join(' '), secondary, logoUrl };
+}
+
+/**
+ * Fundo da faixa do topo. A decoração só ESCURECE a cor da escola (ou usa a cor
+ * de apoio, que passou pela mesma trava): o texto por cima é branco sólido, e
+ * clarear com branco translúcido derrubava o contraste nas cores no limite.
+ */
+export function affiliateBandBackground(brand: AffiliateBrand): string {
+    const glow = brand.secondary
+        ? `radial-gradient(120% 90% at 100% 0%, ${brand.secondary} 0%, transparent 60%)`
+        : 'radial-gradient(120% 90% at 100% 0%, rgba(0,0,0,0.22) 0%, transparent 55%)';
+    return `${glow}, radial-gradient(80% 70% at 0% 100%, rgba(0,0,0,0.14) 0%, transparent 70%), ${brand.primary}`;
 }
 
 /** "Wise Wolf Languages" → "WW"; usado quando a escola não tem logo. */
@@ -157,6 +173,10 @@ export async function functionErrorText(error: unknown): Promise<string> {
  * Copia o texto. A API de clipboard falha em navegador embutido (Instagram,
  * WhatsApp antigo) e fora de contexto seguro; aí tenta o caminho antigo.
  * `false` = não copiou, e a tela oferece o código selecionado para copiar à mão.
+ *
+ * O caminho antigo seleciona um textarea escondido — o que leva o foco para
+ * ele, e remover o textarea deixava o foco no `body` (quem usa teclado ou leitor
+ * de tela recomeçava do topo da página). O foco e a seleção de antes voltam.
  */
 export async function copyTextToClipboard(text: string): Promise<boolean> {
     try {
@@ -168,18 +188,70 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
         // Permissão negada ou contexto inseguro: tenta o caminho antigo abaixo.
     }
     if (typeof document === 'undefined' || typeof document.execCommand !== 'function') return false;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const selection = document.getSelection();
+    const previousRanges = selection
+        ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index))
+        : [];
     const area = document.createElement('textarea');
     area.value = text;
     area.setAttribute('readonly', '');
+    area.setAttribute('aria-hidden', 'true');
+    area.tabIndex = -1;
     area.style.position = 'fixed';
+    area.style.top = '0';
+    area.style.left = '0';
     area.style.opacity = '0';
+    // 16 px: abaixo disso o iOS dá zoom na página ao focar o campo.
+    area.style.fontSize = '16px';
     document.body.appendChild(area);
     try {
         area.select();
+        area.setSelectionRange(0, text.length);
         return document.execCommand('copy');
     } catch {
         return false;
     } finally {
         area.remove();
+        if (selection) {
+            selection.removeAllRanges();
+            previousRanges.forEach(range => selection.addRange(range));
+        }
+        if (previousFocus && previousFocus !== document.body && previousFocus.isConnected) {
+            previousFocus.focus({ preventScroll: true });
+        }
     }
+}
+
+/**
+ * Tamanho do código no cupom. O código nunca quebra no meio ("AFILIADA1" numa
+ * linha e "0" na outra, como saía em 360–393 px): cada faixa de comprimento
+ * tem a fonte que cabe inteira numa linha na largura útil mínima. Só código
+ * acima de 21 caracteres (o limite é 32) pode quebrar.
+ */
+export type CouponCodeSize = 'xl' | 'lg' | 'md' | 'sm';
+
+/** Largura útil mínima do código (px): celular de 320 px, descontadas margens e respiros. */
+export const COUPON_CODE_MIN_WIDTH_PX = 200;
+
+/** Fonte do código em cada faixa, no celular (px). A partir de 640 px o espaço cresce e a fonte também. */
+export const COUPON_CODE_FONT_PX: Record<CouponCodeSize, number> = { xl: 26, lg: 21, md: 16, sm: 13 };
+
+/** Avanço de um caractere monoespaçado (≈0,6em, com folga) mais o tracking de 0,08em. */
+const MONO_ADVANCE_EM = 0.62 + 0.08;
+
+/** Maior código que ainda cabe numa linha em `COUPON_CODE_MIN_WIDTH_PX`. */
+export const COUPON_CODE_NOWRAP_MAX = 21;
+
+export function couponCodeSize(code: string): CouponCodeSize {
+    const length = code.trim().length;
+    if (length <= 10) return 'xl';
+    if (length <= 13) return 'lg';
+    if (length <= 17) return 'md';
+    return 'sm';
+}
+
+/** Largura estimada do código numa linha (px), com a fonte da faixa dele. */
+export function couponCodeWidthPx(code: string, size: CouponCodeSize = couponCodeSize(code)): number {
+    return code.trim().length * MONO_ADVANCE_EM * COUPON_CODE_FONT_PX[size];
 }

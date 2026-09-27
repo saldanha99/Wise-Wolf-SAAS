@@ -13,7 +13,10 @@ import {
     formatCents,
 } from '../lib/affiliateProgram';
 import {
+    COUPON_CODE_NOWRAP_MAX,
+    affiliateBandBackground,
     copyTextToClipboard,
+    couponCodeSize,
     firstName,
     functionErrorText,
     resolveAffiliateBrand,
@@ -22,6 +25,7 @@ import {
     vendorRegistrationErrorMessage,
     type AffiliateBrand,
     type AffiliateSignupField,
+    type CouponCodeSize,
 } from '../lib/affiliateOnboarding';
 
 /**
@@ -31,10 +35,17 @@ import {
  * (comissão e cupom), logo depois o formulário, e embaixo "Como funciona" em
  * quatro etapas (indicar → matrícula → liquidação → saque) com o texto
  * completo das regras recolhido em cada uma. No computador: explicação à
- * esquerda, formulário fixo à direita.
+ * esquerda, formulário à direita — fixo na rolagem só quando cabe inteiro na
+ * janela (senão o botão e os avisos ficariam presos abaixo da dobra).
+ *
+ * O cupom do convite só vale depois do cadastro (o dono do cupom é o perfil de
+ * afiliado, que nasce no `register-vendor`): aqui ele aparece como reservado,
+ * sem botão de copiar; o copiar mora na tela de conclusão, com o cupom que o
+ * servidor confirma ter ficado na conta.
  *
  * Cor e logo são os da escola quando o convite os traz (`tenant-legal-assets`);
  * sem eles — ou com cor clara demais para texto branco — vale o padrão do app.
+ * Sobre a cor da escola, só texto branco SÓLIDO (a trava de contraste mede isso).
  */
 
 const DISPLAY = "'Manrope', 'DM Sans', system-ui, sans-serif";
@@ -44,6 +55,28 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const card = 'rounded-[28px] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06),0_28px_56px_-32px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/[0.06] dark:bg-[#0F1626] dark:shadow-none dark:ring-white/10';
 const eyebrow = 'text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400';
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-[#60A5FA] dark:focus-visible:ring-offset-[#0F1626]';
+/**
+ * Botão na cor da escola. O hover ESCURECE por cima da cor (camada preta no
+ * background-image): clarear com opacidade derrubaria o contraste do texto
+ * branco abaixo de 4,5:1 nas cores no limite da trava.
+ */
+const brandButton = `bg-[rgb(var(--aff-rgb))] text-white hover:bg-[linear-gradient(rgb(0_0_0/0.16),rgb(0_0_0/0.16))] dark:bg-white dark:text-slate-900 dark:hover:bg-none dark:hover:bg-slate-200 ${focusRing}`;
+/**
+ * Formulário fixo na rolagem só no computador E com janela alta o bastante para
+ * ele inteiro (≈ 760 px + margens). Em notebook (1366×657, 1280×720) ele rola
+ * com a página: fixo, o botão, o erro do aceite e o do servidor ficavam
+ * escondidos abaixo da dobra até o fim da página. A altura máxima com rolagem
+ * interna é só a rede para o formulário que cresce com um aviso de erro.
+ */
+const STICKY_FORM = '[@media(min-width:1024px)_and_(min-height:840px)]:sticky [@media(min-width:1024px)_and_(min-height:840px)]:top-6 [@media(min-width:1024px)_and_(min-height:840px)]:max-h-[calc(100dvh-3rem)] [@media(min-width:1024px)_and_(min-height:840px)]:overflow-y-auto';
+
+/** Fonte do código do cupom por faixa de comprimento (ver `couponCodeSize`). */
+const COUPON_CODE_CLASS: Record<CouponCodeSize, string> = {
+    xl: 'text-[26px] sm:text-[32px]',
+    lg: 'text-[21px] sm:text-[26px]',
+    md: 'text-[16px] sm:text-[20px]',
+    sm: 'text-[13px] sm:text-[16px]',
+};
 
 interface VendorOffer {
     commissionCents: number;
@@ -77,6 +110,8 @@ const VendorOnboarding: React.FC = () => {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [formError, setFormError] = useState<{ message: string; field?: AffiliateSignupField } | null>(null);
     const [loading, setLoading] = useState(false);
+    /** Cupom que ficou na conta, confirmado pelo `register-vendor` (nulo se ele não disser). */
+    const [registeredCode, setRegisteredCode] = useState<string | null>(null);
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -92,6 +127,14 @@ const VendorOnboarding: React.FC = () => {
         phone: useRef<HTMLInputElement>(null),
         terms: useRef<HTMLInputElement>(null),
     } satisfies Record<AffiliateSignupField, React.RefObject<HTMLInputElement | null>>;
+    const serverErrorRef = useRef<HTMLDivElement>(null);
+
+    // Erro do servidor aparece logo acima do botão: garante que ele está na tela
+    // (na janela da página ou na rolagem do formulário fixo).
+    const serverError = formError && !formError.field ? formError.message : null;
+    useEffect(() => {
+        if (serverError) serverErrorRef.current?.scrollIntoView?.({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    }, [serverError]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -166,6 +209,9 @@ const VendorOnboarding: React.FC = () => {
             if (fnError) throw fnError;
             if (data?.error) throw new Error(String(data.error));
 
+            // O cupom do convite pode ter sido trocado por um gerado (cupom tomado
+            // desde o convite): a tela de conclusão só oferece o que o servidor diz.
+            setRegisteredCode(typeof data?.affiliateCode === 'string' && data.affiliateCode.trim() ? data.affiliateCode.trim() : null);
             setStep('SUCCESS');
         } catch (err) {
             setFormError({ message: vendorRegistrationErrorMessage(await functionErrorText(err)) });
@@ -213,7 +259,7 @@ const VendorOnboarding: React.FC = () => {
     if (step === 'SUCCESS') {
         return (
             <PageShell brand={brand} schoolName={schoolName} greetingName={greetingName}>
-                <section className={`${card} mx-auto max-w-lg p-7 sm:p-10`} aria-labelledby="aff-success-title">
+                <section className={`${card} mx-auto max-w-lg p-5 sm:p-10`} aria-labelledby="aff-success-title">
                     <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-400/10">
                         <CheckCircle2 size={30} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                     </div>
@@ -222,8 +268,9 @@ const VendorOnboarding: React.FC = () => {
                     </h2>
                     <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                         Entre com seu e-mail e senha para acessar o seu painel de afiliado:
-                        {couponCode ? <> o cupom <strong className="font-semibold text-slate-900 dark:text-white">{couponCode}</strong>,</> : ' o seu cupom,'} as suas indicações e os seus saques.
+                        {registeredCode ? <> o cupom <strong className="font-semibold text-slate-900 dark:text-white">{registeredCode}</strong>,</> : ' o seu cupom,'} as suas indicações e os seus saques.
                     </p>
+                    {registeredCode && <CouponTicket code={registeredCode} mode="active" />}
                     <ol className="mt-6 space-y-3 border-t border-slate-200 pt-6 text-sm text-slate-700 dark:border-white/10 dark:text-slate-300">
                         {[
                             'Entre com o e-mail e a senha que você acabou de criar.',
@@ -240,7 +287,7 @@ const VendorOnboarding: React.FC = () => {
                     </ol>
                     <a
                         href="/"
-                        className={`mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[rgb(var(--aff-rgb))] px-5 text-[15px] font-bold text-white hover:bg-[rgb(var(--aff-rgb)_/_0.9)] dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 ${focusRing}`}
+                        className={`mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-bold ${brandButton}`}
                         style={{ fontFamily: DISPLAY }}
                     >
                         Ir para o login <ArrowRight size={18} aria-hidden="true" />
@@ -272,14 +319,14 @@ const VendorOnboarding: React.FC = () => {
                         <Fact icon={Wallet}>Saque no seu PIX, com aprovação da escola</Fact>
                     </ul>
 
-                    <CouponTicket code={couponCode} />
+                    <CouponTicket code={couponCode} mode="reserved" />
                 </section>
 
                 {/* Formulário: logo depois do resumo no celular. No computador sobe para a
-                    faixa (o botão fica acima da dobra) e acompanha a rolagem à direita. */}
+                    faixa e, quando cabe inteiro na janela, acompanha a rolagem à direita. */}
                 <section
                     aria-labelledby="aff-form-title"
-                    className={`${card} p-5 sm:p-8 lg:sticky lg:top-6 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1 lg:-mt-[224px] lg:self-start`}
+                    className={`${card} p-5 sm:p-8 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1 lg:-mt-[224px] lg:self-start lg:p-7 ${STICKY_FORM}`}
                 >
                     <h2 id="aff-form-title" className="text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl" style={{ fontFamily: DISPLAY }}>
                         Crie seu acesso
@@ -290,7 +337,7 @@ const VendorOnboarding: React.FC = () => {
 
                     <form
                         noValidate
-                        className="mt-6 space-y-4"
+                        className="mt-5 space-y-4"
                         aria-busy={loading || undefined}
                         onSubmit={event => { event.preventDefault(); void handleRegister(); }}
                     >
@@ -361,6 +408,7 @@ const VendorOnboarding: React.FC = () => {
 
                         {formError && !formError.field && (
                             <div
+                                ref={serverErrorRef}
                                 role="alert"
                                 className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200"
                             >
@@ -372,7 +420,7 @@ const VendorOnboarding: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[rgb(var(--aff-rgb))] px-5 text-[15px] font-bold text-white shadow-sm hover:bg-[rgb(var(--aff-rgb)_/_0.9)] disabled:cursor-wait disabled:opacity-75 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 ${focusRing}`}
+                            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-bold shadow-sm disabled:cursor-wait ${brandButton}`}
                             style={{ fontFamily: DISPLAY }}
                         >
                             {loading ? (
@@ -441,7 +489,8 @@ const VendorOnboarding: React.FC = () => {
                                                             </div>
                                                         ))}
                                                     </dl>
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400">{SETTLEMENT_CARD_NOTE}</p>
+                                                    {/* Fora de cartão, direto no fundo cinza: slate-600 (6,9:1); slate-500 dava 4,36:1. */}
+                                                    <p className="text-xs text-slate-600 dark:text-slate-400">{SETTLEMENT_CARD_NOTE}</p>
                                                 </>
                                             )}
                                         </div>
@@ -486,9 +535,6 @@ const PageShell: React.FC<{
 }> = ({ brand, schoolName = null, greetingName = '', showLead = false, children }) => {
     const [logoFailed, setLogoFailed] = useState(false);
     const monogram = schoolMonogram(schoolName);
-    const glow = brand.secondary
-        ? `radial-gradient(120% 90% at 100% 0%, ${brand.secondary} 0%, transparent 60%)`
-        : 'radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,0.14) 0%, transparent 55%)';
     return (
         <main
             className={`min-h-screen bg-[#F3F5F9] text-slate-700 dark:bg-[#070B14] dark:text-slate-300`}
@@ -496,12 +542,12 @@ const PageShell: React.FC<{
         >
             <header
                 className="relative overflow-hidden text-white"
-                style={{ background: `${glow}, radial-gradient(80% 70% at 0% 100%, rgba(255,255,255,0.06) 0%, transparent 70%), ${brand.primary}` }}
+                style={{ background: affiliateBandBackground(brand) }}
             >
                 <BadgePercent
                     aria-hidden="true"
                     strokeWidth={1.25}
-                    className="pointer-events-none absolute -right-10 -top-8 h-56 w-56 text-white/[0.07] sm:h-72 sm:w-72 lg:hidden"
+                    className="pointer-events-none absolute -right-10 -top-8 h-56 w-56 text-black/[0.12] sm:h-72 sm:w-72 lg:hidden"
                 />
                 <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-7 sm:px-6 sm:pt-10 lg:pb-32 lg:pt-14">
                     <div className="flex items-center gap-3">
@@ -515,17 +561,18 @@ const PageShell: React.FC<{
                         ) : (
                             <span
                                 aria-hidden="true"
-                                className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 text-base font-extrabold ring-1 ring-white/25"
+                                className="grid h-12 w-12 place-items-center rounded-2xl bg-black/20 text-base font-extrabold ring-1 ring-white/40"
                                 style={{ fontFamily: DISPLAY }}
                             >
                                 {monogram || <BadgePercent size={22} />}
                             </span>
                         )}
                         <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{schoolName || 'Convite de afiliado'}</p>
-                            {/* Só com a oferta carregada: link inválido não é convite de ninguém. */}
+                            <p className="truncate text-sm font-bold">{schoolName || 'Convite de afiliado'}</p>
+                            {/* Só com a oferta carregada: link inválido não é convite de ninguém.
+                                Hierarquia pelo peso, não pela opacidade: o texto fica branco sólido. */}
                             {schoolName && (
-                                <p className="text-xs text-white/75">{greetingName ? `Convite pessoal para ${greetingName}` : 'Convite pessoal'}</p>
+                                <p className="text-xs font-normal text-white">{greetingName ? `Convite pessoal para ${greetingName}` : 'Convite pessoal'}</p>
                             )}
                         </div>
                     </div>
@@ -533,7 +580,7 @@ const PageShell: React.FC<{
                         Programa de afiliados
                     </h1>
                     {showLead && (
-                        <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-white/85 sm:text-base lg:max-w-[52%]">
+                        <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-white sm:text-base lg:max-w-[52%]">
                             Você indica com o seu cupom, quem você indica fica isento da taxa de matrícula e você recebe uma comissão por cada matrícula.
                         </p>
                     )}
@@ -544,11 +591,21 @@ const PageShell: React.FC<{
     );
 };
 
-/** O cupom como um cupom: código grande, picote e o botão de copiar no canhoto. */
-const CouponTicket: React.FC<{ code: string | null }> = ({ code }) => {
+/**
+ * O cupom como um cupom: código grande numa linha só, picote com as duas
+ * mordidas e o canhoto embaixo.
+ *
+ * - `reserved` (página do convite): o cupom ainda não vale — o dono dele é o
+ *   perfil de afiliado, que nasce no cadastro. Sem botão de copiar, e o texto
+ *   diz quando passa a valer. Copiar antes do cadastro mandava para a frente um
+ *   cupom que a página de matrícula recusa (e que some se o convite vencer).
+ * - `active` (tela de conclusão): o cupom confirmado pelo servidor, com Copiar.
+ */
+const CouponTicket: React.FC<{ code: string | null; mode: 'reserved' | 'active' }> = ({ code, mode }) => {
     const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
     const codeRef = useRef<HTMLSpanElement>(null);
     const timer = useRef<number | null>(null);
+    const canCopy = mode === 'active' && Boolean(code);
 
     useEffect(() => () => {
         if (timer.current !== null) window.clearTimeout(timer.current);
@@ -568,46 +625,71 @@ const CouponTicket: React.FC<{ code: string | null }> = ({ code }) => {
         if (codeRef.current) window.getSelection()?.selectAllChildren(codeRef.current);
     };
 
-    const notch = `before:absolute before:-left-[11px] before:-top-[11px] before:h-5 before:w-5 before:rounded-full before:bg-white before:content-[''] after:absolute after:-bottom-[11px] after:-left-[11px] after:h-5 after:w-5 after:rounded-full after:bg-white after:content-[''] dark:before:bg-[#0F1626] dark:after:bg-[#0F1626]`;
+    // As mordidas do picote têm a cor do cartão em volta (branco / #0F1626 no escuro).
+    const bite = 'absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white dark:bg-[#0F1626]';
+    const size = code ? couponCodeSize(code) : 'xl';
+    const note = !code
+        ? 'Aparece no seu painel depois do cadastro.'
+        : mode === 'reserved'
+            ? 'Vale assim que você criar sua conta: quem se matricula com ele não paga a taxa de matrícula.'
+            : 'Quem se matricula com ele não paga a taxa de matrícula.';
 
     return (
         <div className="mt-6">
-            <p className={eyebrow} id="aff-coupon-label">Seu cupom</p>
-            <div className="mt-2 flex items-stretch rounded-2xl bg-[rgb(var(--aff-rgb))] text-white dark:ring-1 dark:ring-inset dark:ring-white/15">
-                <div className="min-w-0 flex-1 px-4 py-4 sm:px-5">
+            <div className="flex items-center justify-between gap-3">
+                <p className={eyebrow} id="aff-coupon-label">Seu cupom</p>
+                {code && mode === 'reserved' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                        <Lock size={12} aria-hidden="true" /> Reservado para você
+                    </span>
+                )}
+            </div>
+            <div
+                className="mt-2 overflow-hidden rounded-2xl bg-[rgb(var(--aff-rgb))] text-white dark:ring-1 dark:ring-inset dark:ring-white/15"
+                aria-labelledby="aff-coupon-label"
+                role="group"
+            >
+                <div className="px-5 pb-4 pt-4 sm:px-6">
                     {code ? (
                         <span
                             id="aff-coupon-code"
                             ref={codeRef}
-                            className={`block select-all break-all font-mono font-bold leading-tight tracking-[0.1em] ${code.length > 12 ? 'text-base sm:text-xl' : 'text-[22px] sm:text-[28px]'}`}
+                            data-size={size}
+                            className={`block font-mono font-bold leading-tight tracking-[0.08em] ${COUPON_CODE_CLASS[size]} ${code.trim().length > COUPON_CODE_NOWRAP_MAX ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'} ${canCopy ? 'select-all' : ''}`}
                         >
                             {code}
                         </span>
                     ) : (
                         <span className="block text-lg font-bold" style={{ fontFamily: DISPLAY }}>Gerado no cadastro</span>
                     )}
-                    <span className="mt-1 block text-xs text-white/80">
-                        {code ? 'Quem se matricula com ele não paga a taxa de matrícula.' : 'Aparece no seu painel depois do cadastro.'}
-                    </span>
                 </div>
-                {code && (
-                    <div className={`relative flex shrink-0 items-center border-l-2 border-dashed border-white/35 px-2.5 sm:px-4 ${notch}`}>
+                {/* Picote: linha tracejada com uma mordida de cada lado. */}
+                <div className="relative h-0" aria-hidden="true">
+                    <span className="absolute inset-x-5 top-0 border-t-2 border-dashed border-white/40" />
+                    <span className={`${bite} -left-2.5`} />
+                    <span className={`${bite} -right-2.5`} />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 pb-4 pt-3.5 sm:px-6">
+                    <p className="min-w-[12rem] flex-1 text-[13px] leading-snug text-white">{note}</p>
+                    {canCopy && (
                         <button
                             type="button"
                             onClick={() => { void handleCopy(); }}
                             aria-describedby="aff-coupon-code"
-                            className="inline-flex h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl bg-white/15 px-3 text-sm font-bold text-white hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--aff-rgb))] sm:px-4"
+                            className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-4 text-sm font-bold text-[rgb(var(--aff-rgb))] shadow-sm hover:shadow-[0_0_0_3px_rgba(255,255,255,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--aff-rgb))] dark:text-slate-900"
                         >
                             {state === 'copied' ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
                             {state === 'copied' ? 'Copiado' : 'Copiar'}
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
-            <p role="status" aria-live="polite" className="mt-2 text-xs text-slate-600 empty:mt-0 dark:text-slate-400">
-                {state === 'copied' && 'Cupom copiado. É só colar na conversa.'}
-                {state === 'failed' && 'Não deu para copiar automaticamente: o código ficou selecionado, é só copiar.'}
-            </p>
+            {canCopy && (
+                <p role="status" aria-live="polite" className="mt-2 text-xs text-slate-600 empty:mt-0 dark:text-slate-400">
+                    {state === 'copied' && 'Cupom copiado. É só colar na conversa.'}
+                    {state === 'failed' && 'Não deu para copiar automaticamente: o código ficou selecionado, é só copiar.'}
+                </p>
+            )}
         </div>
     );
 };
@@ -641,7 +723,11 @@ const Field: React.FC<{
     const describedBy = [hint ? `${id}-hint` : '', error ? `${id}-error` : ''].filter(Boolean).join(' ') || undefined;
     return (
         <div>
-            <label htmlFor={id} className="block text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</label>
+            {/* A dica fica na linha do rótulo: o formulário cabe inteiro na janela de mais notebooks. */}
+            <div className="flex items-baseline justify-between gap-3">
+                <label htmlFor={id} className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</label>
+                {hint && <p id={`${id}-hint`} className="text-right text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
+            </div>
             <div className="relative mt-1.5">
                 <Icon className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={18} aria-hidden="true" />
                 <input
@@ -655,11 +741,10 @@ const Field: React.FC<{
                     autoComplete={autoComplete}
                     aria-invalid={invalid || undefined}
                     aria-describedby={describedBy}
-                    className={`h-12 w-full rounded-xl border bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-[rgb(var(--aff-rgb))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--aff-rgb)_/_0.25)] dark:bg-[#0A1020] dark:text-white dark:placeholder:text-slate-500 dark:focus:border-[#60A5FA] dark:focus:ring-[#60A5FA]/30 border-[#8792A5] dark:border-white/35 aria-[invalid=true]:border-rose-600 aria-[invalid=true]:focus:border-rose-600 aria-[invalid=true]:focus:ring-rose-600/25 dark:aria-[invalid=true]:border-rose-400 dark:aria-[invalid=true]:focus:border-rose-400 dark:aria-[invalid=true]:focus:ring-rose-400/30 ${trailing ? 'pr-12' : 'pr-3'}`}
+                    className={`h-12 w-full rounded-xl border bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-500 focus:border-[rgb(var(--aff-rgb))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--aff-rgb)_/_0.25)] lg:h-11 dark:bg-[#0A1020] dark:text-white dark:placeholder:text-slate-400 dark:focus:border-[#60A5FA] dark:focus:ring-[#60A5FA]/30 border-[#8792A5] dark:border-white/35 aria-[invalid=true]:border-rose-600 aria-[invalid=true]:focus:border-rose-600 aria-[invalid=true]:focus:ring-rose-600/25 dark:aria-[invalid=true]:border-rose-400 dark:aria-[invalid=true]:focus:border-rose-400 dark:aria-[invalid=true]:focus:ring-rose-400/30 ${trailing ? 'pr-12' : 'pr-3'}`}
                 />
                 {trailing}
             </div>
-            {hint && <p id={`${id}-hint`} className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
             {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
         </div>
     );
