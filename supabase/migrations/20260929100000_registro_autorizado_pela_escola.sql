@@ -104,7 +104,7 @@ Para que usamos
 • Planejar a próxima aula e a tarefa de casa, com ajuda de IA, a partir do resumo aprovado.
 • Troca de professor: se o aluno passar para outro professor ou tiver aula com um substituto, esse professor recebe o histórico pedagógico (o dossiê) por um link que só abre com login na plataforma da escola.
 • Cartão do aluno: o professor anota o objetivo do aluno, os temas que o engajam, os temas a evitar, como ele prefere ser corrigido e observações pedagógicas. A IA pode sugerir itens, mas só entra o que o professor revisar. Nunca guardamos informação sobre saúde, religião, política, família ou dinheiro. Para menores de 18 anos, o cartão guarda só interesses pedagógicos (objetivo e temas).
-• Confirmar que a aula aconteceu, pelos horários de entrada e saída da sala.
+• Confirmar que a aula aconteceu, pelos horários de entrada e saída da sala. Isso não substitui a confirmação da aula pelo link que a escola envia e não muda a cobrança: uma divergência só abre uma verificação pela coordenação.
 
 Quem vê
 • A transcrição completa: só o professor daquela aula, a coordenação e a direção da escola.
@@ -224,6 +224,18 @@ begin
         and term.body like '%caso aberto para a coordenação%'
         and term.body like '%menos o caso de presença%'
         and term.body like '%contato de privacidade%')
+  ) then
+    raise exception 'aviso_v4_diverge_da_clausula_do_contrato';
+  end if;
+  -- Aluno: a confirmação pelos horários de entrada e saída não substitui a do
+  -- link (Cláusula 4, alínea e, do contrato) nem muda a cobrança — a cláusula
+  -- 8 do contrato novo diz o mesmo; o do professor já diz que nada muda o
+  -- pagamento.
+  if exists (
+    select 1 from private.lesson_recording_terms as term
+    where term.version = 'v4' and term.kind = 'NOTICE' and term.audience = 'STUDENT'
+      and not (term.body like '%não substitui a confirmação da aula pelo link%'
+        and term.body like '%não muda a cobrança%')
   ) then
     raise exception 'aviso_v4_diverge_da_clausula_do_contrato';
   end if;

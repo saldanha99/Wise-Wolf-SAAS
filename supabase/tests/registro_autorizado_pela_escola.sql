@@ -37,7 +37,8 @@
 --
 -- Reprova contra o código anterior (sem o modo, o aluno sem aceite não vale; sem
 -- a trava, o link sai; sem o aviso, o texto é o termo). Não depende de dado real
--- (as datas são relativas a now()).
+-- (as datas são relativas a now()); onde a Wise Wolf existe, confere só os
+-- campos imutáveis da trilha do one-shot — nunca o papel ATUAL de quem decidiu.
 \set ON_ERROR_STOP on
 
 begin;
@@ -867,7 +868,12 @@ declare
 begin
   if exists (select 1 from public.schema_one_shots
              where key = 'registro_das_aulas_autorizado_pela_escola_wise_wolf_20260927') then
-    -- Banco com a escola (produção): a trilha da migration está lá.
+    -- Banco com a escola (produção): a trilha da migration está lá. Só os
+    -- campos IMUTÁVEIS da linha (a trilha nunca é atualizada): o papel e a
+    -- escola ATUAIS de quem decidiu mudam com o tempo (diretor que sai, vira
+    -- outro papel, é substituído) e travariam todo release sem que a trilha
+    -- tivesse mudado. Que decided_by era a direção no momento da decisão é
+    -- provado no ramo de baixo (fixture), contra a função do one-shot.
     select * into v_row from private.lesson_recording_authorization_modes
     where tenant_id = 'school-wise-wolf' and source = 'MIGRATION';
     perform pg_temp.rad_assert(
@@ -877,10 +883,7 @@ begin
         and v_row.legal_basis = 'SCHOOL_CONTRACT_OR_DECISION_WITH_OPT_OUT'
         and v_row.reason like '%Não quero ter que gerar link%'
         and v_row.reason like '%pedir para não ser registrada%'
-        and (v_row.decided_by is null or exists (
-          select 1 from public.profiles as profile
-          where profile.id = v_row.decided_by and profile.tenant_id = 'school-wise-wolf'
-            and profile.role in ('SCHOOL_ADMIN', 'COORDINATOR'))),
+        and length(btrim(coalesce(v_row.decided_by_name, ''))) >= 2,
       'trilha do one-shot da Wise Wolf incompleta');
   else
     -- Clone só-estrutura: a escola não existe; reproduz o one-shot aqui.

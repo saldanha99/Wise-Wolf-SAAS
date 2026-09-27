@@ -309,6 +309,11 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
       'sem prejuízo das aulas',
       'pelo contato de privacidade da CONTRATADA',
       'inclusive o pedido para que as aulas deixem de ser registradas',
+      // O relatório de presença não vira um segundo meio de prova ao lado do
+      // link de confirmação da Cláusula 4(e), nem mexe na cobrança.
+      'sem substituir a confirmação prevista na Cláusula 4, alínea (e)',
+      'sem alterar a apuração nem a cobrança das aulas',
+      'só abre uma verificação pela coordenação',
     ]) {
       expect(clause, expected).toContain(expected);
     }
@@ -453,6 +458,22 @@ describe('cláusula do contrato novo × aviso v4 do registro das aulas', () => {
     expect(teacherClause).toContain('sem prejuízo das suas aulas nem da remuneração');
     expect(teacherNotice).toContain('pelo WhatsApp da escola');
     expect(teacherClause).toContain('no aplicativo da CONTRATANTE ou pelo WhatsApp dela');
+  });
+
+  it('aluno: a presença pelo Meet não substitui o link de confirmação (Cláusula 4, e) nem muda a cobrança, nos dois textos', () => {
+    // A Cláusula 4(e) faz do link de confirmação a forma oficial de provar a
+    // aula, inclusive para a cobrança; o relatório do Google só abre caso na
+    // Central de Qualidade. Sem a ressalva, o contrato teria dois meios de
+    // prova sem ordem entre eles.
+    expect(studentNotice).toContain('não substitui a confirmação da aula pelo link que a escola envia');
+    expect(studentNotice).toContain('não muda a cobrança');
+    expect(studentNotice).toContain('só abre uma verificação pela coordenação');
+    expect(studentClause).toContain('sem substituir a confirmação prevista na Cláusula 4, alínea (e)');
+    expect(studentClause).toContain('sem alterar a apuração nem a cobrança das aulas');
+    expect(studentClause).toContain('só abre uma verificação pela coordenação');
+    // O professor já tinha a ressalva do pagamento nos dois textos.
+    expect(teacherNotice).toContain('Nada disso muda o seu pagamento automaticamente');
+    expect(teacherClause).toContain('nenhum ajuste de pagamento é automático');
   });
 
   it('aluno: o responsável pelo menor pode pedir para não registrar, nos dois textos', () => {
