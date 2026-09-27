@@ -85,7 +85,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
     expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-28-sala-da-troca');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-28-sala-da-troca');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-28-tempo-na-sala');
     expect(latestFeatureTourFor('STUDENT')?.id).toBe('2026-09-27-minhas-aulas-registradas');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });
@@ -98,6 +98,18 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     const text = (tour?.steps || []).map(step => step.text).join(' ');
     expect(text).toContain('Quando a lixeira automática está ligada');
     expect(text.toLowerCase()).not.toContain('reconect');
+  });
+
+  it('o tour do extrato de pontualidade sobe com o extrato desligado: só para a direção, e diz que depende do jurídico', () => {
+    // O extrato nasce desligado por escola (20260928120000); o professor não vê
+    // nada até ligar — um tour para ele seria pulado e marcado como visto.
+    const tour = FEATURE_TOURS.find(t => t.id === '2026-09-28-tempo-na-sala');
+    expect(tour?.roles).toEqual(['SCHOOL_ADMIN']);
+    const text = (tour?.steps || []).map(step => step.text).join(' ');
+    expect(text).toContain('liberação do jurídico');
+    expect(text).toContain('sem ranking');
+    expect(text).toContain('Atraso detectado pelo Meet');
+    expect(text.toLowerCase()).not.toContain('já está ligado');
   });
 
   it('achatar põe todos os passos sob o capítulo "Novidade"', () => {

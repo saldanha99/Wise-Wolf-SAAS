@@ -480,6 +480,27 @@ export function summarizeAttendance(
   };
 }
 
+/**
+ * O que a avaliação de presença manda ao banco (`attendance_evaluate`). A
+ * conferência ainda aberta vai junto: o extrato de pontualidade do professor
+ * (migration 20260928120000) não mede aula em andamento — sem isso ela viraria
+ * "relatório não encontrado" até a rodada seguinte. Banco anterior ignora o campo.
+ */
+export function attendanceEvaluationPayload(
+  conferences: Array<{ endTime?: string | null }>,
+  reportFound: boolean,
+): {
+  conference_count: number;
+  report_found: boolean;
+  conference_open: boolean;
+} {
+  return {
+    conference_count: conferences.length,
+    report_found: reportFound,
+    conference_open: conferences.some((conference) => !conference.endTime),
+  };
+}
+
 const MEETING_CODE = /[a-z]{3,4}-[a-z]{3,4}-[a-z]{3,4}/gi;
 
 /**

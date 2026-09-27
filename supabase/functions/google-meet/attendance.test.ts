@@ -1,5 +1,6 @@
 /// <reference lib="deno.ns" />
 import {
+  attendanceEvaluationPayload,
   attendanceIdentity,
   combineAttendanceReports,
   findHeader,
@@ -482,4 +483,30 @@ Deno.test("relatórios combinados: ordem de criação, ids guardados e planilha 
   );
   assertEquals(nenhuma.parseError, "attendance_header_not_found");
   assertEquals(nenhuma.rows, []);
+});
+
+Deno.test("avaliação de presença diz ao banco quando a reunião ainda está aberta (extrato não mede aula em andamento)", () => {
+  const fechada = {
+    name: "conferenceRecords/a",
+    startTime: "2026-09-26T13:00:00Z",
+    endTime: "2026-09-26T13:31:00Z",
+  };
+  assertEquals(
+    attendanceEvaluationPayload([fechada], true),
+    { conference_count: 1, report_found: true, conference_open: false },
+  );
+  // Queda e reentrada: a segunda conferência ainda não terminou.
+  assertEquals(
+    attendanceEvaluationPayload([fechada, {
+      name: "conferenceRecords/b",
+      startTime: "2026-09-26T13:33:00Z",
+      endTime: "",
+    }], false),
+    { conference_count: 2, report_found: false, conference_open: true },
+  );
+  // Sala que nem abriu: nada aberto, zero conferências.
+  assertEquals(
+    attendanceEvaluationPayload([], false),
+    { conference_count: 0, report_found: false, conference_open: false },
+  );
 });

@@ -429,6 +429,28 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // Migration 20260928120000: extrato construído e DESLIGADO por escola até o
+    // jurídico liberar. O professor não vê nada enquanto estiver desligado (o
+    // tour dele sai quando o extrato for ligado); a direção vê o aviso na aba.
+    id: '2026-09-28-tempo-na-sala',
+    title: 'Extrato de pontualidade (desligado)',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'quality-punctuality-tab',
+        view: 'lesson-quality',
+        title: 'Extrato de pontualidade, pronto e desligado ⏱️',
+        text: 'Esta aba traz o extrato de pontualidade de cada professor, mês a mês: o horário em que ele entrou na sala da escola em cada aula, pelo relatório de presença do Google Meet, e o motivo das aulas sem medição. Um professor por vez — sem nota, sem ranking, sem comparação entre professores e sem mexer no pagamento; o próprio professor vê o dele. Ele depende da liberação do jurídico: até lá está desligado, e nada é calculado nem mostrado a ninguém.',
+      },
+      {
+        target: null,
+        view: 'lesson-quality',
+        title: 'Atraso do Meet não é relato da família',
+        text: 'Na fila de casos, o atraso que o relatório de presença do Meet detecta passa a aparecer como "Atraso detectado pelo Meet"; "Atraso relatado" continua sendo o que a família contou. Os dois são aviso para conversar com o professor — nenhum altera o pagamento.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

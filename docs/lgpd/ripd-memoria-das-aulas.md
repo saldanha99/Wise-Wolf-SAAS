@@ -55,7 +55,7 @@
 | F4 | Dossiê para o novo professor ou substituto (link com login) | Execução do contrato educacional (art. 7º, V) ou legítimo interesse | Acesso limitado a quem vai dar a aula; transcrição bruta fica fora. |
 | F5 | Cartão do aluno (sugestões da IA revisadas pelo professor) | Consentimento (F1) / legítimo interesse | Nunca dados sensíveis; menor só interesses pedagógicos. |
 | F6 | Confirmar que a aula aconteceu (relatório de presença) | Legítimo interesse (art. 7º, IX) com teste de balanceamento, ou execução do contrato com o professor | **Só sinaliza** caso na Central de Qualidade; não altera pagamento (decisão da direção). |
-| F7 | Extrato de pontualidade do professor (sem nota, sem ranking, visível a ele) | Legítimo interesse, **só depois do parecer** | Desligado até o jurídico decidir (risco R2). |
+| F7 | Extrato de pontualidade do professor (sem nota, sem ranking, visível a ele) | Legítimo interesse, **só depois do parecer** | Construído e desligado por escola até o jurídico decidir (risco R2; migration `20260928120000`). Desligado, nada é calculado. Ligado: só números do professor (entrada, minutos na sala, atraso, saída antecipada, motivo da falta de medição), sem dado do aluno; o professor vê o dele, direção e coordenação um professor por vez; 90 dias depois da aula (o prazo do relatório de presença no termo v3). |
 | F8 | Provar o aceite e a revogação (evidências) | Cumprimento de obrigação/exercício regular de direitos (art. 7º, II e VI) | Prazo de guarda das evidências a definir (J7). |
 
 ## 5. Descrição do fluxo
@@ -116,7 +116,7 @@ Google Workspace e o provedor de IA (OpenRouter e os modelos que ele aciona) pod
 - **J7** — Prazo de guarda das evidências de consentimento e dos registros de acesso.
 - **J8** — Procedimento de atendimento aos direitos do titular (canal, prazo, identificação do solicitante).
 - **J9** — Plano de resposta a incidentes.
-- **J10** — Parecer sobre o extrato de pontualidade do professor (F7/R2) antes de ligar.
+- **J10** — Parecer sobre o extrato de pontualidade do professor (F7/R2) antes de ligar. Pontos: base legal; se a coordenação (além da direção) pode ver; o prazo de 90 dias (o termo v3 fala do relatório de presença, não do extrato); e se "saída antecipada" deve aparecer. Liberado, a plataforma liga por escola, com a referência do parecer registrada na trilha (runbook do Meet, seção do extrato).
 - **J11** — Planos do Planner (lesson_plans, texto gerado com IA a partir do resumo aprovado): hoje ficam depois da exclusão e da saída do aluno, sem a base copiada do resumo, sem a memória proposta e sem voltar ao modelo como continuidade; o texto do plano (objetivo, atividades, lição) pode citar o próximo passo e os erros das aulas aprovadas. Decidir se entram na exclusão a pedido e na retenção.
 
 ## 10. Aprovação

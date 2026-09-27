@@ -52,6 +52,7 @@ import {
   roomCreationErrorCode,
 } from "./provider.ts";
 import {
+  attendanceEvaluationPayload,
   attendanceIdentity,
   type AttendanceSource,
   combineAttendanceReports,
@@ -977,12 +978,14 @@ async function syncAttendance(
       }
     }
   }
+  // A avaliação também alimenta o extrato de pontualidade (desligado por
+  // escola até o jurídico liberar); conferência aberta não é medida.
   const evaluation = await attendanceStorage(
     db,
     "attendance_evaluate",
     tenantId,
     sessionId,
-    { conference_count: conferences.length, report_found: reportFound },
+    attendanceEvaluationPayload(conferences, reportFound),
   );
   return { ...evaluation, report_found: reportFound };
 }

@@ -515,6 +515,23 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `google_meet_backend` e `apply_standing_lesson_recording_consent` foram remendadas por âncora — o teste reprova quem
   as recriar sem os remendos. `private.google_meet_rooms` é do `supabase_admin`: a troca (dono `postgres`) tem grant
   só na coluna `teacher_handover_pending`.
+- **Extrato de pontualidade do professor — DESLIGADO até o jurídico** (migration `20260928120000`, runbook seção
+  própria, teste `supabase/tests/extrato_de_pontualidade_do_professor.sql`): `public.teacher_lesson_presence` guarda só
+  números do professor por aula (entrada, minutos na sala, atraso, saída antecipada, status `FOUND`/`NOT_FOUND`/
+  `UNPARSED`/`NO_CONFERENCE`/`NO_ROOM`), sem CSV nem dado do aluno, RLS sem policy e sem grant a ninguém. Alimentada
+  pela avaliação de presença (remendo por âncora em `google_meet_attendance_backend` → `attendance_evaluate`, que nunca
+  derruba a avaliação) e pela varredura de hora em hora (aula sem sala, importação que terminou sem avaliação, troca
+  de professor depois da medição); números recalculados com a conta de quem DÁ a aula. Falta do professor e aula de
+  antes de ligar não entram; 90 dias depois da aula (o prazo do relatório no termo v3), purga diária. Leitura só por
+  `get_my_punctuality_extract` (o professor, o dele — cartão no painel) e `get_teacher_punctuality_extract` (direção e
+  coordenação, **um professor por vez**, lista só de nomes em ordem alfabética — aba "Pontualidade" da Central de
+  Qualidade). **Sem nota, média, ranking ou comparação; não toca `class_logs`, folha nem pagamento.** Desligado (sem
+  linha em `private.teacher_punctuality_settings`, o padrão): nada é calculado, as RPCs devolvem `{enabled: false}` e a
+  Central mostra que o extrato depende da liberação do jurídico. ⚠️ **Ligar é fora de qualquer API**:
+  `select private.set_teacher_punctuality_enabled('<escola>', true, 'Parecer do jurídico …')` na VPS, com a referência do
+  parecer; vale para as aulas que começam depois; desligar apaga o extrato da escola. Ao ligar, publique o tour do
+  professor (`data-tour="teacher-punctuality"`) — o `2026-09-28-tempo-na-sala` é só da direção. O `LATE_START` do
+  sistema aparece na Central como "Atraso detectado pelo Meet" (o da família segue "Atraso relatado").
 - ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
   site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
 
