@@ -477,6 +477,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/lesson-planner/access.test.ts \
   supabase/functions/lesson-planner/planner-input.ts \
   supabase/functions/lesson-planner/planner-input.test.ts \
+  supabase/functions/student-card-suggestions \
+  supabase/functions/coverage-admin/briefing.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -744,6 +747,9 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/lesson-planner/approved-lessons.test.ts \
   supabase/functions/lesson-planner/access.test.ts \
   supabase/functions/lesson-planner/planner-input.test.ts \
+  supabase/functions/student-card-suggestions/core.test.ts \
+  supabase/functions/student-card-suggestions/runner.test.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
@@ -846,6 +852,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
 npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/asaas-adjudication/core.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/student-card-suggestions/source.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
@@ -895,6 +902,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/google-meet/summary.ts \
   supabase/functions/google-meet/originals.ts \
   supabase/functions/lesson-recording-code/index.ts \
+  supabase/functions/student-card-suggestions/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
@@ -1033,6 +1041,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/confirm-attendance/index.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/coverage-admin/index.ts \
+  supabase/functions/coverage-admin/briefing.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
   supabase/functions/create-public-resume-upload/index.ts \
   supabase/functions/model-probe/index.ts \
   supabase/functions/oral-test-scan/index.ts \
@@ -1467,6 +1477,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260927120000_originais_do_drive_para_a_lixeira.sql"
   "supabase/migrations/20260927130000_planner_a_partir_das_aulas_aprovadas.sql"
   "supabase/migrations/20260927140000_aluno_ve_o_proprio_registro.sql"
+  "supabase/migrations/20260928100000_substituto_e_novo_titular_recebem_o_dossie.sql"
+  "supabase/migrations/20260928110000_sala_acompanha_a_troca_de_professor.sql"
+  "supabase/migrations/20260928120000_extrato_de_pontualidade_do_professor.sql"
+  "supabase/migrations/20260928130000_sugestoes_do_cartao_pela_ia.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
@@ -1483,6 +1497,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/originais_do_drive_para_a_lixeira.sql"
   "supabase/tests/planner_a_partir_das_aulas_aprovadas.sql"
   "supabase/tests/aluno_ve_o_proprio_registro.sql"
+  "supabase/tests/substituto_e_novo_titular_recebem_o_dossie.sql"
+  "supabase/tests/sala_acompanha_a_troca_de_professor.sql"
+  "supabase/tests/extrato_de_pontualidade_do_professor.sql"
+  "supabase/tests/sugestoes_do_cartao_pela_ia.sql"
+  "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"
@@ -1758,6 +1777,7 @@ HARDENED_FUNCTIONS=(
   send-attendance-confirmations
   google-meet
   lesson-recording-code
+  student-card-suggestions
   send-class-notification
   send-rejection-email
   send-welcome-contract
