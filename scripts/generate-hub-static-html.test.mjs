@@ -132,3 +132,11 @@ test('marketing previews use the image format of their own asset', () => {
   const html = renderHubMarketingHtml(template, {...metadata, imagePath: '/hub.webp'});
   assert.match(html, /og:image:type" content="image\/webp"/);
 });
+
+
+test('dedicated Hub serves the versioned school favicon and installation icons', async () => {
+  for (const file of ['frontend/nginx.conf', 'proxy/nginx-spa.conf']) {
+    const config = await readFile(new URL(`../deploy/vps/${file}`, import.meta.url), 'utf8');
+    assert.ok(config.includes('wise-wolf-icon-(32|192|512)-20260928\\.png'));
+  }
+});
