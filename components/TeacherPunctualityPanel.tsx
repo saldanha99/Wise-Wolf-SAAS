@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { currentMonthInput, monthParam, type TeacherPunctualityResponse } from '../lib/teacherPunctuality';
 import TeacherPunctualityExtract from './TeacherPunctualityExtract';
@@ -15,23 +15,31 @@ export default function TeacherPunctualityPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    // Só a resposta do pedido em vigor vale: escolher a Ana e logo depois a Bia
+    // não pode deixar os números da Ana na tela com a Bia no seletor. Ao trocar
+    // de professor ou de mês, o extrato anterior sai da tela na hora (e não
+    // volta se a busca nova falhar).
+    let alive = true;
     setBusy(true); setError('');
-    try {
-      const result = await supabase.rpc('get_teacher_punctuality_extract', {
-        p_teacher_id: teacherId || null,
-        p_month: monthParam(month),
-      });
-      if (result.error || result.data?.ok !== true) throw new Error('load');
-      setData(result.data as TeacherPunctualityResponse);
-    } catch {
-      setError('Não foi possível carregar o extrato de pontualidade. Verifique sua permissão.');
-    } finally {
-      setBusy(false);
-    }
+    setData(current => (current && current.enabled ? { ...current, teacher_id: null, extract: null } : current));
+    (async () => {
+      try {
+        const result = await supabase.rpc('get_teacher_punctuality_extract', {
+          p_teacher_id: teacherId || null,
+          p_month: monthParam(month),
+        });
+        if (!alive) return;
+        if (result.error || result.data?.ok !== true) throw new Error('load');
+        setData(result.data as TeacherPunctualityResponse);
+      } catch {
+        if (alive) setError('Não foi possível carregar o extrato de pontualidade. Verifique sua permissão.');
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+    return () => { alive = false; };
   }, [teacherId, month]);
-
-  useEffect(() => { void load(); }, [load]);
 
   if (!data) return error
     ? <p role="alert" className="text-red-600">{error}</p>
@@ -45,6 +53,9 @@ export default function TeacherPunctualityPanel() {
       <p>Os avisos de atraso detectados pelo Meet continuam na fila de casos, como hoje.</p>
     </div>;
   }
+
+  // Extrato só do professor escolhido agora (a resposta diz de quem é).
+  const extract = teacherId && data.teacher_id === teacherId ? data.extract : null;
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-end gap-3">
@@ -61,8 +72,12 @@ export default function TeacherPunctualityPanel() {
     </div>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     <p className="text-xs text-slate-500">Um professor por vez, sem comparação entre professores. Só aulas desde {new Date(data.enabled_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}, quando o extrato foi ligado; guardado por 90 dias depois da aula, o prazo do relatório de presença.</p>
-    {data.extract
-      ? <TeacherPunctualityExtract extract={data.extract} viewer="school" />
-      : <p className="rounded-xl border p-5 text-sm text-slate-500">Escolha um professor para ver o extrato do mês.</p>}
+    {extract
+      ? <TeacherPunctualityExtract extract={extract} viewer="school" />
+      : !teacherId
+        ? <p className="rounded-xl border p-5 text-sm text-slate-500">Escolha um professor para ver o extrato do mês.</p>
+        : busy
+          ? <p className="rounded-xl border p-5 text-sm text-slate-500">Carregando o extrato…</p>
+          : null}
   </div>;
 }

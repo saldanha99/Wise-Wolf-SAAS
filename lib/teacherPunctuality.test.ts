@@ -61,7 +61,16 @@ describe('extrato de pontualidade — linhas de aula', () => {
     expect(lessonLine(lesson({ ...empty, status: 'NOT_FOUND' })).detail).toBe('Relatório de presença não encontrado');
     expect(lessonLine(lesson({ ...empty, status: 'UNPARSED' })).detail).toBe('Relatório de presença ilegível');
     expect(lessonLine(lesson({ ...empty, status: 'NO_CONFERENCE' })).detail).toBe('A sala da escola não foi aberta');
-    expect(lessonLine(lesson({ ...empty, status: 'NO_ROOM' })).detail).toBe('Aula sem sala da escola (link de sempre)');
+    expect(lessonLine(lesson({ ...empty, status: 'NO_ROOM' })).detail)
+      .toBe('Sala da escola indisponível no início da aula (link de sempre)');
+  });
+
+  it('professor que o relatório não identifica: motivo próprio, nunca o horário de outra conta', () => {
+    const line = lessonLine(lesson({
+      status: 'TEACHER_NOT_READY', first_join_at: null, late_minutes: null, minutes_in_room: null, left_early_minutes: null,
+    }));
+    expect(line.detail).toBe('Sem conta Google confirmada ou sem o termo aceito: o relatório não identifica o professor');
+    expect(line.detail).not.toMatch(/Entrou|não aparece/);
   });
 });
 
@@ -79,6 +88,8 @@ describe('extrato de pontualidade — resumo', () => {
     ]);
     expect(notMeasuredItems(summary({ not_measured: { NO_ROOM: 3 }, not_in_report: 1 })).map(item => item.status))
       .toEqual(['NO_ROOM', 'NOT_IN_REPORT']);
+    expect(notMeasuredItems(summary({ not_measured: { TEACHER_NOT_READY: 1 } })).map(item => [item.status, item.count]))
+      .toEqual([['TEACHER_NOT_READY', 1]]);
   });
 });
 

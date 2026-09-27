@@ -518,11 +518,16 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - **Extrato de pontualidade do professor — DESLIGADO até o jurídico** (migration `20260928120000`, runbook seção
   própria, teste `supabase/tests/extrato_de_pontualidade_do_professor.sql`): `public.teacher_lesson_presence` guarda só
   números do professor por aula (entrada, minutos na sala, atraso, saída antecipada, status `FOUND`/`NOT_FOUND`/
-  `UNPARSED`/`NO_CONFERENCE`/`NO_ROOM`), sem CSV nem dado do aluno, RLS sem policy e sem grant a ninguém. Alimentada
+  `UNPARSED`/`NO_CONFERENCE`/`NO_ROOM`/`TEACHER_NOT_READY`), sem CSV nem dado do aluno, RLS sem policy e sem grant a
+  ninguém. Alimentada
   pela avaliação de presença (remendo por âncora em `google_meet_attendance_backend` → `attendance_evaluate`, que nunca
   derruba a avaliação) e pela varredura de hora em hora (aula sem sala, importação que terminou sem avaliação, troca
-  de professor depois da medição); números recalculados com a conta de quem DÁ a aula. Falta do professor e aula de
-  antes de ligar não entram; 90 dias depois da aula (o prazo do relatório no termo v3), purga diária. Leitura só por
+  de professor depois da medição); números recalculados com a conta de quem DÁ a aula — ⚠️ **nunca** os `teacher_*`
+  da importação (eram do titular): sem conta que identifique o professor de hoje, `TEACHER_NOT_READY`. Falta do
+  professor, aula de antes de ligar e **aula que não é do professor da sessão** (`teacher_lesson_presence_given_by_other`:
+  régua única, lançamento de outro professor, agendamento transferido sem lançamento dele) não entram; sala **retida pela
+  troca** no início da aula (`teacher_handover_released_at` > início) é `NO_ROOM` e não abre caso na Central
+  (`meet_attendance_evaluate` remendada por âncora); 90 dias depois da aula (o prazo do relatório no termo v3), purga diária. Leitura só por
   `get_my_punctuality_extract` (o professor, o dele — cartão no painel) e `get_teacher_punctuality_extract` (direção e
   coordenação, **um professor por vez**, lista só de nomes em ordem alfabética — aba "Pontualidade" da Central de
   Qualidade). **Sem nota, média, ranking ou comparação; não toca `class_logs`, folha nem pagamento.** Desligado (sem

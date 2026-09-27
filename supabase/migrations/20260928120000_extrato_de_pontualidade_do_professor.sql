@@ -12,7 +12,8 @@
 --   1. public.teacher_lesson_presence — só NÚMEROS do professor por aula: data,
 --      início previsto, minutos previstos, primeira entrada, minutos na sala,
 --      minutos de atraso, minutos de saída antecipada e o status da medição
---      (FOUND, NOT_FOUND, UNPARSED, NO_CONFERENCE, NO_ROOM). Nada de CSV, nome,
+--      (FOUND, NOT_FOUND, UNPARSED, NO_CONFERENCE, NO_ROOM, TEACHER_NOT_READY).
+--      Nada de CSV, nome,
 --      e-mail ou minutos do aluno. RLS ligada, sem policy e sem grant a
 --      ninguém: a tabela não é exposta; a leitura é só pelas duas RPCs abaixo.
 --   2. Alimentada pela avaliação de presença (google_meet_attendance_backend →
@@ -46,6 +47,29 @@
 --
 -- Falta do PROFESSOR lançada não entra: a aula não foi dele (e a falta tem
 -- fluxo próprio). Sessão arquivada (SUPERSEDED) sai do extrato.
+--
+-- O extrato nunca põe numa pessoa a aula ou os números de outra (revisão da
+-- onda 3):
+--   * Aula que NÃO é do professor da sessão fica fora (e sai, se já estava):
+--     outro professor a dá pela régua única (lesson_session_taught_by_other —
+--     dono ambíguo, cobertura de quem não é professor, troca ainda não feita),
+--     outro professor LANÇOU uma ocorrência viva dela (a prova de quem deu, que
+--     vale mesmo depois que a régua "segura para o passado" volta ao dono
+--     antigo do agendamento), ou o agendamento/reposição hoje é de outro
+--     professor e o da sessão não lançou a aula (agendamento transferido que a
+--     escola não replanejou: sem prova de quem deu, a aula não entra em extrato
+--     nenhum). private.teacher_lesson_presence_given_by_other.
+--   * Professor sem conta Google confirmada, ou que recebeu a aula sem o aceite
+--     do termo (lesson_session_handover_unconsented): o relatório não o
+--     identifica, e os números gravados na importação eram de OUTRA conta (a do
+--     titular). Status próprio TEACHER_NOT_READY, sem número nenhum. A
+--     varredura refaz a linha quando a conta dele é confirmada depois.
+--   * Sala retida pela troca de professor (teacher_handover_pending, 110000) no
+--     início da aula: o sistema escondeu a sala de todos — NO_ROOM, e a
+--     avaliação de presença não abre caso nenhum (nem OUTSIDE_ROOM contra quem
+--     não recebeu o link, nem LATE_START pela entrada depois da liberação).
+--     google_meet_rooms.teacher_handover_released_at guarda quando a sala foi
+--     entregue; private.google_meet_room_withheld_at_lesson decide.
 --
 -- Re-executável: if not exists, create or replace, remendo idempotente (erro se
 -- a âncora sumir), cron desagendado e agendado de novo.
@@ -100,7 +124,7 @@ create table if not exists public.teacher_lesson_presence (
   measured_at timestamptz not null default now(),
   expires_at timestamptz not null,
   constraint teacher_lesson_presence_status_check
-    check (status in ('FOUND', 'NOT_FOUND', 'UNPARSED', 'NO_CONFERENCE', 'NO_ROOM')),
+    check (status in ('FOUND', 'NOT_FOUND', 'UNPARSED', 'NO_CONFERENCE', 'NO_ROOM', 'TEACHER_NOT_READY')),
   constraint teacher_lesson_presence_numbers_check
     check (scheduled_minutes > 0
       and coalesce(minutes_in_room, 0) >= 0
@@ -110,6 +134,12 @@ create table if not exists public.teacher_lesson_presence (
     check (status = 'FOUND' or (first_join_at is null and minutes_in_room is null
       and late_minutes is null and left_early_minutes is null))
 );
+-- TEACHER_NOT_READY: o relatório não identifica o professor da aula (sem conta
+-- Google confirmada, ou recebeu a aula sem o aceite do termo). Refeita a cada
+-- execução para valer também onde a tabela já existia.
+alter table public.teacher_lesson_presence drop constraint if exists teacher_lesson_presence_status_check;
+alter table public.teacher_lesson_presence add constraint teacher_lesson_presence_status_check
+  check (status in ('FOUND', 'NOT_FOUND', 'UNPARSED', 'NO_CONFERENCE', 'NO_ROOM', 'TEACHER_NOT_READY'));
 create index if not exists teacher_lesson_presence_teacher_month_idx
   on public.teacher_lesson_presence (tenant_id, teacher_id, class_date);
 create index if not exists teacher_lesson_presence_expires_idx
@@ -121,6 +151,15 @@ comment on table public.teacher_lesson_presence is
 alter table public.teacher_lesson_presence owner to postgres;
 alter table public.teacher_lesson_presence enable row level security;
 revoke all on table public.teacher_lesson_presence from public, anon, authenticated, service_role;
+
+-- Quando a sala retida pela troca de professor (20260928110000) foi entregue:
+-- gravado pelo gatilho que solta a retenção (remendo abaixo). Sala entregue
+-- depois do início da aula não mede atraso de ninguém. A tabela é do
+-- supabase_admin; quem escreve a coluna é o gatilho BEFORE (campo mudado por
+-- gatilho não passa por checagem de privilégio de coluna).
+alter table private.google_meet_rooms add column if not exists teacher_handover_released_at timestamptz;
+comment on column private.google_meet_rooms.teacher_handover_released_at is
+  'Quando a sala retida pela troca de professor foi entregue (a conta de quem dá a aula virou a coanfitriã). Depois do início da aula = sala indisponível no início: o extrato de pontualidade grava NO_ROOM e a avaliação de presença não abre caso (20260928120000).';
 
 -- 3. Funções ---------------------------------------------------------------------
 
@@ -152,6 +191,87 @@ begin
 exception when others then
   return null;
 end;
+$$;
+
+-- A sala da escola estava retida pela troca de professor no início da aula: a
+-- sala ainda retida (a aula já terminou e a conta de quem a deu nunca virou a
+-- coanfitriã), ou entregue só depois do início. Liberação sem hora gravada (sala
+-- solta antes desta migration) conta como retida: na dúvida, o sistema não
+-- culpa ninguém pela sala que ele mesmo escondeu.
+create or replace function private.google_meet_room_withheld_at_lesson(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select room.teacher_handover_pending
+      or (exists (
+            select 1 from private.lesson_session_teacher_handovers as handover
+            where handover.session_id = session.id
+              and handover.room_withheld
+              and handover.created_at < session.scheduled_end_at)
+          and (room.teacher_handover_released_at is null
+            or room.teacher_handover_released_at > session.scheduled_start_at))
+    from public.lesson_sessions as session
+    join private.google_meet_rooms as room
+      on room.lesson_session_id = session.id and room.tenant_id = session.tenant_id
+    where session.id = p_session
+  ), false);
+$$;
+
+-- A aula NÃO é do professor da sessão para o extrato (não grava; apaga o que
+-- houver). Três provas, qualquer uma basta:
+--   1. a régua única diz que outro professor a dá, ou que não há dono claro
+--      (cobertura de quem não é professor, troca que ainda não rodou);
+--   2. outro professor lançou uma ocorrência viva da sessão como dada ou como
+--      falta do aluno — vale depois que a régua "segura para o passado" volta ao
+--      dono antigo de um agendamento transferido;
+--   3. o agendamento (ou a reposição, ou a experimental) hoje é de outro
+--      professor, sem cobertura/antecipação que devolva a aula ao da sessão, e o
+--      professor da sessão não lançou a aula: agendamento transferido que a
+--      escola não replanejou. Sem prova de quem deu, a aula não entra em
+--      extrato nenhum (a do professor que a lançar volta pela varredura).
+create or replace function private.teacher_lesson_presence_given_by_other(p_session uuid)
+returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((
+    select private.lesson_session_taught_by_other(session.id)
+      or exists (
+        select 1
+        from public.lesson_occurrences as occurrence
+        join public.class_logs as log
+          on log.tenant_id = occurrence.tenant_id
+         and log.teacher_id is distinct from session.teacher_id
+         and log.presence in ('COMPLETED', 'STUDENT_ABSENCE')
+         and (log.id = occurrence.class_log_id
+           or (log.class_date = occurrence.class_date and (
+                (occurrence.source_type = 'booking' and log.booking_id = occurrence.source_id)
+             or (occurrence.source_type = 'reschedule' and log.reschedule_id = occurrence.source_id)
+             or (occurrence.source_type = 'appointment' and log.appointment_id = occurrence.source_id))))
+        where occurrence.session_id = session.id
+          and occurrence.tenant_id = session.tenant_id
+          and occurrence.status <> 'SUPERSEDED')
+      or (exists (
+            select 1
+            from public.lesson_occurrences as occurrence
+            where occurrence.session_id = session.id
+              and occurrence.tenant_id = session.tenant_id
+              and occurrence.status <> 'SUPERSEDED'
+              and private.lesson_occurrence_giver(
+                    occurrence.tenant_id, occurrence.source_type, occurrence.source_id, occurrence.class_date,
+                    coalesce(private.lesson_occurrence_scheduled_teacher(
+                      occurrence.tenant_id, occurrence.source_type, occurrence.source_id,
+                      occurrence.class_date, occurrence.start_time), session.teacher_id))
+                  is distinct from session.teacher_id)
+          and not exists (
+            select 1 from public.class_logs as log
+            where log.tenant_id = session.tenant_id
+              and log.teacher_id = session.teacher_id
+              and (log.lesson_session_id = session.id
+                or log.id in (
+                  select occurrence.class_log_id from public.lesson_occurrences as occurrence
+                  where occurrence.session_id = session.id and occurrence.class_log_id is not null))))
+    from public.lesson_sessions as session
+    where session.id = p_session
+  ), false);
 $$;
 
 -- Grava (ou refaz) a linha do extrato de UMA aula. p_conference_count vem da
@@ -191,9 +311,11 @@ begin
     return 'DISABLED';
   end if;
 
-  -- Aula arquivada ou falta do professor lançada: não é aula dele no extrato.
+  -- Aula arquivada, falta do professor lançada ou aula dada por outro professor:
+  -- não é aula dele no extrato (e não vira aula de ninguém sem prova).
   v_presence := private.lesson_session_logged_presence(v_session.id);
-  if v_session.status = 'SUPERSEDED' or v_presence = 'TEACHER_ABSENCE' then
+  if v_session.status = 'SUPERSEDED' or v_presence = 'TEACHER_ABSENCE'
+    or private.teacher_lesson_presence_given_by_other(v_session.id) then
     delete from public.teacher_lesson_presence where lesson_session_id = v_session.id;
     return 'SKIPPED';
   end if;
@@ -211,7 +333,11 @@ begin
   order by report.imported_at desc
   limit 1;
 
-  if v_report.id is not null then
+  if private.google_meet_room_withheld_at_lesson(v_session.id) then
+    -- A troca de professor reteve a sala no início da aula: ninguém recebeu o
+    -- link a tempo. O que houver na planilha não mede a pontualidade de ninguém.
+    v_status := 'NO_ROOM';
+  elsif v_report.id is not null then
     v_status := 'FOUND';
   elsif exists (
     select 1 from private.meeting_attendance_reports as report
@@ -255,25 +381,29 @@ begin
       coalesce(private.lesson_session_attendance_identity(v_session.id) -> 'teacher_emails', '[]'::jsonb)
     ) as email(value);
 
-    if pg_catalog.cardinality(v_emails) > 0 then
-      select pg_catalog.min(private.teacher_presence_timestamp(row_data ->> 'joinedAt')),
-             pg_catalog.max(private.teacher_presence_timestamp(row_data ->> 'leftAt')),
-             coalesce(pg_catalog.sum(case
-               when pg_catalog.jsonb_typeof(row_data -> 'durationSeconds') = 'number'
-                 then greatest((row_data ->> 'durationSeconds')::numeric, 0)
-               else 0 end), 0)
-        into v_first, v_last, v_seconds
-      from pg_catalog.jsonb_array_elements(
-        case when pg_catalog.jsonb_typeof(v_report.participants) = 'array'
-          then v_report.participants else '[]'::jsonb end
-      ) as participant(row_data)
-      where pg_catalog.lower(participant.row_data ->> 'email') = any (v_emails);
-    else
-      -- Sem conta confirmada hoje: os números que a importação gravou.
-      v_first := v_report.teacher_first_join_at;
-      v_last := null;
-      v_seconds := coalesce(v_report.teacher_seconds, 0);
+    -- Sem conta que o identifique na planilha, ou com a aula recebida sem o
+    -- aceite do termo: não há número dele. Os campos teacher_* da importação
+    -- NUNCA entram — eles foram calculados com a conta de quem era o professor
+    -- na hora (o titular, numa troca depois da aula).
+    if pg_catalog.cardinality(v_emails) = 0
+      or private.lesson_session_handover_unconsented(v_session.id) then
+      v_status := 'TEACHER_NOT_READY';
     end if;
+  end if;
+
+  if v_status = 'FOUND' then
+    select pg_catalog.min(private.teacher_presence_timestamp(row_data ->> 'joinedAt')),
+           pg_catalog.max(private.teacher_presence_timestamp(row_data ->> 'leftAt')),
+           coalesce(pg_catalog.sum(case
+             when pg_catalog.jsonb_typeof(row_data -> 'durationSeconds') = 'number'
+               then greatest((row_data ->> 'durationSeconds')::numeric, 0)
+             else 0 end), 0)
+      into v_first, v_last, v_seconds
+    from pg_catalog.jsonb_array_elements(
+      case when pg_catalog.jsonb_typeof(v_report.participants) = 'array'
+        then v_report.participants else '[]'::jsonb end
+    ) as participant(row_data)
+    where pg_catalog.lower(participant.row_data ->> 'email') = any (v_emails);
 
     v_minutes := pg_catalog.round(coalesce(v_seconds, 0) / 60.0)::integer;
     if v_first is null or v_first >= v_session.scheduled_end_at then
@@ -345,8 +475,10 @@ $$;
 
 -- Varredura (de hora em hora): aula sem sala da escola (NO_ROOM), sala cuja
 -- importação terminou sem avaliação (NOT_FOUND), aula que mudou de professor
--- depois de medida (refaz com a conta de quem a dá) e o que saiu do extrato
--- (arquivada, falta do professor, escola desligada).
+-- depois de medida (refaz com a conta de quem a dá), professor que confirmou a
+-- conta Google depois da medição (refaz TEACHER_NOT_READY) e o que saiu do
+-- extrato (arquivada, falta do professor, aula dada ou lançada por outro
+-- professor, escola desligada).
 create or replace function private.teacher_lesson_presence_sweep(p_limit integer default 500)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -365,7 +497,9 @@ begin
     where session.id = presence.lesson_session_id
       and (session.status = 'SUPERSEDED'
         or private.teacher_punctuality_enabled_since(presence.tenant_id) is null
-        or private.lesson_session_logged_presence(session.id) = 'TEACHER_ABSENCE')
+        or private.lesson_session_logged_presence(session.id) = 'TEACHER_ABSENCE'
+        -- O lançamento de outro professor (ou a troca) chegou depois da medição.
+        or private.teacher_lesson_presence_given_by_other(session.id))
     returning 1
   )
   select pg_catalog.count(*)::integer into v_removed from gone;
@@ -387,24 +521,35 @@ begin
       and (
         -- Medida com outro professor (troca depois da medição): refaz.
         (presence.lesson_session_id is not null and presence.teacher_id is distinct from session.teacher_id)
+        -- Sem conta que o identificasse na medição, e a conta foi confirmada
+        -- depois: refaz (a planilha guardada tem o e-mail dele).
+        or (presence.status = 'TEACHER_NOT_READY' and exists (
+          select 1 from private.teacher_google_identities as ident
+          where ident.teacher_id = session.teacher_id
+            and ident.tenant_id = session.tenant_id
+            and greatest(ident.updated_at, ident.verified_at) > presence.measured_at))
         or (presence.lesson_session_id is null and (
           -- Sem sala da escola utilizável: a aula foi pelo link de sempre.
           room.lesson_session_id is null
           or room.state is distinct from 'READY'
           or room.meeting_uri is null
           or not session.documentation_consent
+          -- Sala retida pela troca de professor até depois da aula.
+          or coalesce(room.teacher_handover_pending, false)
           -- Sala da escola: a avaliação da importação grava antes; aqui só quando
           -- a importação terminou (ou passou da janela de 7 dias) sem avaliação.
           or room.sync_status in ('COMPLETE', 'EXPIRED')
           or session.scheduled_end_at < pg_catalog.now() - interval '8 days'
           or private.lesson_session_documentation_blocked(session.id)))
       )
+      -- Aula de outro professor não vira candidata (nem ocupa a vez das outras).
+      and not private.teacher_lesson_presence_given_by_other(session.id)
     order by session.scheduled_end_at
     limit greatest(1, least(coalesce(p_limit, 500), 2000))
   loop
     begin
       v_status := private.teacher_lesson_presence_record(v_candidate.id, null, false);
-      if v_status in ('FOUND', 'NOT_FOUND', 'UNPARSED', 'NO_CONFERENCE', 'NO_ROOM') then
+      if v_status in ('FOUND', 'NOT_FOUND', 'UNPARSED', 'NO_CONFERENCE', 'NO_ROOM', 'TEACHER_NOT_READY') then
         v_recorded := v_recorded + 1;
       end if;
     exception when others then
@@ -521,7 +666,8 @@ language sql stable security definer set search_path = '' as $$
           'NOT_FOUND', pg_catalog.count(*) filter (where lessons.status = 'NOT_FOUND'),
           'UNPARSED', pg_catalog.count(*) filter (where lessons.status = 'UNPARSED'),
           'NO_CONFERENCE', pg_catalog.count(*) filter (where lessons.status = 'NO_CONFERENCE'),
-          'NO_ROOM', pg_catalog.count(*) filter (where lessons.status = 'NO_ROOM')))
+          'NO_ROOM', pg_catalog.count(*) filter (where lessons.status = 'NO_ROOM'),
+          'TEACHER_NOT_READY', pg_catalog.count(*) filter (where lessons.status = 'TEACHER_NOT_READY')))
       from lessons),
     'lessons', coalesce((
       select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
@@ -623,6 +769,49 @@ begin
 end
 $patch_attendance$;
 
+-- 4b. Remendo por âncora: o gatilho que solta a sala retida pela troca de
+-- professor (20260928110000) grava QUANDO a soltou.
+do $patch_release$
+declare
+  v_def text;
+  v_anchor constant text := 'new.teacher_handover_pending := false;';
+begin
+  v_def := pg_catalog.pg_get_functiondef('private.google_meet_room_release_handover()'::regprocedure);
+  if strpos(v_def, 'teacher_handover_released_at') > 0 then
+    return;
+  end if;
+  if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
+    raise exception 'âncora da sala retida pela troca ("%") não encontrada uma única vez', v_anchor;
+  end if;
+  execute replace(v_def, v_anchor, v_anchor
+    || E'\n    -- Quando a sala foi entregue (20260928120000): depois do início da aula,\n'
+    || E'    -- o extrato de pontualidade e a avaliação de presença não medem ninguém.\n'
+    || E'    new.teacher_handover_released_at := pg_catalog.now();');
+end
+$patch_release$;
+
+-- 4c. Remendo por âncora: sala retida pela troca no início da aula não abre caso
+-- na Central de Qualidade (nem OUTSIDE_ROOM contra quem não recebeu o link, nem
+-- LATE_START pela entrada depois da entrega, nem os de minutos na sala).
+do $patch_evaluate$
+declare
+  v_def text;
+  v_anchor constant text := 'where fires';
+begin
+  v_def := pg_catalog.pg_get_functiondef('private.meet_attendance_evaluate(uuid,text,integer)'::regprocedure);
+  if strpos(v_def, 'google_meet_room_withheld_at_lesson') > 0 then
+    return;
+  end if;
+  if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
+    raise exception 'âncora das regras da avaliação de presença ("%") não encontrada uma única vez', v_anchor;
+  end if;
+  execute replace(v_def, v_anchor, v_anchor
+    || E'\n      -- Sala retida pela troca de professor no início da aula (20260928120000):\n'
+    || E'      -- ninguém recebeu o link a tempo, o relatório não mede a aula.\n'
+    || E'      and not private.google_meet_room_withheld_at_lesson(v_session.id)');
+end
+$patch_evaluate$;
+
 -- 5. Dono e permissões -------------------------------------------------------------
 do $grants$
 declare
@@ -632,6 +821,10 @@ begin
     'private.teacher_punctuality_enabled_since(text)',
     'private.teacher_punctuality_retention_days()',
     'private.teacher_presence_timestamp(text)',
+    'private.google_meet_room_withheld_at_lesson(uuid)',
+    'private.teacher_lesson_presence_given_by_other(uuid)',
+    'private.google_meet_room_release_handover()',
+    'private.meet_attendance_evaluate(uuid,text,integer)',
     'private.teacher_lesson_presence_record(uuid,integer,boolean)',
     'private.teacher_lesson_presence_from_evaluation(uuid,jsonb)',
     'private.teacher_lesson_presence_sweep(integer)',

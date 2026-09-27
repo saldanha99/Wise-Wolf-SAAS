@@ -6,7 +6,7 @@
 // comparação entre professores; não altera o pagamento. Nada aqui soma, ordena
 // ou compara professores — é o extrato de UM professor num mês.
 
-export type PunctualityStatus = 'FOUND' | 'NOT_FOUND' | 'UNPARSED' | 'NO_CONFERENCE' | 'NO_ROOM';
+export type PunctualityStatus = 'FOUND' | 'NOT_FOUND' | 'UNPARSED' | 'NO_CONFERENCE' | 'NO_ROOM' | 'TEACHER_NOT_READY';
 
 export interface PunctualityLesson {
   class_date: string;
@@ -57,12 +57,20 @@ export type TeacherPunctualityResponse =
     extract: PunctualityExtract | null;
   };
 
-/** Por que a aula ficou sem medição (o professor e a direção leem o motivo). */
+/**
+ * Por que a aula ficou sem medição (o professor e a direção leem o motivo).
+ * NO_ROOM inclui a sala retida pela troca de professor no início da aula: o
+ * sistema não entregou a sala a tempo, então ninguém é medido.
+ * TEACHER_NOT_READY: o relatório não identifica o professor da aula (sem conta
+ * Google confirmada, ou recebeu a aula sem o aceite do termo) — os números
+ * da planilha nunca são de outra conta.
+ */
 export const NOT_MEASURED_LABELS: Record<Exclude<PunctualityStatus, 'FOUND'>, string> = {
   NOT_FOUND: 'Relatório de presença não encontrado',
   UNPARSED: 'Relatório de presença ilegível',
   NO_CONFERENCE: 'A sala da escola não foi aberta',
-  NO_ROOM: 'Aula sem sala da escola (link de sempre)',
+  NO_ROOM: 'Sala da escola indisponível no início da aula (link de sempre)',
+  TEACHER_NOT_READY: 'Sem conta Google confirmada ou sem o termo aceito: o relatório não identifica o professor',
 };
 
 const timeBr = (iso: string) =>

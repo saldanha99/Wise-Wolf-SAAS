@@ -97,6 +97,63 @@ describe('Central de Qualidade', () => {
     expect(page.toLowerCase()).not.toMatch(/nota:|média|posição|1º lugar/);
   });
 
+  it('resposta atrasada de outro professor não aparece com o professor escolhido agora', async () => {
+    const biaExtract = {
+      ...enabledExtract,
+      teacher_id: 't-bia',
+      extract: {
+        ...enabledExtract.extract,
+        summary: { ...enabledExtract.extract.summary, planned: 1, measured: 1, on_time: 1, late_5: 0, late_10: 0,
+          minutes_in_room: 29, scheduled_minutes: 30, not_measured: { NOT_FOUND: 0, UNPARSED: 0, NO_CONFERENCE: 0, NO_ROOM: 0 } },
+        lessons: [{ class_date: '2026-09-24', scheduled_start_at: '2026-09-24T13:00:00Z', scheduled_minutes: 30,
+          first_join_at: '2026-09-24T13:01:00Z', late_minutes: 1, minutes_in_room: 29, left_early_minutes: 0, status: 'FOUND' }],
+      },
+    };
+    const pending: Record<string, (value: unknown) => void> = {};
+    rpc.mockImplementation((name: string, args?: Record<string, unknown>) => {
+      if (name !== 'get_teacher_punctuality_extract') return Promise.resolve({ data: dashboard, error: null });
+      const teacher = args?.p_teacher_id as string | null;
+      if (!teacher) return Promise.resolve({ data: { ...enabledExtract, teacher_id: null, extract: null }, error: null });
+      return new Promise(resolve => { pending[teacher] = resolve; });
+    });
+    render(<LessonQualityCenter />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Pontualidade' }));
+    const select = await screen.findByLabelText('Professor');
+
+    fireEvent.change(select, { target: { value: 't-ana' } });
+    fireEvent.change(select, { target: { value: 't-bia' } });
+    await waitFor(() => expect(pending['t-ana'] && pending['t-bia']).toBeTruthy());
+    // A da Bia chega primeiro; a da Ana, que ficou para trás, chega depois.
+    pending['t-bia']({ data: biaExtract, error: null });
+    await screen.findByText('Entrou às 10:01 (1 min depois do início) · 29 min na sala');
+    pending['t-ana']({ data: enabledExtract, error: null });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect((select as HTMLSelectElement).value).toBe('t-bia');
+    expect(screen.getByText('Entrou às 10:01 (1 min depois do início) · 29 min na sala')).toBeTruthy();
+    expect(screen.queryByText('Entrou às 10:12 (12 min de atraso) · 18 min na sala')).toBeNull();
+  });
+
+  it('busca que falha ao trocar de professor não deixa o extrato do anterior na tela', async () => {
+    rpc.mockImplementation((name: string, args?: Record<string, unknown>) => {
+      if (name !== 'get_teacher_punctuality_extract') return Promise.resolve({ data: dashboard, error: null });
+      if (!args?.p_teacher_id) return Promise.resolve({ data: { ...enabledExtract, teacher_id: null, extract: null }, error: null });
+      return Promise.resolve(args.p_teacher_id === 't-ana'
+        ? { data: enabledExtract, error: null }
+        : { data: null, error: { message: 'falhou' } });
+    });
+    render(<LessonQualityCenter />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Pontualidade' }));
+    const select = await screen.findByLabelText('Professor');
+    fireEvent.change(select, { target: { value: 't-ana' } });
+    await screen.findByText('Entrou às 10:12 (12 min de atraso) · 18 min na sala');
+
+    fireEvent.change(select, { target: { value: 't-bia' } });
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('extrato de pontualidade'));
+    expect(screen.queryByText('Entrou às 10:12 (12 min de atraso) · 18 min na sala')).toBeNull();
+    expect(screen.queryByText('18 / 30')).toBeNull();
+  });
+
   it('erro ao carregar o extrato aparece, sem inventar número', async () => {
     rpc.mockImplementation((name: string) => Promise.resolve(name === 'get_teacher_punctuality_extract'
       ? { data: null, error: { message: 'sem_permissao' } }

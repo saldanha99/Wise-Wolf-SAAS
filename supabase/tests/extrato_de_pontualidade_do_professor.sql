@@ -13,12 +13,21 @@
 --    deu a aula. O resumo do mês bate com as aulas, sem nota nem ranking.
 -- 3. Professor só vê o dele; direção e coordenação veem um professor por vez;
 --    professor não usa a porta da direção; outra escola não entra.
+-- 3b. A aula e os números são de quem deu a aula: substituto sem conta
+--    confirmada não herda os números do titular (TEACHER_NOT_READY, refeita
+--    quando a conta é confirmada); aula de agendamento transferido, lançada por
+--    outro professor ou barrada pela régua única não entra no extrato do
+--    professor antigo; sala retida pela troca de professor no início da aula é
+--    NO_ROOM e não abre caso na Central (OUTSIDE_ROOM/LATE_START).
 -- 4. Retenção (purga) e desligar apaga o extrato da escola.
 -- 5. Superfície: funções internas fechadas, RPCs só para authenticated, porta da
 --    edge só service_role, remendo da avaliação no lugar.
 --
 -- Reprova contra o código anterior (a tabela e as funções não existem; a
--- avaliação não deixava rastro nenhum de "relatório não encontrado"). Não
+-- avaliação não deixava rastro nenhum de "relatório não encontrado"). A seção 3b
+-- reprova contra a primeira versão do extrato (medido num clone: a Duda saía com
+-- a entrada das 20:00 da Ana, L13/L14/L15 ficavam na conta da Ana e a sala retida
+-- virava NO_CONFERENCE + OUTSIDE_ROOM, e 13 min de atraso + LATE_START). Não
 -- depende de dado real (fixtures próprias), da fila global nem do horário do
 -- dia: as aulas são de dois dias atrás, e o extrato é pedido pelo mês delas.
 \set ON_ERROR_STOP on
@@ -454,7 +463,8 @@ select pg_temp.ponto_assert(
       'planned', 8, 'in_school_room', 7, 'measured', 3, 'on_time', 1, 'late_5', 2, 'late_10', 1,
       'not_in_report', 0, 'joined_after_end', 0, 'minutes_in_room', 62, 'scheduled_minutes', 90,
       'left_early', 1,
-      'not_measured', jsonb_build_object('NOT_FOUND', 2, 'UNPARSED', 1, 'NO_CONFERENCE', 1, 'NO_ROOM', 1))
+      'not_measured', jsonb_build_object('NOT_FOUND', 2, 'UNPARSED', 1, 'NO_CONFERENCE', 1, 'NO_ROOM', 1,
+        'TEACHER_NOT_READY', 0))
      and (ana ->> 'enabled')::boolean
      and ana ->> 'month' = to_char(pg_temp.ponto_y(), 'YYYY-MM')
      and jsonb_array_length(ana -> 'lessons') = 8
@@ -499,6 +509,301 @@ select pg_temp.ponto_assert(
   'lista de professores da direção não é só nome em ordem alfabética: '
     || (select (admin_list -> 'teachers')::text from ponto_views));
 
+-- ─── 3b. A aula e os números são de quem deu a aula ───────────────────────────
+-- Revisão da onda 3: o extrato não põe numa pessoa a aula ou os números de
+-- outra, nem culpa o professor pela sala que a troca de professor escondeu.
+--   L12 Ana 20:00, medida (entrou 20:00, saiu 20:05); a aula passa para a Duda
+--       DEPOIS da aula, e a Duda não tem conta Google confirmada nem aceite →
+--       TEACHER_NOT_READY na conta da Duda, sem os números da Ana. Com a direção
+--       marcando de novo e a conta dela confirmada depois, a varredura mede a
+--       Duda pela linha dela na planilha guardada.
+--   L13 Ana 21:00, agendamento transferido para a Bia antes da aula (a escola não
+--       replanejou a sessão congelada), sala sem reunião → fora do extrato.
+--   L14 Ana 22:00, medida NO_CONFERENCE; o agendamento passa para a Bia e ela
+--       lança a aula → sai do extrato da Ana — e continua fora quando o
+--       agendamento volta para a Ana (o lançamento da Bia é a prova).
+--   L15 Ana 07:00, reposição da Bia que ainda não passou para ela (a régua única
+--       barra) → a varredura não grava NO_ROOM na conta da Ana.
+--   L16 Bia 08:00, sala retida pela troca até depois da aula, a Bia lançou →
+--       NO_ROOM e nenhum caso na Central (OUTSIDE_ROOM era aberto contra ela).
+--   L17 Bia 09:00, sala entregue 12 min depois do início, a Bia entrou 09:13 →
+--       NO_ROOM e nenhum LATE_START; entregue antes do início, a mesma planilha
+--       mede 13 min de atraso (e o caso abre, como sempre).
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-4000-8000-0000000e8008', 'authenticated', 'authenticated', 'ponto-duda@example.invalid',
+  '{"provider":"email","providers":["email"]}', jsonb_build_object('full_name', 'Duda Professora'), now(), now());
+update public.profiles set tenant_id = 'ponto-test', role = 'TEACHER', lifecycle_status = 'active',
+  full_name = 'Duda Professora', phone = '5511999998008', is_test_account = false
+where id = '00000000-0000-4000-8000-0000000e8008';
+insert into public.tenant_memberships (user_id, tenant_id, role, status, is_primary)
+values ('00000000-0000-4000-8000-0000000e8008', 'ponto-test', 'TEACHER', 'ACTIVE', true)
+on conflict (user_id, tenant_id) do update set role = excluded.role, status = excluded.status;
+
+-- A Bia pronta para receber aula documentada: conta confirmada (fixture) e o
+-- "autorizo" do termo vigente dado antes das aulas (banco só com a estrutura:
+-- uma versão antiga garante termo vigente dois dias atrás; a atual a cobre).
+insert into private.lesson_recording_terms (audience, version, body, published_at) values
+  ('TEACHER', 'v0', repeat('Termo antigo de teste do professor. ', 12), now() - interval '60 days')
+on conflict (audience, version) do nothing;
+insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+  signer_relation, term_audience, term_version, source, recorded_by, decided_at)
+values ('ponto-test', '00000000-0000-4000-8000-0000000e8004', 'TEACHER', 'ACCEPTED', 'Bia Professora', 'SELF',
+  'TEACHER', (private.lesson_recording_current_term('TEACHER')).version, 'APP',
+  '00000000-0000-4000-8000-0000000e8004', now() - interval '10 days');
+
+insert into ponto_lessons (label, id, teacher_id, start_time, room, day_offset) values
+  ('L12', '00000000-0000-4000-8000-0000000e8a12', '00000000-0000-4000-8000-0000000e8003', time '20:00', true, 0),
+  ('L13', '00000000-0000-4000-8000-0000000e8a13', '00000000-0000-4000-8000-0000000e8003', time '21:00', true, 0),
+  ('L14', '00000000-0000-4000-8000-0000000e8a14', '00000000-0000-4000-8000-0000000e8003', time '22:00', true, 0),
+  ('L15', '00000000-0000-4000-8000-0000000e8a15', '00000000-0000-4000-8000-0000000e8003', time '07:00', true, 0),
+  ('L16', '00000000-0000-4000-8000-0000000e8a16', '00000000-0000-4000-8000-0000000e8004', time '08:00', true, 0),
+  ('L17', '00000000-0000-4000-8000-0000000e8a17', '00000000-0000-4000-8000-0000000e8004', time '09:00', true, 0);
+insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date, scheduled_start_at,
+  scheduled_end_at, source_key, status, documentation_consent)
+select l.id, 'ponto-test', '00000000-0000-4000-8000-0000000e8006', l.teacher_id, pg_temp.ponto_y(),
+  pg_temp.ponto_at(l.start_time), pg_temp.ponto_at(l.start_time + interval '30 minutes'),
+  'ponto-' || l.label, 'SCHEDULED', true
+from ponto_lessons as l
+where l.label in ('L12', 'L13', 'L14', 'L15', 'L16', 'L17');
+-- L16: a sala ficou retida pela troca até depois da aula (coanfitriã ainda a
+-- conta da Ana). L17: a sala foi entregue à Bia 12 min depois do início.
+insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+  cohost_email, state, created_by, teacher_handover_pending, teacher_handover_released_at)
+select l.id, 'ponto-test', 'spaces/ponto' || l.label,
+  'https://meet.google.com/' || translate(lower(l.label), '0123456789', 'abcdefghij') || 'x-pont-abc', 'ponto-sub-central',
+  case l.label when 'L17' then 'bia.google@example.invalid' else 'ana.google@example.invalid' end,
+  'READY', '00000000-0000-4000-8000-0000000e8001', l.label = 'L16',
+  case l.label when 'L17' then pg_temp.ponto_at(time '09:12') end
+from ponto_lessons as l
+where l.label in ('L12', 'L13', 'L14', 'L15', 'L16', 'L17');
+insert into private.lesson_session_teacher_handovers (tenant_id, session_id, from_teacher_id, to_teacher_id,
+  from_google_email, to_google_email, cause, documentation_ready, after_lesson, room_withheld, created_at)
+select 'ponto-test', pg_temp.ponto_sid(v.label), '00000000-0000-4000-8000-0000000e8003',
+  '00000000-0000-4000-8000-0000000e8004', 'ana.google@example.invalid', 'bia.google@example.invalid', 'COVERAGE',
+  true, false, true, pg_temp.ponto_at(v.slot) - interval '20 minutes'
+from (values ('L16', time '08:00'), ('L17', time '09:00')) as v(label, slot);
+
+-- L13 e L14 vêm da agenda (a do L13 já é da Bia); L15 é reposição da Bia.
+insert into public.bookings (id, tenant_id, teacher_id, student_id, day_of_week, time_slot, date, start_date, status)
+select v.id, 'ponto-test', v.teacher, '00000000-0000-4000-8000-0000000e8006',
+  (array['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'])[extract(dow from pg_temp.ponto_y())::int + 1],
+  v.slot, null, date '2026-01-05', 'SCHEDULED'
+from (values
+  ('00000000-0000-4000-8000-0000000e8b13'::uuid, '00000000-0000-4000-8000-0000000e8004'::uuid, '21:00'),
+  ('00000000-0000-4000-8000-0000000e8b14'::uuid, '00000000-0000-4000-8000-0000000e8003'::uuid, '22:00')
+) as v(id, teacher, slot);
+select set_config('app.reschedule_silent', 'on', true);
+insert into public.reschedules (id, tenant_id, teacher_id, student_id, date, time, fault_type)
+values ('00000000-0000-4000-8000-0000000e8d15', 'ponto-test', '00000000-0000-4000-8000-0000000e8004',
+  '00000000-0000-4000-8000-0000000e8006', to_char(pg_temp.ponto_y(), 'YYYY-MM-DD'), '07:00', 'STUDENT');
+insert into public.lesson_occurrences (tenant_id, session_id, source_type, source_id, class_date, start_time,
+  scheduled_start_at, scheduled_end_at, entitlement_date)
+select 'ponto-test', pg_temp.ponto_sid(v.label), v.kind, v.source, pg_temp.ponto_y(), v.slot,
+  pg_temp.ponto_at(v.slot), pg_temp.ponto_at(v.slot + interval '30 minutes'), pg_temp.ponto_y()
+from (values
+  ('L13', 'booking', '00000000-0000-4000-8000-0000000e8b13', time '21:00'),
+  ('L14', 'booking', '00000000-0000-4000-8000-0000000e8b14', time '22:00'),
+  ('L15', 'reschedule', '00000000-0000-4000-8000-0000000e8d15', time '07:00')
+) as v(label, kind, source, slot);
+
+-- Lançamentos como a tela faria (a religação do lançamento remonta as sessões do
+-- dia pela agenda; aqui as sessões de teste já estão ligadas à mão).
+create or replace function pg_temp.ponto_log(p_id uuid, p_teacher uuid, p_booking text, p_session uuid, p_time time)
+returns void language plpgsql as $$
+begin
+  alter table public.class_logs disable trigger trg_zy_require_finished_lesson_slot;
+  alter table public.class_logs disable trigger link_class_log_quality_session;
+  insert into public.class_logs (id, tenant_id, teacher_id, student_id, booking_id, lesson_session_id, presence,
+    date, class_date, start_time, created_at)
+  values (p_id, 'ponto-test', p_teacher, '00000000-0000-4000-8000-0000000e8006', p_booking, p_session, 'COMPLETED',
+    pg_temp.ponto_y(), pg_temp.ponto_y(), p_time, now());
+  alter table public.class_logs enable trigger link_class_log_quality_session;
+  alter table public.class_logs enable trigger trg_zy_require_finished_lesson_slot;
+end;
+$$;
+
+select pg_temp.ponto_assert(
+  (select bool_and(s.status = 'SCHEDULED') from public.lesson_sessions as s
+   where s.id in (select id from ponto_lessons))
+  and not private.lesson_session_taught_by_other(pg_temp.ponto_sid('L13'))
+  and private.lesson_session_taught_by_other(pg_temp.ponto_sid('L15'))
+  and not private.lesson_session_documentation_blocked(pg_temp.ponto_sid('L16'))
+  and not private.lesson_session_documentation_blocked(pg_temp.ponto_sid('L17')),
+  'fixture 3b: aula arquivada, régua de quem dá a aula ou aceite da Bia fora do esperado');
+
+-- L12: a planilha guardada com a Ana como professora (a Duda entrou com a conta
+-- dela, que a importação não conhecia: linha de "aluno").
+select public.google_meet_attendance_backend('attendance_save', 'ponto-test', pg_temp.ponto_sid('L12'),
+  jsonb_build_object(
+    'conference_name', 'conferenceRecords/ponto-L12', 'document_id', 'doc-ponto-L12',
+    'document_name', 'Relatório de participação ponto L12', 'source_document_ids', jsonb_build_array('doc-ponto-L12'),
+    'source_csv', 'Nome,E-mail,Entrada,Saída',
+    'content_sha256', encode(extensions.digest('ponto-L12', 'sha256'), 'hex'),
+    'participants', jsonb_build_array(
+      jsonb_build_object('name', 'Professor', 'email', 'ana.google@example.invalid',
+        'joinedAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:00')),
+        'leftAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:05')), 'durationSeconds', 300, 'role', 'TEACHER'),
+      jsonb_build_object('name', 'Duda', 'email', 'duda.google@example.invalid',
+        'joinedAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:06')),
+        'leftAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:30')), 'durationSeconds', 1440, 'role', 'STUDENT'),
+      jsonb_build_object('name', 'Aluno Ponto Sigiloso', 'email', 'aluno.sigiloso@example.invalid',
+        'joinedAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:00')),
+        'leftAt', pg_temp.ponto_iso(pg_temp.ponto_at(time '20:30')), 'durationSeconds', 1800, 'role', 'STUDENT')),
+    'teacher_first_join_at', pg_temp.ponto_at(time '20:00'), 'teacher_seconds', 300,
+    'student_first_join_at', pg_temp.ponto_at(time '20:00'), 'student_seconds', 3240, 'retention_days', 90));
+select pg_temp.ponto_evaluate('L12', 1);
+select pg_temp.ponto_assert(
+  (select status = 'FOUND' and teacher_id = '00000000-0000-4000-8000-0000000e8003'
+     and first_join_at = pg_temp.ponto_at(time '20:00') and minutes_in_room = 5 and late_minutes = 0
+     and left_early_minutes = 25
+   from pg_temp.ponto_row('L12')),
+  'L12: a aula da Ana não foi medida antes da troca');
+
+-- A aula passa para a Duda depois da aula, como a troca registra
+-- (lesson_session_follow_giver): professor novo na sessão + trilha.
+update public.lesson_sessions set teacher_id = '00000000-0000-4000-8000-0000000e8008'
+where id = pg_temp.ponto_sid('L12');
+insert into private.lesson_session_teacher_handovers (tenant_id, session_id, from_teacher_id, to_teacher_id,
+  from_google_email, to_google_email, cause, documentation_ready, after_lesson, room_withheld)
+values ('ponto-test', pg_temp.ponto_sid('L12'), '00000000-0000-4000-8000-0000000e8003',
+  '00000000-0000-4000-8000-0000000e8008', 'ana.google@example.invalid', null, 'COVERAGE', false, true, false);
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  (select status = 'TEACHER_NOT_READY' and teacher_id = '00000000-0000-4000-8000-0000000e8008'
+     and first_join_at is null and minutes_in_room is null and late_minutes is null and left_early_minutes is null
+   from pg_temp.ponto_row('L12')),
+  'L12: a Duda (sem conta confirmada) herdou os números da Ana: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L12'))::text, 'sem linha'));
+select pg_temp.ponto_assert(
+  (select (extract -> 'lessons' -> 0 ->> 'status') = 'TEACHER_NOT_READY'
+     and (extract -> 'lessons' -> 0 ->> 'first_join_at') is null
+     and (extract -> 'summary' -> 'not_measured' ->> 'TEACHER_NOT_READY')::integer = 1
+     and (extract -> 'summary' ->> 'measured')::integer = 0
+   from (select pg_temp.ponto_as('00000000-0000-4000-8000-0000000e8008',
+           format('select public.get_my_punctuality_extract(%L::date)', pg_temp.ponto_y())) as extract) as duda),
+  'L12: o extrato da Duda não diz que o relatório não a identifica');
+
+-- A direção marca de novo à mão (comprovante do aceite da Duda) e a Duda confirma
+-- a conta: a varredura refaz com a linha DELA na planilha guardada.
+insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
+values (pg_temp.ponto_sid('L12'), '00000000-0000-4000-8000-0000000e8001', true,
+  'Direção: a professora Duda autorizou o registro por escrito (teste).', clock_timestamp());
+insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified,
+  updated_at)
+values ('00000000-0000-4000-8000-0000000e8008', 'ponto-test', 'sub-ponto-duda', 'duda.google@example.invalid', true,
+  now() + interval '1 minute');
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  (select status = 'FOUND' and teacher_id = '00000000-0000-4000-8000-0000000e8008'
+     and first_join_at = pg_temp.ponto_at(time '20:06') and late_minutes = 6 and minutes_in_room = 24
+     and left_early_minutes = 0
+   from pg_temp.ponto_row('L12')),
+  'L12: conta confirmada depois não refez o extrato com a linha da Duda: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L12'))::text, 'sem linha'));
+
+-- L13: agendamento da Bia, sessão congelada da Ana, sala sem reunião.
+select pg_temp.ponto_evaluate('L13', 0);
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  not exists (select 1 from public.teacher_lesson_presence where lesson_session_id = pg_temp.ponto_sid('L13')),
+  'L13: aula de agendamento transferido entrou no extrato do professor antigo: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L13'))::text, 'sem linha'));
+
+-- L14: medida com a Ana; depois o agendamento passa para a Bia e ela lança.
+select pg_temp.ponto_evaluate('L14', 0);
+select pg_temp.ponto_assert(
+  (select status = 'NO_CONFERENCE' and teacher_id = '00000000-0000-4000-8000-0000000e8003'
+   from pg_temp.ponto_row('L14')),
+  'L14: fixture — a sala sem reunião não foi medida');
+update public.bookings set teacher_id = '00000000-0000-4000-8000-0000000e8004'
+where id = '00000000-0000-4000-8000-0000000e8b14';
+select pg_temp.ponto_log('00000000-0000-4000-8000-0000000e8c14', '00000000-0000-4000-8000-0000000e8004',
+  '00000000-0000-4000-8000-0000000e8b14', null, time '22:00');
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  not exists (select 1 from public.teacher_lesson_presence where lesson_session_id = pg_temp.ponto_sid('L14')),
+  'L14: aula lançada pela Bia ficou no extrato da Ana');
+-- O agendamento volta para a Ana: o lançamento da Bia continua sendo a prova.
+update public.bookings set teacher_id = '00000000-0000-4000-8000-0000000e8003'
+where id = '00000000-0000-4000-8000-0000000e8b14';
+select pg_temp.ponto_evaluate('L14', 0);
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  not exists (select 1 from public.teacher_lesson_presence where lesson_session_id = pg_temp.ponto_sid('L14')),
+  'L14: com o agendamento de volta, a aula que a Bia lançou voltou ao extrato da Ana');
+
+-- L15: reposição da Bia (a régua barra a sessão da Ana).
+select private.teacher_lesson_presence_sweep();
+select pg_temp.ponto_assert(
+  not exists (select 1 from public.teacher_lesson_presence where lesson_session_id = pg_temp.ponto_sid('L15')),
+  'L15: aula dada por outro professor virou NO_ROOM na conta da Ana: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L15'))::text, 'sem linha'));
+
+-- L16: sala retida até depois da aula; a Bia deu a aula pelo link de sempre.
+select pg_temp.ponto_log('00000000-0000-4000-8000-0000000e8c16', '00000000-0000-4000-8000-0000000e8004',
+  null, pg_temp.ponto_sid('L16'), time '08:00');
+select pg_temp.ponto_evaluate('L16', 0);
+select pg_temp.ponto_assert(
+  (select status = 'NO_ROOM' and teacher_id = '00000000-0000-4000-8000-0000000e8004' from pg_temp.ponto_row('L16'))
+  and not exists (select 1 from public.lesson_quality_cases where session_id = pg_temp.ponto_sid('L16')),
+  'L16: sala retida pela troca virou "sala não aberta" ou caso na Central contra a Bia: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L16'))::text, 'sem linha'));
+
+-- A conta da Bia vira a coanfitriã (depois da aula): o gatilho solta a sala e
+-- grava quando — inclusive quando quem liga a retenção é a troca (dono postgres,
+-- sem grant na coluna nova).
+update private.google_meet_rooms set cohost_email = 'bia.google@example.invalid'
+where lesson_session_id = pg_temp.ponto_sid('L16');
+select pg_temp.ponto_assert(
+  (select not teacher_handover_pending and teacher_handover_released_at is not null
+   from private.google_meet_rooms where lesson_session_id = pg_temp.ponto_sid('L16')),
+  'L16: a sala entregue não gravou quando foi entregue');
+update private.google_meet_rooms set teacher_handover_released_at = null
+where lesson_session_id = pg_temp.ponto_sid('L16');
+set local role postgres;
+update private.google_meet_rooms set teacher_handover_pending = true
+where lesson_session_id = '00000000-0000-4000-8000-0000000e8a16';
+reset role;
+select pg_temp.ponto_assert(
+  (select not teacher_handover_pending and teacher_handover_released_at is not null
+   from private.google_meet_rooms where lesson_session_id = pg_temp.ponto_sid('L16')),
+  'L16: retenção ligada pela troca (dono postgres) não gravou a entrega');
+-- Entregue depois do início: segue sem medir ninguém.
+select pg_temp.ponto_evaluate('L16', 0);
+select pg_temp.ponto_assert(
+  (select status = 'NO_ROOM' from pg_temp.ponto_row('L16'))
+  and not exists (select 1 from public.lesson_quality_cases where session_id = pg_temp.ponto_sid('L16')),
+  'L16: sala entregue depois da aula passou a medir a Bia');
+
+-- L17: sala entregue às 09:12, a Bia entrou 09:13.
+select pg_temp.ponto_save('L17', 'bia.google@example.invalid', time '09:13', time '09:30');
+select pg_temp.ponto_evaluate('L17', 1);
+select pg_temp.ponto_assert(
+  (select status = 'NO_ROOM' and first_join_at is null from pg_temp.ponto_row('L17'))
+  and not exists (select 1 from public.lesson_quality_cases where session_id = pg_temp.ponto_sid('L17')),
+  'L17: entrada depois da entrega da sala virou atraso da Bia: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L17'))::text, 'sem linha'));
+-- Entregue antes do início: o atraso é dela (e o caso abre, como sempre).
+update private.google_meet_rooms set teacher_handover_released_at = pg_temp.ponto_at(time '08:40')
+where lesson_session_id = pg_temp.ponto_sid('L17');
+select pg_temp.ponto_evaluate('L17', 1);
+select pg_temp.ponto_assert(
+  (select status = 'FOUND' and late_minutes = 13 and minutes_in_room = 17
+     and teacher_id = '00000000-0000-4000-8000-0000000e8004'
+   from pg_temp.ponto_row('L17'))
+  and exists (select 1 from public.lesson_quality_cases
+              where session_id = pg_temp.ponto_sid('L17') and category = 'LATE_START'),
+  'L17: sala entregue a tempo não mediu o atraso: '
+    || coalesce(to_jsonb(pg_temp.ponto_row('L17'))::text, 'sem linha'));
+
+-- Nada da Ana nas aulas que não foram dela.
+select pg_temp.ponto_assert(
+  not exists (select 1 from public.teacher_lesson_presence
+              where teacher_id = '00000000-0000-4000-8000-0000000e8003'
+                and lesson_session_id in (select id from ponto_lessons
+                                          where label in ('L12', 'L13', 'L14', 'L15'))),
+  'aula de outro professor ficou no extrato da Ana');
+
 -- ─── 4. Retenção e desligar ───────────────────────────────────────────────────
 select pg_temp.ponto_assert(
   (select bool_and(expires_at = (select scheduled_end_at from public.lesson_sessions s where s.id = lesson_session_id)
@@ -528,7 +833,7 @@ select pg_temp.ponto_assert(
 
 -- ─── 5. Superfície ────────────────────────────────────────────────────────────
 select pg_temp.ponto_assert(
-  (select count(*) = 7 and bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres'
+  (select count(*) = 9 and bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres'
       and p.proconfig @> array['search_path=""']::text[]
       and not has_function_privilege('authenticated', p.oid, 'EXECUTE')
       and not has_function_privilege('anon', p.oid, 'EXECUTE')
@@ -537,7 +842,7 @@ select pg_temp.ponto_assert(
    where n.nspname = 'private' and p.proname in (
      'teacher_punctuality_enabled_since', 'teacher_punctuality_retention_days', 'teacher_lesson_presence_record',
      'teacher_lesson_presence_from_evaluation', 'teacher_lesson_presence_sweep', 'purge_teacher_lesson_presence',
-     'teacher_punctuality_extract')),
+     'teacher_punctuality_extract', 'google_meet_room_withheld_at_lesson', 'teacher_lesson_presence_given_by_other')),
   'funções internas do extrato não são SECURITY DEFINER do postgres, com search_path vazio e fechadas');
 -- Ligar é fora de qualquer API.
 select pg_temp.ponto_assert(
@@ -560,5 +865,13 @@ select pg_temp.ponto_assert(
   and strpos(pg_get_functiondef('public.google_meet_attendance_backend(text,text,uuid,jsonb)'::regprocedure),
     'raw_copies_days') > 0,
   'a avaliação de presença não alimenta o extrato (remendo sumiu)');
+select pg_temp.ponto_assert(
+  strpos(pg_get_functiondef('private.meet_attendance_evaluate(uuid,text,integer)'::regprocedure),
+    'private.google_meet_room_withheld_at_lesson(v_session.id)') > 0
+  and strpos(pg_get_functiondef('private.google_meet_room_release_handover()'::regprocedure),
+    'new.teacher_handover_released_at := pg_catalog.now()') > 0
+  and strpos(pg_get_functiondef('private.google_meet_room_release_handover()'::regprocedure),
+    'new.teacher_handover_pending := false') > 0,
+  'remendo da sala retida pela troca sumiu (avaliação de presença ou gatilho da entrega)');
 
 rollback;
