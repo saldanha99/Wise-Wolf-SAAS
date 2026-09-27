@@ -19,7 +19,7 @@ function blockedText(reason: unknown, handover: TeacherHandover | null | undefin
     return `Esta aula passou para ${handover?.to_teacher_name || 'outro professor'}, que ainda não confirmou a conta Google ou não autorizou a versão vigente do termo de registro: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre; se o aceite chegar antes da aula, a sala volta a valer.`;
   }
   if (reason === 'TAUGHT_BY_OTHER') {
-    return 'Esta aula é dada por outro professor e a sessão ainda não passou para ele (a cobertura está sendo processada, ou o agendamento foi transferido — nesse caso, use "Replanejar sessão futura"): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre.';
+    return 'Esta aula é dada por outro professor e a sessão ainda não passou para ele (a cobertura está sendo processada, ou o agendamento foi transferido e a escola ainda não replanejou a sessão futura): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre.';
   }
   if (reason === 'TERM_LAPSED' || reason === 'MANUAL_MARK_OUTDATED') {
     return 'O aceite que valia para esta aula deixou de valer (o termo mudou de versão, ou a escola passou a exigir o responsável do aluno): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
