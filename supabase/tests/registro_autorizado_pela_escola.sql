@@ -19,13 +19,20 @@
 -- 4. O pedido para não registrar (direção, página pública, professor no app)
 --    tira na hora: sala desligada (DISABLE_ARTIFACTS), fora do app, aula barrada,
 --    IA e sugestões fora; a aula que terminou antes do pedido não é barrada; e o
---    "desfazer" devolve.
+--    "desfazer" devolve — só pela direção (a coordenação não), e o pedido que o
+--    próprio professor fez no app só ele desfaz.
 -- 5. No modo da escola não há link nem envio em lote (recusa no servidor), a
 --    página pública mostra o aviso e só grava o pedido para não registrar, e o
 --    pedido que estava na fila é cancelado na hora de sair.
 -- 6. A escola voltando ao aceite individual: a aula futura marcada pelo padrão
 --    cai com o motivo certo; a que terminou antes da troca segue importável.
--- 7. Central de Pendências: professor sem conta Google confirmada.
+-- 7. Central de Pendências: professor sem conta Google confirmada (só no modo
+--    da escola).
+-- Também: no modo da escola o job não marca (nem congela) a aula do professor
+-- sem conta Google — marca depois que ele confirma; "Sala e resumo" da aula
+-- passada a outro professor e a data de nascimento dizem o modo; o link
+-- revogado diz o modo (a página não manda pedir link novo); a rota do modo
+-- para os tours.
 -- 8. One-shot da Wise Wolf com trilha (quem, quando, motivo, base).
 --
 -- Reprova contra o código anterior (sem o modo, o aluno sem aceite não vale; sem
@@ -154,8 +161,22 @@ begin
       and has_function_privilege('authenticated', 'public.set_lesson_recording_authorization_mode(text,text)', 'EXECUTE')
       and not has_function_privilege('anon', 'public.set_lesson_recording_authorization_mode(text,text)', 'EXECUTE')
       and has_function_privilege('authenticated', 'public.withdraw_lesson_recording_objection(uuid,text)', 'EXECUTE')
-      and not has_function_privilege('anon', 'public.withdraw_lesson_recording_objection(uuid,text)', 'EXECUTE'),
+      and not has_function_privilege('anon', 'public.withdraw_lesson_recording_objection(uuid,text)', 'EXECUTE')
+      and has_function_privilege('authenticated', 'public.my_lesson_recording_authorization_mode()', 'EXECUTE')
+      and not has_function_privilege('anon', 'public.my_lesson_recording_authorization_mode()', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'private.lesson_recording_objection_by_self(uuid)', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'private.lesson_session_last_handover(uuid)', 'EXECUTE'),
     'permissões das rotas do modo da escola erradas');
+  -- O job: no modo da escola só marca com a conta Google, e o motivo da aula
+  -- passada a quem não está pronto não fala de aceite (remendos por âncora).
+  perform pg_temp.rad_assert(
+    pg_get_functiondef('private.apply_standing_lesson_recording_consent(text)'::regprocedure)
+        like '%só marca com a conta Google (20260929100000)%'
+      and pg_get_functiondef('private.apply_standing_lesson_recording_consent(text)'::regprocedure)
+        like '%pediu para não ter as aulas registradas ou não está ativo na escola%'
+      and pg_get_functiondef('private.apply_standing_lesson_recording_consent(text)'::regprocedure)
+        like '%registro autorizado pela escola (ninguém da aula pediu para não ser registrado)%',
+    'o job perdeu um dos remendos do modo da escola');
   -- Rota que devolve o texto (termo ou aviso) passa por fill_term.
   perform pg_temp.rad_assert(not exists (
       select 1 from pg_proc as procedure
@@ -304,6 +325,10 @@ begin
   -- Desfazer é só do modo da escola; link segue no individual.
   perform pg_temp.rad_as(pg_temp.rad('ind_admin'));
   perform pg_temp.rad_assert(
+    public.my_lesson_recording_authorization_mode() = 'INDIVIDUAL_CONSENT'
+      and public.get_student_birth_date_record(v_student) ->> 'authorization_mode' = 'INDIVIDUAL_CONSENT',
+    'o modo individual não chega aos tours ou à data de nascimento');
+  perform pg_temp.rad_assert(
     pg_temp.rad_error(format('select public.withdraw_lesson_recording_objection(%L, %L)', v_student,
       'Pedido da família pelo WhatsApp')) like '%so_no_registro_autorizado_pela_escola%',
     'desfazer pedido existiu no modelo individual');
@@ -368,6 +393,32 @@ begin
         where session_id = pg_temp.rad('s_future') and allowed
           and reason like 'Termo de registro das aulas: registro autorizado pela escola%'),
     'a troca de modo não marcou a aula futura, ou o motivo não diz que foi a escola');
+  -- Professor sem conta Google: a autorização da escola vale, mas sem conta não
+  -- há sala — a aula dele não é marcada nem congelada (segue a agenda).
+  perform pg_temp.rad_assert(
+    private.lesson_recording_teacher_consent_effective(pg_temp.rad('noid'))
+      and not (select documentation_consent from public.lesson_sessions where id = pg_temp.rad('s_noid'))
+      and not exists (select 1 from private.lesson_documentation_consent_events
+        where session_id = pg_temp.rad('s_noid'))
+      and not private.lesson_session_has_evidence(pg_temp.rad('s_noid')),
+    'o modo da escola marcou (e congelou) a aula do professor sem conta Google');
+  -- Confirmada a conta, a rodada seguinte marca (desfeito ao fim do bloco).
+  begin
+    insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+    values (pg_temp.rad('noid'), 'rad-escola', 'rad-sub-noid', 'noid.padrao@example.com', true);
+    perform private.apply_standing_lesson_recording_consent('rad-escola');
+    perform pg_temp.rad_assert(
+      (select documentation_consent from public.lesson_sessions where id = pg_temp.rad('s_noid'))
+        and exists (select 1 from private.lesson_documentation_consent_events
+          where session_id = pg_temp.rad('s_noid') and allowed
+            and reason like 'Termo de registro das aulas: registro autorizado pela escola%'),
+      'confirmada a conta Google, o job não marcou a aula do professor');
+    raise exception 'rad_desfaz_conta_google';
+  exception when others then
+    if sqlerrm <> 'rad_desfaz_conta_google' then
+      raise;
+    end if;
+  end;
 
   -- Para as aulas já dadas contarem no modo da escola, a decisão e o aviso
   -- ficam 3 dias para trás (como se a escola tivesse decidido e avisado antes
@@ -471,7 +522,31 @@ begin
       and v_result ->> 'term_body' not like '%{escola_%'
       and v_result ->> 'term_body' like '%pedir para não ser registrado%',
     'cartão do professor no modo da escola sem o aviso preenchido: ' || v_result::text);
+  perform pg_temp.rad_assert(public.my_lesson_recording_authorization_mode() = 'SCHOOL_DEFAULT',
+    'a rota do modo (tours) não diz que a escola autoriza o registro');
   perform pg_temp.rad_service();
+  perform pg_temp.rad_assert(public.my_lesson_recording_authorization_mode() is null,
+    'a rota do modo respondeu para quem não tem escola');
+
+  -- Aula passada a professor sem conta Google: "Sala e resumo" recebe o modo e a
+  -- conta de quem recebeu (o remédio é confirmar a conta, não um aceite).
+  begin
+    insert into private.lesson_session_teacher_handovers (tenant_id, session_id, from_teacher_id, to_teacher_id,
+      cause, documentation_ready, after_lesson)
+    values ('rad-escola', pg_temp.rad('s_noid'), pg_temp.rad('teacher'), pg_temp.rad('noid'), 'COVERAGE', false, false);
+    v_result := private.lesson_session_last_handover(pg_temp.rad('s_noid'));
+    perform pg_temp.rad_assert(
+      v_result ->> 'authorization_mode' = 'SCHOOL_DEFAULT'
+        and not (v_result ->> 'to_teacher_google_confirmed')::boolean
+        and v_result ->> 'to_teacher_name' = 'Professor Sem Conta Fixture'
+        and private.lesson_session_handover_unconsented(pg_temp.rad('s_noid')),
+      '"Sala e resumo" sem o modo ou a conta Google de quem recebeu a aula: ' || coalesce(v_result::text, 'nulo'));
+    raise exception 'rad_desfaz_troca';
+  exception when others then
+    if sqlerrm <> 'rad_desfaz_troca' then
+      raise;
+    end if;
+  end;
 end
 $default$;
 
@@ -523,6 +598,13 @@ begin
     pg_temp.rad_error(format('select public.withdraw_lesson_recording_objection(%L, %L)', pg_temp.rad('adult'),
       'A aluna pediu para voltar a registrar')) like '%sem_permissao%',
     'professor desfez o pedido de um aluno');
+  -- Desfazer religa sala, importação e IA: só a direção (a coordenação registra
+  -- o pedido, não o desfaz).
+  perform pg_temp.rad_as(pg_temp.rad('coord'));
+  perform pg_temp.rad_assert(
+    pg_temp.rad_error(format('select public.withdraw_lesson_recording_objection(%L, %L)', pg_temp.rad('adult'),
+      'Coordenação decidiu voltar a registrar')) like '%somente_a_direcao%',
+    'a coordenação desfez o pedido para não registrar');
   perform pg_temp.rad_as(pg_temp.rad('admin'));
   perform pg_temp.rad_assert(
     pg_temp.rad_error(format('select public.withdraw_lesson_recording_objection(%L, %L)', pg_temp.rad('adult'), 'curto'))
@@ -559,6 +641,28 @@ begin
       and not private.meet_summary_ai_consented(pg_temp.rad('s_kid'))
       and not private.lesson_teacher_documentation_ready(pg_temp.rad('teacher'), 'rad-escola', now() + interval '2 hours'),
     'o pedido do professor não tirou a autorização na hora');
+  -- A direção não passa por cima do pedido que o professor fez no app; o
+  -- painel diz que é dele. O pedido do professor que a DIREÇÃO registrou (veio
+  -- pelo WhatsApp), ela desfaz.
+  perform pg_temp.rad_as(pg_temp.rad('admin'));
+  perform pg_temp.rad_assert(
+    pg_temp.rad_error(format('select public.withdraw_lesson_recording_objection(%L, %L)', pg_temp.rad('teacher'),
+      'A direção quer voltar a registrar')) like '%pedido_do_proprio_professor%',
+    'a direção desfez o pedido que o próprio professor fez no app');
+  perform pg_temp.rad_assert(exists (
+      select 1 from jsonb_array_elements(public.list_lesson_recording_consents() -> 'teachers') as row
+      where row ->> 'teacher_id' = pg_temp.rad('teacher')::text and (row ->> 'objection_by_self')::boolean),
+    'o painel não diz que o pedido é do próprio professor');
+  perform public.revoke_lesson_recording_consent(pg_temp.rad('sub'), 'A professora pediu pelo WhatsApp para não registrar.');
+  perform pg_temp.rad_assert(not private.lesson_recording_objection_by_self(pg_temp.rad('sub')),
+    'pedido registrado pela direção contou como pedido do próprio professor');
+  -- Grava num comando e confere no seguinte (a leitura STABLE do mesmo comando
+  -- não enxerga o que a função gravou).
+  v_result := public.withdraw_lesson_recording_objection(pg_temp.rad('sub'),
+    'A professora pediu pelo WhatsApp para voltar a registrar.');
+  perform pg_temp.rad_assert(
+    (v_result ->> 'ok')::boolean and private.lesson_recording_teacher_consent_effective(pg_temp.rad('sub')),
+    'a direção não desfez o pedido do professor que ela mesma registrou');
   perform pg_temp.rad_as(pg_temp.rad('teacher'));
   v_result := public.set_my_lesson_recording_consent(true, 'v4');
   perform pg_temp.rad_assert(v_result ->> 'decision' = 'OBJECTION_WITHDRAWN',
@@ -632,6 +736,23 @@ begin
       and private.lesson_session_documentation_blocked(pg_temp.rad('s_noid')),
     'o pedido pela página não tirou a autorização na hora');
 
+  -- Data de nascimento (painel e ficha) no modo da escola; link revogado pela
+  -- direção: a página recebe o modo e não manda pedir link novo.
+  perform pg_temp.rad_as(pg_temp.rad('admin'));
+  perform pg_temp.rad_assert(
+    public.get_student_birth_date_record(pg_temp.rad('kid')) ->> 'authorization_mode' = 'SCHOOL_DEFAULT',
+    'a data de nascimento não diz que a escola autoriza o registro');
+  perform public.revoke_lesson_recording_consent(pg_temp.rad('page'),
+    'O aluno confirmou pelo WhatsApp o pedido feito na página.');
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_result := public.get_lesson_recording_consent_public(v_token);
+  perform pg_temp.rad_assert(
+    not (v_result ->> 'found')::boolean and (v_result ->> 'expired')::boolean
+      and v_result ->> 'authorization_mode' = 'SCHOOL_DEFAULT'
+      and public.get_lesson_recording_consent_public(repeat('ab', 32)) -> 'authorization_mode' = 'null'::jsonb,
+    'link revogado no modo da escola sem o modo (a página mandaria pedir link novo): ' || v_result::text);
+  perform pg_temp.rad_service();
+
   -- Pedido do termo que estava na fila antes da troca: cancelado ao sair.
   insert into private.lesson_recording_consent_links (tenant_id, student_id, token_hash, created_by, expires_at)
   values ('rad-escola', pg_temp.rad('kid'), encode(extensions.digest(gen_random_uuid()::text, 'sha256'), 'hex'),
@@ -693,6 +814,17 @@ begin
     v_result ->> 'authorization_mode' = 'INDIVIDUAL_CONSENT' and v_result -> 'consent' ->> 'status' = 'NONE'
       and v_result -> 'term' ->> 'version' <> 'v4',
     'desfazer o pedido virou aceite no modelo individual: ' || v_result::text);
+  perform pg_temp.rad_service();
+
+  -- No aceite individual a conta Google não é a pendência (a sala depende também
+  -- dos aceites): a Central não mostra o item.
+  perform pg_temp.rad_assert(private.lesson_recording_teachers_without_google_identity('rad-escola') = 0,
+    'professor sem conta Google virou pendência no aceite individual');
+  perform pg_temp.rad_as(pg_temp.rad('admin'));
+  perform pg_temp.rad_assert(
+    coalesce((public.director_pending_counts() ->> 'professores_sem_conta_google')::integer, 0) = 0
+      and public.my_lesson_recording_authorization_mode() = 'INDIVIDUAL_CONSENT',
+    'Central de Pendências com professores sem conta Google no aceite individual (ou a rota do modo não mudou)');
   perform pg_temp.rad_service();
 
   -- De novo o modo da escola (para a pendência abaixo).

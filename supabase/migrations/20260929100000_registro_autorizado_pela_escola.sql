@@ -56,14 +56,19 @@
 -- 5. Pedido para não registrar e "desfazer": o registro da direção é a
 --    revogação de sempre (revoke_lesson_recording_consent, REVOKED pela escola,
 --    com motivo); desfazer é a decisão nova OBJECTION_WITHDRAWN
---    (withdraw_lesson_recording_objection, direção, com motivo; o professor
---    desfaz o próprio pelo app). OBJECTION_WITHDRAWN não é aceite: no modelo
---    individual a pessoa segue sem resposta.
+--    (withdraw_lesson_recording_objection, só a direção — SCHOOL_ADMIN —, com
+--    motivo; o pedido que o próprio professor fez no app só ele desfaz, pelo
+--    app). OBJECTION_WITHDRAWN não é aceite: no modelo individual a pessoa
+--    segue sem resposta.
 -- 6. Telas: link e envio em lote recusados no modo da escola
 --    (registro_autorizado_pela_escola) — defesa no servidor além da tela; o
 --    pedido que estava na fila é cancelado na hora de sair; painel, página,
---    cartão do professor e "Minhas aulas registradas" recebem o modo; Central de
---    Pendências ganha professores_sem_conta_google.
+--    cartão do professor, data de nascimento, "Sala e resumo" da aula passada a
+--    outro professor e "Minhas aulas registradas" recebem o modo; Central de
+--    Pendências ganha professores_sem_conta_google (só no modo da escola); os
+--    tours leem o modo (my_lesson_recording_authorization_mode).
+--    No modo da escola o job só MARCA a aula do professor com a conta Google
+--    confirmada: sem ela não há sala, e a marca congelaria a sessão.
 -- 7. Wise Wolf (school-wise-wolf) passa ao modo da escola por ONE-SHOT com
 --    trilha (schema_one_shots), com a direção ativa como autora da decisão.
 --
@@ -403,6 +408,30 @@ stable security definer
 set search_path = ''
 as $function$
   select private.lesson_recording_consent_state(p_subject) in ('REFUSED', 'REVOKED');
+$function$;
+
+-- O pedido para não registrar em vigor foi feito pelo próprio professor no app
+-- (recusa com origem APP e relação SELF). Esse só ele desfaz ("Voltar a
+-- registrar"): a direção não passa por cima da decisão da própria pessoa.
+create or replace function private.lesson_recording_objection_by_self(p_subject uuid)
+returns boolean
+language sql
+stable security definer
+set search_path = ''
+as $function$
+  select coalesce((
+    select last_decision.decision in ('REFUSED', 'REVOKED')
+      and last_decision.subject_role = 'TEACHER'
+      and last_decision.source = 'APP'
+      and last_decision.signer_relation = 'SELF'
+    from (
+      select consent.decision, consent.subject_role, consent.source, consent.signer_relation
+      from private.lesson_recording_consents as consent
+      where consent.subject_id = p_subject
+      order by consent.seq desc
+      limit 1
+    ) as last_decision
+  ), false);
 $function$;
 
 -- A decisão em vigor numa hora é pedido para não registrar.
@@ -1076,6 +1105,70 @@ select pg_temp.lrm_patch(
           else ': aluno (ou responsável) e professor aceitaram o registro permanente.' end,$r$
 );
 
+-- 6.1b No modo da escola o job só marca a aula do professor com a conta Google
+-- confirmada. A autorização da escola não depende da conta, mas a SALA sim
+-- (coanfitrião): sem conta, PREPARE_ROOM nunca pega a aula, e marcar só a
+-- congelaria (lesson_session_has_evidence) — a sessão deixaria de acompanhar a
+-- agenda (troca de professor, replanejamento) sem ganhar sala nenhuma. Confirmada
+-- a conta, a rodada seguinte (15 min) marca. No aceite individual nada muda: lá
+-- o aceite do professor já exigiu a conta.
+select pg_temp.lrm_patch(
+  'private.apply_standing_lesson_recording_consent(text)',
+  'só marca com a conta Google (20260929100000)',
+  $a$      if v_connected and not v_session.documentation_consent and not v_session.manual_off then$a$,
+  $r$      if v_connected and not v_session.documentation_consent and not v_session.manual_off
+        -- Modo da escola: só marca com a conta Google (20260929100000).
+        and (private.lesson_recording_authorization_mode(p_tenant) <> 'SCHOOL_DEFAULT'
+          or exists (
+            select 1 from private.teacher_google_identities as ident
+            where ident.teacher_id = v_session.teacher_id and ident.tenant_id = p_tenant
+          )) then$r$
+);
+
+-- 6.1c Aula passada a outro professor que não está pronto: no modo da escola
+-- não há aceite a esperar — falta a conta Google (ou ele pediu para não ser
+-- registrado, ou não está ativo).
+select pg_temp.lrm_patch(
+  'private.apply_standing_lesson_recording_consent(text)',
+  'que ainda não confirmou a conta Google, pediu para não ter as aulas registradas',
+  $a$then ': a aula passou para outro professor, que ainda não confirmou a conta Google ou não aceitou a versão vigente do termo.'$a$,
+  $r$then case when private.lesson_recording_authorization_mode(p_tenant) = 'SCHOOL_DEFAULT'
+            then ': a aula passou para outro professor, que ainda não confirmou a conta Google, pediu para não ter as aulas registradas ou não está ativo na escola.'
+            else ': a aula passou para outro professor, que ainda não confirmou a conta Google ou não aceitou a versão vigente do termo.' end$r$
+);
+
+-- 6.1d "Sala e resumo" diz o remédio certo da aula passada a quem não está
+-- pronto: no modo da escola não há aceite a dar (confirmar a conta Google ou
+-- desfazer o pedido). Recriada da definição viva de 20260928110000 com o modo
+-- que valia no fim da aula e a conta Google de quem recebeu a aula.
+create or replace function private.lesson_session_last_handover(p_session uuid)
+returns jsonb
+language sql
+stable security definer
+set search_path = ''
+as $function$
+  select pg_catalog.jsonb_build_object(
+    'from_teacher_name', from_teacher.full_name,
+    'to_teacher_name', to_teacher.full_name,
+    'cause', handover.cause,
+    'at', handover.created_at,
+    'documentation_ready', handover.documentation_ready,
+    'after_lesson', handover.after_lesson,
+    -- 20260929100000
+    'authorization_mode', private.lesson_recording_authorization_mode_at(session.tenant_id, session.scheduled_end_at),
+    'to_teacher_google_confirmed', exists (
+      select 1 from private.teacher_google_identities as ident
+      where ident.teacher_id = handover.to_teacher_id and ident.tenant_id = session.tenant_id
+    ))
+  from private.lesson_session_teacher_handovers as handover
+  join public.lesson_sessions as session on session.id = handover.session_id
+  join public.profiles as from_teacher on from_teacher.id = handover.from_teacher_id
+  join public.profiles as to_teacher on to_teacher.id = handover.to_teacher_id
+  where handover.session_id = p_session
+  order by handover.created_at desc
+  limit 1;
+$function$;
+
 -- 6.2 Página pública: no modo da escola o texto é o aviso.
 select pg_temp.lrm_patch(
   'public.get_lesson_recording_consent_public(text)',
@@ -1083,6 +1176,34 @@ select pg_temp.lrm_patch(
   $a$  v_term := private.lesson_recording_current_term('STUDENT');$a$,
   $r$  -- 20260929100000: no modo da escola o texto é o aviso (sem aceite).
   v_term := private.lesson_recording_text_for(v_link.tenant_id, 'STUDENT');$r$
+);
+-- Link bloqueado, vencido ou revogado (o pedido registrado pela direção revoga
+-- o link): no modo da escola não há link novo a pedir — a página manda falar
+-- com a escola pelo WhatsApp. Só com o link achado (o token é da escola dele).
+select pg_temp.lrm_patch(
+  'public.get_lesson_recording_consent_public(text)',
+  $m$'blocked', true, 'authorization_mode'$m$,
+  $a$    return jsonb_build_object('found', false, 'expired', true, 'blocked', true);$a$,
+  $r$    return jsonb_build_object('found', false, 'expired', true, 'blocked', true, 'authorization_mode',
+      private.lesson_recording_authorization_mode(v_link.tenant_id));$r$
+);
+select pg_temp.lrm_patch(
+  'public.get_lesson_recording_consent_public(text)',
+  $m$'expired', found, 'authorization_mode'$m$,
+  $a$    return jsonb_build_object('found', false, 'expired', found);$a$,
+  $r$    return jsonb_build_object('found', false, 'expired', found, 'authorization_mode',
+      case when v_link.id is not null then private.lesson_recording_authorization_mode(v_link.tenant_id) end);$r$
+);
+
+-- 6.2b Data de nascimento (painel e ficha): no modo da escola a idade não
+-- decide quem AUTORIZA — só quem pode pedir para não registrar.
+select pg_temp.lrm_patch(
+  'public.get_student_birth_date_record(uuid)',
+  $m$'authorization_mode'$m$,
+  $a$    'guardian_phone_unconfirmed', private.lesson_recording_guardian_phone_unconfirmed(p_student_id)$a$,
+  $r$    'guardian_phone_unconfirmed', private.lesson_recording_guardian_phone_unconfirmed(p_student_id),
+    -- 20260929100000: como a escola autoriza o registro.
+    'authorization_mode', private.lesson_recording_authorization_mode(v_student.tenant_id)$r$
 );
 
 -- 6.3 Painel de autorizações: o modo e a trilha; conta Google do professor.
@@ -1104,7 +1225,10 @@ select pg_temp.lrm_patch(
           'google_identity_confirmed', exists (
             select 1 from private.teacher_google_identities as ident
             where ident.teacher_id = teacher.id and ident.tenant_id = v_tenant
-          )$r$
+          ),
+          -- O pedido para não registrar foi do próprio professor no app: só
+          -- ele desfaz (o painel não oferece "Desfazer pedido").
+          'objection_by_self', private.lesson_recording_objection_by_self(teacher.id)$r$
 );
 
 -- 6.4 "Minhas aulas registradas": aviso, situação e modo.
@@ -1211,14 +1335,19 @@ select pg_temp.lrm_patch(
 );
 
 -- 6.7 Central de Pendências: professor sem conta Google confirmada (a sala da
--- escola só nasce depois disso), com aula nos próximos 14 dias.
+-- escola só nasce depois disso), com aula nos próximos 14 dias. Só no modo da
+-- escola: no aceite individual a sala depende também dos dois aceites, e o
+-- item diria à escola que a conta basta — lá a pendência continua sendo o
+-- termo (o painel de autorizações).
 create or replace function private.lesson_recording_teachers_without_google_identity(p_tenant text)
 returns integer
 language sql
 stable security definer
 set search_path = ''
 as $function$
-  select case when p_tenant is null or not exists (
+  select case when p_tenant is null
+    or private.lesson_recording_authorization_mode(p_tenant) <> 'SCHOOL_DEFAULT'
+    or not exists (
       select 1 from private.google_workspace_connections as connection
       where connection.tenant_id = p_tenant and connection.status = 'CONNECTED'
     ) then 0
@@ -1254,6 +1383,20 @@ select pg_temp.lrm_patch(
 -- ---------------------------------------------------------------------------
 -- 7. RPCs novas
 -- ---------------------------------------------------------------------------
+
+-- Como a escola de quem está logado autoriza o registro. Os tours de novidade
+-- (lib/featureTours.ts) usam para não mostrar o do termo a quem está no modo da
+-- escola, nem o do modo da escola a quem segue no aceite individual. Sem escola,
+-- nulo (o app não abre tour que dependa do modo).
+create or replace function public.my_lesson_recording_authorization_mode()
+returns text
+language sql
+stable security definer
+set search_path = ''
+as $function$
+  select case when public._my_tenant_id() is null then null
+    else private.lesson_recording_authorization_mode(public._my_tenant_id()) end;
+$function$;
 
 -- A direção troca o modo, com motivo e trilha. Vale na hora: o job roda em
 -- seguida (marca as próximas 24 h no modo da escola; desmarca as aulas que o
@@ -1308,9 +1451,18 @@ begin
 end;
 $function$;
 
--- A direção desfaz um pedido para não registrar (a pessoa pediu para voltar a
--- ser registrada, ou o pedido foi registrado por engano). Só no modo da escola:
--- no aceite individual, quem recusou responde de novo pelo termo.
+-- A direção desfaz um pedido para não registrar (a pessoa pediu pelo WhatsApp
+-- para voltar a ser registrada, ou o pedido foi registrado por engano). Só no
+-- modo da escola: no aceite individual, quem recusou responde de novo pelo
+-- termo.
+--   * Só a DIREÇÃO (SCHOOL_ADMIN): desfazer volta a ligar sala, importação e IA
+--     de alguém que pediu para não ser registrado. A coordenação registra o
+--     pedido (revoke_lesson_recording_consent, que só restringe), não o desfaz.
+--   * O pedido que o PRÓPRIO professor fez no app só ele desfaz ("Voltar a
+--     registrar minhas aulas"): a escola não passa por cima da decisão dele.
+--   * O pedido do aluno ou do responsável (página ou WhatsApp) a direção desfaz
+--     a pedido da família, com o motivo — no modo da escola é o único caminho
+--     dela (a página só grava o pedido para não registrar).
 create or replace function public.withdraw_lesson_recording_objection(p_subject_id uuid, p_reason text)
 returns jsonb
 language plpgsql
@@ -1329,6 +1481,15 @@ begin
   if not private.can_manage_lesson_quality(v_subject.tenant_id) then
     raise exception 'sem_permissao' using errcode = '42501';
   end if;
+  if not exists (
+    select 1 from public.profiles as actor
+    where actor.id = (select auth.uid())
+      and actor.role = 'SCHOOL_ADMIN'
+      and actor.tenant_id = v_subject.tenant_id
+      and pg_catalog.lower(coalesce(actor.lifecycle_status, '')) = 'active'
+  ) then
+    raise exception 'somente_a_direcao' using errcode = '42501';
+  end if;
   if length(btrim(coalesce(p_reason, ''))) < 10 then
     raise exception 'informe_o_motivo' using errcode = '22023';
   end if;
@@ -1337,6 +1498,9 @@ begin
   end if;
   if not private.lesson_recording_objected(v_subject.id) then
     raise exception 'nao_ha_pedido_para_desfazer' using errcode = '22023';
+  end if;
+  if private.lesson_recording_objection_by_self(v_subject.id) then
+    raise exception 'pedido_do_proprio_professor' using errcode = '22023';
   end if;
   select * into v_me from public.profiles where id = (select auth.uid());
   v_notice := private.lesson_recording_current_notice(v_subject.role);
@@ -1436,6 +1600,7 @@ begin
     'private.lesson_recording_subject_active(uuid)',
     'private.lesson_recording_school_default_at(uuid,timestamp with time zone)',
     'private.lesson_recording_objected(uuid)',
+    'private.lesson_recording_objection_by_self(uuid)',
     'private.lesson_recording_objected_at(uuid,timestamp with time zone)',
     'private.lesson_recording_text_for(text,text)',
     'private.lesson_recording_authorization_summary(text)',
@@ -1449,6 +1614,7 @@ begin
     'private.lesson_session_term_lapse_text(uuid)',
     'private.lesson_recording_public_link_fields(uuid)',
     'private.lesson_recording_teachers_without_google_identity(text)',
+    'private.lesson_session_last_handover(uuid)',
     'private.lesson_recording_school_default_decision_20260927(text)'
   ] loop
     execute pg_catalog.format('alter function %s owner to postgres', v_signature);
@@ -1462,7 +1628,8 @@ begin
   -- EXECUTE de antes — create or replace não mexe no ACL.
   foreach v_signature in array array[
     'public.set_lesson_recording_authorization_mode(text,text)',
-    'public.withdraw_lesson_recording_objection(uuid,text)'
+    'public.withdraw_lesson_recording_objection(uuid,text)',
+    'public.my_lesson_recording_authorization_mode()'
   ] loop
     execute pg_catalog.format('alter function %s owner to postgres', v_signature);
     execute pg_catalog.format('revoke all on function %s from public, anon, service_role', v_signature);
