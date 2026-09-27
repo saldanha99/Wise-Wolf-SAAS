@@ -271,12 +271,18 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   marca com "`Termo de registro das aulas: registro autorizado pela escola (…)`" — é esse texto que faz a aula cair
   (sem exigir dois aceites) quando a escola volta ao individual; aula marcada por aceites e passada a quem nunca
   respondeu continua `HANDOVER_UNCONSENTED` (generalizar derrubou `sala_acompanha_a_troca_de_professor.sql`).
-  `OBJECTION_WITHDRAWN` (desfazer: `withdraw_lesson_recording_objection`, direção com motivo; o professor pelo
-  app) **não é aceite**. Direção registra o pedido com a revogação de sempre (`revoke_lesson_recording_consent`);
+  `OBJECTION_WITHDRAWN` (desfazer: `withdraw_lesson_recording_objection`, **só `SCHOOL_ADMIN`** com motivo — a
+  coordenação registra o pedido, não o desfaz; o pedido que o professor fez no app só ele desfaz,
+  `pedido_do_proprio_professor`) **não é aceite**. Direção registra o pedido com a revogação de sempre (`revoke_lesson_recording_consent`);
   só `SCHOOL_ADMIN` troca o modo (`set_lesson_recording_authorization_mode`, confirmação na tela, roda o job). Link,
   lote e reenvio recusam `registro_autorizado_pela_escola`; fila do termo cancela na hora de sair. Conta Google do
-  professor continua obrigatória para a sala (`director_pending_counts.professores_sem_conta_google`). Remendos por
-  âncora: `apply_standing_…`, `get_lesson_recording_consent_public`, `list_lesson_recording_consents` (×2),
+  professor continua obrigatória para a sala (`director_pending_counts.professores_sem_conta_google`, só no modo da
+  escola) — ⚠️ e no modo da escola o job **só marca** a aula de professor com a conta confirmada: a marca sem sala
+  congelaria a sessão (`lesson_session_has_evidence`); medido no clone, seriam 21 de 21 aulas de segunda da Wise Wolf.
+  Tours do termo e do modo da escola filtrados pelo modo (`FeatureTour.recordingMode`,
+  `my_lesson_recording_authorization_mode()`); no modo da escola nenhuma tela manda "pedir link novo". Remendos por
+  âncora: `apply_standing_…` (×3), `get_lesson_recording_consent_public` (×3), `get_student_birth_date_record`,
+  `list_lesson_recording_consents` (×2),
   `get_my_lesson_records` (×3), roster, snapshot, os três do lote, `create_…_link`, `list_…_requests`,
   `director_pending_counts` — não recrie a partir de texto antigo. ⚠️ **Nada comunica o aviso às famílias atuais**
   (J13 no RIPD): não dispare lote sem o jurídico.
