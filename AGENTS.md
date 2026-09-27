@@ -1,5 +1,17 @@
 # Instruções permanentes do projeto
 
+## Contexto técnico: leia o CLAUDE.md
+
+Antes de mexer em qualquer coisa, leia o [CLAUDE.md](CLAUDE.md) inteiro. Ele guarda as regras do
+projeto (deploy só por `deploy/vps/release.sh` na VPS, a partir de árvore limpa na branch
+`DEPLOY_GIT_BRANCH`; migrations re-executáveis e registradas no release; campo que não é coluna
+derruba o update; tour de novidade em toda mudança visível) e o histórico de cada área.
+
+Estado em 27/09/2026: o plano "Memória das Aulas" (Google Meet da escola) está publicado — registro
+das aulas autorizado pela escola com direito de recusa, sem link de aceite. O que falta fazer e o
+funcionamento estão em [docs/runbooks/google-meet-pedagogical-documentation.md](docs/runbooks/google-meet-pedagogical-documentation.md)
+e na seção do Google Meet do CLAUDE.md.
+
 ## Testes de ponta a ponta de matrícula
 
 O proprietário do sistema autorizou o CPF `28718884857` como identidade exclusiva de teste de fluxo. Ele pode ser reutilizado em futuros testes de ponta a ponta sem pedir nova confirmação ao proprietário.
