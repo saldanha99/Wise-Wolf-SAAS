@@ -324,10 +324,26 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
     tenantId,
     body.offerType === "teacher" ? "TEACHER" : "STUDENT",
   );
+  let googleAccountRequired = false;
+  if (body.offerType === "teacher") {
+    const { data: required, error: requirementError } = await admin.rpc(
+      "teacher_invite_google_required",
+      { p_offer_id: offerId },
+    );
+    if (requirementError) {
+      throw new ApiError(
+        503,
+        "GOOGLE_REQUIREMENT_UNAVAILABLE",
+        "Google requirement is unavailable",
+      );
+    }
+    googleAccountRequired = required === true;
+  }
   return json({
     ...data,
     [body.offerType === "teacher" ? "schoolInfo" : "_schoolInfo"]: materialized,
     contractTermsVersion,
+    ...(body.offerType === "teacher" ? { googleAccountRequired } : {}),
   });
 }
 

@@ -499,8 +499,54 @@ async function callback(req: Request, cfg: Config): Promise<Response> {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       { auth: { persistSession: false } },
     );
+    const stateHash = await sha256(state);
+    const { data: inviteNonce, error: inviteNonceError } = await db.rpc(
+      "teacher_invite_google_take_state",
+      { p_state_hash: stateHash },
+    );
+    if (inviteNonceError) throw new Error("google_meet_storage_unavailable");
+    if (inviteNonce) {
+      flow = "teacher_invite";
+      if (url.searchParams.has("error")) throw new Error("oauth_cancelled");
+      const code = text(url.searchParams.get("code"), 6000);
+      if (!code) throw new Error("oauth_code_missing");
+      const verifier = await decryptSecret(
+        inviteNonce.verifier_ciphertext,
+        cfg.key,
+        `invite:${inviteNonce.offer_id}:${stateHash}`,
+      );
+      const token = await exchangeToken({
+        client_id: cfg.clientId,
+        client_secret: cfg.clientSecret,
+        redirect_uri: cfg.redirectUri,
+        grant_type: "authorization_code",
+        code,
+        code_verifier: verifier,
+      });
+      const identity = await googleIdentity(text(token.access_token, 8000));
+      const { data: verified, error: verifyError } = await db.rpc(
+        "teacher_invite_google_confirm",
+        {
+          p_state_hash: stateHash,
+          p_google_sub: identity.sub,
+          p_google_email: identity.email,
+        },
+      );
+      if (verifyError) {
+        throw new Error(
+          /^[a-z_]+$/.test(verifyError.message || "")
+            ? verifyError.message
+            : "google_meet_storage_unavailable",
+        );
+      }
+      return page(
+        true,
+        "teacher_identity_verified",
+        text(verified?.email, 254),
+      );
+    }
     const nonce = await storage(db, "nonce_consume", null, null, null, {
-      state_hash: await sha256(state),
+      state_hash: stateHash,
     });
     flow = nonce.flow === "teacher_identity" ? "teacher_identity" : "organizer";
     if (url.searchParams.has("error")) throw new Error("oauth_cancelled");
@@ -1243,6 +1289,76 @@ serve(async (req: Request) => {
   const cfg = config();
   if (req.method === "GET") return callback(req, cfg);
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  // O convite ainda não criou o perfil de professor. O UUID do convite e a
+  // prova aleatória dão acesso apenas ao início e à consulta deste OAuth.
+  if ((req.headers.get("content-length") || "").length < 10) {
+    const raw = await req.clone().text();
+    if (raw.length <= 2048) {
+      try {
+        const candidate: unknown = JSON.parse(raw);
+        if (
+          isRecord(candidate) &&
+          (candidate.action === "teacher_invite_google_start" ||
+            candidate.action === "teacher_invite_google_status")
+        ) {
+          if (cfg.missing.length) {
+            return json({ error: "google_integration_not_configured" }, 503);
+          }
+          const offerId = uuid(candidate.offerId);
+          if (!offerId) {
+            return json({ error: "google_invite_request_invalid" }, 400);
+          }
+          const db = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+            { auth: { persistSession: false } },
+          );
+          if (candidate.action === "teacher_invite_google_status") {
+            const proof = text(candidate.proof, 128);
+            if (!/^[a-zA-Z0-9_-]{43}$/.test(proof)) {
+              return json({ error: "google_invite_request_invalid" }, 400);
+            }
+            const { data, error } = await db.rpc(
+              "teacher_invite_google_status",
+              {
+                p_offer_id: offerId,
+                p_proof_hash: await sha256(proof),
+              },
+            );
+            if (error) {
+              return json({ error: "google_meet_storage_unavailable" }, 503);
+            }
+            return json(data || { verified: false });
+          }
+          const state = randomToken(),
+            proof = randomToken(),
+            verifier = randomToken();
+          const stateHash = await sha256(state);
+          const { error } = await db.rpc("teacher_invite_google_start", {
+            p_offer_id: offerId,
+            p_state_hash: stateHash,
+            p_proof_hash: await sha256(proof),
+            p_verifier_ciphertext: await encryptSecret(
+              verifier,
+              cfg.key,
+              `invite:${offerId}:${stateHash}`,
+            ),
+          });
+          if (error) return json({ error: "google_invite_unavailable" }, 409);
+          return json({
+            proof,
+            authorization_url: identityAuthorizationUrl(
+              cfg,
+              state,
+              await pkceChallenge(verifier),
+            ),
+          });
+        }
+      } catch {
+        return json({ error: "google_invite_request_invalid" }, 400);
+      }
+    }
+  }
   const authorization = await authorizeRequest(req, {
     allowedRoles: ["SCHOOL_ADMIN", "SUPER_ADMIN", "COORDINATOR", "TEACHER"],
     allowService: true,

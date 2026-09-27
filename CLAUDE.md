@@ -238,6 +238,18 @@ número de alunos (Descoberta 1 · Essencial 2 · Pro 8 · Studio 25 · Instituc
 
 ## Google Meet da escola: registro das aulas e presença ✅
 
+**Convite de professor (27/09/2026):** escola com conexão Google configurada exige, no
+`TeacherOnboarding`, que o candidato confirme **antes da assinatura** a própria conta
+Google com que entrará nas aulas. A tela explica que ela pode diferir do e-mail do
+portal e mostra o e-mail verificado. A edge `google-meet` abre OAuth `openid email`
+vinculado ao UUID do convite e a uma prova aleatória (hash no banco; PKCE; token do
+Google descartado); a migration `20260927230905` guarda o resultado por até 2 h em
+`private.teacher_invite_google_proofs`. `register-teacher` exige a prova na edge,
+confere o claim do mesmo convite e a usa uma vez só para criar
+`private.teacher_google_identities` antes de finalizar o cadastro. E-mail digitado
+ou checkbox não substituem login Google. Outras escolas sem conexão Google mantêm
+o cadastro atual. Teste: `supabase/tests/teacher_invite_google_identity.sql`.
+
 > Runbook completo: `docs/runbooks/google-meet-pedagogical-documentation.md`. Leia antes de mexer em
 > `supabase/functions/google-meet`, `lesson_sessions.documentation_consent` ou na Central de Qualidade.
 

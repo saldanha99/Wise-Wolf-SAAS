@@ -620,6 +620,18 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    id: '2026-09-30-conta-google-na-contratacao',
+    title: 'Conta Google confirmada na contratação',
+    roles: ['TEACHER'],
+    recordingMode: 'SCHOOL_DEFAULT',
+    steps: [{
+      target: 'recording-teacher-google',
+      view: 'lesson-sessions',
+      title: 'Sua conta Google para as salas oficiais',
+      text: 'O cadastro de novos professores agora confirma a conta Google antes da assinatura. Confira aqui qual conta entrará como coanfitriã nas suas aulas; se você mudar de conta, confirme a nova neste cartão.',
+    }],
+  },
 ];
 
 /**

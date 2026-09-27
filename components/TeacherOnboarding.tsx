@@ -22,6 +22,11 @@ const TeacherOnboarding: React.FC = () => {
     const [pixKey, setPixKey] = useState('');
     const [meetLink, setMeetLink] = useState('');
     const [avatarUrl, setAvatarUrl] = useState('');
+    const [googleProof, setGoogleProof] = useState('');
+    const [googleAuthorizationUrl, setGoogleAuthorizationUrl] = useState('');
+    const [googleEmail, setGoogleEmail] = useState('');
+    const [googleBusy, setGoogleBusy] = useState(false);
+    const [googleError, setGoogleError] = useState('');
 
     // New Fields for Contract
     const [rg, setRg] = useState('');
@@ -78,6 +83,39 @@ const TeacherOnboarding: React.FC = () => {
     // Só a escola que decidiu registrar as aulas oferece a Cláusula 11ª.
     const contractTermsVersion = offeredContractTermsVersion('TEACHER', offerData);
     const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractTermsVersion);
+    const googleAccountRequired = offerData?.googleAccountRequired === true;
+    const offerId = new URLSearchParams(window.location.search).get('offer') || '';
+
+    const startGoogleConfirmation = async () => {
+        setGoogleBusy(true); setGoogleError(''); setGoogleEmail('');
+        setGoogleProof(''); setGoogleAuthorizationUrl('');
+        try {
+            const { data, error } = await supabase.functions.invoke('google-meet', {
+                body: { action: 'teacher_invite_google_start', offerId },
+            });
+            if (error || !data?.proof || !data?.authorization_url) throw new Error();
+            setGoogleProof(data.proof);
+            setGoogleAuthorizationUrl(data.authorization_url);
+        } catch {
+            setGoogleError('Não foi possível iniciar a confirmação. Confira o convite e tente novamente.');
+        } finally { setGoogleBusy(false); }
+    };
+
+    const checkGoogleConfirmation = async () => {
+        if (!googleProof) return;
+        setGoogleBusy(true); setGoogleError('');
+        try {
+            const { data, error } = await supabase.functions.invoke('google-meet', {
+                body: { action: 'teacher_invite_google_status', offerId, proof: googleProof },
+            });
+            if (error || !data?.verified || !data?.email) {
+                throw new Error('Ainda não recebemos a confirmação do Google. Termine o login na outra aba e tente novamente.');
+            }
+            setGoogleEmail(data.email);
+        } catch (error) {
+            setGoogleError((error as Error).message);
+        } finally { setGoogleBusy(false); }
+    };
 
     const openContract = async () => {
         const offerId = new URLSearchParams(window.location.search).get('offer');
@@ -96,6 +134,10 @@ const TeacherOnboarding: React.FC = () => {
 
     const goToContract = (e: React.FormEvent) => {
         e.preventDefault();
+        if (googleAccountRequired && !googleEmail) {
+            setGoogleError('Confirme primeiro a conta Google com que você entrará nas aulas.');
+            return;
+        }
         if (!teacherContractReadiness.isReady) {
             setContractError(`A escola precisa configurar ${teacherContractReadiness.missingFields.join(', ')} antes de emitir este contrato.`);
             return;
@@ -108,6 +150,11 @@ const TeacherOnboarding: React.FC = () => {
 
     const handleRegister = async () => {
         if (!offerData || !contractAccepted) return;
+        if (googleAccountRequired && !googleEmail) {
+            setContractError('Confirme a conta Google das aulas antes de assinar.');
+            setStep('FORM');
+            return;
+        }
         if (!teacherContractReadiness.isReady) {
             setContractError(`A assinatura foi bloqueada porque faltam: ${teacherContractReadiness.missingFields.join(', ')}.`);
             setContractAccepted(false);
@@ -154,6 +201,7 @@ const TeacherOnboarding: React.FC = () => {
                     phone: phone.replace(/\D/g, ''), // Send clean phone
                     pixKey,
                     meetLink,
+                    googleIdentityProof: googleProof,
                     avatar: avatarUrl,
                     offerPayload: new URLSearchParams(window.location.search).get('offer'),
                     rg,
@@ -174,7 +222,9 @@ const TeacherOnboarding: React.FC = () => {
 
             if (fnError) {
                 if (fnError.context instanceof Response && fnError.context.status === 409) {
-                    throw new Error('O contrato ou o convite foi atualizado. Recarregue a página para revisar o valor por aula e o texto do contrato antes de assinar.');
+                    let serverMessage = '';
+                    try { serverMessage = String((await fnError.context.json())?.error || ''); } catch { /* resposta sem JSON */ }
+                    throw new Error(serverMessage || 'O contrato, o convite ou a confirmação Google mudou. Recarregue a página e tente novamente.');
                 }
                 throw new Error(fnError.message || "Erro ao conectar com o servidor.");
             }
@@ -423,6 +473,24 @@ const TeacherOnboarding: React.FC = () => {
                                 value={meetLink} onChange={e => setMeetLink(e.target.value)}
                                 icon={<LinkIcon size={16} />}
                             />
+                            {googleAccountRequired && (
+                                <div data-tour="teacher-invite-google" className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-5 text-sm text-slate-800">
+                                    <p className="font-black">Obrigatório: confirme a conta Google das suas aulas</p>
+                                    <p className="mt-2 leading-relaxed">Escolha a <strong>sua conta Google com que você entrará nas reuniões do Google Meet</strong>. Ela será vinculada ao seu cadastro para você entrar como coanfitrião nas salas oficiais da escola. Pode ser diferente do e-mail de acesso ao portal. Não use a conta central da escola nem a de outra pessoa.</p>
+                                    {googleEmail && <p className="mt-3 font-bold text-emerald-700">Conta confirmada: {googleEmail}</p>}
+                                    {!googleEmail ? (
+                                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                                            <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar minha conta Google</button>
+                                            {googleAuthorizationUrl && <a href={googleAuthorizationUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-indigo-700 underline">Entrar com o Google ↗</a>}
+                                            {googleProof && <button type="button" disabled={googleBusy} onClick={() => void checkGoogleConfirmation()} className="font-bold text-indigo-700 underline">Já confirmei</button>}
+                                        </div>
+                                    ) : (
+                                        <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="mt-2 font-bold text-indigo-700 underline">Usar outra conta ou confirmar novamente</button>
+                                    )}
+                                    {googleError && <p role="alert" className="mt-3 font-bold text-red-700">{googleError}</p>}
+                                    <p className="mt-2 text-xs text-slate-600">O link do Google dura 10 minutos. Não compartilhe sua senha ou código com a escola.</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Personal Info for Contract */}

@@ -334,7 +334,7 @@ export function identityAuthorizationUrl(
   return url.toString();
 }
 
-export type OAuthFlow = "organizer" | "teacher_identity";
+export type OAuthFlow = "organizer" | "teacher_identity" | "teacher_invite";
 
 const escapeHtml = (value: string): string =>
   value.replace(
@@ -365,7 +365,8 @@ export function oauthResultPage(input: {
   code: string;
   email?: string | null;
 }): { status: number; html: string } {
-  const teacher = input.flow === "teacher_identity";
+  const teacher = input.flow === "teacher_identity" ||
+    input.flow === "teacher_invite";
   const title = input.ok
     ? teacher ? "Conta Google confirmada" : "Conta Google conectada"
     : "Conexão não concluída";
