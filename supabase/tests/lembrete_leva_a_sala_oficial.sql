@@ -485,6 +485,10 @@ from walink_clock as c;
 -- (S1) segue. A professora confirmou outra conta Google, então toda sala pronta
 -- dela pede acerto do coanfitrião. A fila é global: as conexões reais saem do ar
 -- só neste savepoint.
+-- Desde a sala da troca (20260928110000) a aula dada por outro professor fica
+-- sem aceite efetivo na régua única: a única operação da fila nessas salas é
+-- DESLIGAR a transcrição (a cobertura aqui entrou sem o gatilho que troca a
+-- sessão; o agendamento transferido espera o replanejamento da escola).
 savepoint walink_meet_queue;
 update private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED';
 insert into private.google_workspace_connections (tenant_id, organizer_sub, organizer_email, status, connected_by)
@@ -504,8 +508,16 @@ select pg_temp.assert_true(
     where j ->> 'lesson_session_id' in (
       '00000000-0000-4000-8000-00000000d5a3', '00000000-0000-4000-8000-00000000d5a6'
     )
+      and j ->> 'operation' <> 'DISABLE_ARTIFACTS'
+  )
+  and (
+    select pg_catalog.count(*) = 2 from jsonb_array_elements(q.jobs) as j
+    where j ->> 'lesson_session_id' in (
+      '00000000-0000-4000-8000-00000000d5a3', '00000000-0000-4000-8000-00000000d5a6'
+    )
+      and j ->> 'operation' = 'DISABLE_ARTIFACTS'
   ),
-  'fila preparou a sala de aula dada por outro professor: ' || q.jobs::text
+  'fila preparou a sala de aula dada por outro professor (ou não desligou a transcrição dela): ' || q.jobs::text
 )
 from (select public.get_pending_google_meet_sync_sessions() as jobs) as q;
 rollback to savepoint walink_meet_queue;
