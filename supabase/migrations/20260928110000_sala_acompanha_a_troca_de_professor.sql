@@ -56,6 +56,12 @@
 -- professor ATUAL do agendamento não diz quem deu a aula da semana passada);
 -- cobertura, reposição, antecipação e experimental são da ocorrência e valem.
 --
+-- Integração com o pacote da cobertura (20260928100000, seção 6.8): a previsão
+-- de sala do pacote usa a régua desta troca (substituto pronto = conta Google
+-- confirmada + aceite do termo que vale no fim da aula) e o aviso "sala pronta"
+-- também sai quando a retenção da troca é solta — a sala retida nunca é
+-- anunciada, e a de quem não está pronto nunca sai.
+--
 -- Remendos por âncora (pg_get_functiondef + erro se a âncora sumir): outras
 -- frentes da onda 3 podem mexer nas mesmas funções. Re-executável: if not
 -- exists, create or replace, drop trigger if exists, remendos idempotentes.
@@ -874,6 +880,149 @@ begin
     || E'          else '': autorização revogada ou recusada depois da marcação.'' end,');
 end
 $patch_standing$;
+
+-- 6.8 Pacote da cobertura × sala da troca (integração da onda 3) -----------------
+-- O pacote da cobertura (20260928100000) promete ao substituto e à família "o link
+-- da escola chega por aqui" quando prevê sala. Duas coisas precisam bater com a
+-- troca desta migration:
+--   a) a previsão usa a MESMA régua da troca: substituto elegível = conta Google
+--      confirmada + aceite do termo que vale no fim da aula
+--      (private.lesson_teacher_documentation_ready), mais o aceite do aluno. Aula
+--      que já passou ao substituto com a documentação barrada (passou a quem não
+--      está pronto, recusa antes do fim, termo que caiu) segue pelo link de sempre
+--      — nada de "o link chega por aqui";
+--   b) o aviso de sala pronta também sai quando a RETENÇÃO da troca é solta (a
+--      conta do substituto virou a coanfitriã): a sala já estava READY e só
+--      teacher_handover_pending mudou — e quem muda a marca é o gatilho BEFORE
+--      (trg_zz_google_meet_rooms_release_handover), que um gatilho "update of
+--      <coluna>" não enxerga. Antes, a promessa do pacote nunca se cumpria na
+--      aula congelada que passou ao substituto pronto. Sala retida não é
+--      entregue a ninguém, e a sala de quem não está pronto nunca sai
+--      (official_lesson_link aplica a régua única).
+create or replace function private.coverage_school_room_expected(p_coverage_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select coalesce((
+    select coverage.booking_id is not null
+      and pg_catalog.lower(coalesce(coverage.status, '')) = 'confirmed'
+      and exists (
+        select 1 from private.google_workspace_connections as connection
+         where connection.tenant_id = coverage.tenant_id and connection.status = 'CONNECTED')
+      -- A régua da troca (20260928110000): conta Google confirmada e o
+      -- "autorizo" do termo que vale no fim da aula.
+      and private.lesson_teacher_documentation_ready(coverage.cover_teacher_id, coverage.tenant_id, lesson_end.at)
+      -- E o aceite do aluno com o substituto (a régua do job que marca a sessão).
+      and private.lesson_recording_active(coverage.student_id, coverage.cover_teacher_id)
+      and not exists (
+        select 1
+          from public.lesson_occurrences as occurrence
+          join public.lesson_sessions as session
+            on session.id = occurrence.session_id and session.tenant_id = occurrence.tenant_id
+         where occurrence.tenant_id = coverage.tenant_id
+           and occurrence.source_type = 'booking'
+           and occurrence.source_id = coverage.booking_id::text
+           and occurrence.class_date = coverage.class_date
+           and occurrence.status <> 'SUPERSEDED'
+           and session.status <> 'SUPERSEDED'
+           and (
+             -- Congelada com outro professor e a troca não aconteceu (dono ambíguo,
+             -- rodada ainda não passou): a régua barra a sala dela.
+             (session.teacher_id is distinct from coverage.cover_teacher_id
+               and private.lesson_session_has_evidence(session.id))
+             -- Já é do substituto, mas com a documentação barrada: link de sempre.
+             or (session.teacher_id = coverage.cover_teacher_id
+               and private.lesson_session_documentation_blocked(session.id))))
+    from public.class_coverages as coverage
+    cross join lateral (
+      select coalesce(
+        (select session.scheduled_end_at
+           from public.lesson_occurrences as occurrence
+           join public.lesson_sessions as session
+             on session.id = occurrence.session_id and session.tenant_id = occurrence.tenant_id
+          where occurrence.tenant_id = coverage.tenant_id
+            and occurrence.source_type = 'booking'
+            and occurrence.source_id = coverage.booking_id::text
+            and occurrence.class_date = coverage.class_date
+            and occurrence.status <> 'SUPERSEDED'
+            and session.status <> 'SUPERSEDED'
+          order by session.scheduled_end_at desc
+          limit 1),
+        (coverage.class_date
+          + coalesce(case when pg_catalog.left(coalesce(coverage.class_time, ''), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                          then pg_catalog.left(coverage.class_time, 5)::time end, time '23:29')
+          + interval '30 minutes') at time zone 'America/Sao_Paulo'
+      ) as at
+    ) as lesson_end
+   where coverage.id = p_coverage_id
+  ), false);
+$function$;
+
+alter function private.coverage_school_room_expected(uuid) owner to postgres;
+revoke all on function private.coverage_school_room_expected(uuid)
+  from public, anon, authenticated, service_role;
+
+create or replace function private.google_meet_room_ready_coverage_notice()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_coverage uuid;
+begin
+  -- Sala retida pela troca de professor não é entregue a ninguém.
+  if new.state is distinct from 'READY' or new.meeting_uri is null
+     or coalesce(new.teacher_handover_pending, false) then
+    return null;
+  end if;
+  -- Só quando a sala FICA pronta para quem dá a aula: nasceu pronta, ficou
+  -- pronta, mudou de link, ou a retenção da troca acabou de ser solta.
+  if tg_op = 'UPDATE' and old.state is not distinct from new.state
+     and old.meeting_uri is not distinct from new.meeting_uri
+     and not coalesce(old.teacher_handover_pending, false) then
+    return null;
+  end if;
+  for v_coverage in
+    select distinct coverage.id
+      from public.lesson_occurrences as occurrence
+      join public.class_coverages as coverage
+        on coverage.tenant_id = occurrence.tenant_id
+       and coverage.booking_id::text = occurrence.source_id
+       and coverage.class_date = occurrence.class_date
+     where occurrence.session_id = new.lesson_session_id
+       and occurrence.tenant_id = new.tenant_id
+       and occurrence.source_type = 'booking'
+       and occurrence.status <> 'SUPERSEDED'
+       and pg_catalog.lower(coalesce(coverage.status, '')) = 'confirmed'
+  loop
+    begin
+      -- A sala só sai se valer para quem dá a aula (official_lesson_link: régua
+      -- única, aceite efetivo, sem retenção) — nunca ao substituto sem aceite.
+      perform private.coverage_room_notice_enqueue(v_coverage);
+    exception when others then
+      -- O aviso nunca derruba a gravação da sala.
+      raise warning 'google_meet_room_ready_coverage_notice: % (%)', sqlerrm, sqlstate;
+    end;
+  end loop;
+  return null;
+end
+$function$;
+
+alter function private.google_meet_room_ready_coverage_notice() owner to postgres;
+revoke all on function private.google_meet_room_ready_coverage_notice()
+  from public, anon, authenticated, service_role;
+
+-- Sem lista de colunas: a retenção é solta por gatilho BEFORE, e mudança feita
+-- por gatilho BEFORE não aciona gatilho "update of <coluna>".
+drop trigger if exists trg_zz_google_meet_room_ready_coverage_notice on private.google_meet_rooms;
+create trigger trg_zz_google_meet_room_ready_coverage_notice
+  after insert or update on private.google_meet_rooms
+  for each row when (new.state = 'READY')
+  execute function private.google_meet_room_ready_coverage_notice();
 
 -- 7. Dono e permissões -------------------------------------------------------------
 do $grants$

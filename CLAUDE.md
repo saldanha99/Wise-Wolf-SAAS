@@ -508,11 +508,13 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   substituto "por um link que só abre com login", e o que sai no WhatsApp fica na fila, na inbox, no provedor
   e no celular, onde a exclusão a pedido e a retenção não chegam. Leva também a sala oficial de quem dá a aula
   e `<portal>/dossie-do-aluno?aluno=<id>` — e deixou de levar o objetivo livre do cadastro e o nome do
-  responsável. **Sem sala pronta no aceite**, `private.coverage_school_room_expected` (escola conectada,
-  conta Google do substituto, aceite do termo dos dois, aula não congelada com outro professor) decide se
-  substituto e família ouvem "o link da escola chega por aqui" ou "combine e mande o link"; quando a sala fica
-  `READY`, o gatilho em `private.google_meet_rooms` manda o link aos dois uma vez
-  (`coverage:<id>:room`/`room-family`). O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
+  responsável. **Sem sala pronta no aceite**, `private.coverage_school_room_expected` decide se
+  substituto e família ouvem "o link da escola chega por aqui" ou "combine e mande o link" — pela **régua da
+  sala da troca** (redefinida em `20260928110000`, seção 6.8: escola conectada, substituto pronto por
+  `lesson_teacher_documentation_ready`, aceite do aluno, aula não barrada); quando a sala fica `READY` **ou a
+  retenção da troca é solta**, o gatilho em `private.google_meet_rooms` (sem lista de colunas: quem solta é o
+  gatilho BEFORE) manda o link aos dois uma vez (`coverage:<id>:room`/`room-family`) — nunca a sala retida, nunca
+  a de substituto sem aceite (`official_lesson_link`). O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
   sair do dossiê e **segura os tours** enquanto isso (o tour do login trocava de aba e o dossiê sumia).
   Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
   `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
@@ -551,7 +553,17 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   professor, aula de antes de ligar e **aula que não é do professor da sessão** (`teacher_lesson_presence_given_by_other`:
   régua única, lançamento de outro professor, agendamento transferido sem lançamento dele) não entram; sala **retida pela
   troca** no início da aula (`teacher_handover_released_at` > início) é `NO_ROOM` e não abre caso na Central
-  (`meet_attendance_evaluate` remendada por âncora); 90 dias depois da aula (o prazo do relatório no termo v3), purga diária. Leitura só por
+  (`meet_attendance_evaluate` redefinida inteira); 90 dias depois da aula (o prazo do relatório no termo v3), purga diária.
+  **Integração da onda 3:** a avaliação de presença (casos da Central) usa a MESMA régua — aula de outro professor
+  ou barrada não é avaliada, e depois de uma troca atraso/"professor ausente"/"aluno ausente" saem da planilha
+  reclassificada pela conta de quem dá a aula na hora (`private.meet_attendance_numbers`, também na planilha de "Sala
+  e resumo" — remendo por âncora em `google_meet_backend`), nunca dos `teacher_*`/`student_*` da importação (sem
+  troca, valem os da importação); a chave do caso leva o professor
+  (`meet:<sessão>:<regra>:<professor>`) e o caso antigo de outro professor ganha `MEET_TEACHER_HANDOVER`. A aula que
+  troca de professor depois da medição sai do extrato de quem não a deu na hora (filtro na leitura). Teste de ponta a
+  ponta: `supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql`. ⚠️ `google_meet_backend` é remendada por
+  âncora em TRÊS migrations desta onda (100000 → 110000 → 120000, nesta ordem de nome): quem a recriar mantém
+  `v_temporary_only`, `attendance_identity`/`teacher_handover` e `meet_attendance_numbers`. Leitura só por
   `get_my_punctuality_extract` (o professor, o dele — cartão no painel) e `get_teacher_punctuality_extract` (direção e
   coordenação, **um professor por vez**, lista só de nomes em ordem alfabética — aba "Pontualidade" da Central de
   Qualidade). **Sem nota, média, ranking ou comparação; não toca `class_logs`, folha nem pagamento.** Desligado (sem

@@ -438,7 +438,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'meet-review-queue',
         view: 'lesson-sessions',
         title: 'Cobriu a aula? A sala da escola vai junto 🔁',
-        text: 'Quando a cobertura de uma aula que tem sala da escola é confirmada, a aula passa para quem vai dá-la: a conta Google que o substituto confirmou vira a coanfitriã da sala e a do titular sai, o lançamento dele fecha a aula e é ele quem revisa o resumo — que aparece nesta lista. Enquanto a conta dele não entra, o link da sala não é mandado a ninguém e a aula usa o link de sempre. Substituto sem conta Google confirmada ou sem o termo de registro autorizado: a aula passa para ele do mesmo jeito, mas a transcrição daquela sala fica desligada.',
+        text: 'Quando a cobertura de uma aula que tem sala da escola é confirmada, a aula passa para quem vai dá-la: a conta Google que o substituto confirmou vira a coanfitriã da sala e a do titular sai, o lançamento dele fecha a aula e é ele quem revisa o resumo — que aparece nesta lista. Enquanto a conta dele não entra, o link da sala não é mandado a ninguém; quando ela entra, o WhatsApp da escola manda o link a ele e à família (se não chegar até 30 min antes da aula, vale o link de sempre). Substituto sem conta Google confirmada ou sem o termo de registro autorizado: a aula passa para ele do mesmo jeito, mas a transcrição daquela sala fica desligada.',
       },
       {
         target: null,

@@ -70,6 +70,14 @@
 --     não recebeu o link, nem LATE_START pela entrada depois da liberação).
 --     google_meet_rooms.teacher_handover_released_at guarda quando a sala foi
 --     entregue; private.google_meet_room_withheld_at_lesson decide.
+--   * Integração da onda 3: a avaliação de presença (os casos da Central de
+--     Qualidade) segue a mesma régua — aula que não é do professor da sessão ou
+--     com a documentação barrada não abre caso, e, depois de uma troca de
+--     professor, atraso/professor ausente/aluno ausente saem da planilha com a
+--     conta de quem dá a aula NA HORA DA AVALIAÇÃO (private.meet_attendance_numbers),
+--     nunca dos números gravados na importação (que eram do titular). A tela "Sala
+--     e resumo" mostra os mesmos números; o extrato tira na hora a aula que trocou
+--     de professor depois da medição.
 --
 -- Re-executável: if not exists, create or replace, remendo idempotente (erro se
 -- a âncora sumir), cron desagendado e agendado de novo.
@@ -272,6 +280,105 @@ language sql stable security definer set search_path = '' as $$
     from public.lesson_sessions as session
     where session.id = p_session
   ), false);
+$$;
+
+-- Números e papéis da planilha guardada com a conta de quem DÁ a aula HOJE
+-- (integração da onda 3). A importação grava teacher_*/student_* e o papel de
+-- cada linha com a conta de quem era o professor NAQUELA hora (a edge soma as
+-- linhas por papel — attendance.ts, summarizeAttendance). Sem troca de professor
+-- na sessão, essa conta é a de hoje: valem os números da importação
+-- (source = IMPORT). Depois de uma troca (cobertura atestada depois da aula,
+-- 20260928110000) eles são do titular — e o substituto aparece como "aluno": cada
+-- linha é classificada de novo pelo e-mail (source = REPORT_ROWS): professor =
+-- teacher_emails de session_state.attendance_identity; quem passou a aula adiante
+-- (ou linha que a importação marcou como professor e hoje não é) não conta como
+-- professor nem como aluno; a conta da escola segue ORGANIZER; o resto é o aluno.
+-- Troca de professor e planilha guardada sem as linhas: não há como saber quem é
+-- quem — números nulos e source = UNKNOWN_AFTER_HANDOVER.
+create or replace function private.meet_attendance_numbers(p_session uuid, p_report uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_report private.meeting_attendance_reports;
+  v_identity jsonb;
+  v_teacher text[];
+  v_other text[];
+  v_result jsonb;
+begin
+  select report.* into v_report
+  from private.meeting_attendance_reports as report
+  where report.id = p_report and report.lesson_session_id = p_session;
+  if not found then
+    return null;
+  end if;
+
+  if not exists (
+    select 1 from private.lesson_session_teacher_handovers as handover where handover.session_id = p_session
+  ) then
+    return pg_catalog.jsonb_build_object(
+      'source', 'IMPORT',
+      'teacher_identified', true,
+      'teacher_first_join_at', v_report.teacher_first_join_at,
+      'teacher_seconds', v_report.teacher_seconds,
+      'student_first_join_at', v_report.student_first_join_at,
+      'student_seconds', v_report.student_seconds,
+      'participants', coalesce(v_report.participants, '[]'::jsonb));
+  end if;
+
+  if pg_catalog.jsonb_typeof(v_report.participants) = 'array'
+    and pg_catalog.jsonb_array_length(v_report.participants) > 0 then
+    v_identity := private.lesson_session_attendance_identity(p_session);
+    select coalesce(pg_catalog.array_agg(distinct pg_catalog.lower(pg_catalog.btrim(email.value))), '{}')
+      into v_teacher
+    from pg_catalog.jsonb_array_elements_text(coalesce(v_identity -> 'teacher_emails', '[]'::jsonb)) as email(value)
+    where pg_catalog.btrim(email.value) <> '';
+    select coalesce(pg_catalog.array_agg(distinct pg_catalog.lower(pg_catalog.btrim(email.value))), '{}')
+      into v_other
+    from pg_catalog.jsonb_array_elements_text(coalesce(v_identity -> 'other_teacher_emails', '[]'::jsonb)) as email(value)
+    where pg_catalog.btrim(email.value) <> '';
+
+    with rows as (
+      select participant.value as row_data, participant.ordinality,
+        case
+          when participant.value ->> 'role' = 'ORGANIZER' then 'ORGANIZER'
+          when nullif(pg_catalog.lower(pg_catalog.btrim(participant.value ->> 'email')), '') = any (v_teacher)
+            then 'TEACHER'
+          when nullif(pg_catalog.lower(pg_catalog.btrim(participant.value ->> 'email')), '') = any (v_other)
+            then 'OTHER_TEACHER'
+          -- Conta que a importação marcou como professor e que hoje não é a de
+          -- quem dá a aula: nunca vira minutos do aluno.
+          when participant.value ->> 'role' in ('TEACHER', 'OTHER_TEACHER') then 'OTHER_TEACHER'
+          else 'STUDENT'
+        end as role,
+        private.teacher_presence_timestamp(participant.value ->> 'joinedAt') as joined_at,
+        case when pg_catalog.jsonb_typeof(participant.value -> 'durationSeconds') = 'number'
+          then greatest((participant.value ->> 'durationSeconds')::numeric, 0) else 0 end as seconds
+      from pg_catalog.jsonb_array_elements(v_report.participants) with ordinality as participant(value, ordinality)
+    )
+    select pg_catalog.jsonb_build_object(
+      'source', 'REPORT_ROWS',
+      'teacher_identified', pg_catalog.cardinality(v_teacher) > 0,
+      'teacher_first_join_at', (select pg_catalog.min(rows.joined_at) from rows where rows.role = 'TEACHER'),
+      'teacher_seconds', case when pg_catalog.cardinality(v_teacher) > 0 then
+        (select pg_catalog.round(coalesce(pg_catalog.sum(rows.seconds), 0))::integer from rows where rows.role = 'TEACHER') end,
+      'student_first_join_at', (select pg_catalog.min(rows.joined_at) from rows where rows.role = 'STUDENT'),
+      'student_seconds',
+        (select pg_catalog.round(coalesce(pg_catalog.sum(rows.seconds), 0))::integer from rows where rows.role = 'STUDENT'),
+      'participants', (select pg_catalog.jsonb_agg(rows.row_data || pg_catalog.jsonb_build_object('role', rows.role)
+        order by rows.ordinality) from rows))
+      into v_result;
+    return v_result;
+  end if;
+
+  return pg_catalog.jsonb_build_object(
+    'source', 'UNKNOWN_AFTER_HANDOVER',
+    'teacher_identified', false,
+    'teacher_first_join_at', null,
+    'teacher_seconds', null,
+    'student_first_join_at', null,
+    'student_seconds', null,
+    'participants', coalesce(v_report.participants, '[]'::jsonb));
+end;
 $$;
 
 -- Grava (ou refaz) a linha do extrato de UMA aula. p_conference_count vem da
@@ -640,11 +747,20 @@ language sql stable security definer set search_path = '' as $$
            (pg_catalog.date_trunc('month', p_month::timestamp) + interval '1 month - 1 day')::date as last_day
   ), lessons as (
     select presence.*
-    from public.teacher_lesson_presence as presence, bounds
+    from public.teacher_lesson_presence as presence
+    join public.lesson_sessions as session on session.id = presence.lesson_session_id
+    cross join bounds
     where presence.tenant_id = p_tenant
       and presence.teacher_id = p_teacher
       and presence.class_date between bounds.first_day and bounds.last_day
       and presence.expires_at > pg_catalog.now()
+      -- Troca de professor depois da medição (cobertura atestada depois da aula,
+      -- lançamento de outro professor): a aula sai do extrato de quem NÃO a deu
+      -- na hora, sem esperar a varredura de hora em hora — que refaz a linha para
+      -- quem deu (integração da onda 3).
+      and session.teacher_id = presence.teacher_id
+      and session.status <> 'SUPERSEDED'
+      and not private.teacher_lesson_presence_given_by_other(session.id)
   )
   select pg_catalog.jsonb_build_object(
     'month', pg_catalog.to_char(bounds.first_day, 'YYYY-MM'),
@@ -790,27 +906,186 @@ begin
 end
 $patch_release$;
 
--- 4c. Remendo por âncora: sala retida pela troca no início da aula não abre caso
--- na Central de Qualidade (nem OUTSIDE_ROOM contra quem não recebeu o link, nem
--- LATE_START pela entrada depois da entrega, nem os de minutos na sala).
-do $patch_evaluate$
+-- 4c. Avaliação de presença com a régua de quem DEU a aula (definição inteira,
+-- a partir da viva de 20260926170000 — conferida igual à de produção em 27/09).
+-- Muda três coisas, todas para não pôr numa pessoa o caso de outra:
+--   * sala retida pela troca no início da aula não abre caso (nem OUTSIDE_ROOM
+--     contra quem não recebeu o link, nem LATE_START pela entrada depois da
+--     entrega, nem os de minutos na sala) — google_meet_room_withheld_at_lesson;
+--   * aula que NÃO é do professor da sessão (régua única, lançamento de outro
+--     professor, agendamento transferido sem lançamento dele —
+--     teacher_lesson_presence_given_by_other) ou com a documentação barrada
+--     (lesson_session_documentation_blocked: inclusive a que passou a quem não
+--     está pronto) não é avaliada: o caso cairia no professor errado, e a sala
+--     não foi entregue;
+--   * os números do professor e do aluno vêm de private.meet_attendance_numbers:
+--     sem troca de professor na sessão, os da importação (calculados com a conta
+--     de quem dá a aula, a mesma de hoje); depois de uma troca, a planilha guardada
+--     é reclassificada linha a linha com a conta de quem dá a aula NA HORA DA
+--     AVALIAÇÃO — os teacher_*/student_* da importação eram do titular, e o
+--     substituto, "aluno". Sem conta que identifique o professor de hoje, as regras
+--     do professor (atraso, professor ausente) não disparam; sem as linhas da
+--     planilha depois de uma troca, nenhuma regra de minutos dispara;
+--   * o caso é de UM professor: a chave de dedupe leva o professor
+--     (meet:<sessão>:<regra>:<professor>) — o caso aberto antes de a aula trocar
+--     de professor não impede o do professor que a deu — e o caso antigo, de
+--     outro professor, ganha uma anotação da troca (MEET_TEACHER_HANDOVER) para a
+--     direção conferir; o status dele continua com ela.
+create or replace function private.meet_attendance_evaluate(
+  p_session uuid,
+  p_presence text,
+  p_conference_count integer
+)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_session public.lesson_sessions;
+  v_report private.meeting_attendance_reports;
+  v_numbers jsonb;
+  v_teacher_known boolean := false;
+  v_student_known boolean := false;
+  v_teacher_first_join_at timestamptz;
+  v_teacher_seconds integer;
+  v_student_first_join_at timestamptz;
+  v_student_seconds integer;
+  v_opened text[] := '{}';
+  v_flag record;
+  v_case uuid;
+  v_late_minutes integer;
+begin
+  select * into v_session from public.lesson_sessions where id = p_session;
+  if not found or not v_session.documentation_consent then
+    return jsonb_build_object('evaluated', false);
+  end if;
+  -- A aula não é do professor da sessão (ainda sem troca, ou lançada por outro)
+  -- ou a documentação dela está barrada: nenhum caso — ele cairia em quem não
+  -- deu a aula, ou mediria uma sala que não foi entregue.
+  if private.lesson_session_documentation_blocked(v_session.id)
+    or private.teacher_lesson_presence_given_by_other(v_session.id) then
+    return jsonb_build_object('evaluated', false, 'reason', 'not_this_teacher_or_blocked');
+  end if;
+  -- Caso que o sistema abriu nesta aula para OUTRO professor (a aula trocou de
+  -- professor depois — cobertura atestada): fica com a direção, com a troca
+  -- anotada uma vez por professor novo.
+  insert into public.lesson_quality_case_events (tenant_id, case_id, actor_id, event_type, details)
+  select q.tenant_id, q.id, null, 'MEET_TEACHER_HANDOVER', jsonb_build_object(
+      'teacher_id', v_session.teacher_id,
+      'case_teacher_id', q.teacher_id,
+      'note', 'A aula passou para outro professor depois deste caso (troca de professor). '
+        || 'Confira quem deu a aula antes de conversar com o professor do caso.')
+  from public.lesson_quality_cases as q
+  where q.tenant_id = v_session.tenant_id
+    and q.session_id = v_session.id
+    and q.source = 'SYSTEM'
+    and q.dedupe_key like 'meet:%'
+    and q.teacher_id is distinct from v_session.teacher_id
+    and q.status <> 'RESOLVED'
+    and not exists (
+      select 1 from public.lesson_quality_case_events as e
+      where e.case_id = q.id and e.event_type = 'MEET_TEACHER_HANDOVER'
+        and e.details ->> 'teacher_id' = v_session.teacher_id::text);
+  select * into v_report from private.meeting_attendance_reports
+   where lesson_session_id = v_session.id and parse_error is null
+   order by imported_at desc limit 1;
+
+  if v_report.id is not null then
+    v_numbers := private.meet_attendance_numbers(v_session.id, v_report.id);
+    v_student_known := v_numbers ->> 'source' in ('REPORT_ROWS', 'IMPORT');
+    v_teacher_known := v_student_known and coalesce((v_numbers ->> 'teacher_identified')::boolean, false);
+    v_teacher_first_join_at := (v_numbers ->> 'teacher_first_join_at')::timestamptz;
+    v_teacher_seconds := (v_numbers ->> 'teacher_seconds')::integer;
+    v_student_first_join_at := (v_numbers ->> 'student_first_join_at')::timestamptz;
+    v_student_seconds := (v_numbers ->> 'student_seconds')::integer;
+  end if;
+
+  for v_flag in
+    select * from (values
+      ('late', 'LATE_START', 'NORMAL',
+        v_teacher_known and v_teacher_first_join_at is not null
+          and v_teacher_first_join_at > v_session.scheduled_start_at + interval '10 minutes'
+          and v_teacher_first_join_at < v_session.scheduled_end_at),
+      ('no-student', 'MEET_ATTENDANCE', 'HIGH',
+        v_student_known and p_presence = 'COMPLETED' and coalesce(v_student_seconds, 0) < 300),
+      ('absence-mismatch', 'MEET_ATTENDANCE', 'HIGH',
+        v_student_known and p_presence = 'STUDENT_ABSENCE' and coalesce(v_student_seconds, 0) >= 600),
+      ('no-teacher', 'MEET_ATTENDANCE', 'HIGH',
+        v_teacher_known and p_presence in ('COMPLETED', 'STUDENT_ABSENCE')
+          and coalesce(v_teacher_seconds, 0) < 300),
+      ('outside-room', 'OUTSIDE_ROOM', 'LOW',
+        coalesce(p_conference_count, -1) = 0 and p_presence in ('COMPLETED', 'STUDENT_ABSENCE')
+          and v_session.scheduled_end_at < now() - interval '2 hours'
+          and now() >= ((v_session.class_date + 1)::timestamp at time zone 'America/Sao_Paulo'))
+    ) as rule(slug, category, severity, fires)
+    where fires
+      -- Sala retida pela troca de professor no início da aula (20260928120000):
+      -- ninguém recebeu o link a tempo, o relatório não mede a aula.
+      and not private.google_meet_room_withheld_at_lesson(v_session.id)
+  loop
+    v_late_minutes := case when v_teacher_first_join_at is null then null
+      else floor(extract(epoch from (v_teacher_first_join_at - v_session.scheduled_start_at)) / 60)::integer end;
+    insert into public.lesson_quality_cases (tenant_id, session_id, student_id, teacher_id,
+      category, source, severity, description, dedupe_key)
+    values (v_session.tenant_id, v_session.id, v_session.student_id, v_session.teacher_id,
+      v_flag.category, 'SYSTEM', v_flag.severity,
+      case v_flag.slug
+        when 'late' then 'Relatório de presença do Meet: o professor entrou ' || v_late_minutes
+          || ' min depois do horário da aula.'
+        when 'no-student' then 'Aula lançada como dada, mas o relatório de presença do Meet mostra o aluno por '
+          || round(coalesce(v_student_seconds, 0) / 60.0) || ' min na sala da escola.'
+        when 'absence-mismatch' then 'Aula lançada como falta do aluno, mas o relatório de presença do Meet mostra o aluno por '
+          || round(v_student_seconds / 60.0) || ' min na sala da escola.'
+        when 'no-teacher' then 'Aula lançada, mas o relatório de presença do Meet mostra o professor por '
+          || round(coalesce(v_teacher_seconds, 0) / 60.0) || ' min na sala da escola.'
+        else 'Aula lançada sem uso da sala da escola no Meet. Combine com o professor o uso da sala oficial.'
+      end || ' Isto é um aviso para conversar com o professor: não altera o pagamento.',
+      'meet:' || v_session.id || ':' || v_flag.slug || ':' || v_session.teacher_id)
+    on conflict (tenant_id, dedupe_key) do nothing
+    returning id into v_case;
+    if v_case is not null then
+      insert into public.lesson_quality_case_events (tenant_id, case_id, actor_id, event_type, details)
+      values (v_session.tenant_id, v_case, null, 'MEET_ATTENDANCE_REPORT', jsonb_build_object(
+        'rule', v_flag.slug,
+        'logged_presence', p_presence,
+        'scheduled_start_at', v_session.scheduled_start_at,
+        'teacher_id', v_session.teacher_id,
+        'teacher_first_join_at', v_teacher_first_join_at,
+        'teacher_minutes', round(coalesce(v_teacher_seconds, 0) / 60.0),
+        'student_first_join_at', v_student_first_join_at,
+        'student_minutes', round(coalesce(v_student_seconds, 0) / 60.0),
+        'numbers_source', v_numbers ->> 'source',
+        'conference_count', p_conference_count,
+        'report_id', v_report.id));
+      v_opened := v_opened || v_flag.slug;
+    end if;
+    v_case := null;
+  end loop;
+
+  return jsonb_build_object('evaluated', true, 'presence', p_presence,
+    'report_id', v_report.id, 'opened', to_jsonb(v_opened));
+end;
+$$;
+
+-- 4d. Remendo por âncora: a planilha que "Sala e resumo" mostra (session_detail,
+-- só para quem vê a fonte) tem os números e os papéis de cada linha com a conta de
+-- quem dá a aula hoje — os mesmos da avaliação acima. Antes a tela mostrava o
+-- substituto como "Aluno/convidado" e o professor com os minutos do titular.
+do $patch_detail_attendance$
 declare
   v_def text;
-  v_anchor constant text := 'where fires';
+  v_anchor constant text := E'''participants'',rep.participants)';
 begin
-  v_def := pg_catalog.pg_get_functiondef('private.meet_attendance_evaluate(uuid,text,integer)'::regprocedure);
-  if strpos(v_def, 'google_meet_room_withheld_at_lesson') > 0 then
+  v_def := pg_catalog.pg_get_functiondef('public.google_meet_backend(text,text,uuid,uuid,jsonb)'::regprocedure);
+  if strpos(v_def, 'meet_attendance_numbers') > 0 then
     return;
   end if;
   if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
-    raise exception 'âncora das regras da avaliação de presença ("%") não encontrada uma única vez', v_anchor;
+    raise exception 'âncora da planilha de presença em session_detail ("%") não encontrada uma única vez', v_anchor;
   end if;
   execute replace(v_def, v_anchor, v_anchor
-    || E'\n      -- Sala retida pela troca de professor no início da aula (20260928120000):\n'
-    || E'      -- ninguém recebeu o link a tempo, o relatório não mede a aula.\n'
-    || E'      and not private.google_meet_room_withheld_at_lesson(v_session.id)');
+    || E'\n            -- Números e papéis com a conta de quem dá a aula hoje (20260928120000).\n'
+    || E'            || coalesce(private.meet_attendance_numbers(s.id, rep.id) - ''source'', ''{}''::jsonb)');
 end
-$patch_evaluate$;
+$patch_detail_attendance$;
 
 -- 5. Dono e permissões -------------------------------------------------------------
 do $grants$
@@ -823,6 +1098,7 @@ begin
     'private.teacher_presence_timestamp(text)',
     'private.google_meet_room_withheld_at_lesson(uuid)',
     'private.teacher_lesson_presence_given_by_other(uuid)',
+    'private.meet_attendance_numbers(uuid,uuid)',
     'private.google_meet_room_release_handover()',
     'private.meet_attendance_evaluate(uuid,text,integer)',
     'private.teacher_lesson_presence_record(uuid,integer,boolean)',
