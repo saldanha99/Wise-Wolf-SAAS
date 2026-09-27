@@ -112,6 +112,43 @@ function isOperationalStatus(value: unknown): boolean {
     operationalTenantStatuses.has(value.trim().toLowerCase());
 }
 
+/**
+ * Versao do contrato que a escola da oferta oferece aos contratos novos
+ * (public.contract_terms_offered_version, migration 20260927150000). A pagina
+ * de matricula e o convite do professor MOSTRAM e GRAVAM esta versao; so a
+ * escola que decidiu registrar as aulas oferece a clausula. Resposta estranha
+ * nao vira versao nenhuma: sem saber o texto, o contrato nao e mostrado.
+ */
+export function offeredContractTermsVersion(value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
+    return value;
+  }
+  throw new ApiError(
+    503,
+    "CONTRACT_TERMS_UNAVAILABLE",
+    "Contract terms are unavailable",
+  );
+}
+
+async function loadOfferedContractTermsVersion(
+  admin: ReturnType<typeof serviceClient>,
+  tenantId: string,
+  kind: "STUDENT" | "TEACHER",
+): Promise<number> {
+  const { data, error } = await admin.rpc("contract_terms_offered_version", {
+    p_tenant: tenantId,
+    p_contract_kind: kind,
+  });
+  if (error) {
+    throw new ApiError(
+      503,
+      "CONTRACT_TERMS_UNAVAILABLE",
+      "Contract terms are unavailable",
+    );
+  }
+  return offeredContractTermsVersion(data);
+}
+
 export function offerKindMatches(
   offerType: unknown,
   persistedKind: unknown,
@@ -234,9 +271,15 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       "Legal signature is missing",
     );
   }
+  const contractTermsVersion = await loadOfferedContractTermsVersion(
+    admin,
+    tenantId,
+    body.offerType === "teacher" ? "TEACHER" : "STUDENT",
+  );
   return json({
     ...data,
     [body.offerType === "teacher" ? "schoolInfo" : "_schoolInfo"]: materialized,
+    contractTermsVersion,
   });
 }
 

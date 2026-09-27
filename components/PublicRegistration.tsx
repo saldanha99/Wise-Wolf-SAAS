@@ -4,8 +4,7 @@ import { asaasService } from '../services/asaasService';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
-import { recordEnrollmentContractTerms } from '../services/contractTermsService';
-import { CURRENT_CONTRACT_TERMS_VERSION } from '../lib/contractTerms';
+import { offeredContractTermsVersion, recordEnrollmentContractTerms } from '../services/contractTermsService';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
 import {
@@ -307,6 +306,15 @@ const PublicRegistration: React.FC = () => {
     const contratanteAddress = isDependentLink
         ? `${contractData?.guardianAddress || address}, ${contractData?.guardianAddressNumber || addressNumber} - ${contractData?.guardianPostalCode || postalCode}`
         : `${address}, ${addressNumber} - ${postalCode}`;
+    // Versão do contrato que a escola desta oferta oferece (edge
+    // tenant-legal-assets): a página MOSTRA e GRAVA esta mesma versão. Só a
+    // escola que decidiu registrar as aulas oferece a cláusula.
+    const offeredTermsVersion = offeredContractTermsVersion('STUDENT', contractData);
+    // Via impressa: depois de assinar, a versão gravada (sem ela, o texto de
+    // antes); antes, a que a página está mostrando.
+    const printedTermsVersion = signatureData
+        ? (signatureData.termsVersion ?? signedTermsVersion ?? undefined)
+        : offeredTermsVersion;
 
     // Contract Printing Logic
     const contractRef = useRef<HTMLDivElement>(null);
@@ -739,13 +747,16 @@ const PublicRegistration: React.FC = () => {
             }
             setCorrelationId(String(claimResult.correlation_id || ''));
 
-            // A página mostrou a versão atual do contrato (com a cláusula do
-            // registro das aulas): grava essa versão ANTES da cobrança. Sem
-            // ela, o contrato assinado seria lido depois como o texto de antes.
+            // A página mostrou a versão que a escola oferece (com a cláusula do
+            // registro das aulas, onde a escola decidiu): grava essa versão
+            // ANTES da cobrança. Sem ela, o contrato assinado seria lido depois
+            // como o texto de antes; versão que a escola não oferece mais é
+            // recusada ("recarregue") antes de qualquer cobrança.
             const recordedTermsVersion = await recordEnrollmentContractTerms({
                 offerId: contractData._offerId,
                 userId,
                 alreadyCompleted: claimResult.already_completed === true,
+                termsVersion: offeredContractTermsVersion('STUDENT', contractData),
             });
             setSignedTermsVersion(recordedTermsVersion);
 
@@ -1582,7 +1593,7 @@ const PublicRegistration: React.FC = () => {
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
                                 subscriptionId={signatureData?.subId}
-                                termsVersion={signatureData?.termsVersion ?? signedTermsVersion ?? undefined}
+                                termsVersion={printedTermsVersion}
                                 school={school || undefined}
                             />
                         </div>
@@ -2059,7 +2070,7 @@ const PublicRegistration: React.FC = () => {
                     processingStage={processingStage}
                     processingError={error}
                     correlationId={correlationId}
-                    termsVersion={CURRENT_CONTRACT_TERMS_VERSION.STUDENT}
+                    termsVersion={offeredTermsVersion}
                 />
             )}
 
@@ -2086,7 +2097,7 @@ const PublicRegistration: React.FC = () => {
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}
                         subscriptionId={signatureData?.subId}
-                        termsVersion={signatureData?.termsVersion ?? signedTermsVersion ?? undefined}
+                        termsVersion={printedTermsVersion}
                         school={school || undefined}
                     />
                 </div>

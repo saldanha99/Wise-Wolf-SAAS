@@ -240,8 +240,17 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
     expect(student({ acceptedAt: SIGNED_AT, termsVersion: 99 })).toBe(legacy);
   });
 
-  it('contrato ainda não assinado mostra a versão atual: Cláusula 8 do registro e o Foro na 9', () => {
+  it('contrato não assinado sem a versão da escola mostra o texto de antes (nunca uma cláusula não decidida)', () => {
     const html = student();
+    expect(studentClauses(html)).toContain('Cláusula 8 — Do Foro');
+    expect(html).not.toContain('Registro das Aulas');
+    // Escola que não decidiu registrar as aulas oferece a versão 1.
+    expect(studentClauses(student({ termsVersion: 1 }))).toBe(studentClauses(html));
+    expect(teacher()).not.toContain('REGISTRO DAS AULAS');
+  });
+
+  it('contrato ainda não assinado na escola que oferece a versão 2: Cláusula 8 do registro e o Foro na 9', () => {
+    const html = student({ termsVersion: 2 });
     const clauses = studentClauses(html);
     expect(clauses).toContain('Cláusula 8 — Do Registro das Aulas');
     expect(clauses).toContain('Cláusula 9 — Do Foro');
@@ -262,7 +271,7 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
   });
 
   it('a cláusula do aluno resume o essencial do aviso completo', () => {
-    const clause = studentClauses(student());
+    const clause = studentClauses(student({ termsVersion: 2 }));
     for (const expected of [
       'sem gravação em vídeo',
       'transcrição automática',
@@ -278,9 +287,26 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
       'a exclusão do que já foi registrado',
       'menor de 18 (dezoito) anos, este contrato é assinado pelo seu responsável legal',
       'aviso completo',
+      // Prazos como o sistema faz e o termo v3 diz: cópias contam de quando
+      // chegam ao sistema; trechos copiados e originais, da aula.
+      'contados de quando chegam ao sistema (logo depois da aula)',
+      'os trechos da aula copiados para o resumo são apagados',
+      'elimina os arquivos originais de sua conta Google',
+      // O caso aberto pela divergência de presença guarda os horários.
+      'registro do caso aberto para a coordenação',
+      'ressalvado o registro de caso previsto no Parágrafo 4º',
+      // O cartão inteiro, inclusive o texto livre do professor.
+      'temas a evitar',
+      'observações pedagógicas anotados pelo professor',
+      // A Cláusula 7 exige consentimento expresso para terceiros.
+      'não são terceiros para os fins da Cláusula 7',
+      'consente expressamente',
     ]) {
       expect(clause, expected).toContain(expected);
     }
+    // A primeira redação prometia 90 dias depois da aula para tudo, e o
+    // sistema conta as cópias de quando chegam.
+    expect(clause).not.toContain('inclusive os trechos copiados para o resumo, são eliminados');
   });
 
   it('professor que assinou antes (sem versão gravada) vê exatamente o texto que assinou', () => {
@@ -294,7 +320,7 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
   });
 
   it('contrato do professor ainda não assinado traz a Cláusula 11ª no fim, sem renumerar nada', () => {
-    const clauses = teacherClauses(teacher());
+    const clauses = teacherClauses(teacher({ termsVersion: 2 }));
     expect(clauses).toContain('CLÁUSULA 11ª – REGISTRO DAS AULAS');
     expect(clauses.indexOf('CLÁUSULA 10ª')).toBeLessThan(clauses.indexOf('CLÁUSULA 11ª'));
     const legacy = teacherClauses(teacher({ acceptedAt: SIGNED_AT }));
@@ -312,9 +338,16 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
       '90 (noventa) dias',
       'que as suas aulas deixem de ser registradas',
       'aviso completo',
+      'contados de quando chegam ao sistema (logo depois da aula)',
+      'elimina os arquivos originais de sua conta Google',
+      'registro do caso aberto para a coordenação',
+      'ressalvado o registro de caso previsto no item 11.6',
+      'atuam como operadores',
+      'Para os fins da Cláusula 8ª',
     ]) {
       expect(clauses, expected).toContain(expected);
     }
+    expect(clauses).not.toContain('inclusive os trechos copiados para o resumo, são eliminados');
   });
 
   it('professor que assinou a versão 2 continua vendo a Cláusula 11ª', () => {

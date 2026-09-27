@@ -5,7 +5,13 @@ import { contractReferenceDate, formatContractPeriod, formatSignatureDate } from
 import { CheckCircle, XCircle, FileText, Image, ExternalLink, Search, Loader2, AlertCircle, Eye, X, Download } from 'lucide-react';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
-import { contractIncludesLessonRecording, contractTermsLabel, resolveContractTermsVersion } from '../lib/contractTerms';
+import {
+    contractIncludesLessonRecording,
+    contractTermsLabel,
+    resolveContractTermsVersion,
+    signedContractEvidence,
+} from '../lib/contractTerms';
+import { loadContractTerms } from '../services/contractTermsService';
 
 interface StudentContract {
     user_id: string;
@@ -29,6 +35,8 @@ interface StudentContract {
     tenant_id?: string;
     /** Versão do texto gravada no aceite (vw_student_contracts); null = contrato de antes. */
     contract_terms_version?: number | null;
+    /** Data do aceite dessa versão (na rematrícula, não a assinatura antiga do perfil). */
+    contract_terms_accepted_at?: string | null;
 }
 
 // Todo contrato desta lista já foi aceito: sem versão gravada, é o texto de
@@ -37,6 +45,15 @@ interface StudentContract {
 const signedTermsVersion = (student: StudentContract) => resolveContractTermsVersion('STUDENT', {
     signed: true,
     recordedVersion: student.contract_terms_version,
+});
+
+// Data e IP da assinatura do contrato que a coluna "Contrato" descreve: numa
+// rematrícula o perfil guarda a assinatura antiga, e "Data Matrícula" antiga ao
+// lado de "v2" diria que a cláusula foi assinada antes de existir.
+const signedEvidence = (student: StudentContract) => signedContractEvidence({
+    profileAcceptedAt: student.accepted_at,
+    profileIp: student.signature_ip,
+    recordedAcceptedAt: student.contract_terms_accepted_at,
 });
 
 interface ContractManagementProps {
@@ -50,6 +67,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     const [searchTerm, setSearchTerm] = useState('');
     const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    // Versão que a escola oferece aos contratos novos (null = ainda não se sabe).
+    const [offeredTermsVersion, setOfferedTermsVersion] = useState<number | null>(null);
     const [downloading, setDownloading] = useState(false);
     const [actionNotice, setActionNotice] = useState<{
         tone: 'success' | 'warning';
@@ -96,7 +115,21 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     useEffect(() => {
         fetchContracts();
         if (tenantId) fetchSchoolInfo(tenantId);
+        fetchOfferedTerms();
     }, [tenantId]);
+
+    // O aviso diz o que os contratos NOVOS desta escola trazem — só a escola
+    // que decidiu registrar as aulas oferece a cláusula. Sem resposta, o aviso
+    // fala só da coluna "Contrato", que vale para qualquer escola.
+    const fetchOfferedTerms = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user?.id) return;
+            setOfferedTermsVersion((await loadContractTerms(session.user.id, 'STUDENT')).offeredVersion);
+        } catch (_) {
+            setOfferedTermsVersion(null);
+        }
+    };
 
     useEffect(() => {
         if (!selectedStudent) return;
@@ -281,7 +314,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
         // accepted_at é NULO enquanto o aluno não assinou. `new Date(null)` vira
         // o epoch — e no fuso de Brasília isso é 31/12/1969, o que empurrava a
         // vigência para "10/01/1970 a 10/01/1971" no contrato impresso.
-        const enrollmentDate = contractReferenceDate(selectedStudent.accepted_at);
+        const signature = signedEvidence(selectedStudent);
+        const enrollmentDate = contractReferenceDate(signature.acceptedAt);
         const dueDay = selectedStudent.due_day || 1;
         const { startDate, endDate } = formatContractPeriod(enrollmentDate, dueDay, 12);
         const monthlyFee = Number(String(selectedStudent.plan_value || '0').replace(/\./g, '').replace(',', '.'));
@@ -299,8 +333,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
             endDate,
             dueDay,
             classFrequency: selectedStudent.class_frequency ? parseInt(String(selectedStudent.class_frequency), 10) : 2,
-            acceptedAt: selectedStudent.accepted_at,
-            userIp: selectedStudent.signature_ip,
+            acceptedAt: signature.acceptedAt,
+            userIp: signature.userIp,
             subscriptionId: selectedStudent.subscription_id,
             termsVersion: signedTermsVersion(selectedStudent),
             school: schoolInfo ?? undefined,
@@ -333,7 +367,11 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                 <FileText size={18} className="mt-0.5 shrink-0 text-[#002366]" aria-hidden="true" />
                 <p>
                     <strong className="text-brand-text">Registro das aulas no contrato.</strong>{' '}
-                    Os contratos novos trazem a Cláusula 8 — Do Registro das Aulas: quem assina já concorda com a transcrição e as anotações automáticas do Google Meet (sem vídeo), o resumo com IA aprovado pelo professor e o relatório de presença. Contrato assinado antes continua com o texto que foi assinado — a coluna “Contrato” mostra a versão de cada um.
+                    {offeredTermsVersion === null
+                        ? 'A coluna “Contrato” mostra a versão do texto que cada aluno assinou — contrato assinado continua com o texto que foi assinado.'
+                        : contractIncludesLessonRecording('STUDENT', offeredTermsVersion)
+                            ? 'Os contratos novos desta escola trazem a Cláusula 8 — Do Registro das Aulas: quem assina já concorda com a transcrição e as anotações automáticas do Google Meet (sem vídeo), o resumo com IA aprovado pelo professor e o relatório de presença. Contrato assinado antes continua com o texto que foi assinado — a coluna “Contrato” mostra a versão de cada um.'
+                            : 'Os contratos novos desta escola não trazem a cláusula do registro das aulas. A coluna “Contrato” mostra a versão do texto que cada aluno assinou.'}
                 </p>
             </div>
 
@@ -388,7 +426,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             <dl className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Matrícula</dt>
-                                    <dd className="mt-1 text-brand-text">{formatSignatureDate(student.accepted_at)}</dd>
+                                    <dd className="mt-1 text-brand-text">{formatSignatureDate(signedEvidence(student).acceptedAt ?? student.accepted_at)}</dd>
                                 </div>
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Assinatura</dt>
@@ -448,7 +486,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                                 <p className="text-xs text-brand-muted">{student.student_email}</p>
                                             </td>
                                             <td className="px-6 py-4 text-brand-muted">
-                                                {formatSignatureDate(student.accepted_at)}
+                                                {formatSignatureDate(signedEvidence(student).acceptedAt ?? student.accepted_at)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {isUploadDoc ? <span className="badge-purple">Upload Completo</span> :

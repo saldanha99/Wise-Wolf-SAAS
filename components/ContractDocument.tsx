@@ -92,10 +92,11 @@ interface ContractDocumentProps {
     userIp?: string;
     subscriptionId?: string;
     /**
-     * Versão do texto que a pessoa assinou (gravada no aceite — ver
-     * `lib/contractTerms.ts`). Ausente: contrato assinado mostra o texto de
-     * antes (versão 1) e contrato ainda não assinado mostra a versão atual.
-     * Quem acabou de assinar na tela passa a versão atual explicitamente.
+     * Versão do texto (ver `lib/contractTerms.ts`): a gravada no aceite, ou,
+     * no contrato ainda não assinado, a que a escola oferece. Ausente, o
+     * documento mostra o texto de antes (versão 1) — nunca uma cláusula que a
+     * pessoa não assinou nem que a escola não decidiu. Tela que assina passa a
+     * versão oferecida explicitamente, e grava a mesma.
      */
     termsVersion?: number;
 
@@ -219,7 +220,12 @@ export function getSchoolContractIdentity(school?: SchoolInfo | null): SchoolCon
 // ─────────────────────────────────────────────────────────────────────────────
 // Resume o aviso completo do registro das aulas (termo v3 em
 // private.lesson_recording_terms, público STUDENT) e remete a ele. O registro é
-// decisão da escola (27/09/2026): quem assina este contrato já concorda.
+// decisão da escola (27/09/2026): quem assina este contrato já concorda. Só
+// aparece na escola que oferece a versão com a cláusula (tenant_contract_terms).
+// Os prazos seguem o que o sistema faz (e o termo v3 diz): cópias no sistema
+// contam de quando chegam, trechos copiados e originais contam da aula; o
+// registro de caso da Central de Qualidade guarda os horários da aula
+// divergente pelo tempo do caso (exclusão a pedido não o alcança).
 // ⚠️ Texto de contrato assinado não muda: qualquer alteração aqui é versão
 // nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
 const clauseTitle = 'font-bold uppercase text-[#002366] text-[9px] tracking-wider mb-1';
@@ -241,16 +247,19 @@ function StudentLessonRecordingClause() {
                 <strong>Parágrafo 2º.</strong> Além da CONTRATADA, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino usada pela CONTRATADA, que armazena os dados e presta suporte técnico, podendo ver o resumo aprovado e o cartão pedagógico do aluno somente para resolver problema técnico; e o provedor de inteligência artificial contratado pela CONTRATADA (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado. A transcrição completa só é acessível ao professor da aula, à coordenação e à direção da CONTRATADA.
             </p>
             <p className={`${clauseText} mt-1`}>
-                <strong>Parágrafo 3º.</strong> A transcrição, as anotações e o relatório de presença, inclusive os trechos copiados para o resumo, são eliminados em até <strong>90 (noventa) dias</strong> após a aula, na plataforma e na conta Google da CONTRATADA (os arquivos originais passam pela lixeira do Google, que os elimina em até 30 dias). O resumo aprovado e o cartão pedagógico do aluno (objetivo, temas de interesse e forma preferida de correção, anotados pelo professor, nunca com informação sobre saúde, religião, política, família ou dinheiro; para menores de 18 anos, somente objetivo e temas) são mantidos enquanto o aluno estudar na CONTRATADA e eliminados <strong>90 (noventa) dias</strong> após a sua saída.
+                <strong>Parágrafo 3º.</strong> Os fornecedores indicados no parágrafo anterior atuam como operadores, em nome e sob as instruções da CONTRATADA, e não são terceiros para os fins da Cláusula 7. Ao assinar este contrato, o CONTRATANTE declara estar ciente e consente expressamente, também para os fins da Cláusula 7, com o tratamento e com os operadores descritos nesta cláusula.
             </p>
             <p className={`${clauseText} mt-1`}>
-                <strong>Parágrafo 4º.</strong> O CONTRATANTE pode, a qualquer tempo: <strong>(a)</strong> ver no aplicativo da CONTRATADA os resumos aprovados das aulas; <strong>(b)</strong> pedir, pelo WhatsApp da CONTRATADA, que as aulas deixem de ser registradas, caso em que elas continuam normalmente, sem registro; <strong>(c)</strong> pedir, pelo mesmo canal, a exclusão do que já foi registrado; <strong>(d)</strong> pedir informação, correção ou cópia dos seus dados, nos termos da Lei nº 13.709/2018 (LGPD).
+                <strong>Parágrafo 4º.</strong> A transcrição, as anotações e o relatório de presença ficam no sistema da CONTRATADA por até <strong>90 (noventa) dias</strong>, contados de quando chegam ao sistema (logo depois da aula); os trechos da aula copiados para o resumo são apagados <strong>90 (noventa) dias</strong> depois da aula. A CONTRATADA elimina os arquivos originais de sua conta Google em até <strong>90 (noventa) dias</strong> depois da aula; eles passam pela lixeira do Google, que os elimina de vez em até 30 (trinta) dias. Quando o relatório de presença diverge do lançamento da aula, os horários de entrada e saída daquela aula ficam também no registro do caso aberto para a coordenação, mantido pelo tempo necessário para resolvê-lo e para o exercício regular de direitos da CONTRATADA. O resumo aprovado e o cartão pedagógico do aluno (objetivo, temas de interesse, temas a evitar, forma preferida de correção e observações pedagógicas anotados pelo professor, nunca com informação sobre saúde, religião, política, família ou dinheiro; para menores de 18 anos, somente objetivo e temas) são mantidos enquanto o aluno estudar na CONTRATADA e eliminados <strong>90 (noventa) dias</strong> após a sua saída.
             </p>
             <p className={`${clauseText} mt-1`}>
-                <strong>Parágrafo 5º.</strong> Quando o aluno for menor de 18 (dezoito) anos, este contrato é assinado pelo seu responsável legal, que concorda, em nome do aluno, com o registro previsto nesta cláusula.
+                <strong>Parágrafo 5º.</strong> O CONTRATANTE pode, a qualquer tempo: <strong>(a)</strong> ver no aplicativo da CONTRATADA os resumos aprovados das aulas; <strong>(b)</strong> pedir, pelo WhatsApp da CONTRATADA, que as aulas deixem de ser registradas, caso em que elas continuam normalmente, sem registro; <strong>(c)</strong> pedir, pelo mesmo canal, a exclusão do que já foi registrado, ressalvado o registro de caso previsto no Parágrafo 4º; <strong>(d)</strong> pedir informação, correção ou cópia dos seus dados, nos termos da Lei nº 13.709/2018 (LGPD).
             </p>
             <p className={`${clauseText} mt-1`}>
-                <strong>Parágrafo 6º.</strong> O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATADA, na área das aulas registradas.
+                <strong>Parágrafo 6º.</strong> Quando o aluno for menor de 18 (dezoito) anos, este contrato é assinado pelo seu responsável legal, que concorda, em nome do aluno, com o registro previsto nesta cláusula.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 7º.</strong> O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATADA, na área das aulas registradas.
             </p>
         </div>
     );

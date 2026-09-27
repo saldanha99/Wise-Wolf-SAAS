@@ -11,7 +11,9 @@ import { contractIncludesLessonRecording, resolveContractTermsVersion } from '..
 // private.lesson_recording_terms, público TEACHER) e remete a ele. O registro é
 // decisão da escola (27/09/2026): quem assina este contrato já concorda.
 // Entra no FIM (11ª), depois da 10ª, para não renumerar nada: a 3ª, a 7.3 e a
-// 9ª são citadas pelo número em outras cláusulas.
+// 9ª são citadas pelo número em outras cláusulas. Só aparece na escola que
+// oferece a versão com a cláusula (tenant_contract_terms). Prazos como o
+// sistema faz (e o termo v3 diz); ver o comentário da cláusula do aluno.
 // ⚠️ Texto de contrato assinado não muda: qualquer alteração aqui é versão
 // nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
 function TeacherLessonRecordingClause() {
@@ -31,13 +33,13 @@ function TeacherLessonRecordingClause() {
                 11.4 A transcrição completa das aulas só é acessível ao CONTRATADO (quanto às suas aulas), à coordenação e à direção da CONTRATANTE. Outros professores do aluno veem apenas o resumo aprovado, e o suporte técnico do fornecedor da plataforma pode ver o resumo aprovado e o cartão do aluno somente para resolver problema técnico.
             </p>
             <p className="text-justify">
-                11.5 Além da CONTRATANTE, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino, que armazena os dados e presta suporte técnico; e o provedor de inteligência artificial contratado pela CONTRATANTE (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado.
+                11.5 Além da CONTRATANTE, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino, que armazena os dados e presta suporte técnico; e o provedor de inteligência artificial contratado pela CONTRATANTE (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado. Esses fornecedores atuam como operadores, em nome e sob as instruções da CONTRATANTE. Para os fins da Cláusula 8ª, o tratamento descrito nesta cláusula integra a execução deste contrato, e o CONTRATADO, ao assinar, declara estar ciente e de acordo com ele de forma expressa.
             </p>
             <p className="text-justify">
-                11.6 A transcrição, as anotações e o relatório de presença, inclusive os trechos copiados para o resumo, são eliminados em até 90 (noventa) dias após a aula, na plataforma e na conta Google da CONTRATANTE (os arquivos originais passam pela lixeira do Google, que os elimina em até 30 dias). O resumo aprovado e o cartão do aluno são mantidos enquanto o aluno estudar na CONTRATANTE e eliminados 90 (noventa) dias após a sua saída.
+                11.6 A transcrição, as anotações e o relatório de presença ficam no sistema da CONTRATANTE por até 90 (noventa) dias, contados de quando chegam ao sistema (logo depois da aula); os trechos da aula copiados para o resumo são apagados 90 (noventa) dias depois da aula. A CONTRATANTE elimina os arquivos originais de sua conta Google em até 90 (noventa) dias depois da aula; eles passam pela lixeira do Google, que os elimina de vez em até 30 (trinta) dias. Quando o relatório de presença diverge do lançamento da aula, os horários de entrada e saída daquela aula ficam também no registro do caso aberto para a coordenação (item 11.3), mantido pelo tempo necessário para resolvê-lo e para o exercício regular de direitos das partes. O resumo aprovado e o cartão do aluno são mantidos enquanto o aluno estudar na CONTRATANTE e eliminados 90 (noventa) dias após a sua saída.
             </p>
             <p className="text-justify">
-                11.7 O CONTRATADO pode, a qualquer tempo, ver no aplicativo o registro das suas aulas e pedir, pelo WhatsApp da CONTRATANTE, que as suas aulas deixem de ser registradas ou que o que já foi registrado seja excluído, nos termos da Lei 13.709/2018 (LGPD).
+                11.7 O CONTRATADO pode, a qualquer tempo, ver no aplicativo o registro das suas aulas e pedir, pelo WhatsApp da CONTRATANTE, que as suas aulas deixem de ser registradas ou que o que já foi registrado seja excluído, ressalvado o registro de caso previsto no item 11.6, nos termos da Lei 13.709/2018 (LGPD).
             </p>
             <p className="text-justify">
                 11.8 O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATANTE.
@@ -60,10 +62,11 @@ interface TeacherContractProps {
     userIp?: string;
     subscriptionId?: string;
     /**
-     * Versão do texto que o professor assinou (gravada no aceite — ver
-     * `lib/contractTerms.ts`). Ausente: contrato assinado mostra o texto de
-     * antes (versão 1) e contrato ainda não assinado mostra a versão atual.
-     * Quem está assinando na tela passa a versão atual explicitamente.
+     * Versão do texto (ver `lib/contractTerms.ts`): a gravada no aceite, ou,
+     * no contrato ainda não assinado, a que a escola oferece. Ausente, o
+     * documento mostra o texto de antes (versão 1) — nunca uma cláusula que o
+     * professor não assinou nem que a escola não decidiu. Tela que assina passa
+     * a versão oferecida explicitamente, e grava a mesma.
      */
     termsVersion?: number;
     displayMode?: 'responsive' | 'a4';
