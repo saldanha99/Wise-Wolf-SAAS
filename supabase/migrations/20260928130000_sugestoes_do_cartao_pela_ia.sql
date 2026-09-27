@@ -936,10 +936,17 @@ begin
             v_dropped := v_dropped + 1;
             continue;
           end if;
+          -- Outra leitura do mesmo aluno gravando a mesma sugestão ao mesmo tempo
+          -- (worker atrasado de lease vencida): a segunda vira descarte, não erro.
           insert into private.student_card_suggestions (tenant_id, student_id, lesson_session_id, summary_version_id,
             run_id, field, value, value_sha256, evidence_artifact_id, evidence_quote, evidence_expires_at)
           values (s.tenant_id, s.student_id, s.id, v_version, r.id, v_field, v_value, v_value_hash, v_artifact,
-            v_quote, s.scheduled_end_at + pg_catalog.make_interval(days => (v_policy ->> 'evidence_days')::integer));
+            v_quote, s.scheduled_end_at + pg_catalog.make_interval(days => (v_policy ->> 'evidence_days')::integer))
+          on conflict (tenant_id, student_id, field, value_sha256) where status = 'PENDING' do nothing;
+          if not found then
+            v_dropped := v_dropped + 1;
+            continue;
+          end if;
           v_batch := v_batch || v_value_hash;
           v_saved := v_saved + 1;
         end loop;
