@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
-import { guardAsaasMutationTarget } from "../_shared/asaas-mutation-guard.ts";
+import {
+  readSubscriptionForStatusSync,
+  type SubscriptionReadResult,
+} from "./subscription-read.ts";
 import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
 import { resolveAsaasIntegration } from "../_shared/tenant-integration-broker.ts";
 
@@ -118,15 +121,15 @@ serve(async (req) => {
         customerId: string;
         status: string | null;
         endDate: string | null;
+        identitySnapshot?: SubscriptionReadResult["identitySnapshot"];
       }[] = [];
       let tenantNotFound = 0;
       for (const student of tenantStudents) {
         try {
-          const guard = await guardAsaasMutationTarget({
+          const guard = await readSubscriptionForStatusSync({
             admin: supabase,
             baseUrl: integration.baseUrl,
             apiKey: integration.apiKey,
-            operation: "sync_subscription_status_read",
             target: {
               tenantId,
               studentId: student.id,
@@ -175,6 +178,7 @@ serve(async (req) => {
               endDate: typeof guard.entity.endDate === "string"
                 ? guard.entity.endDate
                 : null,
+              identitySnapshot: guard.identitySnapshot,
             });
           }
         } catch (e) {
@@ -198,7 +202,7 @@ serve(async (req) => {
 
       const agora = new Date().toISOString();
       for (const result of lidos) {
-        const { data: updated, error: updateError } = await supabase.from(
+        let update = supabase.from(
           "profiles",
         ).update({
           asaas_subscription_status: result.status,
@@ -208,8 +212,17 @@ serve(async (req) => {
           .eq("tenant_id", tenantId)
           .eq("subscription_id", result.subscriptionId)
           .eq("asaas_customer_id", result.customerId)
-          .eq("role", "STUDENT")
-          .select("id")
+          .eq("role", "STUDENT");
+        // A prova de identidade precisa continuar sendo a mesma na gravação.
+        // Um contato/documento alterado durante o GET invalida esta leitura.
+        for (
+          const [field, value] of Object.entries(result.identitySnapshot || {})
+        ) {
+          update = value === null
+            ? update.is(field, null)
+            : update.eq(field, value);
+        }
+        const { data: updated, error: updateError } = await update.select("id")
           .maybeSingle();
         if (updateError || !updated) {
           falhas++;

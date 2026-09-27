@@ -3463,3 +3463,17 @@ era o sinal mais útil da triagem inteira.
 - ⚠️ A mídia do WhatsApp é criptografada: a Evolution devolve o arquivo decifrado em base64 a
   partir da chave da mensagem (`chat/getBase64FromMediaMessage`), e só então dá para
   transcrever.
+
+
+## Sincronização de assinaturas legadas — 27/09/2026
+
+`sync-subscription-status/subscription-read.ts` separa a prova de leitura da autorização
+para mutação Asaas. A sincronização faz somente GET no provedor. Referências externas
+existentes continuam no guard canônico; referência vazia exige IDs exatos, vínculo único
+global do aluno e CPF/CNPJ coincidente (do aluno ou responsável nomeado). Sem documento,
+exige simultaneamente nome, e-mail e telefone coincidentes. Documento inválido ou divergente
+bloqueia a leitura. Removida com identidade comprovada espelha DELETED localmente.
+O update local compara também todos os campos usados como prova, impedindo corrida cadastral.
+Nenhuma cobrança, referência externa, cancelamento ou contrato é alterado por esse caminho.
+Os testes da prova de leitura integram os gates do release; os guards de mutação permanecem
+estritos. Pendências cadastrais sem prova continuam bloqueadas e requerem confirmação real.

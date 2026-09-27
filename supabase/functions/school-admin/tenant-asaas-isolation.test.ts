@@ -75,7 +75,7 @@ const PROVIDER_ORDER: Record<
   "sync-subscription-status": {
     handler: "serve(async",
     resolver: "await resolveAsaasIntegration",
-    provider: "const guard = await guardAsaasMutationTarget",
+    provider: "const guard = await readSubscriptionForStatusSync",
   },
   "admin-update-subscription": {
     handler: "serve(async",

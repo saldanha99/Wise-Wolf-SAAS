@@ -64,11 +64,22 @@ Deno.test({
         billingMethod,
         schoolAdmin,
         adminUpdate,
-        statusSync,
       ]
     ) {
       assertStringIncludes(caller, "guardAsaasMutationTarget");
     }
+
+    const readProof = await source(
+      "../sync-subscription-status/subscription-read.ts",
+    );
+    assertStringIncludes(statusSync, "readSubscriptionForStatusSync");
+    assertStringIncludes(readProof, "guardAsaasMutationTarget");
+    assertStringIncludes(readProof, "proveLegacySubscriptionRead");
+    assertStringIncludes(readProof, 'method: "GET"');
+    assert(!readProof.includes('method: "PUT"'));
+    assert(!readProof.includes('method: "POST"'));
+    assert(!readProof.includes('method: "DELETE"'));
+    assertStringIncludes(statusSync, "identitySnapshot");
 
     assert(
       planChange.indexOf("await guardAsaasMutationTarget") <

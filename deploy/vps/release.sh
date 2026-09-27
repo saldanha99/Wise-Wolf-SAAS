@@ -658,6 +658,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/sync-plan-change-billing/claim-fencing.test.ts \
+  supabase/functions/sync-subscription-status/subscription-read.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/sync-subscription-status/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/delete-student-account/index.ts \
@@ -754,6 +756,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/coverage-admin/briefing.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
   supabase/functions/_shared/enrollment-progress.test.ts \
   supabase/functions/_shared/automation-auth.test.ts \
@@ -1002,6 +1005,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/hr-ai-screening/index.ts \
   supabase/functions/wolfie-eval/index.ts \
   supabase/functions/wolfie-live-proxy/index.ts \
+  supabase/functions/sync-subscription-status/subscription-read.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/sync-subscription-status/index.ts \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/dre-categorize/index.ts \
