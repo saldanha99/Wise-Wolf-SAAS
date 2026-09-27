@@ -31,6 +31,123 @@ export function asDecision(value: unknown): RecordingDecision {
   return value === 'ACCEPTED' || value === 'REFUSED' || value === 'REVOKED' ? value : 'NONE';
 }
 
+// ---------------------------------------------------------------------------
+// Modo de autorização por escola (migration 20260929100000). Decisão da
+// direção de 27/09/2026: a escola pode autorizar o registro das aulas por
+// padrão (SCHOOL_DEFAULT) — sem link, sem código, sem aceite; cada pessoa pode
+// pedir para não ser registrada. INDIVIDUAL_CONSENT é o modelo do termo aceito
+// por pessoa (e o padrão de quem não decidiu). Quem decide o efeito é o
+// servidor; aqui ficam só a leitura defensiva e os textos.
+
+export type AuthorizationMode = 'SCHOOL_DEFAULT' | 'INDIVIDUAL_CONSENT';
+
+/** Servidor antigo (sem o campo) ou valor desconhecido = aceite individual. */
+export function asAuthorizationMode(value: unknown): AuthorizationMode {
+  return value === 'SCHOOL_DEFAULT' ? 'SCHOOL_DEFAULT' : 'INDIVIDUAL_CONSENT';
+}
+
+/** Recusa ou revogação: no modo da escola, é o pedido para não registrar. */
+export function isObjection(value: unknown): boolean {
+  return value === 'REFUSED' || value === 'REVOKED';
+}
+
+export const SCHOOL_DEFAULT_LABEL = 'Autorizado pela escola';
+export const OBJECTION_LABEL = 'Pediu para não registrar';
+
+export const AUTHORIZATION_MODE_LABEL: Record<AuthorizationMode, string> = {
+  SCHOOL_DEFAULT: 'Registro autorizado pela escola',
+  INDIVIDUAL_CONSENT: 'Aceite individual pelo termo',
+};
+
+export const AUTHORIZATION_MODE_TEXT: Record<AuthorizationMode, string> = {
+  SCHOOL_DEFAULT:
+    'O registro das aulas faz parte das aulas da escola (contrato ou decisão da escola). Alunos e professores ativos estão autorizados sem link nem código; quem não quiser ser registrado pede, e o pedido vale na hora. Menores de idade também ficam autorizados, e o pedido para não registrar pode vir do responsável.',
+  INDIVIDUAL_CONSENT:
+    'A transcrição da aula só acontece quando o aluno (ou o responsável, se for menor) e o professor autorizaram pelo termo. Cada um responde uma vez; vale até revogar.',
+};
+
+/** O que muda ao trocar de modo — a tela mostra antes de confirmar. */
+export const AUTHORIZATION_SWITCH_EFFECT: Record<AuthorizationMode, string[]> = {
+  SCHOOL_DEFAULT: [
+    'Alunos e professores ativos passam a ter as aulas registradas sem link, sem código e sem aceite — inclusive os menores de idade.',
+    'Quem já pediu para não ser registrado (recusou ou revogou) continua sem registro.',
+    'A sala da escola continua só para o professor com a conta Google confirmada.',
+    'O envio do termo e o link por aluno saem da tela; mensagens do termo que estavam na fila são canceladas.',
+    'A mudança vale na hora e fica registrada com o seu nome, a data e o motivo.',
+  ],
+  INDIVIDUAL_CONSENT: [
+    'Cada aluno (ou responsável) e cada professor volta a precisar aceitar o termo vigente.',
+    'As próximas aulas de quem ainda não aceitou deixam de ser registradas na hora; as que já terminaram seguem os prazos do aviso.',
+    'O envio do termo e o link por aluno voltam à tela.',
+    'A mudança vale na hora e fica registrada com o seu nome, a data e o motivo.',
+  ],
+};
+
+export interface AuthorizationHistoryItem {
+  mode: AuthorizationMode;
+  since: string | null;
+  decidedOn: string | null;
+  decidedByName: string | null;
+  reason: string | null;
+  source: 'MIGRATION' | 'APP' | null;
+}
+
+export interface AuthorizationSummary {
+  mode: AuthorizationMode;
+  current: AuthorizationHistoryItem | null;
+  history: AuthorizationHistoryItem[];
+  noticeVersions: { STUDENT: string | null; TEACHER: string | null };
+  canChange: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function asTrimmed(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function asHistoryItem(value: unknown): AuthorizationHistoryItem | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  return {
+    mode: asAuthorizationMode(record.mode),
+    since: asTrimmed(record.since),
+    decidedOn: asTrimmed(record.decided_on),
+    decidedByName: asTrimmed(record.decided_by_name),
+    reason: asTrimmed(record.reason),
+    source: record.source === 'MIGRATION' || record.source === 'APP' ? record.source : null,
+  };
+}
+
+/** `authorization` do painel (list_lesson_recording_consents); ausente = individual. */
+export function asAuthorizationSummary(value: unknown): AuthorizationSummary {
+  const record = asRecord(value) || {};
+  const versions = asRecord(record.notice_versions) || {};
+  return {
+    mode: asAuthorizationMode(record.mode),
+    current: asHistoryItem(record.current),
+    history: Array.isArray(record.history)
+      ? record.history.map(asHistoryItem).filter((item): item is AuthorizationHistoryItem => item !== null)
+      : [],
+    noticeVersions: { STUDENT: asTrimmed(versions.STUDENT), TEACHER: asTrimmed(versions.TEACHER) },
+    canChange: record.can_change === true,
+  };
+}
+
+/** "27/09/2026" a partir de `AAAA-MM-DD` (dia da decisão, sem mexer no fuso). */
+export function formatDecidedOn(value: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+/** Mensagem pronta para o aluno pedir, pelo WhatsApp da escola, para não ser registrado. */
+export function objectionRequestMessage(schoolName: string | null | undefined): string {
+  const school = schoolName?.trim() || 'escola';
+  return `Olá! Sou aluno(a) da ${school} e peço que as minhas aulas não sejam registradas (transcritas).`;
+}
+
 /** Motivo fora da lista, com responsável exigido, vira idade desconhecida. */
 export function asGuardianReason(value: unknown, requiresGuardian?: boolean): GuardianReason | null {
   if (value === 'KIDS' || value === 'MINOR' || value === 'AGE_UNKNOWN') return value;
@@ -275,15 +392,41 @@ const ERRORS: Record<string, string> = {
   // O aceite vale para o texto que a pessoa leu (migration 20260927100000): a
   // escola publicou outra versão enquanto a tela estava aberta.
   [TERM_CHANGED_ERROR]: 'O termo mudou enquanto você lia. Leia a nova versão e responda de novo.',
+  // Registro autorizado pela escola (migration 20260929100000).
+  registro_autorizado_pela_escola:
+    'A escola autoriza o registro das aulas: não há termo para aceitar nem link para enviar. Quem não quiser ser registrado pode pedir.',
+  somente_a_direcao: 'Só a direção da escola pode fazer isso.',
+  modo_invalido: 'Escolha como a escola autoriza o registro.',
+  aviso_nao_publicado: 'O aviso do registro das aulas ainda não foi publicado. Fale com o suporte da plataforma.',
+  nao_ha_pedido_para_desfazer: 'Não há pedido para não registrar a desfazer.',
+  so_no_registro_autorizado_pela_escola: 'Desfazer o pedido só existe quando a escola autoriza o registro. No aceite individual, a pessoa responde de novo pelo termo.',
+  // O pedido que o professor fez no app só ele desfaz (migration 20260929100000).
+  pedido_do_proprio_professor: 'O próprio professor pediu, no app, para não ter as aulas registradas: só ele desfaz, em “Salas e continuidade”.',
+};
+
+/**
+ * No registro autorizado pela escola não existe "link novo": a escola não gera
+ * link nem manda termo (a página só serve a quem recebeu um link antes). Onde o
+ * texto do aceite individual manda pedir um link novo, aqui a pessoa fala com a
+ * escola pelo WhatsApp — é por lá que o pedido para não registrar chega.
+ */
+const SCHOOL_DEFAULT_ERRORS: Record<string, string> = {
+  link_bloqueado:
+    'Este link foi bloqueado por segurança (muitos códigos pedidos ou digitados errado). Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  link_expirado:
+    'Este link expirou ou foi substituído. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  telefone_nao_cadastrado:
+    'A escola não tem este WhatsApp no cadastro. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
 };
 
 /** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */
-export function consentErrorMessage(raw: string | null | undefined): string {
+export function consentErrorMessage(raw: string | null | undefined, mode: AuthorizationMode = 'INDIVIDUAL_CONSENT'): string {
   const text = String(raw || '');
-  const code = Object.keys(ERRORS)
+  const table = mode === 'SCHOOL_DEFAULT' ? { ...ERRORS, ...SCHOOL_DEFAULT_ERRORS } : ERRORS;
+  const code = Object.keys(table)
     .sort((a, b) => b.length - a.length)
     .find(key => text.includes(key));
-  return code ? ERRORS[code] : 'Algo deu errado. Tente de novo em instantes.';
+  return code ? table[code] : 'Algo deu errado. Tente de novo em instantes.';
 }
 
 /** Erro do código com as tentativas restantes ou a espera, quando o servidor diz. */
@@ -291,6 +434,8 @@ export function codeErrorMessage(input: {
   error?: string | null;
   attemptsLeft?: number | null;
   retryAfterSeconds?: number | null;
+  /** Modo da escola do link: no registro autorizado pela escola não há link novo a pedir. */
+  mode?: AuthorizationMode;
 }): string {
   const code = String(input.error || '');
   if (code === 'codigo_incorreto' && Number(input.attemptsLeft) > 0) {
@@ -298,9 +443,9 @@ export function codeErrorMessage(input: {
     return `Código incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`} para este código.`;
   }
   if ((code === 'limite_de_envios' || code === 'limite_diario' || code === 'aguarde') && input.retryAfterSeconds) {
-    return `${consentErrorMessage(code)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
+    return `${consentErrorMessage(code, input.mode)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
   }
-  return consentErrorMessage(code);
+  return consentErrorMessage(code, input.mode);
 }
 
 export function formatDecisionDate(value: string | null | undefined): string {
@@ -359,6 +504,7 @@ const NOT_SENT: Record<string, string> = {
   portal_da_escola_indefinido: 'a escola está sem endereço do portal',
   portal_mudou: 'o endereço do portal mudou antes do envio',
   link_sem_telefone_do_pedido: 'o link não tinha o telefone da mensagem',
+  registro_autorizado_pela_escola: 'a escola passou a autorizar o registro das aulas',
 };
 
 /** Motivo de uma mensagem que não saiu, em português. */

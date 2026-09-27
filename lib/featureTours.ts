@@ -1,6 +1,28 @@
 import type { FlatStep, TourRole, TourStep } from './tours';
 
 /**
+ * Como a escola autoriza o registro das aulas (migration 20260929100000):
+ * SCHOOL_DEFAULT (a escola autoriza; cada pessoa pode pedir para não ser
+ * registrada) ou INDIVIDUAL_CONSENT (aceite individual pelo termo).
+ */
+export type RecordingAuthorizationMode = 'SCHOOL_DEFAULT' | 'INDIVIDUAL_CONSENT';
+
+/** Resposta de `my_lesson_recording_authorization_mode`; o resto é desconhecido. */
+export function asRecordingAuthorizationMode(value: unknown): RecordingAuthorizationMode | null {
+  return value === 'SCHOOL_DEFAULT' || value === 'INDIVIDUAL_CONSENT' ? value : null;
+}
+
+/** O que a tela sabe da escola de quem está logado para escolher os tours. */
+export interface FeatureTourContext {
+  /**
+   * Modo da escola; nulo = desconhecido (a leitura falhou ou o servidor é
+   * antigo): o tour que depende do modo não abre — mostrar o do termo a quem
+   * está no modo da escola (ou o contrário) é pior do que não mostrar.
+   */
+  recordingMode: RecordingAuthorizationMode | null;
+}
+
+/**
  * Tours de novidade — TODA funcionalidade nova sobe com um tutorial guiado.
  *
  * Regra da direção (16/09/2026): quem abre a plataforma depois de uma
@@ -27,6 +49,13 @@ export interface FeatureTour {
   title: string;
   roles: TourRole[];
   steps: TourStep[];
+  /**
+   * Só para escolas neste modo de autorização do registro das aulas. Os tours
+   * do termo (link, código, "Li e autorizo", envio em lote) não valem para quem
+   * está no modo da escola, e os do modo da escola não valem para quem segue no
+   * aceite individual (migration 20260929100000).
+   */
+  recordingMode?: RecordingAuthorizationMode;
 }
 
 export const FEATURE_TOURS: FeatureTour[] = [
@@ -200,6 +229,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-26-registro-das-aulas',
     title: 'Autorização do registro das aulas',
     roles: ['SCHOOL_ADMIN'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-consents',
@@ -213,6 +243,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-26-registro-das-aulas-professor',
     title: 'Registro das suas aulas',
     roles: ['TEACHER'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-teacher-consent',
@@ -226,6 +257,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-26-termo-seguro',
     title: 'Termo das aulas com confirmação',
     roles: ['SCHOOL_ADMIN'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-consents',
@@ -245,6 +277,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-26-termo-seguro-envio',
     title: 'Termo enviado pela escola',
     roles: ['SCHOOL_ADMIN'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-consents-send',
@@ -258,6 +291,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-26-termo-seguro-professor',
     title: 'Conta Google da sala',
     roles: ['TEACHER'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-teacher-google',
@@ -299,7 +333,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'student-lesson-records',
         view: 'lesson-records',
         title: 'Novidade: o registro das suas aulas 📒',
-        text: 'Aqui aparece o que o seu professor aprovou de cada aula na sala da escola no Google Meet: objetivo, o que foi praticado, próximo passo e lição. A transcrição completa não aparece — ela é vista só pelo professor da aula, pela coordenação e pela direção. Nesta tela você também vê o que é guardado e por quanto tempo, a situação da sua autorização, como revogar e como pedir a exclusão pelo WhatsApp da escola.',
+        text: 'Aqui aparece o que o seu professor aprovou de cada aula na sala da escola no Google Meet: objetivo, o que foi praticado, próximo passo e lição. A transcrição completa não aparece — ela é vista só pelo professor da aula, pela coordenação e pela direção. Nesta tela você também vê o que é guardado e por quanto tempo, a situação do registro das suas aulas, como pedir para não ser registrado (ou revogar a autorização) e como pedir a exclusão pelo WhatsApp da escola.',
       },
     ],
   },
@@ -381,6 +415,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-27-termo-v3',
     title: 'Termo das aulas, versão 3',
     roles: ['SCHOOL_ADMIN'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-term-identity',
@@ -400,6 +435,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-09-27-termo-v3-professor',
     title: 'Termo das aulas, versão 3',
     roles: ['TEACHER'],
+    recordingMode: 'INDIVIDUAL_CONSENT',
     steps: [
       {
         target: 'recording-teacher-consent',
@@ -498,17 +534,91 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // Migration 20260929100000 — decisão da direção de 27/09/2026: a escola
+    // autoriza o registro das aulas; cada pessoa pode pedir para não ser
+    // registrada. A Wise Wolf entrou nesse modo pela própria migration.
+    id: '2026-09-29-registro-autorizado-pela-escola',
+    title: 'Registro das aulas autorizado pela escola',
+    roles: ['SCHOOL_ADMIN'],
+    recordingMode: 'SCHOOL_DEFAULT',
+    steps: [
+      {
+        target: 'recording-authorization-mode',
+        view: 'recording-consents',
+        title: 'A escola autoriza o registro das aulas 🎙️',
+        text: 'Quando a escola autoriza o registro (contrato ou decisão da direção), alunos e professores ativos — inclusive os menores de idade — têm as aulas registradas sem link, sem código e sem aceite. Este quadro mostra como a escola autoriza, quem decidiu, quando e por quê. Só a direção troca o modo, com confirmação na tela e motivo registrado.',
+      },
+      {
+        target: 'recording-objection',
+        view: 'recording-consents',
+        title: 'Quem não quiser, pede',
+        text: 'Chegou pelo WhatsApp um pedido para não registrar? Toque em "Registrar pedido para não registrar" no aluno (ou no professor) e escreva como o pedido chegou. Vale na hora: a sala da escola tem a transcrição desligada, nada da aula é importado e a IA não lê. "Desfazer pedido" devolve, também com motivo. No modo da escola não há envio do termo nem link por aluno.',
+      },
+      {
+        target: 'recording-term-identity',
+        view: 'recording-consents',
+        title: 'A escola no aviso',
+        text: 'O aviso do registro das aulas (o texto que alunos, famílias e professores leem no app) identifica a escola como responsável pelos dados. Confira aqui como ela aparece; se faltar razão social, CNPJ ou contato de privacidade, complete em Configurações → Escola e legal.',
+      },
+      {
+        target: null,
+        view: 'recording-consents',
+        title: 'A conta Google continua obrigatória',
+        text: 'A sala da escola só nasce para o professor que confirmou por login a conta Google com que entra nas aulas (em "Salas e continuidade"). Sem isso, a aula dele segue pelo link de sempre — a Central de Pendências mostra quem ainda não confirmou.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-29-registro-autorizado-pela-escola-professor',
+    title: 'Registro das suas aulas pela escola',
+    roles: ['TEACHER'],
+    recordingMode: 'SCHOOL_DEFAULT',
+    steps: [
+      {
+        target: 'recording-teacher-consent',
+        view: 'lesson-sessions',
+        title: 'Suas aulas são registradas pela escola 🎙️',
+        text: 'Quando a escola autoriza o registro das aulas, você não precisa mais tocar em "Li e autorizo": as aulas na sala da escola são transcritas pelo Google Meet (sem vídeo). O aviso completo — para que serve, quem vê, prazos e direitos — está em "Ler o aviso".',
+      },
+      {
+        target: 'recording-teacher-google',
+        view: 'lesson-sessions',
+        title: 'Confirme a sua conta Google',
+        text: 'A sala da escola só nasce para as suas aulas depois que você confirma, por login, a conta Google com que entra nas aulas. Sem isso, a aula segue pelo link de sempre.',
+      },
+      {
+        target: 'recording-teacher-objection',
+        view: 'lesson-sessions',
+        title: 'Se não quiser ser registrado',
+        text: '"Não quero que minhas aulas sejam registradas" vale na hora: as suas aulas seguintes acontecem normalmente, sem transcrição, e nada muda no seu pagamento. Dá para voltar atrás no mesmo lugar.',
+      },
+    ],
+  },
 ];
 
+/**
+ * O tour vale para a escola de quem está logado? Sem contexto (marcar tudo
+ * como visto no fim do tour de boas-vindas), vale tudo.
+ */
+function fitsContext(tour: FeatureTour, context?: FeatureTourContext): boolean {
+  if (!context || !tour.recordingMode) return true;
+  return context.recordingMode === tour.recordingMode;
+}
+
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
-export function pendingFeatureTours(role: string, seenIds: Iterable<string>): FeatureTour[] {
+export function pendingFeatureTours(
+  role: string,
+  seenIds: Iterable<string>,
+  context?: FeatureTourContext,
+): FeatureTour[] {
   const seen = new Set(seenIds);
-  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole) && !seen.has(t.id));
+  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole) && !seen.has(t.id) && fitsContext(t, context));
 }
 
 /** Tour mais recente do papel — é o que "Novidades" reabre. */
-export function latestFeatureTourFor(role: string): FeatureTour | undefined {
-  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole));
+export function latestFeatureTourFor(role: string, context?: FeatureTourContext): FeatureTour | undefined {
+  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole) && fitsContext(t, context));
 }
 
 /** Passos achatados para o motor, todos sob o capítulo "Novidade". */

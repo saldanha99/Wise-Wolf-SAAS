@@ -252,6 +252,40 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - **O que existe (12/09 + 26/09):** sala exclusiva por sessão criada pela conta central, professor
   como coanfitrião, transcrição e anotações do Gemini automáticas, importação após a aula, revisão do
   professor, resumo aprovado na memória do aluno.
+- **Registro autorizado pela ESCOLA — a Wise Wolf está nele desde 27/09/2026** (migration `20260929100000`,
+  runbook seção "Registro autorizado pela escola", teste `supabase/tests/registro_autorizado_pela_escola.sql`,
+  RIPD §4.1/R13–R14 — **bases por grupo marcadas para o jurídico**). Decisão da direção: "Não quero ter que gerar
+  link para aluno ou professor consentir… Já deixe como autorizado." Modo **por escola** em
+  `private.lesson_recording_authorization_modes` (trilha: quem, `decided_on`, motivo, base; nunca update):
+  `INDIVIDUAL_CONSENT` (o termo por pessoa das bullets abaixo; **padrão de escola sem linha**) ou `SCHOOL_DEFAULT`
+  (aluno e professor ATIVOS autorizados sem link, código, versão nem responsável — **menores incluídos**; só o
+  **pedido para não registrar** tira = última decisão `REFUSED`/`REVOKED`, na hora, efeito da revogação da onda 1).
+  A Wise Wolf entrou por one-shot com trilha (`registro_das_aulas_autorizado_pela_escola_wise_wolf_20260927`,
+  autor = `management_group_default_actor`). O modo vale pelo **fim da aula** (`authorization_mode_at`); "ativo" só
+  para aula que não terminou. Recriadas da definição viva: `*_consent_effective_at` (aluno e professor),
+  `lesson_recording_ai_accepted_at` (aviso em vigor declara a IA), `lesson_teacher_documentation_ready`,
+  `accepted_outdated_term`/`acceptance_outdated_at` (aceite antigo não "cai" no modo da escola),
+  `lesson_session_term_consent_lapsed`/`_lapse_text`, `current_term` e `term_covers`. ⚠️ **Aviso v4 é
+  `kind = 'NOTICE'`** e nunca vira o termo exigido do aceite individual (`current_term`/`term_covers` só olham
+  `TERM`); o texto mostrado vem de `private.lesson_recording_text_for(escola, público)` + `fill_term`. ⚠️ O job
+  marca com "`Termo de registro das aulas: registro autorizado pela escola (…)`" — é esse texto que faz a aula cair
+  (sem exigir dois aceites) quando a escola volta ao individual; aula marcada por aceites e passada a quem nunca
+  respondeu continua `HANDOVER_UNCONSENTED` (generalizar derrubou `sala_acompanha_a_troca_de_professor.sql`).
+  `OBJECTION_WITHDRAWN` (desfazer: `withdraw_lesson_recording_objection`, **só `SCHOOL_ADMIN`** com motivo — a
+  coordenação registra o pedido, não o desfaz; o pedido que o professor fez no app só ele desfaz,
+  `pedido_do_proprio_professor`) **não é aceite**. Direção registra o pedido com a revogação de sempre (`revoke_lesson_recording_consent`);
+  só `SCHOOL_ADMIN` troca o modo (`set_lesson_recording_authorization_mode`, confirmação na tela, roda o job). Link,
+  lote e reenvio recusam `registro_autorizado_pela_escola`; fila do termo cancela na hora de sair. Conta Google do
+  professor continua obrigatória para a sala (`director_pending_counts.professores_sem_conta_google`, só no modo da
+  escola) — ⚠️ e no modo da escola o job **só marca** a aula de professor com a conta confirmada: a marca sem sala
+  congelaria a sessão (`lesson_session_has_evidence`); medido no clone, seriam 21 de 21 aulas de segunda da Wise Wolf.
+  Tours do termo e do modo da escola filtrados pelo modo (`FeatureTour.recordingMode`,
+  `my_lesson_recording_authorization_mode()`); no modo da escola nenhuma tela manda "pedir link novo". Remendos por
+  âncora: `apply_standing_…` (×3), `get_lesson_recording_consent_public` (×3), `get_student_birth_date_record`,
+  `list_lesson_recording_consents` (×2),
+  `get_my_lesson_records` (×3), roster, snapshot, os três do lote, `create_…_link`, `list_…_requests`,
+  `director_pending_counts` — não recrie a partir de texto antigo. ⚠️ **Nada comunica o aviso às famílias atuais**
+  (J13 no RIPD): não dispare lote sem o jurídico.
 - **Termo de registro** (migration `20260926120000`): aluno/responsável aceita uma vez por link
   (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
   próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de

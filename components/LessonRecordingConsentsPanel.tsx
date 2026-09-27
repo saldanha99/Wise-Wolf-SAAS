@@ -3,6 +3,7 @@ import { Copy, Loader2, MessageCircle, RefreshCw, Send, ShieldCheck } from 'luci
 import { supabase } from '../lib/supabase';
 import StudentBirthDateField from './StudentBirthDateField';
 import {
+  asAuthorizationSummary,
   asDecision,
   asGuardianReason,
   asLinkBlockedReason,
@@ -28,6 +29,15 @@ import {
   resendAllowed,
   sendWindowText,
   whatsappUrl,
+  AUTHORIZATION_MODE_LABEL,
+  AUTHORIZATION_MODE_TEXT,
+  AUTHORIZATION_SWITCH_EFFECT,
+  formatDecidedOn,
+  isObjection,
+  OBJECTION_LABEL,
+  SCHOOL_DEFAULT_LABEL,
+  type AuthorizationMode,
+  type AuthorizationSummary,
   type ConsentRecipient,
   type RecordingDecision,
   type RequestState,
@@ -69,6 +79,10 @@ type TeacherRow = {
   effective?: boolean;
   term_updated?: boolean;
   decided_term_version?: string | null;
+  /** Conta Google confirmada por login (20260929100000): sem ela, a sala não nasce. */
+  google_identity_confirmed?: boolean;
+  /** O pedido para não registrar foi do próprio professor, no app: só ele desfaz. */
+  objection_by_self?: boolean;
 };
 type Overview = {
   google_connected: boolean;
@@ -77,6 +91,8 @@ type Overview = {
   /** Como a escola aparece no termo (marcadores preenchidos) e o que falta. */
   term_identity?: unknown;
   term_versions?: { STUDENT?: string | null; TEACHER?: string | null };
+  /** Como a escola autoriza o registro, com a trilha (20260929100000). */
+  authorization?: unknown;
 };
 
 // Envio em lote (list_lesson_recording_consent_requests).
@@ -155,6 +171,93 @@ const BADGE: Record<RecordingDecision, string> = {
 function Badge({ decision }: { decision: string }) {
   const value = asDecision(decision);
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${BADGE[value]}`}>{DECISION_LABEL[value]}</span>;
+}
+
+/**
+ * Situação no modo da escola (20260929100000): autorizado pela escola, pediu
+ * para não registrar, ou sem registro (inativo). Nada de "sem resposta": não há
+ * resposta a esperar.
+ */
+function SchoolDefaultBadge({ decision, effective }: { decision: string; effective?: boolean }) {
+  if (isObjection(decision)) {
+    return <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">{OBJECTION_LABEL}</span>;
+  }
+  if (effective === false) {
+    return <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Sem registro (inativo)</span>;
+  }
+  return <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">{SCHOOL_DEFAULT_LABEL}</span>;
+}
+
+/**
+ * Como a escola autoriza o registro, com a trilha, e a troca pela direção — com
+ * a confirmação na própria tela (o que muda, o motivo) antes de gravar.
+ */
+function AuthorizationModeSection({ summary, busy, onSwitch }: {
+  summary: AuthorizationSummary;
+  busy: boolean;
+  onSwitch: (mode: AuthorizationMode, reason: string) => Promise<boolean>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
+  const target: AuthorizationMode = summary.mode === 'SCHOOL_DEFAULT' ? 'INDIVIDUAL_CONSENT' : 'SCHOOL_DEFAULT';
+  const current = summary.current;
+  const reasonOk = reason.trim().length >= 10;
+
+  async function confirm() {
+    if (!reasonOk) return;
+    if (await onSwitch(target, reason.trim())) { setConfirming(false); setReason(''); }
+  }
+
+  return <section data-tour="recording-authorization-mode" aria-label="Como a escola autoriza o registro"
+    className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Como a escola autoriza o registro</p>
+        <p className="mt-1 font-semibold">{AUTHORIZATION_MODE_LABEL[summary.mode]}</p>
+      </div>
+      {summary.canChange && !confirming && <button type="button" disabled={busy} onClick={() => setConfirming(true)}
+        className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-40 dark:text-slate-200">
+        {target === 'SCHOOL_DEFAULT' ? 'Passar a autorizar pela escola' : 'Voltar ao aceite individual'}
+      </button>}
+    </div>
+    <p className="text-slate-600 dark:text-slate-300">{AUTHORIZATION_MODE_TEXT[summary.mode]}</p>
+    {current && <p className="text-xs text-slate-500">
+      Decidido por {current.decidedByName || 'direção da escola'}
+      {formatDecidedOn(current.decidedOn) ? ` em ${formatDecidedOn(current.decidedOn)}` : ''}
+      {current.source === 'MIGRATION' ? ' (registrado na atualização do sistema)' : ''}
+      {current.reason ? `: ${current.reason}` : ''}
+    </p>}
+    {summary.history.length > 1 && <details className="text-xs text-slate-500">
+      <summary className="cursor-pointer font-semibold">Histórico ({summary.history.length})</summary>
+      <ul className="mt-1 list-disc space-y-1 pl-5">
+        {summary.history.map((item, index) => <li key={index}>
+          {AUTHORIZATION_MODE_LABEL[item.mode]} · {item.decidedByName || 'direção'}
+          {formatDecidedOn(item.decidedOn) ? ` · ${formatDecidedOn(item.decidedOn)}` : ''}
+          {item.reason ? ` · ${item.reason}` : ''}
+        </li>)}
+      </ul>
+    </details>}
+    {confirming && <div role="alertdialog" aria-labelledby="recording-mode-title"
+      className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-950 dark:border-slate-600 dark:bg-slate-800 dark:text-blue-100">
+      <p id="recording-mode-title" className="font-semibold">Mudar para “{AUTHORIZATION_MODE_LABEL[target]}”?</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {AUTHORIZATION_SWITCH_EFFECT[target].map(line => <li key={line}>{line}</li>)}
+      </ul>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold">Motivo (fica registrado)</span>
+        <textarea value={reason} onChange={event => setReason(event.target.value)} rows={2}
+          placeholder={target === 'SCHOOL_DEFAULT' ? 'Ex.: contratos com a cláusula do registro das aulas; decisão da direção.' : 'Ex.: o jurídico pediu o aceite individual.'}
+          className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-800 dark:bg-slate-900 dark:text-slate-100" />
+      </label>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" disabled={busy || !reasonOk} onClick={() => void confirm()}
+          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+          {busy ? 'Gravando…' : 'Confirmar a mudança'}
+        </button>
+        <button type="button" disabled={busy} onClick={() => { setConfirming(false); setReason(''); }} className="font-semibold">Cancelar</button>
+      </div>
+    </div>}
+  </section>;
 }
 
 export default function LessonRecordingConsentsPanel({ schoolName }: { schoolName?: string | null }) {
@@ -263,6 +366,40 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
     void load();
   }
 
+  // Modo da escola (20260929100000): a direção registra o pedido para não
+  // registrar que chegou pelo WhatsApp (a revogação de sempre, com motivo) e
+  // pode desfazê-lo com motivo.
+  async function registerObjection(subjectId: string, name: string) {
+    const reason = window.prompt(`Registrar o pedido de ${name} para não ter as aulas registradas? Informe como o pedido chegou (ex.: "a mãe pediu pelo WhatsApp em 27/09").`);
+    if (!reason) return;
+    setBusy(subjectId); setError(''); setNotice('');
+    const { data: result, error: rpcError } = await supabase.rpc('revoke_lesson_recording_consent', { p_subject_id: subjectId, p_reason: reason });
+    setBusy('');
+    if (rpcError || result?.ok !== true) { setError(consentErrorMessage(rpcError?.message)); return; }
+    setNotice(`Pedido de ${name} registrado: as aulas seguintes não são registradas (vale na hora).`);
+    void load();
+  }
+
+  async function withdrawObjection(subjectId: string, name: string) {
+    const reason = window.prompt(`Desfazer o pedido de ${name}? As aulas voltam a ser registradas pela escola. Informe o motivo (ex.: "pediu pelo WhatsApp em 28/09 para voltar a registrar").`);
+    if (!reason) return;
+    setBusy(subjectId); setError(''); setNotice('');
+    const { data: result, error: rpcError } = await supabase.rpc('withdraw_lesson_recording_objection', { p_subject_id: subjectId, p_reason: reason });
+    setBusy('');
+    if (rpcError || result?.ok !== true) { setError(consentErrorMessage(rpcError?.message)); return; }
+    setNotice(`Pedido de ${name} desfeito: as aulas voltam a ser registradas pela escola.`);
+    void load();
+  }
+
+  async function switchMode(mode: AuthorizationMode, reason: string): Promise<boolean> {
+    setBusy('mode'); setError(''); setNotice('');
+    const { data: result, error: rpcError } = await supabase.rpc('set_lesson_recording_authorization_mode', { p_mode: mode, p_reason: reason });
+    setBusy('');
+    if (rpcError || result?.ok !== true) { setError(consentErrorMessage(rpcError?.message)); return false; }
+    void load();
+    return true;
+  }
+
   async function copy(studentId: string, link: string) {
     try { await navigator.clipboard.writeText(link); setCopied(studentId); }
     catch { window.prompt('Copie o link:', link); }
@@ -270,6 +407,18 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
 
   const students = data?.students || [];
   const teachers = data?.teachers || [];
+  const authorization = asAuthorizationSummary(data?.authorization);
+  const schoolDefault = authorization.mode === 'SCHOOL_DEFAULT';
+  // Desfazer o pedido volta a ligar sala, importação e IA: só a direção
+  // (withdraw_lesson_recording_objection recusa a coordenação). A coordenação
+  // registra o pedido, que só restringe.
+  const canUndoObjection = authorization.canChange;
+  // No modo da escola conta quem está autorizado (ativo, sem pedido) e quem pediu.
+  const authorizedStudents = students.filter(s => !isObjection(s.decision) && s.effective !== false).length;
+  const objectedStudents = students.filter(s => isObjection(s.decision)).length;
+  const authorizedTeachers = teachers.filter(t => !isObjection(t.decision) && t.effective !== false).length;
+  const objectedTeachers = teachers.filter(t => isObjection(t.decision)).length;
+  const teachersWithoutGoogle = teachers.filter(t => t.google_identity_confirmed === false && !isObjection(t.decision)).length;
   // Conta só o aceite que vale: com código e, se o cadastro exige, do responsável.
   const acceptedStudents = students.filter(s => asDecision(s.decision) === 'ACCEPTED' && s.effective !== false).length;
   // Professor também: aceite de versão anterior do termo não vale.
@@ -286,14 +435,21 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
     <header className="flex items-start justify-between gap-4">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck size={24} /> Autorizações de registro</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          A transcrição da aula só acontece quando o aluno (ou o responsável, se for menor) <b>e</b> o professor autorizaram.
-          Cada um responde uma vez; vale até revogar.
-        </p>
-        <p className="mt-2 text-sm text-slate-500">
-          A família confirma com um código que a página manda pelo WhatsApp do cadastro. Sem data de nascimento
-          confirmada pela escola, quem responde é o responsável — cadastre a data aqui ou na ficha do aluno.
-        </p>
+        {schoolDefault
+          ? <p className="mt-2 text-sm text-slate-500">
+              A escola autoriza o registro das aulas: ninguém precisa de link nem de código. Quando alguém pedir pelo
+              WhatsApp para não ser registrado, registre o pedido aqui — ele vale na hora (sala desligada, nada importado).
+            </p>
+          : <>
+              <p className="mt-2 text-sm text-slate-500">
+                A transcrição da aula só acontece quando o aluno (ou o responsável, se for menor) <b>e</b> o professor autorizaram.
+                Cada um responde uma vez; vale até revogar.
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                A família confirma com um código que a página manda pelo WhatsApp do cadastro. Sem data de nascimento
+                confirmada pela escola, quem responde é o responsável — cadastre a data aqui ou na ficha do aluno.
+              </p>
+            </>}
       </div>
       <button type="button" onClick={() => void load()} disabled={!!busy} aria-label="Atualizar" className="rounded-xl border p-2">
         {busy === 'load' ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
@@ -305,23 +461,46 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
     </p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
+    {data && <AuthorizationModeSection summary={authorization} busy={!!busy} onSwitch={switchMode} />}
+    {schoolDefault && notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-slate-800 dark:text-emerald-200">{notice}</p>}
+
     {data && termIdentity && <section data-tour="recording-term-identity" aria-label="A escola no termo"
       className={`rounded-xl border p-4 text-sm ${termIdentity.missing.length
         ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-slate-900 dark:text-amber-200'
         : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>
       <p>
-        No termo, quem responde pelos dados é a escola: <b>{termIdentity.escola_nome}</b>, {termIdentity.escola_documento}.
+        No {schoolDefault ? 'aviso' : 'termo'}, quem responde pelos dados é a escola: <b>{termIdentity.escola_nome}</b>, {termIdentity.escola_documento}.
         {' '}Contato para assuntos de privacidade: {termIdentity.escola_contato_privacidade}.
       </p>
       {termIdentity.missing.length > 0 && <p className="mt-2 font-semibold">
         Falta {termIdentity.missing.map(gap => SCHOOL_IDENTITY_GAP_LABEL[gap]).join(', ')}: complete em Configurações → Escola e legal para o termo identificar a escola.
       </p>}
-      {(data.term_versions?.STUDENT || data.term_versions?.TEACHER) && <p className="mt-2 text-xs">
-        Termo vigente: aluno {data.term_versions?.STUDENT || '—'} · professor {data.term_versions?.TEACHER || '—'}. Aceite de versão anterior não vale até a pessoa aceitar o texto novo.
-      </p>}
+      {schoolDefault
+        ? <p className="mt-2 text-xs">
+            Aviso vigente: aluno {authorization.noticeVersions.STUDENT || '—'} · professor {authorization.noticeVersions.TEACHER || '—'}. É aviso, não termo de aceite: quem não quiser ser registrado pede.
+          </p>
+        : (data.term_versions?.STUDENT || data.term_versions?.TEACHER) && <p className="mt-2 text-xs">
+            Termo vigente: aluno {data.term_versions?.STUDENT || '—'} · professor {data.term_versions?.TEACHER || '—'}. Aceite de versão anterior não vale até a pessoa aceitar o texto novo.
+          </p>}
     </section>}
 
-    {data && <div className="grid grid-cols-2 gap-3">
+    {data && schoolDefault && <div className="grid grid-cols-2 gap-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="text-2xl font-bold">{authorizedStudents}<span className="text-base text-slate-400"> de {students.length}</span></p>
+        <p className="mt-1 text-xs text-slate-500">alunos com registro autorizado pela escola</p>
+        {objectedStudents > 0 && <p className="mt-1 text-xs font-semibold text-amber-800">{objectedStudents} {objectedStudents === 1 ? 'pediu' : 'pediram'} para não registrar</p>}
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="text-2xl font-bold">{authorizedTeachers}<span className="text-base text-slate-400"> de {teachers.length}</span></p>
+        <p className="mt-1 text-xs text-slate-500">professores com registro autorizado pela escola</p>
+        {objectedTeachers > 0 && <p className="mt-1 text-xs font-semibold text-amber-800">{objectedTeachers} {objectedTeachers === 1 ? 'pediu' : 'pediram'} para não registrar</p>}
+        {teachersWithoutGoogle > 0 && <p className="mt-1 text-xs font-semibold text-amber-800">
+          {teachersWithoutGoogle} sem conta Google confirmada — a sala da escola só nasce depois
+        </p>}
+      </div>
+    </div>}
+
+    {data && !schoolDefault && <div className="grid grid-cols-2 gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="text-2xl font-bold">{acceptedStudents}<span className="text-base text-slate-400"> de {students.length}</span></p>
         <p className="mt-1 text-xs text-slate-500">alunos autorizaram</p>
@@ -332,7 +511,7 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
       </div>
     </div>}
 
-    {sending && <section data-tour="recording-consents-send" className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+    {sending && !schoolDefault && <section data-tour="recording-consents-send" className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Envio do termo pelo WhatsApp da escola</h2>
@@ -462,6 +641,48 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
       <h2 className="text-lg font-semibold">Alunos com aula nos últimos ou próximos 30 dias</h2>
       {data && !students.length && <p className="rounded-xl border p-4 text-sm text-slate-500">Nenhum aluno com aula no período.</p>}
       {students.map(student => {
+        if (schoolDefault) {
+          // Modo da escola: sem link, sem termo, sem "sem resposta". Destaca quem
+          // pediu para não registrar; a direção registra ou desfaz o pedido.
+          const minorReason = asGuardianReason(student.guardian_reason, student.requires_guardian);
+          const objected = isObjection(student.decision);
+          return <article key={student.student_id} className={`rounded-xl border p-4 ${objected
+            ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-slate-900'
+            : 'border-slate-200 dark:border-slate-700'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-semibold">{student.name}</h3>
+                {minorReason && <p className="text-xs text-slate-500">
+                  {minorReason === 'KIDS' ? 'Turma infantil' : minorReason === 'MINOR' ? 'Menor de idade' : 'Idade não cadastrada pela escola'}
+                  {' '}· autorizado pela escola; o pedido para não registrar pode vir do responsável{student.guardian_name ? ` (${student.guardian_name})` : ''}
+                </p>}
+              </div>
+              <SchoolDefaultBadge decision={student.decision} effective={student.effective} />
+            </div>
+            {objected && <p className="mt-2 text-xs text-amber-900 dark:text-amber-200">
+              Pedido {student.signer_relation === 'SCHOOL' ? 'registrado pela escola' : student.signer_relation === 'GUARDIAN' ? 'do responsável' : 'do próprio aluno'}
+              {student.decided_at ? ` em ${formatDecisionDate(student.decided_at)}` : ''}: as aulas não são transcritas.
+            </p>}
+            {minorReason === 'AGE_UNKNOWN' && (ageEditor === student.student_id
+              ? <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                  <StudentBirthDateField studentId={student.student_id} compact authorizationMode="SCHOOL_DEFAULT" onSaved={() => { setAgeEditor(''); void load(); }} />
+                </div>
+              : <button type="button" onClick={() => setAgeEditor(student.student_id)} className="mt-2 text-xs font-semibold text-blue-600">
+                  Cadastrar data de nascimento
+                </button>)}
+            <div className="mt-3 flex flex-wrap gap-3 text-sm">
+              {objected
+                ? (canUndoObjection
+                  ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(student.student_id, student.name)} className="font-semibold text-blue-600 disabled:opacity-40">
+                      Desfazer pedido
+                    </button>
+                  : <span className="text-xs text-slate-500">Só a direção desfaz o pedido.</span>)
+                : <button type="button" data-tour="recording-objection" disabled={!!busy} onClick={() => void registerObjection(student.student_id, student.name)} className="text-amber-700 disabled:opacity-40">
+                    Registrar pedido para não registrar
+                  </button>}
+            </div>
+          </article>;
+        }
         const decision = asDecision(student.decision);
         const reason = asGuardianReason(student.guardian_reason, student.requires_guardian);
         const generated = links[student.student_id];
@@ -547,8 +768,45 @@ export default function LessonRecordingConsentsPanel({ schoolName }: { schoolNam
 
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Professores</h2>
-      <p className="text-sm text-slate-500">Cada professor autoriza pela própria conta, na tela “Salas e continuidade”.</p>
-      {teachers.map(teacher => <article key={teacher.teacher_id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+      {schoolDefault
+        ? <p className="text-sm text-slate-500">
+            Autorizados pela escola. Cada professor confirma a conta Google em “Salas e continuidade” (a sala da escola
+            só nasce depois) e pode pedir, ali mesmo, para não ter as aulas registradas.
+          </p>
+        : <p className="text-sm text-slate-500">Cada professor autoriza pela própria conta, na tela “Salas e continuidade”.</p>}
+      {schoolDefault && teachers.map(teacher => {
+        const objected = isObjection(teacher.decision);
+        return <article key={teacher.teacher_id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-4 ${objected
+          ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-slate-900'
+          : 'border-slate-200 dark:border-slate-700'}`}>
+          <div>
+            <h3 className="font-semibold">{teacher.name}</h3>
+            {objected && <p className="text-xs text-amber-900 dark:text-amber-200">
+              Pediu para não registrar{teacher.decided_at ? ` em ${formatDecisionDate(teacher.decided_at)}` : ''}: as aulas dele não são transcritas.
+            </p>}
+            {!objected && teacher.google_identity_confirmed === false && <p className="text-xs text-amber-800">
+              Sem conta Google confirmada: a sala da escola não nasce para as aulas dele (seguem pelo link de sempre).
+            </p>}
+            {!objected && teacher.google_identity_confirmed === true && <p className="text-xs text-slate-500">Conta Google confirmada.</p>}
+          </div>
+          <div className="flex items-center gap-3">
+            <SchoolDefaultBadge decision={teacher.decision} effective={teacher.effective} />
+            {objected
+              ? (teacher.objection_by_self
+                // O pedido é do próprio professor, pelo app: só ele desfaz.
+                ? <span className="text-xs text-slate-500">Pedido feito por ele no app: só ele desfaz, em “Salas e continuidade”.</span>
+                : canUndoObjection
+                  ? <button type="button" disabled={!!busy} onClick={() => void withdrawObjection(teacher.teacher_id, teacher.name)} className="text-sm font-semibold text-blue-600 disabled:opacity-40">
+                      Desfazer pedido
+                    </button>
+                  : <span className="text-xs text-slate-500">Só a direção desfaz o pedido.</span>)
+              : <button type="button" disabled={!!busy} onClick={() => void registerObjection(teacher.teacher_id, teacher.name)} className="text-sm text-amber-700 disabled:opacity-40">
+                  Registrar pedido para não registrar
+                </button>}
+          </div>
+        </article>;
+      })}
+      {!schoolDefault && teachers.map(teacher => <article key={teacher.teacher_id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
         <div>
           <h3 className="font-semibold">{teacher.name}</h3>
           {teacher.decided_at && <p className="text-xs text-slate-500">{formatDecisionDate(teacher.decided_at)}</p>}

@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
+  asAuthorizationMode,
   consentErrorMessage,
   formatDecisionDate,
   GUARDIAN_PHONE_UNCONFIRMED_TEXT,
+  type AuthorizationMode,
   type GuardianReason,
 } from '../lib/lessonRecordingConsent';
 
@@ -12,6 +14,9 @@ import {
 // trilha. É a única prova de maioridade que o termo de registro das aulas
 // aceita: sem ela, quem responde pelo link é o responsável (migration
 // 20260926200000). Nunca é digitada no link público.
+// No registro autorizado pela escola (migration 20260929100000) a idade não
+// decide quem AUTORIZA (a escola autoriza, menores inclusive): decide só quem
+// pode pedir para não registrar — e não há link, termo nem código.
 
 type BirthDateRecord = {
   ok: boolean;
@@ -24,6 +29,8 @@ type BirthDateRecord = {
   /** Telefone do responsável que recebe o código (só o confirmado pela escola). */
   guardian_code_phone_masked?: string | null;
   guardian_phone_unconfirmed?: boolean;
+  /** Como a escola autoriza o registro das aulas (servidor antigo = aceite individual). */
+  authorization_mode?: string | null;
 };
 
 const REASON_TEXT: Record<GuardianReason | 'ADULT', string> = {
@@ -33,6 +40,14 @@ const REASON_TEXT: Record<GuardianReason | 'ADULT', string> = {
   AGE_UNKNOWN: 'Sem data confirmada pela escola: o termo de registro das aulas é respondido pelo responsável.',
 };
 
+// Registro autorizado pela escola: ninguém responde termo.
+const SCHOOL_DEFAULT_REASON_TEXT: Record<GuardianReason | 'ADULT', string> = {
+  ADULT: 'Maior de idade pela data da escola: o registro das aulas é autorizado pela escola, e o próprio aluno pode pedir para não ser registrado.',
+  MINOR: 'Menor de idade: o registro das aulas é autorizado pela escola, e o pedido para não registrar pode vir do responsável.',
+  KIDS: 'Turma infantil: o registro das aulas é autorizado pela escola, e o pedido para não registrar pode vir do responsável.',
+  AGE_UNKNOWN: 'Sem data confirmada pela escola: o registro das aulas é autorizado pela escola, e o pedido para não registrar pode vir do responsável.',
+};
+
 function todayIso(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
@@ -40,10 +55,13 @@ function todayIso(): string {
 export default function StudentBirthDateField({
   studentId,
   compact = false,
+  authorizationMode,
   onSaved,
 }: {
   studentId: string;
   compact?: boolean;
+  /** Modo já conhecido pela tela (painel); sem ele vale o que o servidor diz. */
+  authorizationMode?: AuthorizationMode;
   onSaved?: (reason: GuardianReason | null) => void;
 }) {
   const [record, setRecord] = useState<BirthDateRecord | null>(null);
@@ -53,6 +71,7 @@ export default function StudentBirthDateField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
+  const schoolDefault = (authorizationMode ?? asAuthorizationMode(record?.authorization_mode)) === 'SCHOOL_DEFAULT';
 
   const load = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('get_student_birth_date_record', { p_student_id: studentId });
@@ -72,7 +91,9 @@ export default function StudentBirthDateField({
     if (value && value > todayIso()) { setError('A data de nascimento não pode estar no futuro.'); return; }
     if (!value) {
       if (!record?.school_birth_date && !record?.profile_birth_date) { setError('Informe a data de nascimento.'); return; }
-      if (!window.confirm('Apagar a data de nascimento? Sem ela, quem responde o termo de registro das aulas é o responsável.')) return;
+      if (!window.confirm(schoolDefault
+        ? 'Apagar a data de nascimento? Sem ela, o aluno é tratado como menor (o pedido para não registrar pode vir do responsável).'
+        : 'Apagar a data de nascimento? Sem ela, quem responde o termo de registro das aulas é o responsável.')) return;
     }
     setBusy(true);
     const { data, error: rpcError } = await supabase.rpc('set_student_birth_date', {
@@ -95,7 +116,7 @@ export default function StudentBirthDateField({
 
   const confirmed = !!record.school_birth_date;
   const pendingProfileDate = !confirmed && !!record.profile_birth_date;
-  const reasonText = REASON_TEXT[record.guardian_reason || 'ADULT'];
+  const reasonText = (schoolDefault ? SCHOOL_DEFAULT_REASON_TEXT : REASON_TEXT)[record.guardian_reason || 'ADULT'];
 
   return <div data-tour="student-birth-date" className={compact ? 'space-y-2' : 'space-y-2 pt-4 border-t border-brand-border'}>
     <label className="block">
@@ -134,7 +155,8 @@ export default function StudentBirthDateField({
           : 'Sem data de nascimento cadastrada. '}
       {reasonText}
     </p>
-    {record.guardian_reason && 'guardian_code_phone_masked' in record && <p className="text-xs text-slate-500">
+    {/* Código do termo só existe no aceite individual. */}
+    {!schoolDefault && record.guardian_reason && 'guardian_code_phone_masked' in record && <p className="text-xs text-slate-500">
       {record.guardian_code_phone_masked
         ? `O código do termo vai para o WhatsApp do responsável ${record.guardian_code_phone_masked}.`
         : record.guardian_phone_unconfirmed

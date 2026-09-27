@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asAuthorizationMode,
+  asAuthorizationSummary,
+  AUTHORIZATION_SWITCH_EFFECT,
+  formatDecidedOn,
+  isObjection,
+  objectionRequestMessage,
   asDecision,
   asGuardianReason,
   asLinkBlockedReason,
@@ -309,5 +315,67 @@ describe('termo v3: a escola no texto e o aceite por versão', () => {
     expect(codeErrorMessage({ error: 'termo_mudou' })).toMatch(/O termo mudou enquanto você lia/);
     expect(termChangedNotice('v3')).toMatch(/\(versão v3\).*o código que você recebeu continua valendo/);
     expect(termChangedNotice(null)).not.toMatch(/versão v/);
+  });
+});
+
+// Registro autorizado pela escola (migration 20260929100000).
+describe('modo de autorização por escola', () => {
+  it('lê o modo com defesa: ausente ou desconhecido é o aceite individual', () => {
+    expect(asAuthorizationMode('SCHOOL_DEFAULT')).toBe('SCHOOL_DEFAULT');
+    expect(asAuthorizationMode('INDIVIDUAL_CONSENT')).toBe('INDIVIDUAL_CONSENT');
+    expect(asAuthorizationMode(undefined)).toBe('INDIVIDUAL_CONSENT');
+    expect(asAuthorizationMode('qualquer')).toBe('INDIVIDUAL_CONSENT');
+    expect(isObjection('REFUSED')).toBe(true);
+    expect(isObjection('REVOKED')).toBe(true);
+    expect(isObjection('OBJECTION_WITHDRAWN')).toBe(false);
+    expect(isObjection('ACCEPTED')).toBe(false);
+    // Desfazer o pedido não é aceite: no painel individual, "sem resposta".
+    expect(asDecision('OBJECTION_WITHDRAWN')).toBe('NONE');
+  });
+
+  it('resume a trilha do painel', () => {
+    const summary = asAuthorizationSummary({
+      mode: 'SCHOOL_DEFAULT',
+      current: { mode: 'SCHOOL_DEFAULT', since: '2026-09-29T12:00:00Z', decided_on: '2026-09-27', decided_by_name: ' Diretor ', reason: 'Motivo', source: 'MIGRATION' },
+      history: [{ mode: 'SCHOOL_DEFAULT', decided_on: '2026-09-27' }, 'lixo'],
+      notice_versions: { STUDENT: 'v4', TEACHER: 'v4' },
+      can_change: true,
+    });
+    expect(summary.mode).toBe('SCHOOL_DEFAULT');
+    expect(summary.current?.decidedByName).toBe('Diretor');
+    expect(summary.current?.source).toBe('MIGRATION');
+    expect(summary.history).toHaveLength(1);
+    expect(summary.noticeVersions.STUDENT).toBe('v4');
+    expect(summary.canChange).toBe(true);
+    expect(asAuthorizationSummary(null)).toMatchObject({ mode: 'INDIVIDUAL_CONSENT', current: null, canChange: false });
+    expect(formatDecidedOn('2026-09-27')).toBe('27/09/2026');
+    expect(formatDecidedOn(null)).toBe('');
+  });
+
+  it('textos: o que muda ao trocar, o pedido pronto e os erros do servidor', () => {
+    expect(AUTHORIZATION_SWITCH_EFFECT.SCHOOL_DEFAULT.join(' ')).toMatch(/inclusive os menores de idade/);
+    expect(AUTHORIZATION_SWITCH_EFFECT.SCHOOL_DEFAULT.join(' ')).toMatch(/conta Google confirmada/);
+    expect(AUTHORIZATION_SWITCH_EFFECT.INDIVIDUAL_CONSENT.join(' ')).toMatch(/aceitar o termo vigente/);
+    expect(objectionRequestMessage('Escola Fixture')).toBe(
+      'Olá! Sou aluno(a) da Escola Fixture e peço que as minhas aulas não sejam registradas (transcritas).');
+    expect(consentErrorMessage('registro_autorizado_pela_escola')).toMatch(/não há termo para aceitar nem link/);
+    expect(consentErrorMessage('so_no_registro_autorizado_pela_escola')).toMatch(/Desfazer o pedido só existe/);
+    expect(consentErrorMessage('nao_ha_pedido_para_desfazer')).toMatch(/Não há pedido/);
+    expect(consentErrorMessage('somente_a_direcao')).toMatch(/Só a direção/);
+    expect(notSentReasonLabel('registro_autorizado_pela_escola')).toBe('a escola passou a autorizar o registro das aulas');
+    expect(consentErrorMessage('ERROR: pedido_do_proprio_professor')).toMatch(/só ele desfaz/);
+  });
+
+  it('no modo da escola não existe "link novo": link bloqueado, vencido ou telefone fora do cadastro mandam falar com a escola', () => {
+    // A escola não gera link no modo dela (create_lesson_recording_consent_link recusa).
+    for (const code of ['link_bloqueado', 'link_expirado', 'telefone_nao_cadastrado']) {
+      expect(consentErrorMessage(code), code).toMatch(/link novo|Peça um novo/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).toMatch(/fale com a escola pelo WhatsApp/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).not.toMatch(/link novo|Peça um novo/);
+      expect(codeErrorMessage({ error: code, mode: 'SCHOOL_DEFAULT' }), code).toMatch(/fale com a escola pelo WhatsApp/);
+    }
+    // O resto é igual nos dois modos.
+    expect(consentErrorMessage('codigo_expirado', 'SCHOOL_DEFAULT')).toBe(consentErrorMessage('codigo_expirado'));
+    expect(codeErrorMessage({ error: 'limite_de_envios', retryAfterSeconds: 120, mode: 'SCHOOL_DEFAULT' })).toMatch(/Tente em 2 minutos/);
   });
 });

@@ -1481,6 +1481,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260928110000_sala_acompanha_a_troca_de_professor.sql"
   "supabase/migrations/20260928120000_extrato_de_pontualidade_do_professor.sql"
   "supabase/migrations/20260928130000_sugestoes_do_cartao_pela_ia.sql"
+  "supabase/migrations/20260929100000_registro_autorizado_pela_escola.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
@@ -1503,6 +1504,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/sugestoes_do_cartao_pela_ia.sql"
   "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
   "supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql"
+  "supabase/tests/registro_autorizado_pela_escola.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"

@@ -104,14 +104,14 @@ export function buildCodeMessage(input: {
   code: string;
 }): string {
   const school = input.schoolName?.trim() || "Escola";
-  const about = input.relation === "SELF"
-    ? "do registro das suas aulas"
-    : `do registro das aulas de ${
-      input.studentFirstName?.trim() || "seu filho(a)"
-    }`;
+  const lessons = input.relation === "SELF"
+    ? "das suas aulas"
+    : `das aulas de ${input.studentFirstName?.trim() || "seu filho(a)"}`;
+  // Texto neutro (20260929100000): na escola que autoriza o registro por
+  // padrão, o código confirma o PEDIDO PARA NÃO REGISTRAR, não uma autorização.
   return [
-    `*${school}*: seu código para confirmar a autorização ${about} é *${input.code}*.`,
-    "Ele vale por 10 minutos. Digite o código na página do termo.",
+    `*${school}*: seu código para confirmar a sua resposta sobre o registro ${lessons} é *${input.code}*.`,
+    "Ele vale por 10 minutos. Digite o código na página do registro das aulas.",
     "Não repasse este código para ninguém — a escola nunca pede o código por mensagem ou ligação.",
   ].join("\n\n");
 }

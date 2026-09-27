@@ -44,6 +44,10 @@ const ITEMS: Item[] = [
   // memória do aluno só recebe o aprovado, e depois da retenção das fontes o
   // rascunho não pode mais ser aprovado. A fila fica em "Salas e continuidade".
   { key: 'resumos_para_revisar', label: 'Resumos de aula parados há 3 dias ou mais', tab: 'lesson-sessions', icon: FileText, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
+  // Professor com aula nos próximos 14 dias sem a conta Google confirmada por
+  // login (20260929100000): a sala da escola só nasce depois disso — mesmo com
+  // o registro autorizado pela escola, a aula dele segue pelo link de sempre.
+  { key: 'professores_sem_conta_google', label: 'Professores sem conta Google confirmada (a sala da escola só nasce depois)', tab: 'recording-consents', icon: ShieldAlert, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
 ];
 
 type LoadState = 'loading' | 'success' | 'error';

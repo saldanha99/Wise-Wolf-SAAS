@@ -6,7 +6,10 @@ import { draftApprovableUntil, generationErrorText, reviewDeadline } from '../li
 
 // Troca de professor da aula (20260928110000): o servidor diz quem passou a aula
 // para quem e por quê, e por que a documentação está barrada.
-type TeacherHandover = { from_teacher_name?: string; to_teacher_name?: string; cause?: string; at?: string; documentation_ready?: boolean; after_lesson?: boolean };
+// authorization_mode e to_teacher_google_confirmed (20260929100000): no registro
+// autorizado pela escola não há aceite a dar — o remédio é a conta Google de
+// quem recebeu a aula (ou desfazer o pedido dele para não registrar).
+type TeacherHandover = { from_teacher_name?: string; to_teacher_name?: string; cause?: string; at?: string; documentation_ready?: boolean; after_lesson?: boolean; authorization_mode?: string | null; to_teacher_google_confirmed?: boolean };
 const HANDOVER_CAUSE: Record<string, string> = {
   COVERAGE: 'cobertura confirmada',
   COVERAGE_ENDED: 'cobertura desfeita, a aula voltou ao titular',
@@ -16,15 +19,22 @@ const HANDOVER_CAUSE: Record<string, string> = {
 };
 function blockedText(reason: unknown, handover: TeacherHandover | null | undefined): string {
   if (reason === 'HANDOVER_UNCONSENTED') {
-    return `Esta aula passou para ${handover?.to_teacher_name || 'outro professor'}, que ainda não confirmou a conta Google ou não autorizou a versão vigente do termo de registro: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre; se o aceite chegar antes da aula, a sala volta a valer.`;
+    const who = handover?.to_teacher_name || 'outro professor';
+    const effect = 'a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre';
+    if (handover?.authorization_mode === 'SCHOOL_DEFAULT') {
+      return handover.to_teacher_google_confirmed === false
+        ? `Esta aula passou para ${who}, que ainda não confirmou a conta Google em “Salas e continuidade”: ${effect}; se ${who} confirmar a conta antes da aula, a sala volta a valer.`
+        : `Esta aula passou para ${who}, que pediu para não ter as aulas registradas (ou não está ativo na escola): ${effect}.`;
+    }
+    return `Esta aula passou para ${who}, que ainda não confirmou a conta Google ou não autorizou a versão vigente do termo de registro: ${effect}; se o aceite chegar antes da aula, a sala volta a valer.`;
   }
   if (reason === 'TAUGHT_BY_OTHER') {
     return 'Esta aula é dada por outro professor e a sessão ainda não passou para ele (a cobertura está sendo processada, ou o agendamento foi transferido e a escola ainda não replanejou a sessão futura): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre.';
   }
   if (reason === 'TERM_LAPSED' || reason === 'MANUAL_MARK_OUTDATED') {
-    return 'O aceite que valia para esta aula deixou de valer (o termo mudou de versão, ou a escola passou a exigir o responsável do aluno): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
+    return 'A autorização que valia para esta aula deixou de valer (o termo mudou de versão, a escola passou a exigir o responsável do aluno ou voltou ao aceite individual, ou o aluno ou o professor deixou de estar ativo): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
   }
-  return 'O aluno (ou o responsável) ou o professor recusou ou revogou o registro antes do fim desta aula: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
+  return 'O aluno (ou o responsável) ou o professor pediu para não registrar, recusou ou revogou o registro antes do fim desta aula: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
 }
 
 export default function LessonPedagogicalSummary({sessionId,tenantId}:{sessionId:string;tenantId?:string}) {

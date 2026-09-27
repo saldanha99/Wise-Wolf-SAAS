@@ -108,4 +108,18 @@ describe('<DirectorPendingCenter />', () => {
     fireEvent.click(stale);
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('lesson-sessions'));
   });
+
+  it('professor sem conta Google confirmada leva às autorizações de registro', async () => {
+    // 20260929100000: mesmo com o registro autorizado pela escola, a sala só
+    // nasce depois que o professor confirma a conta Google por login.
+    rpc.mockResolvedValue({ data: { professores_sem_conta_google: 2 }, error: null });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    const missing = await screen.findByRole('button', { name: /Professores sem conta Google confirmada/i });
+    expect(missing).toHaveTextContent('2');
+    fireEvent.click(missing);
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('recording-consents'));
+  });
 });
