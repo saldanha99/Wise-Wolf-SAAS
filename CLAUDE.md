@@ -507,14 +507,29 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 
 - **Cláusula:** aluno = `Cláusula 8 — Do Registro das Aulas` (o Foro passa a ser a 9); professor =
   `CLÁUSULA 11ª – REGISTRO DAS AULAS`, no fim, para não renumerar a 3ª/7.3/9ª citadas por número. Resume o
-  termo v3 (sem vídeo, finalidades, Google/fornecedor/OpenRouter sem treino, 90 dias, direitos pelo WhatsApp,
+  termo v3 (sem vídeo, finalidades, Google/fornecedor/OpenRouter sem treino, prazos, direitos pelo WhatsApp,
   responsável assina pelo menor; no do professor, extrato de pontualidade sem ranking que não mexe no
   pagamento) e remete ao aviso completo no app. Ao lado da assinatura, `LessonRecordingClauseNotice`.
+  Prazos **como o sistema faz** (e o termo v3 diz): cópias no sistema contam **de quando chegam** (o
+  `expires_at` nasce na importação); trechos copiados e originais contam da aula. O caso da Central de
+  Qualidade guarda os horários da aula divergente (`lesson_quality_case_events.details`) pelo tempo do caso —
+  a cláusula diz isso e ressalva na exclusão a pedido. Fornecedores são **operadores**, não "terceiros" da
+  Cláusula 7 (aluno) / 8ª (professor), e a assinatura vale como consentimento expresso. O cartão aparece
+  inteiro (temas a evitar e observações do professor).
+- **A cláusula é da escola que decidiu, não da plataforma.** `tenant_contract_terms` diz qual versão cada
+  escola oferece aos contratos NOVOS (sem linha = 1); só `school-wise-wolf` nasce com a 2 (one-shot
+  `contrato_registro_das_aulas_wise_wolf_20260927`). Mudar a de uma escola é SQL da plataforma e só vale para
+  contrato novo. A tela que assina **mostra e grava a mesma versão**: matrícula e convite do professor
+  recebem `contractTermsVersion` da edge `tenant-legal-assets` (RPC `contract_terms_offered_version`, só
+  service_role); o professor que regulariza pelo app lê `offered_version` de `get_contract_terms`. O servidor
+  recusa versão diferente da oferecida (`versao_desatualizada` na matrícula, `versao_invalida` no app, 409 na
+  `register-teacher`) — sempre antes de cobrar ou criar conta.
 - **O texto do contrato é montado na TELA** (`ContractDocument`/`TeacherContractDocument`), então ele é
-  **versionado** (`lib/contractTerms.ts`): não assinado → versão atual (2); assinado com versão gravada → a
-  gravada; **assinado sem versão gravada → 1, o texto de antes**. Matrícula migrada (`contract_accepted`
-  sem `accepted_at`) conta como assinada. O HTML do contrato antigo foi conferido byte a byte com o
-  componente anterior, e `ContractDocument.test.ts` guarda o hash do texto das cláusulas da versão 1 —
+  **versionado** (`lib/contractTerms.ts`): não assinado → a versão que a escola oferece (sem saber, a 1 —
+  nunca cláusula não decidida); assinado com versão gravada → a gravada; **assinado sem versão gravada → 1, o
+  texto de antes**. Matrícula migrada (`contract_accepted` sem `accepted_at`) conta como assinada. O HTML do
+  contrato antigo foi conferido byte a byte com o componente anterior, e `ContractDocument.test.ts` guarda o
+  hash do texto das cláusulas da versão 1 —
   ⚠️ **se esse teste falhar, o texto de um contrato já assinado mudou: crie versão nova, não edite a antiga.**
 - **A versão é gravada no aceite** (`contract_terms_acceptances`, imutável; `contract_terms_versions` diz
   quais versões trazem a cláusula): aluno por `record_enrollment_contract_terms(oferta, versão)`, chamada
@@ -522,16 +537,30 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   nada cobrado; a cadeia de `begin_enrollment_offer` não foi tocada); professor por convite pela
   `register-teacher` (também em `commercial_snapshot.contractTermsVersion`; página sem a versão → 409); professor
   que regulariza pelo app por `accept_teacher_contract(assinatura, versão)` — sem versão (app antigo) = 1.
-  Leitura: `get_contract_terms_version` (a pessoa, direção/coordenação da escola) e coluna
-  `contract_terms_version` em `vw_student_contracts` (tela Contratos mostra "v1 · texto anterior" /
-  "v2 · com registro das aulas"). Base para a autorização futura:
-  `private.contract_lesson_recording_accepted_at(usuário, tipo, escola)`.
+  O aceite guarda **`signed_as_guardian`** (link de dependente, lido de `offers.payload.isDependent` no
+  servidor) e **a data desta assinatura**: na rematrícula `begin_enrollment_offer` mantém a assinatura antiga
+  do perfil (coalesce), então o aceite usa `profiles.accepted_at` só quando ela é desta oferta
+  (`>= processing_started_at`) e `now()` senão.
+  Leitura: `get_contract_terms(pessoa, tipo)` → `{recorded_version, accepted_at, offered_version}` (a pessoa,
+  direção/coordenação da escola) e colunas `contract_terms_version` + `contract_terms_accepted_at` em
+  `vw_student_contracts`. `signedContractEvidence` (lib) usa a data do aceite no selo/"Data Matrícula" quando
+  ela difere da do perfil, sem repetir o IP da assinatura antiga. Base para a autorização futura:
+  `private.contract_lesson_recording_accepted_at(usuário, tipo, escola)` — ⚠️ para aluno de quem a escola exige
+  responsável (`lesson_recording_guardian_reason`: KIDS, MINOR ou **idade não comprovada**, o caso de todos em
+  26/09) só conta contrato com `signed_as_guardian`; o aceite do próprio aluno vale depois que a escola atesta a
+  maioridade (`set_student_birth_date`).
 - ⚠️ `accept_teacher_contract` **nunca funcionou** antes daqui: `search_path = public` e o `digest` mora em
   `extensions` → todo aceite de professor pelo app morria. Refeita com `search_path = ''` e
   `extensions.digest`; a assinatura de 1 argumento saiu (duas no ar = ambiguidade no PostgREST).
 - ⚠️ Versão nova de texto = número novo em **três** lugares: `lib/contractTerms.ts`, a tabela
   `contract_terms_versions` (migration nova) e `register-teacher/contract-terms.ts`.
   `lib/contractTerms.test.ts` confere os três.
+- ⚠️ **Registro no `release.sh`** (o arquivo não foi editado nesta frente): `MIGRATION_RELATIVES` ←
+  `supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql`; testes SQL ←
+  `supabase/tests/versao_do_contrato_no_aceite.sql`; `deno test --allow-read --frozen` ←
+  `supabase/functions/register-teacher/contract-terms.test.ts`; `deno fmt --check` ←
+  `register-teacher/contract-terms.ts` e `.test.ts`. Sem a migration no ar, a matrícula para
+  (`record_enrollment_contract_terms` inexistente), "Meu contrato" dá erro e nenhum convite de professor fecha.
 - Fora (de propósito): **renovação** e **troca de plano** ("as demais cláusulas continuam válidas") não
   carregam a cláusula — aluno antigo só passa a tê-la assinando contrato novo. Matrícula feita à mão pela
   escola, sem a página de matrícula, não grava versão (lê como texto de antes).
