@@ -139,6 +139,119 @@ export const SETTLEMENT_RULES: Array<{ method: string; when: string }> = [
     { method: 'Cartão de crédito', when: 'quando o valor cai na conta da escola — até cerca de 30 dias depois da aprovação' },
 ];
 
+/** Nota que acompanha os prazos de liberação. */
+export const SETTLEMENT_CARD_NOTE = 'No cartão, o painel mostra a data prevista quando o pagamento é aprovado.';
+
+export type AffiliateGuideStepId = 'CUPOM' | 'ISENCAO' | 'RESERVA' | 'LIBERACAO' | 'SAQUE';
+
+export interface AffiliateGuideStep {
+    id: AffiliateGuideStepId;
+    title: string;
+    text: string;
+}
+
+/**
+ * Os passos do programa, na ordem em que a indicação anda. Fonte única do
+ * texto: o guia do painel ("Como funciona") e a página do convite leem daqui.
+ */
+export function affiliateGuideSteps(commissionCents?: number | null, couponCode?: string | null): AffiliateGuideStep[] {
+    const commission = formatCents(commissionCents ?? DEFAULT_AFFILIATE_COMMISSION_CENTS);
+    const code = couponCode?.trim() || 'SEU CUPOM';
+    return [
+        {
+            id: 'CUPOM',
+            title: 'Seu cupom é a sua indicação',
+            text: `Você recebe um cupom exclusivo — o seu é ${code}. Compartilhe com quem quiser indicar: WhatsApp, Instagram, conversa.`,
+        },
+        {
+            id: 'ISENCAO',
+            title: 'Quem você indica não paga a taxa de matrícula',
+            text: 'Na conversa com a escola, a pessoa informa o seu cupom — ou diz que foi você quem indicou. Ela também pode digitar o cupom na página de matrícula. A mensalidade não muda.',
+        },
+        {
+            id: 'RESERVA',
+            title: 'A matrícula reserva a sua comissão',
+            text: `Quando a pessoa começa a matrícula com o seu cupom, a comissão de ${commission} aparece no seu painel como "Aguardando pagamento".`,
+        },
+        {
+            id: 'LIBERACAO',
+            title: 'A comissão é liberada na liquidação da 1ª mensalidade',
+            text: 'Liquidada é quando o dinheiro cai na conta da escola. O prazo depende de como a pessoa pagou (veja abaixo).',
+        },
+        {
+            id: 'SAQUE',
+            title: 'Você pede o saque',
+            text: 'Com a comissão liberada, cadastre sua chave PIX no painel e toque em "Solicitar saque". A escola aprova e paga no seu PIX.',
+        },
+    ];
+}
+
+/** Regras que a pessoa aceita no cadastro. */
+export function affiliateProgramRules(commissionCents?: number | null): string[] {
+    const commission = formatCents(commissionCents ?? DEFAULT_AFFILIATE_COMMISSION_CENTS);
+    return [
+        `Comissão fixa de ${commission} por matrícula, paga uma única vez: só a 1ª mensalidade conta (não é recorrente).`,
+        'Vale para planos (mensal, semestral e anual). Aula avulsa não gera comissão.',
+        'Cada matrícula tem um único afiliado: vale o primeiro cupom informado.',
+        'Se o pagamento for estornado antes do repasse, a comissão volta para "Aguardando pagamento" e o saque pendente é cancelado.',
+        'Todo saque passa pela aprovação da escola antes do PIX.',
+    ];
+}
+
+export type AffiliateJourneyStageId = 'INDICAR' | 'MATRICULA' | 'LIQUIDACAO' | 'SAQUE';
+
+export interface AffiliateJourneyStage {
+    id: AffiliateJourneyStageId;
+    title: string;
+    /** Uma linha: o que acontece nesta etapa. */
+    summary: string;
+    /** O texto completo dos passos do guia que esta etapa cobre. */
+    details: AffiliateGuideStep[];
+    /** A etapa da liquidação mostra os prazos por forma de pagamento. */
+    showsSettlement: boolean;
+}
+
+/**
+ * A linha do tempo da página do convite: indicar → matrícula → liquidação →
+ * saque. Agrupa os cinco passos do guia sem reescrever nenhum — a linha de
+ * resumo é só o atalho; o detalhe é o texto de sempre.
+ */
+export function affiliateJourney(commissionCents?: number | null, couponCode?: string | null): AffiliateJourneyStage[] {
+    const commission = formatCents(commissionCents ?? DEFAULT_AFFILIATE_COMMISSION_CENTS);
+    const steps = affiliateGuideSteps(commissionCents, couponCode);
+    const pick = (...ids: AffiliateGuideStepId[]) => steps.filter(step => ids.includes(step.id));
+    return [
+        {
+            id: 'INDICAR',
+            title: 'Você indica com o seu cupom',
+            summary: 'Quem se matricula com ele não paga a taxa de matrícula.',
+            details: pick('CUPOM', 'ISENCAO'),
+            showsSettlement: false,
+        },
+        {
+            id: 'MATRICULA',
+            title: 'A matrícula reserva a sua comissão',
+            summary: `${commission} aparece no seu painel como "Aguardando pagamento".`,
+            details: pick('RESERVA'),
+            showsSettlement: false,
+        },
+        {
+            id: 'LIQUIDACAO',
+            title: 'A 1ª mensalidade é liquidada',
+            summary: 'O dinheiro caiu na conta da escola: a comissão é liberada.',
+            details: pick('LIBERACAO'),
+            showsSettlement: true,
+        },
+        {
+            id: 'SAQUE',
+            title: 'Você pede o saque',
+            summary: 'A escola aprova e paga no seu PIX.',
+            details: pick('SAQUE'),
+            showsSettlement: false,
+        },
+    ];
+}
+
 /** Uma linha explicando onde a indicação está e o que falta. */
 export function referralStageDetail(referral: AffiliateReferral): string {
     const payment = referral.first_payment;

@@ -31,7 +31,6 @@ const AffiliateGuidePage: React.FC = () => {
             <AffiliateProgramGuide
                 commissionCents={affiliate?.commission_cents}
                 couponCode={affiliate?.affiliate_code}
-                schoolName={affiliate?.school_name}
             />
         </div>
     );

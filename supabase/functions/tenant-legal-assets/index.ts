@@ -122,6 +122,52 @@ export function offerKindMatches(
     : offerType === "vendor" && persistedKind === "VENDOR_INVITE";
 }
 
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const HTTPS_URL = /^https:\/\/[^\s"<>]+$/;
+
+/**
+ * Marca pública da escola (cores e logo) para a página do convite de
+ * afiliado — as mesmas regras da página de renovação: valor fora do formato
+ * vira null e a tela cai no visual padrão. Nada de school_info aqui.
+ */
+export function publicSchoolBrand(branding: unknown): {
+  brandPrimary: string | null;
+  brandSecondary: string | null;
+  schoolLogoUrl: string | null;
+} {
+  const record = isRecord(branding) ? branding : {};
+  const hex = (value: unknown) =>
+    typeof value === "string" && HEX_COLOR.test(value) ? value : null;
+  return {
+    brandPrimary: hex(record.primaryColor),
+    brandSecondary: hex(record.secondaryColor),
+    schoolLogoUrl:
+      typeof record.logoUrl === "string" && HTTPS_URL.test(record.logoUrl)
+        ? record.logoUrl
+        : null,
+  };
+}
+
+/** Falha ao ler a marca nunca derruba o convite: a página usa o padrão. */
+async function loadPublicSchoolBrand(
+  admin: ReturnType<typeof serviceClient>,
+  tenantId: unknown,
+): Promise<ReturnType<typeof publicSchoolBrand>> {
+  if (typeof tenantId !== "string" || !tenantId) {
+    return publicSchoolBrand(null);
+  }
+  try {
+    const { data, error } = await admin
+      .from("tenants")
+      .select("branding")
+      .eq("id", tenantId)
+      .maybeSingle();
+    return publicSchoolBrand(error ? null : data?.branding);
+  } catch {
+    return publicSchoolBrand(null);
+  }
+}
+
 async function activeTenantId(context: RequestAuthContext): Promise<string> {
   if (context.profile?.role !== "SUPER_ADMIN" && context.profile?.tenant_id) {
     return context.profile.tenant_id;
@@ -207,6 +253,8 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       schoolName: typeof data.schoolName === "string" ? data.schoolName : null,
       tenantId: data.tenantId,
       _offerId: data._offerId,
+      // Cor e logo da escola: a página do convite leva a marca de quem convida.
+      ...(await loadPublicSchoolBrand(admin, data.tenantId)),
     });
   }
 
