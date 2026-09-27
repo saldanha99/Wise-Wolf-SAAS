@@ -286,7 +286,9 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `get_my_lesson_records` (×3), roster, snapshot, os três do lote, `create_…_link`, `list_…_requests`,
   `director_pending_counts` — não recrie a partir de texto antigo. ⚠️ **Nada comunica o aviso às famílias atuais**
   (J13 no RIPD): não dispare lote sem o jurídico. O aviso v4 e a cláusula dos contratos novos
-  (`20260927150000`) dizem a mesma coisa — ver "Contrato com o registro das aulas".
+  (`20260927150000`) dizem a mesma coisa — ver "Contrato com o registro das aulas". ⚠️ **Pré-requisito do
+  deploy:** conta central reconectada com o escopo `drive` (a lixeira dos originais que o aviso promete; em
+  27/09 só `drive.meet.readonly`) — no modo da escola a primeira aula transcrita é a do dia do deploy.
 - **Termo de registro** (migration `20260926120000`): aluno/responsável aceita uma vez por link
   (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
   próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
@@ -630,6 +632,16 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 > recusa" da migration `20260929100000`, mesma release). Migration `20260927150000`, teste
 > `supabase/tests/versao_do_contrato_no_aceite.sql`. **Não mexe na regra de autorização** — ver
 > "Cláusula × modos de autorização" abaixo.
+>
+> ⚠️ **Antes de publicar esta release: reconectar a conta central do Google com o escopo `drive`**
+> (com `GOOGLE_MEET_DELETE_ORIGINALS_ENABLED=true`, que já está na VPS). Em 27/09 ela tinha só
+> `drive.meet.readonly`. A cláusula (a CONTRATADA elimina os originais em até 90 dias) e o aviso v4 (os
+> originais "são apagados 90 dias depois da aula") prometem a lixeira; sem o escopo, a fila
+> `PURGE_ORIGINALS` e `erase_student_lesson_records` só **adiam** (`google_drive_scope_missing`, tentam de
+> novo sem desistir). Com o `SCHOOL_DEFAULT` a Wise Wolf passa a ter aula transcrita **no dia do deploy** —
+> o primeiro original vence 90 dias depois dele, e um pedido de exclusão feito antes da reconexão só apaga os
+> originais quando ela acontecer. Não dá por código: é login da direção na tela do Google Meet
+> ("Reconectar conta central"; a tela já avisa com o alerta âmbar da lixeira).
 
 - **Cláusula:** aluno = `Cláusula 8 — Do Registro das Aulas` (o Foro passa a ser a 9); professor =
   `CLÁUSULA 11ª – REGISTRO DAS AULAS`, no fim, para não renumerar a 3ª/7.3/9ª citadas por número. Resume o
@@ -644,7 +656,10 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   ciente — **não é termo de consentimento** (a v2 dizia "consente expressamente"; corrigida na integração de
   27/09, antes de qualquer assinatura: `contract_terms_acceptances` nem existia em produção). O cartão
   aparece inteiro (temas a evitar e observações do professor) e as sugestões da IA para ele entram nas
-  finalidades.
+  finalidades. A confirmação da aula pelos horários de entrada e saída (§1º, f) **não substitui o link de
+  confirmação da Cláusula 4, alínea (e)** (a forma oficial, inclusive para a cobrança) nem muda apuração ou
+  cobrança: divergência só abre verificação pela coordenação — o que o 11.3 já dizia ao professor sobre o
+  pagamento (revisão de 27/09; aviso v4 do aluno diz o mesmo e a migration recusa aviso sem isso).
 - **Cláusula = aviso v4.** A cláusula v2 e o aviso v4 (`private.lesson_recording_terms`, `kind = 'NOTICE'`)
   dizem a mesma coisa: o que, para quê, quem vê, quem processa, prazos (inclusive o caso de presença),
   direitos (pedir para não ser registrado pelo WhatsApp da escola — professor também pelo app —, sem
@@ -669,7 +684,12 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - **O texto do contrato é montado na TELA** (`ContractDocument`/`TeacherContractDocument`), então ele é
   **versionado** (`lib/contractTerms.ts`): não assinado → a versão que a escola oferece (sem saber, a 1 —
   nunca cláusula não decidida); assinado com versão gravada → a gravada; **assinado sem versão gravada → 1, o
-  texto de antes**. Matrícula migrada (`contract_accepted` sem `accepted_at`) conta como assinada. O HTML do
+  texto de antes**. Matrícula migrada (`contract_accepted` sem `accepted_at`) conta como assinada.
+  ⚠️ **"Não assinado" só existe na tela que ASSINA** (matrícula, convite, aceite do professor). Tela que só
+  mostra — "Meu contrato" do aluno (`ContractView`), Contratos da direção — passa `signed: true` e nunca lê a
+  versão oferecida: sem versão gravada, texto de antes. Senão os 8 alunos ativos da Wise Wolf matriculados à
+  mão (`contract_accepted = false`, `accepted_at` nulo, 27/09) veriam e baixariam em PDF um contrato com a
+  Cláusula 8 que nunca assinaram. O HTML do
   contrato antigo foi conferido byte a byte com o componente anterior, e `ContractDocument.test.ts` guarda o
   hash do texto das cláusulas da versão 1 —
   ⚠️ **se esse teste falhar, o texto de um contrato já assinado mudou: crie versão nova, não edite a antiga.**
@@ -680,9 +700,13 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `register-teacher` (também em `commercial_snapshot.contractTermsVersion`; página sem a versão → 409); professor
   que regulariza pelo app por `accept_teacher_contract(assinatura, versão)` — sem versão (app antigo) = 1.
   O aceite guarda **`signed_as_guardian`** (link de dependente, lido de `offers.payload.isDependent` no
-  servidor) e **a data desta assinatura**: na rematrícula `begin_enrollment_offer` mantém a assinatura antiga
-  do perfil (coalesce), então o aceite usa `profiles.accepted_at` só quando ela é desta oferta
-  (`>= processing_started_at`) e `now()` senão.
+  servidor) e **a data desta assinatura**: `begin_enrollment_offer` mantém a assinatura antiga do perfil
+  (coalesce) e grava `processing_updated_at = now()` a cada chamada, na mesma transação da primeira
+  assinatura; então o aceite usa `profiles.accepted_at` só quando ela foi gravada pelo begin que acabou de
+  rodar (`>= processing_updated_at`) e `now()` senão — rematrícula, **nova assinatura depois de
+  `versao_desatualizada`** (a pessoa leu o texto antigo, recarregou e assinou a v2) e oferta retomada depois de
+  a escola mudar a versão. Custo conhecido: begin repetido por falha de rede antes da gravação também vira
+  `now()` (selo sem o IP antigo).
   Leitura: `get_contract_terms(pessoa, tipo)` → `{recorded_version, accepted_at, offered_version}` (a pessoa,
   direção/coordenação da escola) e colunas `contract_terms_version` + `contract_terms_accepted_at` em
   `vw_student_contracts`. `signedContractEvidence` (lib) usa a data do aceite no selo/"Data Matrícula" quando
@@ -694,6 +718,18 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
 - ⚠️ `accept_teacher_contract` **nunca funcionou** antes daqui: `search_path = public` e o `digest` mora em
   `extensions` → todo aceite de professor pelo app morria. Refeita com `search_path = ''` e
   `extensions.digest`; a assinatura de 1 argumento saiu (duas no ar = ambiguidade no PostgREST).
+- **O aceite pelo app grava a CÓPIA do contrato** em `tenant_contract_records` (revisão de 27/09): o "Meu
+  Contrato" do professor (`tenant-legal-assets` → `PublicContractView`) só lê essa tabela, que antes só o
+  convite criava — sem isso os 3 professores ativos da Wise Wolf com `contract_accepted = false` assinariam a
+  v2 e cairiam em "Contrato não encontrado". Partes como a tela mostrou (`---` onde faltava), escola =
+  `tenants.school_info`, `hourlyRate`, `contractTermsVersion`, `acceptedVia = TEACHER_CONTRACT_ACCEPT`, sem PDF
+  (`signed_document_path` nulo). ⚠️ **Sem `rateUnit`**: `teacher_student_rate` lê `rateUnit = 'PER_LESSON'`
+  desse registro para trocar a régua de pagamento (valor fixo do perfil em vez das faixas) — aceite não muda
+  pagamento. A tela assinada mostrou o valor por aula, então a cópia leva `displayRateUnit = 'PER_LESSON'` e a
+  edge (`teacherContractRateUnit`) o devolve como `rateUnit` só para exibir; sem ele a cópia mostraria metade
+  (a regra do contrato antigo por hora). O servidor recusa como a tela: `escola_sem_identidade_juridica`,
+  `valor_por_aula_ausente`. Os 6 professores aceitos antes de 21/08 (sem registro) continuam sem cópia — já
+  era assim.
 - ⚠️ Versão nova de texto = número novo em **três** lugares: `lib/contractTerms.ts`, a tabela
   `contract_terms_versions` (migration nova) e `register-teacher/contract-terms.ts`.
   `lib/contractTerms.test.ts` confere os três.
@@ -705,9 +741,15 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   `supabase/functions/register-teacher/contract-terms.test.ts`; `deno fmt --check` ←
   `register-teacher/contract-terms.ts` e `.test.ts`. Sem a migration no ar, a matrícula para
   (`record_enrollment_contract_terms` inexistente), "Meu contrato" dá erro e nenhum convite de professor fecha.
+- ⚠️ **Teste do release não confere valor de negócio que muda.** O teste roda em TODO release, com ou sem
+  migration pendente; conferir "a Wise Wolf oferece a v2" travaria todos os releases depois que a plataforma
+  mudasse a versão dela por SQL. `versao_do_contrato_no_aceite.sql` exige só a marca do one-shot e confere o
+  valor quando a semente acabou de rodar (`schema_one_shots.applied_at = now()`: o release roda os testes na
+  transação das migrations); `registro_autorizado_pela_escola.sql` confere só os campos imutáveis da trilha,
+  nunca o papel ATUAL de quem decidiu.
 - Fora (de propósito): **renovação** e **troca de plano** ("as demais cláusulas continuam válidas") não
   carregam a cláusula — aluno antigo só passa a tê-la assinando contrato novo. Matrícula feita à mão pela
-  escola, sem a página de matrícula, não grava versão (lê como texto de antes).
+  escola, sem a página de matrícula, não grava versão (lê como texto de antes — também no "Meu contrato").
 
 ---
 
