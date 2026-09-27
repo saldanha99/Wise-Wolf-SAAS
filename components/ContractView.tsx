@@ -6,6 +6,8 @@ import { AlertCircle, Download, FileText, Loader2, RefreshCw } from 'lucide-reac
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import { resolveContractTermsVersion, signedContractEvidence } from '../lib/contractTerms';
+import { loadContractTerms, type ContractTermsRecord } from '../services/contractTermsService';
 
 // O bucket 'contracts' é PRIVADO (dados pessoais/LGPD). Registros antigos guardam a URL
 // pública completa; registros novos guardam apenas o path dentro do bucket. Em ambos os
@@ -45,6 +47,9 @@ const ContractView: React.FC<ContractViewProps> = ({
     const [profile, setProfile] = useState<any>(null);
     const [contractUrl, setContractUrl] = useState<string | null>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
+    // Versão gravada no aceite (null = nada gravado: texto de antes), a data
+    // desse aceite e a versão que a escola oferece aos contratos novos.
+    const [contractTerms, setContractTerms] = useState<ContractTermsRecord | null>(null);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -59,16 +64,21 @@ const ContractView: React.FC<ContractViewProps> = ({
         try {
             setLoading(true);
             setLoadError(null);
-            const [profileResult, privateProfile] = await Promise.all([
+            // A versão do texto é parte do contrato: sem ela, um contrato
+            // assinado com a cláusula do registro das aulas seria mostrado sem
+            // ela. Falhou a leitura → erro com "tentar novamente".
+            const [profileResult, privateProfile, terms] = await Promise.all([
                 supabase
                     .from('profiles')
                     .select(PROFILE_SAFE_COLS)
                     .eq('id', userId)
                     .single(),
                 loadAuthorizedProfilePrivate(userId),
+                loadContractTerms(userId, 'STUDENT'),
             ]);
             if (profileResult.error) throw profileResult.error;
             const data: any = { ...profileResult.data, ...privateProfile };
+            setContractTerms(terms);
             setProfile(data);
             setContractUrl(await resolveContractUrl(data.contract_url as string | null));
             // Carrega os dados da escola (cabeçalho/rodapé do contrato)
@@ -202,7 +212,16 @@ const ContractView: React.FC<ContractViewProps> = ({
     else if (['ANNUAL', 'ANUAL', '12', '12 MESES'].includes(fidelity)) { duration = 12; planName = 'Plano Anual'; }
     else if (['ONE_TIME', 'AVULSO', '0'].includes(fidelity)) { duration = 0; planName = 'Plano Avulso'; }
 
-    const enrollmentDate = contractReferenceDate(profile.created_at);
+    // Data e IP da assinatura DESTE contrato: numa rematrícula o perfil guarda
+    // a assinatura antiga, e o aceite da versão nova tem data própria.
+    const signature = signedContractEvidence({
+        profileAcceptedAt: profile.accepted_at,
+        profileIp: profile.signature_ip,
+        recordedAcceptedAt: contractTerms?.recordedAcceptedAt,
+    });
+    const enrollmentDate = contractReferenceDate(
+        signature.fromRecordedAcceptance ? signature.acceptedAt : profile.created_at,
+    );
     const dueDay = profile.due_day || 1;
     const { startDate, endDate } = formatContractPeriod(enrollmentDate, dueDay, duration);
     const monthlyFee = Number(profile.monthly_fee || 0);
@@ -226,8 +245,16 @@ const ContractView: React.FC<ContractViewProps> = ({
         endDate,
         dueDay,
         classFrequency: profile.class_frequency ? parseInt(String(profile.class_frequency)) : classFrequency,
-        acceptedAt: profile.accepted_at,
-        userIp: profile.signature_ip,
+        acceptedAt: signature.acceptedAt,
+        userIp: signature.userIp,
+        // Aceito sem data (matrícula migrada, contract_accepted sem accepted_at)
+        // também é contrato assinado: nunca ganha cláusula que não leu. Ainda
+        // não assinado: a versão que a escola oferece.
+        termsVersion: resolveContractTermsVersion('STUDENT', {
+            signed: Boolean(profile.accepted_at) || profile.contract_accepted === true,
+            recordedVersion: contractTerms?.recordedVersion,
+            offeredVersion: contractTerms?.offeredVersion,
+        }),
     };
 
     return (

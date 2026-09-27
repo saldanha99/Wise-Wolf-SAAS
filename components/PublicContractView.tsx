@@ -4,6 +4,7 @@ import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherC
 import type { SchoolInfo } from './ContractDocument';
 import { Loader2, AlertCircle, FileText, Download } from 'lucide-react';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import { parseContractTermsVersion } from '../lib/contractTerms';
 
 interface PublicContractViewProps {
     id?: string;
@@ -22,6 +23,9 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
             ? profile.school_info as SchoolInfo
             : null;
     const contractReadiness = getTeacherContractReadiness(schoolInfo, profile?.hourly_rate);
+    // Versão do texto gravada no snapshot do contrato (commercial_snapshot).
+    // Contrato de antes não tem: TeacherContractDocument mostra o texto antigo.
+    const contractTermsVersion = parseContractTermsVersion('TEACHER', profile?.contractTermsVersion) ?? undefined;
 
     const handleDownloadPdf = async () => {
         const el = contractPdfRef.current;
@@ -145,6 +149,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
                     rateUnit={profile.rateUnit}
+                    termsVersion={contractTermsVersion}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}
@@ -165,6 +170,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
                     rateUnit={profile.rateUnit}
+                    termsVersion={contractTermsVersion}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}

@@ -7,6 +7,9 @@ import type { SchoolInfo } from './ContractDocument';
 import { AlertTriangle, CheckCircle2, Loader2, PencilLine, ShieldCheck, Sparkles, Type, X } from 'lucide-react';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import { LEGACY_CONTRACT_TERMS_VERSION, contractIncludesLessonRecording } from '../lib/contractTerms';
+import { loadContractTerms } from '../services/contractTermsService';
+import { LessonRecordingClauseNotice } from './LessonRecordingClauseNotice';
 
 // Aceite de contrato PJ para professor JÁ logado que nunca aceitou (contract_accepted=false).
 // Contas criadas pelo caminho manual (create-teacher-account) nascem sem aceite e não passam
@@ -24,6 +27,9 @@ interface TeacherContractAcceptProps {
 const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, onAccepted, onClose, mandatory }) => {
     const [profile, setProfile] = useState<any>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
+    // Versão do contrato que a escola do professor oferece: esta tela mostra e
+    // grava a mesma. Só a escola que decidiu registrar as aulas oferece a 11ª.
+    const [offeredTermsVersion, setOfferedTermsVersion] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [checked, setChecked] = useState(false);
     const [signature, setSignature] = useState('');
@@ -45,7 +51,9 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
     useEffect(() => {
         (async () => {
             try {
-                const [profileResult, privateProfile, payResult] = await Promise.all([
+                // Sem saber a versão que a escola oferece não há texto para
+                // assinar: a falha cai no "Não foi possível carregar".
+                const [profileResult, privateProfile, payResult, terms] = await Promise.all([
                     supabase
                     .from('profiles')
                     .select(PROFILE_SAFE_COLS)
@@ -53,6 +61,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     .single(),
                     loadAuthorizedProfilePrivate(userId),
                     supabase.rpc('get_my_pay'),
+                    loadContractTerms(userId, 'TEACHER'),
                 ]);
                 if (profileResult.error) throw profileResult.error;
                 const data = {
@@ -61,6 +70,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     hourly_rate: (payResult.data as any)?.hourly_rate ?? privateProfile.hourly_rate,
                 };
                 const normalizedName = ((data.full_name as string) || '').trim();
+                setOfferedTermsVersion(terms.offeredVersion);
                 setProfile(data);
                 setSignature(normalizedName);
                 setIsValidSignature(normalizedName.length >= 3);
@@ -76,6 +86,8 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
     }, [userId]);
 
     const contractReadiness = getTeacherContractReadiness(school, profile?.hourly_rate);
+    const termsVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;
+    const withLessonRecording = contractIncludesLessonRecording('TEACHER', termsVersion);
 
     useEffect(() => {
         if (!signatureCanvasRef.current) return;
@@ -239,13 +251,19 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                 setError('Não foi possível obter um nome válido para registro da assinatura.');
                 return;
             }
-            const { data, error } = await supabase.rpc('accept_teacher_contract', { p_typed_signature: finalSignature });
+            // Grava junto a versão do texto que esta tela mostrou (a que a
+            // escola oferece; o servidor recusa outra).
+            const { data, error } = await supabase.rpc('accept_teacher_contract', {
+                p_typed_signature: finalSignature,
+                p_terms_version: termsVersion,
+            });
             if (error) throw error;
             if (!data?.ok) {
                 const map: Record<string, string> = {
                     nao_autenticado: 'Sessão expirada. Entre novamente.',
                     apenas_professor: 'Apenas professores podem aceitar este contrato.',
                     assinatura_invalida: 'Assinatura inválida. Digite seu nome completo.',
+                    versao_invalida: 'O contrato foi atualizado. Recarregue a página para ler a versão atual antes de assinar.',
                 };
                 setError(map[data?.error] || 'Não foi possível registrar o aceite. Tente novamente.');
                 return;
@@ -325,6 +343,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             school={school}
                                             hourlyRate={Number(profile?.hourly_rate) || undefined}
                                             subscriptionId={profile?.subscription_id || undefined}
+                                            termsVersion={termsVersion}
                                             displayMode="responsive"
                                             showPrintButton={false}
                                         />
@@ -456,6 +475,8 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     </div>
                                 </div>
                             )}
+
+                            {withLessonRecording && <LessonRecordingClauseNotice clauseLabel="Cláusula 11ª" />}
 
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                                 <input

@@ -4,6 +4,8 @@ import { User, Mail, Lock, Phone, Award, CheckCircle, AlertCircle, ArrowRight, L
 import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import { contractIncludesLessonRecording } from '../lib/contractTerms';
+import { offeredContractTermsVersion } from '../services/contractTermsService';
 
 const TeacherOnboarding: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -71,6 +73,11 @@ const TeacherOnboarding: React.FC = () => {
         : null;
     const schoolIdentity = getSchoolContractIdentity(schoolInfo);
     const teacherContractReadiness = getTeacherContractReadiness(schoolInfo, offerData?.hourlyRate);
+    // Versão do contrato que a escola do convite oferece (edge
+    // tenant-legal-assets): esta tela MOSTRA, congela no PDF e ENVIA a mesma.
+    // Só a escola que decidiu registrar as aulas oferece a Cláusula 11ª.
+    const contractTermsVersion = offeredContractTermsVersion('TEACHER', offerData);
+    const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractTermsVersion);
 
     const openContract = async () => {
         const offerId = new URLSearchParams(window.location.search).get('offer');
@@ -155,6 +162,10 @@ const TeacherOnboarding: React.FC = () => {
                     birthDate,
                     contractAccepted: true,
                     rateUnit: 'PER_LESSON',
+                    // Versão do texto que esta tela mostrou e o PDF congelou
+                    // (a que a escola do convite oferece). O servidor recusa
+                    // (409) a página antiga, sem a versão, e a desatualizada.
+                    contractTermsVersion,
                     acceptedAt: new Date().toISOString(),
                     userIp: userIp || 'Pendente',
                     contractPdfBase64
@@ -163,7 +174,7 @@ const TeacherOnboarding: React.FC = () => {
 
             if (fnError) {
                 if (fnError.context instanceof Response && fnError.context.status === 409) {
-                    throw new Error('O convite foi atualizado. Recarregue a página para revisar o valor por aula antes de assinar.');
+                    throw new Error('O contrato ou o convite foi atualizado. Recarregue a página para revisar o valor por aula e o texto do contrato antes de assinar.');
                 }
                 throw new Error(fnError.message || "Erro ao conectar com o servidor.");
             }
@@ -234,7 +245,9 @@ const TeacherOnboarding: React.FC = () => {
                                     className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer"
                                 />
                                 <label htmlFor="accept-contract" className="text-sm font-bold text-brand-text cursor-pointer select-none">
-                                    Li e aceito os termos do contrato de prestação de serviço docente.
+                                    {withLessonRecording
+                                        ? 'Li e aceito os termos do contrato de prestação de serviço docente, inclusive a Cláusula 11ª (registro das aulas: transcrição e anotações automáticas do Google Meet, sem vídeo).'
+                                        : 'Li e aceito os termos do contrato de prestação de serviço docente.'}
                                 </label>
                             </div>
                             <div className="ml-0 flex flex-wrap items-center gap-2 rounded-lg border border-brand-border bg-brand-surface-2 p-2 text-[10px] font-mono uppercase tracking-wider text-brand-muted sm:ml-8">
@@ -269,6 +282,7 @@ const TeacherOnboarding: React.FC = () => {
                         school={schoolInfo}
                         hourlyRate={offerData?.hourlyRate}
                         rateUnit="PER_LESSON"
+                        termsVersion={contractTermsVersion}
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                         acceptedAt={teacherContractReadiness.isReady && contractAccepted ? new Date().toISOString() : undefined}
                         userIp={userIp}

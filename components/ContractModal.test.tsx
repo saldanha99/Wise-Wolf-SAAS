@@ -28,7 +28,7 @@ describe('Contrato: fluxo de assinatura digital', () => {
         onConfirm.mockReset();
     });
 
-    const renderContract = () => render(
+    const renderContract = (extra: { termsVersion?: number } = {}) => render(
         <ContractModal
             isOpen
             onClose={vi.fn()}
@@ -47,6 +47,7 @@ describe('Contrato: fluxo de assinatura digital', () => {
             dueDay={10}
             classFrequency={2}
             school={readySchool()}
+            {...extra}
         />
     );
 
@@ -95,5 +96,21 @@ describe('Contrato: fluxo de assinatura digital', () => {
         expect(confirmButton).toBeDisabled();
         fireEvent.click(confirmButton);
         expect(onConfirm).not.toHaveBeenCalled();
+    });
+    it('mostra a cláusula do registro das aulas e o destaque só na versão que a escola oferece', () => {
+        setupIntersectionObserverMock();
+        const offered = renderContract({ termsVersion: 2 });
+        expect(document.body.textContent).toContain('Cláusula 8 — Do Registro das Aulas');
+        expect(document.querySelector('[data-lesson-recording-clause-notice]')).not.toBeNull();
+        offered.unmount();
+
+        // Escola sem a decisão (versão 1) — e página sem a versão: texto de antes, sem destaque.
+        for (const termsVersion of [1, undefined]) {
+            const plain = renderContract({ termsVersion });
+            expect(document.body.textContent).toContain('Cláusula 8 — Do Foro');
+            expect(document.body.textContent).not.toContain('Do Registro das Aulas');
+            expect(document.querySelector('[data-lesson-recording-clause-notice]')).toBeNull();
+            plain.unmount();
+        }
     });
 });

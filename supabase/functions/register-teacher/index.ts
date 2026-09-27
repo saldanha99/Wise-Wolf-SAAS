@@ -10,6 +10,13 @@ import {
   releaseInviteClaim,
 } from "../_shared/invite-registration.ts";
 import { loadTenantCentralWhatsAppContext } from "../_shared/tenant-communication.ts";
+import {
+  assertOfferedTeacherContractTermsVersion,
+  ContractTermsVersionMismatchError,
+  offeredTeacherContractTermsVersion,
+  recordTeacherContractTerms,
+  requestedTeacherContractTermsVersion,
+} from "./contract-terms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -158,6 +165,14 @@ async function handleRequest(req: Request): Promise<Response> {
     if (body.rateUnit !== "PER_LESSON") {
       return json({ error: "Atualize a pagina para revisar o valor por aula antes de assinar." }, 409);
     }
+    // A pagina antiga nao mandava a versao do texto que mostrou (e congelou no
+    // PDF): contrato novo so nasce com a versao que a escola oferece.
+    const requestedTermsVersion = requestedTeacherContractTermsVersion(
+      body.contractTermsVersion,
+    );
+    if (requestedTermsVersion === null) {
+      return json({ error: "Atualize a pagina para revisar o contrato atualizado antes de assinar." }, 409);
+    }
     const email = normalizedEmail(body.email);
     const password = requiredString(body.password, "password", 8, 128);
     const name = requiredString(body.name, "name", 2, 120);
@@ -186,6 +201,12 @@ async function handleRequest(req: Request): Promise<Response> {
     const contractPdf = decodeContractPdf(body.contractPdfBase64);
 
     invite = await claimInvite(admin, body.offerPayload, "TEACHER_INVITE");
+    // So a escola que decidiu registrar as aulas oferece a clausula; a pagina
+    // tem de ter mostrado a versao que a escola do convite oferece AGORA.
+    const contractTermsVersion = assertOfferedTeacherContractTermsVersion(
+      requestedTermsVersion,
+      await offeredTeacherContractTermsVersion(admin, invite.tenantId),
+    );
     const hourlyRate = Number(invite.data.hourlyRate);
     const subject = String(invite.data.subject).trim();
     const schoolInfo = invite.data.schoolInfo as Record<string, unknown>;
@@ -251,12 +272,26 @@ async function handleRequest(req: Request): Promise<Response> {
           birthDate,
         },
         legal_snapshot: schoolInfo,
-        commercial_snapshot: { hourlyRate, subject, rateUnit: "PER_LESSON" },
+        commercial_snapshot: {
+          hourlyRate,
+          subject,
+          rateUnit: "PER_LESSON",
+          contractTermsVersion,
+        },
         signed_document_path: signedDocumentPath,
         accepted_at: acceptedAt,
         accepted_ip: trustedIp,
       });
     if (contractRecordError) throw new Error("contract_snapshot_failed");
+    // Mesma versao na tabela de aceites (migration 20260927150000), onde
+    // aluno e professor ficam com a mesma regra de leitura.
+    await recordTeacherContractTerms(admin, {
+      tenantId: invite.tenantId,
+      userId,
+      offerId: invite.offerId,
+      termsVersion: contractTermsVersion,
+      acceptedAt,
+    });
     const { error: documentUpdateError } = await admin.from("profiles")
       .update({ signed_document_url: signedDocumentPath })
       .eq("id", userId)
@@ -329,6 +364,9 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     if (error instanceof InputError) {
       return json({ error: "Revise os dados obrigatorios do cadastro." }, 400);
+    }
+    if (error instanceof ContractTermsVersionMismatchError) {
+      return json({ error: "Atualize a pagina para revisar o contrato atualizado antes de assinar." }, 409);
     }
     if (error instanceof InviteRegistrationError) {
       return json(

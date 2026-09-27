@@ -1,5 +1,6 @@
 import {
   normalizeAffiliateCouponInput,
+  offeredContractTermsVersion,
   offerKindMatches,
   publicSchoolBrand,
 } from "./index.ts";
@@ -74,4 +75,18 @@ Deno.test("marca da escola no convite de afiliado: so cor hex e logo https", () 
     empty.brandPrimary === null && empty.schoolLogoUrl === null,
     "marca ausente deveria dar null",
   );
+});
+
+Deno.test("versao do contrato da oferta vem da escola, e resposta estranha nao vira texto", () => {
+  assert(offeredContractTermsVersion(2) === 2, "versao 2 da escola recusada");
+  assert(offeredContractTermsVersion(1) === 1, "versao 1 da escola recusada");
+  for (const value of [null, undefined, 0, -1, 1.5, "2", {}]) {
+    let rejected = false;
+    try {
+      offeredContractTermsVersion(value);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, `versao ${JSON.stringify(value)} virou contrato`);
+  }
 });
