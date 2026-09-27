@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useState } from 'react';
+
 /**
  * Link com login do dossiê do aluno (migration 20260928100000).
  *
@@ -39,4 +41,53 @@ export function studentDossierDestination(
   const studentId = new URLSearchParams(location.search).get('aluno')?.trim() ?? '';
   if (!UUID_PATTERN.test(studentId)) return null;
   return { tab: 'lesson-sessions', studentId: studentId.toLowerCase() };
+}
+
+export interface StudentDossierLinkState {
+  /** Aluno cujo dossiê o link abriu, enquanto a pessoa estiver nele. */
+  focusStudentId: string | null;
+  /**
+   * Tour (boas-vindas ou novidade) fica esperando enquanto o dossiê do link
+   * está aberto: o tour troca de aba no primeiro passo e tiraria a pessoa do
+   * dossiê que ela acabou de abrir — e o link já teria sido usado.
+   */
+  holdsTours: boolean;
+  /** A pessoa saiu do dossiê do link (fechou, abriu outra coisa, pediu um tour). */
+  release: () => void;
+}
+
+/**
+ * O link no App. A URL volta para "/" na hora (o dossiê abre só nesta visita),
+ * mas o FOCO fica guardado até a pessoa sair do dossiê — "Fechar dossiê",
+ * outra sessão ou outro dossiê no painel, outra tela pelo menu. Enquanto isso o
+ * painel reabre o dossiê se for montado de novo e os tours esperam.
+ */
+export function useStudentDossierLink(
+  user: { id: string; role: string } | null | undefined,
+  activeTab: string,
+  setActiveTab: (tab: string) => void,
+): StudentDossierLinkState {
+  const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
+  const userId = user?.id;
+  const userRole = user?.role;
+  useEffect(() => {
+    const destination = studentDossierDestination(
+      window.location,
+      userId && userRole ? { id: userId, role: userRole } : null,
+    );
+    if (!destination) return;
+    setActiveTab(destination.tab);
+    setFocusStudentId(destination.studentId);
+    try {
+      window.history.replaceState(window.history.state, '', '/');
+    } catch {
+      // Sem history (navegador restrito): o dossiê abre do mesmo jeito.
+    }
+  }, [userId, userRole, setActiveTab]);
+  // Foi para outra tela pelo menu com o dossiê aberto: o link já foi usado.
+  useEffect(() => {
+    if (focusStudentId && activeTab !== 'lesson-sessions') setFocusStudentId(null);
+  }, [activeTab, focusStudentId]);
+  const release = useCallback(() => setFocusStudentId(null), []);
+  return { focusStudentId, holdsTours: focusStudentId !== null, release };
 }

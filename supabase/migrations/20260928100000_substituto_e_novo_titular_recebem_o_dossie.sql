@@ -23,7 +23,11 @@
 --    session_detail, regra da onda 1): o substituto de uma sessão que ficou com
 --    o titular lê só o resumo aprovado. No google_meet_backend a janela vale
 --    SÓ para session_detail — nenhuma outra ação (sala, importação, resumo) se
---    abre por ela.
+--    abre por ela — e quem entra SÓ pela janela (v_temporary_only) recebe o
+--    detalhe sem a sala (link do Meet, conta Google do professor da aula, conta
+--    central), sem a situação da importação e sem a contagem de planilhas de
+--    presença: a janela é para ler o dossiê e o resumo aprovado, não para
+--    entrar na sala do titular nem conhecer a conta Google dele.
 --    O CARTÃO do aluno o substituto lê pelo dossiê, mas não escreve: escrever
 --    continua com quem acompanha o aluno (titular, segundo professor, agenda
 --    viva, transferência aceita, coordenação e direção) —
@@ -35,13 +39,34 @@
 --    ela ou passam a passar: accept-coverage e "consigo sim" pelo WhatsApp
 --    (resolve_coverage_invite_and_brief), claim-coverage e, agora, o modo
 --    "force" do coverage-admin. Além do contato e das últimas aulas:
---      (a) próximo passo, erros recorrentes e lição da ÚLTIMA aula com resumo
---          APROVADO (student_learning_memories MEET_SESSION VERIFIED — a
---          memória que a última decisão humana deixa valer, 20260927130000);
+--      (a) a DATA da ÚLTIMA aula com resumo APROVADO (student_learning_memories
+--          MEET_SESSION VERIFIED — a memória que a última decisão humana deixa
+--          valer, 20260927130000) e o aviso de que o próximo passo, os erros
+--          recorrentes e a lição dela estão no dossiê. O TEXTO do resumo não vai
+--          no WhatsApp (correção da revisão): o termo v3 que aluno e família
+--          aceitaram diz que o substituto recebe o histórico "por um link que
+--          só abre com login", o RIPD não põe o resumo no provedor do WhatsApp,
+--          e toda mensagem enviada fica copiada na fila (notification_queue), no
+--          espelho da inbox (whatsapp_messages), no provedor e no celular do
+--          substituto — cópias que a exclusão a pedido
+--          (erase_student_lesson_records), a retenção
+--          (purge_lesson_memory_retention) e a rejeição posterior do resumo
+--          (20260927130000) não alcançam;
 --      (b) o link da SALA OFICIAL quando a aula tem sala pronta que vale para
 --          quem dá a aula (public.official_lesson_link, régua única
 --          private.lesson_occurrence_giver). A família recebe o mesmo link em
---          vez de "a substituta vai te chamar para combinar o link";
+--          vez de "a substituta vai te chamar para combinar o link". Sem sala
+--          pronta no aceite (as salas nascem nas 24 h antes da aula), o texto
+--          sai pela previsão de private.coverage_school_room_expected (escola
+--          conectada ao Google, conta Google confirmada do substituto, aceite
+--          do termo do aluno e do substituto, aula não congelada com outro
+--          professor): com sala prevista, substituto e família ouvem que o link
+--          da escola chega por aqui e que não se manda outro — senão a aula
+--          acabava dividida em duas salas; sem sala prevista, "combine e mande
+--          o link" como antes. Quando a sala fica pronta depois do aceite, um
+--          gatilho em private.google_meet_rooms manda o link a substituto e
+--          família (private.coverage_room_notice_enqueue, uma vez por
+--          cobertura);
 --      (c) o LINK COM LOGIN do dossiê: <portal>/dossie-do-aluno?aluno=<id> (o
 --          portal é o de private.lesson_recording_portal_url; escola sem
 --          portal conhecido recebe o caminho no app).
@@ -228,34 +253,80 @@ revoke all on function private.student_learning_card_can_edit(text, uuid)
 
 -- session_detail (a tela "Sala e resumo"): o substituto e o professor da
 -- reposição leem o resumo APROVADO das aulas do aluno na janela. Remendo por
--- âncora na definição viva (a função é grande e outras frentes a remendam).
+-- âncora na definição viva (a função é grande e outras frentes a remendam),
+-- em quatro pontos, todos conferidos antes de trocar qualquer um:
+--   1. a declaração ganha v_temporary_only e v_session_detail;
+--   2. o escopo do aluno: quem não alcança a sessão por vínculo permanente mas
+--      tem a janela entra SÓ em session_detail, marcado v_temporary_only;
+--   3. e 4. o retorno de session_detail passa por v_session_detail, e para
+--      quem entrou só pela janela sai sem a sala (meeting_uri, space_name,
+--      cohost_email = conta Google do professor da aula, organizer_sub = conta
+--      central), sem a situação da importação e sem a contagem de planilhas de
+--      presença. Correção da revisão: a janela abria a sala de QUALQUER sessão
+--      do aluno — inclusive a próxima aula do titular — e a conta Google dele.
 do $meet_session_detail$
 declare
   v_def text;
-  v_anchor text := $anchor$    ) then raise exception 'google_meet_student_scope_required' using errcode='42501'; end if;$anchor$;
-  v_patch text := $patch$    )
-    -- Substituto de cobertura confirmada e professor da reposição com data:
-    -- só a LEITURA do resumo aprovado, do dia anterior ao seguinte da aula
-    -- (private.pedagogy_temporary_access, 20260928100000). A transcrição segue
-    -- com quem deu a aula (v_raw) e nenhuma outra ação se abre por aqui.
-    and not (p_action = 'session_detail' and exists (
-      select 1 from private.pedagogy_temporary_access(
-        s.tenant_id, a.id, s.student_id, (now() at time zone 'America/Sao_Paulo')::date)))
-    then raise exception 'google_meet_student_scope_required' using errcode='42501'; end if;$patch$;
+  v_anchors text[] := array[
+    $anchor$v_raw boolean := false;$anchor$,
+    $anchor$    ) then raise exception 'google_meet_student_scope_required' using errcode='42501'; end if;$anchor$,
+    $anchor$      return jsonb_build_object('session',to_jsonb(s)||jsonb_build_object('documentation_consent',v_consent,
+          'documentation_blocked',s.documentation_consent and not v_consent),
+        'raw_access',v_raw,$anchor$,
+    $anchor$              and newer.status='REJECTED')))),'[]'::jsonb));
+    else raise exception 'unknown_google_meet_action' using errcode='22023'; end if;$anchor$
+  ];
+  v_patches text[] := array[
+    $patch$v_raw boolean := false; v_temporary_only boolean := false; v_session_detail jsonb;$patch$,
+    $patch$    ) then
+      -- Substituto de cobertura confirmada e professor da reposição com data
+      -- (private.pedagogy_temporary_access, 20260928100000): do dia anterior ao
+      -- seguinte da aula, SÓ a leitura do resumo aprovado (session_detail) — sem
+      -- a sala, a importação e a presença de uma aula que não é dele
+      -- (v_temporary_only). A transcrição segue com quem deu a aula (v_raw) e
+      -- nenhuma outra ação se abre por aqui.
+      if p_action = 'session_detail' and exists (
+        select 1 from private.pedagogy_temporary_access(
+          s.tenant_id, a.id, s.student_id, (now() at time zone 'America/Sao_Paulo')::date)) then
+        v_temporary_only := true;
+      else
+        raise exception 'google_meet_student_scope_required' using errcode='42501';
+      end if;
+    end if;$patch$,
+    $patch$      v_session_detail := jsonb_build_object('session',to_jsonb(s)||jsonb_build_object('documentation_consent',v_consent,
+          'documentation_blocked',s.documentation_consent and not v_consent),
+        'raw_access',v_raw,$patch$,
+    $patch$              and newer.status='REJECTED')))),'[]'::jsonb));
+      -- Leitor só pela janela temporária (20260928100000): a sala (link do Meet,
+      -- conta Google do professor da aula, conta central), a situação da
+      -- importação e as planilhas de presença são de quem dá aquela aula.
+      if v_temporary_only then
+        v_session_detail := v_session_detail || jsonb_build_object(
+          'room', null, 'imports', '[]'::jsonb, 'attendance_saved_reports', 0);
+      end if;
+      return v_session_detail || jsonb_build_object('temporary_access', v_temporary_only);
+    else raise exception 'unknown_google_meet_action' using errcode='22023'; end if;$patch$
+  ];
+  v_position integer;
 begin
   v_def := pg_catalog.pg_get_functiondef(
     'public.google_meet_backend(text,text,uuid,uuid,jsonb)'::regprocedure);
-  if pg_catalog.strpos(v_def, 'private.pedagogy_temporary_access(') > 0 then
+  if pg_catalog.strpos(v_def, 'v_temporary_only') > 0 then
     return;
   end if;
-  if pg_catalog.strpos(v_def, v_anchor) = 0 then
-    raise exception 'google_meet_backend: âncora do escopo do aluno não encontrada';
-  end if;
-  if pg_catalog.strpos(
-       pg_catalog.substr(v_def, pg_catalog.strpos(v_def, v_anchor) + 1), v_anchor) > 0 then
-    raise exception 'google_meet_backend: âncora do escopo do aluno repetida';
-  end if;
-  execute pg_catalog.replace(v_def, v_anchor, v_patch);
+  for i in 1 .. pg_catalog.array_length(v_anchors, 1) loop
+    v_position := pg_catalog.strpos(v_def, v_anchors[i]);
+    if v_position = 0 then
+      raise exception 'google_meet_backend: âncora % da janela do substituto não encontrada', i;
+    end if;
+    if pg_catalog.strpos(pg_catalog.substr(v_def, v_position + 1), v_anchors[i]) > 0 then
+      raise exception 'google_meet_backend: âncora % da janela do substituto repetida', i;
+    end if;
+  end loop;
+  for i in 1 .. pg_catalog.array_length(v_anchors, 1) loop
+    v_def := pg_catalog.replace(v_def, v_anchors[i], v_patches[i]);
+  end loop;
+  execute v_def;
 end;
 $meet_session_detail$;
 
@@ -280,6 +351,63 @@ $function$;
 
 alter function private.briefing_line(text, integer) owner to postgres;
 revoke all on function private.briefing_line(text, integer) from public, anon, authenticated, service_role;
+
+-- A escola vai criar a sala do Meet desta aula coberta para o SUBSTITUTO?
+-- Previsão para o texto do aceite quando a sala ainda não está pronta (ela
+-- nasce nas 24 h antes da aula, depois que o job de 15 min marca o aceite
+-- — private.apply_standing_lesson_recording_consent — e a fila cria a sala
+-- com o professor da sessão de coanfitrião). As mesmas condições:
+--   * escola com a conta central do Google conectada;
+--   * substituto com a conta Google confirmada por login (sem ela, sem sala —
+--     google_teacher_identity_required);
+--   * aceite do termo do aluno E do substituto valendo
+--     (private.lesson_recording_active, a régua do job);
+--   * aula não congelada com OUTRO professor: sessão daquela ocorrência com
+--     aceite ou sala (private.lesson_session_has_evidence) fica com quem ela
+--     tinha, e a sala, se houver, é do titular — o substituto não entra nela
+--     (private.lesson_session_taught_by_other), então ele manda o link dele.
+-- Previsão errada para o lado do "vai ter sala" é coberta no texto (sem link até
+-- 30 min antes, o substituto manda o dele); para o outro lado, pelo aviso de
+-- sala pronta (private.coverage_room_notice_enqueue).
+create or replace function private.coverage_school_room_expected(p_coverage_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select coalesce((
+    select coverage.booking_id is not null
+      and pg_catalog.lower(coalesce(coverage.status, '')) = 'confirmed'
+      and exists (
+        select 1 from private.google_workspace_connections as connection
+         where connection.tenant_id = coverage.tenant_id and connection.status = 'CONNECTED')
+      and exists (
+        select 1 from private.teacher_google_identities as google_identity
+         where google_identity.teacher_id = coverage.cover_teacher_id
+           and google_identity.tenant_id = coverage.tenant_id)
+      and private.lesson_recording_active(coverage.student_id, coverage.cover_teacher_id)
+      and not exists (
+        select 1
+          from public.lesson_occurrences as occurrence
+          join public.lesson_sessions as session
+            on session.id = occurrence.session_id and session.tenant_id = occurrence.tenant_id
+         where occurrence.tenant_id = coverage.tenant_id
+           and occurrence.source_type = 'booking'
+           and occurrence.source_id = coverage.booking_id::text
+           and occurrence.class_date = coverage.class_date
+           and occurrence.status <> 'SUPERSEDED'
+           and session.status <> 'SUPERSEDED'
+           and session.teacher_id is distinct from coverage.cover_teacher_id
+           and private.lesson_session_has_evidence(session.id))
+    from public.class_coverages as coverage
+   where coverage.id = p_coverage_id
+  ), false);
+$function$;
+
+alter function private.coverage_school_room_expected(uuid) owner to postgres;
+revoke all on function private.coverage_school_room_expected(uuid)
+  from public, anon, authenticated, service_role;
 
 create or replace function public.coverage_briefing_enqueue(p_coverage_id uuid, p_notify_group boolean default false)
 returns jsonb
@@ -315,13 +443,11 @@ declare
   v_id uuid;
   v_scheduled_teacher uuid;
   v_room text;
+  v_room_expected boolean := false;
   v_portal text;
   v_dossier text;
   v_window text;
   v_memory_at timestamptz;
-  v_memory_next text;
-  v_memory_errors text;
-  v_memory_homework text;
   v_approved text := '';
 begin
   if auth.role() <> 'service_role' then
@@ -393,26 +519,25 @@ begin
   end loop;
 
   -- (a) A última aula com resumo APROVADO pelo professor (memória MEET_SESSION
-  -- VERIFIED — aprovado e depois rejeitado já saiu daqui, 20260927130000). Só
-  -- os campos pedagógicos: próximo passo, erros recorrentes e lição.
-  select m.occurred_at,
-         private.briefing_line(m.recommended_next_step, 300),
-         (select pg_catalog.string_agg(private.briefing_line(err.item, 80), '; ' order by err.ord)
-            from unnest(coalesce(m.recurring_errors, '{}'::text[])) with ordinality as err(item, ord)
-           where err.ord <= 3 and private.briefing_line(err.item, 80) is not null),
-         private.briefing_line(m.homework_assigned, 200)
-    into v_memory_at, v_memory_next, v_memory_errors, v_memory_homework
+  -- VERIFIED — aprovado e depois rejeitado já saiu daqui, 20260927130000).
+  -- Só a DATA vai no texto; o próximo passo, os erros recorrentes e a lição
+  -- ficam no dossiê, atrás do login. O termo v3 promete o histórico ao
+  -- substituto "por um link que só abre com login", e o que sai no WhatsApp
+  -- fica na fila, no espelho da inbox, no provedor e no celular dele — cópias
+  -- que a exclusão a pedido, a retenção e a rejeição posterior do resumo não
+  -- alcançam (correção da revisão).
+  select m.occurred_at into v_memory_at
     from public.student_learning_memories m
    where m.tenant_id = c.tenant_id and m.student_id = c.student_id
      and m.source_type = 'MEET_SESSION' and m.verification_status = 'VERIFIED'
+     and (nullif(pg_catalog.btrim(coalesce(m.recommended_next_step, '')), '') is not null
+       or nullif(pg_catalog.btrim(coalesce(m.homework_assigned, '')), '') is not null
+       or coalesce(pg_catalog.cardinality(m.recurring_errors), 0) > 0)
    order by m.occurred_at desc nulls last, m.updated_at desc
    limit 1;
-  if coalesce(v_memory_next, v_memory_errors, v_memory_homework) is not null then
-    v_approved := format(E'📝 Última aula com resumo aprovado (%s):\n',
-        coalesce(to_char(v_memory_at at time zone 'America/Sao_Paulo', 'DD/MM'), '—'))
-      || case when v_memory_next is not null then format(E'• Próximo passo: %s\n', v_memory_next) else '' end
-      || case when v_memory_errors is not null then format(E'• Erros recorrentes: %s\n', v_memory_errors) else '' end
-      || case when v_memory_homework is not null then format(E'• Lição: %s\n', v_memory_homework) else '' end;
+  if found then
+    v_approved := format(E'📝 Última aula com resumo aprovado: %s — o próximo passo, os erros recorrentes e a lição estão no dossiê do aluno (abaixo).\n',
+      coalesce(to_char(v_memory_at at time zone 'America/Sao_Paulo', 'DD/MM'), 'sem data'));
   end if;
 
   -- (b) Sala oficial: só a que vale para QUEM DÁ a aula (a régua única de
@@ -429,6 +554,15 @@ begin
         c.student_id);
     exception when others then v_room := null; end;
   end if;
+  -- Sem sala pronta ainda (ela nasce nas 24 h antes da aula): se a escola vai
+  -- criar uma para quem dá a aula, substituto e família não combinam outro
+  -- link — senão a aula acaba em duas salas. O link chega depois, pelo gatilho
+  -- de private.google_meet_rooms (private.coverage_room_notice_enqueue).
+  if v_room is null then
+    begin
+      v_room_expected := private.coverage_school_room_expected(c.id);
+    exception when others then v_room_expected := false; end;
+  end if;
 
   -- (c) Dossiê por link com login (nunca o conteúdo no WhatsApp).
   v_portal := private.lesson_recording_portal_url(c.tenant_id);
@@ -444,12 +578,14 @@ begin
       btrim(coalesce(v_student.full_name, 'Aluno')), v_first_original, v_when, v_duration)
     || case when v_room is not null
          then format(E'🎥 Sala da escola no Google Meet: %s — a aula é nela, não mande outro link.\n', v_room)
+         when v_room_expected
+         then E'🎥 A aula terá sala da escola no Google Meet: o link chega por aqui quando a sala ficar pronta (até 24 h antes da aula) e aparece no app. Não mande outro link; se ele não chegar até 30 min antes da aula, combine com o aluno e mande o seu.\n'
          else '' end
     || case when v_student_phone is not null
          then format(E'📱 Contato: wa.me/%s%s — %s\n', v_student_phone,
                      case when v_student.guardian_id is not null or nullif(btrim(coalesce(v_student.guardian_name, '')), '') is not null
                           then ' (aluno com responsável)' else '' end,
-                     case when v_room is not null then 'se precisar combinar algo antes da aula.'
+                     case when v_room is not null or v_room_expected then 'se precisar combinar algo antes da aula.'
                           else 'combine direto e mande o link da aula.' end)
          else E'📱 Contato: sem WhatsApp no cadastro — peça à coordenação.\n' end
     || case when v_level is not null then format(E'🎯 Nível: %s\n', btrim(v_level)) else '' end
@@ -465,6 +601,8 @@ begin
       v_first_student, v_when, v_first_cover, v_first_original)
     || case when v_room is not null
          then format('A aula continua na sala da escola no Google Meet: %s', v_room)
+         when v_room_expected
+         then format('A aula será na sala da escola no Google Meet: o link chega por aqui antes do horário. Se ele não chegar até 30 min antes, %s te chama pelo WhatsApp.', v_first_cover)
          else format('%s vai te chamar pelo WhatsApp para combinar o link.', v_first_cover) end
     || ' Qualquer dúvida, é só responder aqui.';
 
@@ -511,13 +649,180 @@ begin
 
   return pg_catalog.jsonb_build_object('ok', true, 'queued', v_queued, 'student_phone_known', v_student_phone is not null,
     'cover_phone_known', v_cover_phone is not null, 'briefing', v_briefing,
-    'approved_lesson', v_approved <> '', 'official_room', v_room is not null, 'dossier_url', v_dossier);
+    'approved_lesson', v_approved <> '', 'official_room', v_room is not null,
+    'school_room_expected', v_room_expected, 'dossier_url', v_dossier);
 end
 $function$;
 
 alter function public.coverage_briefing_enqueue(uuid, boolean) owner to postgres;
 revoke all on function public.coverage_briefing_enqueue(uuid, boolean) from public, anon, authenticated;
 grant execute on function public.coverage_briefing_enqueue(uuid, boolean) to service_role;
+
+-- A sala da escola ficou pronta DEPOIS do aceite: o link vai ao substituto e à
+-- família (instância central, notification_queue — o teto do WhatsApp vale por
+-- cima), uma vez por cobertura (coverage:<id>:room e coverage:<id>:room-family).
+-- Só a sala que vale para quem dá a aula (official_lesson_link: régua única,
+-- aceite efetivo), só para aula que ainda não começou, e só a quem recebeu o
+-- pacote ou o aviso sem esse link — quem aceitou com a sala pronta já a tem.
+create or replace function private.coverage_room_notice_enqueue(p_coverage_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  c public.class_coverages%rowtype;
+  v_student public.profiles%rowtype;
+  v_cover public.profiles%rowtype;
+  v_director uuid;
+  v_scheduled_teacher uuid;
+  v_time text;
+  v_start timestamptz;
+  v_when text;
+  v_room text;
+  v_briefing_body text;
+  v_family_body text;
+  v_family_phone text;
+  v_family_has_link boolean;
+  v_phone text;
+  v_first_cover text;
+  v_first_student text;
+  v_queued jsonb := '[]'::jsonb;
+  v_id uuid;
+begin
+  select * into c from public.class_coverages where id = p_coverage_id;
+  if not found or pg_catalog.lower(coalesce(c.status, '')) <> 'confirmed' or c.booking_id is null then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'cobertura_sem_sala');
+  end if;
+  v_time := pg_catalog.left(coalesce(c.class_time, ''), 5);
+  v_start := (c.class_date + case when v_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                                  then v_time::time else time '23:59' end)
+             at time zone 'America/Sao_Paulo';
+  if v_start <= pg_catalog.now() then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'aula_ja_comecou');
+  end if;
+
+  select b.teacher_id into v_scheduled_teacher
+    from public.bookings b where b.id = c.booking_id and b.tenant_id = c.tenant_id;
+  v_room := public.official_lesson_link(
+    c.tenant_id, 'booking', c.booking_id::text, c.class_date,
+    coalesce(v_scheduled_teacher, c.original_teacher_id),
+    case when v_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then v_time::time end,
+    c.student_id);
+  if v_room is null then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_sala_para_quem_da_a_aula');
+  end if;
+
+  v_director := private.management_group_default_actor(c.tenant_id);
+  if v_director is null then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_diretor_ativo');
+  end if;
+  select q.message_body into v_briefing_body from public.notification_queue q
+   where q.tenant_id = c.tenant_id and q.idempotency_key = format('coverage:%s:briefing', c.id);
+  select q.message_body into v_family_body from public.notification_queue q
+   where q.tenant_id = c.tenant_id and q.idempotency_key = format('coverage:%s:family', c.id);
+
+  select * into v_student from public.profiles where id = c.student_id;
+  select * into v_cover from public.profiles where id = c.cover_teacher_id;
+  v_first_cover := pg_catalog.split_part(pg_catalog.btrim(coalesce(v_cover.full_name, 'Professor')), ' ', 1);
+  v_first_student := pg_catalog.split_part(pg_catalog.btrim(coalesce(v_student.full_name, 'aluno')), ' ', 1);
+  v_when := format('%s %s às %s', private.weekday_label_pt(c.class_date), pg_catalog.to_char(c.class_date, 'DD/MM'), v_time);
+  v_family_phone := private.whatsapp_digits(coalesce(nullif(v_student.attendance_phone, ''), nullif(v_student.phone, ''), nullif(v_student.guardian_phone, '')));
+  -- A família fica com o link se o aviso dela já o tinha ou se ele vai agora.
+  v_family_has_link := v_family_body is not null
+    and (pg_catalog.strpos(v_family_body, v_room) > 0 or v_family_phone is not null);
+
+  if v_briefing_body is not null and pg_catalog.strpos(v_briefing_body, v_room) = 0 then
+    v_phone := private.whatsapp_digits(coalesce(nullif(v_cover.attendance_phone, ''), nullif(v_cover.phone, '')));
+    if v_phone is not null then
+      insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
+          source_type, class_date, notification_kind, idempotency_key)
+      values (c.tenant_id, v_director, v_cover.full_name, v_phone,
+          format(E'🎥 Sala da escola pronta para a aula de *%s* (%s): %s\nA aula é nela — não mande outro link.%s',
+            pg_catalog.btrim(coalesce(v_student.full_name, 'aluno')), v_when, v_room,
+            case when v_family_has_link then ' A família recebe o mesmo link.'
+                 else ' A família não tem WhatsApp no cadastro: mande a ela este mesmo link.' end),
+          pg_catalog.now(), 'pending', 'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE',
+          format('coverage:%s:room', c.id))
+      on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
+      returning id into v_id;
+      if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('room'::text); end if;
+    end if;
+  end if;
+  v_id := null;
+  if v_family_body is not null and pg_catalog.strpos(v_family_body, v_room) = 0 then
+    v_phone := v_family_phone;
+    if v_phone is not null then
+      insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
+          source_type, class_date, notification_kind, idempotency_key)
+      values (c.tenant_id, v_director, v_student.full_name, v_phone,
+          format('Oi, %s! 🐺 O link da aula de %s com a Teacher %s, na sala da escola no Google Meet: %s Qualquer dúvida, é só responder aqui.',
+            v_first_student, v_when, v_first_cover, v_room),
+          pg_catalog.now(), 'pending', 'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE',
+          format('coverage:%s:room-family', c.id))
+      on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
+      returning id into v_id;
+      if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('room-family'::text); end if;
+    end if;
+  end if;
+
+  return pg_catalog.jsonb_build_object('ok', true, 'queued', v_queued, 'official_room', v_room);
+end
+$function$;
+
+alter function private.coverage_room_notice_enqueue(uuid) owner to postgres;
+revoke all on function private.coverage_room_notice_enqueue(uuid)
+  from public, anon, authenticated, service_role;
+
+create or replace function private.google_meet_room_ready_coverage_notice()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_coverage uuid;
+begin
+  if new.state is distinct from 'READY' or new.meeting_uri is null then
+    return null;
+  end if;
+  if tg_op = 'UPDATE' and old.state is not distinct from new.state
+     and old.meeting_uri is not distinct from new.meeting_uri then
+    return null;
+  end if;
+  for v_coverage in
+    select distinct coverage.id
+      from public.lesson_occurrences as occurrence
+      join public.class_coverages as coverage
+        on coverage.tenant_id = occurrence.tenant_id
+       and coverage.booking_id::text = occurrence.source_id
+       and coverage.class_date = occurrence.class_date
+     where occurrence.session_id = new.lesson_session_id
+       and occurrence.tenant_id = new.tenant_id
+       and occurrence.source_type = 'booking'
+       and occurrence.status <> 'SUPERSEDED'
+       and pg_catalog.lower(coalesce(coverage.status, '')) = 'confirmed'
+  loop
+    begin
+      perform private.coverage_room_notice_enqueue(v_coverage);
+    exception when others then
+      -- O aviso nunca derruba a gravação da sala.
+      raise warning 'google_meet_room_ready_coverage_notice: % (%)', sqlerrm, sqlstate;
+    end;
+  end loop;
+  return null;
+end
+$function$;
+
+alter function private.google_meet_room_ready_coverage_notice() owner to postgres;
+revoke all on function private.google_meet_room_ready_coverage_notice()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists trg_zz_google_meet_room_ready_coverage_notice on private.google_meet_rooms;
+create trigger trg_zz_google_meet_room_ready_coverage_notice
+  after insert or update of state, meeting_uri on private.google_meet_rooms
+  for each row when (new.state = 'READY')
+  execute function private.google_meet_room_ready_coverage_notice();
 
 -- ---------------------------------------------------------------------------
 -- 3. Transferência definitiva: o novo titular recebe o link do dossiê

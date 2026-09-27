@@ -9,19 +9,33 @@
 --     não abre nada; cobertura pendente também não; professor alheio também não;
 --   * o substituto não vê a transcrição bruta de aula que não deu, não escreve
 --     o cartão do aluno, e nenhuma outra ação do Meet se abre pela janela;
---   * o pacote da cobertura leva o próximo passo, os erros recorrentes e a lição
---     da ÚLTIMA aula com resumo APROVADO (nem a rejeitada, nem a mais antiga, nem
---     memória de outra origem), a sala oficial de quem dá a aula e o link com
---     login do dossiê — e nenhum texto pessoal (cartão, objetivo livre do
---     cadastro, nome do responsável). Idempotente. Sem WhatsApp do substituto, a
---     frase ao grupo diz que o pacote NÃO sai;
+--     quem entra SÓ pela janela recebe "Sala e resumo" sem a sala (link do
+--     Meet, conta Google do titular, conta central), sem a importação e sem a
+--     contagem de planilhas de presença;
+--   * o pacote da cobertura aponta a DATA da ÚLTIMA aula com resumo APROVADO
+--     (nem a rejeitada, nem a mais antiga, nem memória de outra origem) e manda
+--     ao dossiê — o próximo passo, os erros e a lição NÃO vão em texto e nenhuma
+--     linha da fila guarda o resumo depois da exclusão a pedido —, a sala
+--     oficial de quem dá a aula e o link com login do dossiê, e nenhum texto
+--     pessoal (cartão, objetivo livre do cadastro, nome do responsável).
+--     Idempotente. Sem WhatsApp do substituto, a frase ao grupo diz que o pacote
+--     NÃO sai;
+--   * sem sala pronta no aceite: com sala prevista para o substituto, ele e a
+--     família ouvem que o link da escola chega por aqui (nada de "combine e
+--     mande o link"); sem sala prevista (sem aceite do termo, ou aula congelada
+--     com o titular), o texto de sempre. Quando a sala fica pronta, o link vai
+--     a substituto e família uma vez só;
 --   * a transferência definitiva (direta pela Gestão, ou com aceite do
 --     professor) enfileira UMA mensagem ao novo titular com o link do dossiê,
 --     pela instância central; falha no aviso não derruba a transferência.
 --
 -- Reprova contra o código anterior: as funções novas não existem, o substituto
 -- não lia o dossiê, o pacote não tinha memória, sala nem dossiê (e trazia o
--- objetivo do cadastro), e a transferência não avisava ninguém.
+-- objetivo do cadastro), e a transferência não avisava ninguém. E contra a
+-- primeira versão desta frente: o pacote copiava o próximo passo e os erros do
+-- resumo aprovado para a fila (sobreviviam à exclusão a pedido), a janela
+-- entregava a sala e a conta Google do titular, e sem sala pronta o substituto
+-- era mandado criar outro link numa aula que ganharia sala da escola.
 --
 -- Não depende de dado real, do horário do dia nem da fila global: a escola é
 -- do teste, as datas saem da data de São Paulo no início da transação (a mesma
@@ -97,7 +111,10 @@ select pg_temp.assert_true(
   and to_regprocedure('private.student_pedagogy_access(text,uuid,boolean)') is not null
   and to_regprocedure('private.teacher_transfer_dossier_enqueue(uuid)') is not null
   and to_regprocedure('private.teacher_transfer_dossier_notice()') is not null
-  and to_regprocedure('private.briefing_line(text,integer)') is not null,
+  and to_regprocedure('private.briefing_line(text,integer)') is not null
+  and to_regprocedure('private.coverage_school_room_expected(uuid)') is not null
+  and to_regprocedure('private.coverage_room_notice_enqueue(uuid)') is not null
+  and to_regprocedure('private.google_meet_room_ready_coverage_notice()') is not null,
   'funções da troca de professor não existem'
 );
 
@@ -113,7 +130,10 @@ select pg_temp.assert_true(
       'private.student_learning_card_can_edit(text,uuid)'::regprocedure,
       'public.coverage_briefing_enqueue(uuid,boolean)'::regprocedure,
       'private.teacher_transfer_dossier_enqueue(uuid)'::regprocedure,
-      'private.teacher_transfer_dossier_notice()'::regprocedure)),
+      'private.teacher_transfer_dossier_notice()'::regprocedure,
+      'private.coverage_school_room_expected(uuid)'::regprocedure,
+      'private.coverage_room_notice_enqueue(uuid)'::regprocedure,
+      'private.google_meet_room_ready_coverage_notice()'::regprocedure)),
   'funções da troca de professor sem SECURITY DEFINER, sem search_path vazio ou sem dono postgres'
 );
 
@@ -132,28 +152,41 @@ select pg_temp.assert_true(
   and not has_function_privilege('authenticated', 'private.briefing_line(text,integer)', 'EXECUTE')
   and has_function_privilege('service_role', 'public.coverage_briefing_enqueue(uuid,boolean)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.coverage_briefing_enqueue(uuid,boolean)', 'EXECUTE')
-  and not has_function_privilege('anon', 'public.coverage_briefing_enqueue(uuid,boolean)', 'EXECUTE'),
+  and not has_function_privilege('anon', 'public.coverage_briefing_enqueue(uuid,boolean)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.coverage_school_room_expected(uuid)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'private.coverage_school_room_expected(uuid)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.coverage_room_notice_enqueue(uuid)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'private.coverage_room_notice_enqueue(uuid)', 'EXECUTE')
+  and not has_function_privilege('anon', 'private.coverage_room_notice_enqueue(uuid)', 'EXECUTE'),
   'privilégios da troca de professor fora do desenho'
 );
 
 select pg_temp.assert_true(
   exists (select 1 from pg_trigger
            where tgrelid = 'public.teacher_transfers'::regclass
-             and tgname = 'trg_zz_teacher_transfer_dossier_notice' and not tgisinternal),
-  'teacher_transfers sem o gatilho que avisa o novo titular'
+             and tgname = 'trg_zz_teacher_transfer_dossier_notice' and not tgisinternal)
+  and exists (select 1 from pg_trigger
+           where tgrelid = 'private.google_meet_rooms'::regclass
+             and tgname = 'trg_zz_google_meet_room_ready_coverage_notice' and not tgisinternal),
+  'teacher_transfers sem o gatilho que avisa o novo titular, ou salas sem o aviso de sala pronta da cobertura'
 );
 
 -- Quem recriar estas funções mantém o que esta frente pôs nelas.
 select pg_temp.assert_true(
   pg_catalog.strpos(g.def, 'private.pedagogy_temporary_access(') > 0
   and pg_catalog.strpos(g.def, 'p_action = ''session_detail''') > 0
+  and pg_catalog.strpos(g.def, 'v_temporary_only') > 0
   and pg_catalog.strpos(b.def, 'tenant_notice_destination') > 0
   and pg_catalog.strpos(b.def, 'public.official_lesson_link(') > 0
+  and pg_catalog.strpos(b.def, 'private.coverage_school_room_expected(') > 0
   and pg_catalog.strpos(b.def, '''MEET_SESSION''') > 0
   and pg_catalog.strpos(b.def, '/dossie-do-aluno?aluno=') > 0
   and pg_catalog.strpos(b.def, 'learning_objective') = 0
+  -- O texto do resumo aprovado não volta para o pacote do WhatsApp.
+  and pg_catalog.strpos(b.def, 'recommended_next_step, 300') = 0
+  and pg_catalog.strpos(b.def, 'Erros recorrentes: %s') = 0
   and pg_catalog.strpos(t.def, 'student.professor_id in (v_from_teacher, p_to_teacher)') > 0,
-  'google_meet_backend/coverage_briefing_enqueue/admin_transfer_student_teacher sem a janela do substituto, a sala, a memória, o dossiê ou o conserto da transferência direta (ou com o objetivo do cadastro)'
+  'google_meet_backend/coverage_briefing_enqueue/admin_transfer_student_teacher sem a janela do substituto (ou com a sala dele), a sala, a memória, o dossiê ou o conserto da transferência direta (ou com o objetivo do cadastro ou o texto do resumo aprovado)'
 )
 from (select pg_get_functiondef('public.google_meet_backend(text,text,uuid,uuid,jsonb)'::regprocedure) as def) as g,
      (select pg_get_functiondef('public.coverage_briefing_enqueue(uuid,boolean)'::regprocedure) as def) as b,
@@ -195,7 +228,9 @@ from (values
   ('00000000-0000-4000-8000-000000009e18', 'tp-kiko@example.invalid', 'Kiko Transferido'),
   ('00000000-0000-4000-8000-000000009e19', 'tp-lia@example.invalid', 'Lia Aceite'),
   ('00000000-0000-4000-8000-000000009e1a', 'tp-mia@example.invalid', 'Mia Semfone'),
-  ('00000000-0000-4000-8000-000000009e1b', 'tp-paulo@example.invalid', 'Paulo Semaviso')
+  ('00000000-0000-4000-8000-000000009e1b', 'tp-paulo@example.invalid', 'Paulo Semaviso'),
+  ('00000000-0000-4000-8000-000000009e1c', 'tp-duda@example.invalid', 'Duda Antecipada'),
+  ('00000000-0000-4000-8000-000000009e1d', 'tp-enzo@example.invalid', 'Enzo Semtermo')
 ) as v(id, email, nome);
 
 update public.profiles as p
@@ -221,7 +256,9 @@ update public.profiles as p
     ('e18', 'Kiko Transferido', 'STUDENT', '5511966660918'),
     ('e19', 'Lia Aceite', 'STUDENT', '5511966660919'),
     ('e1a', 'Mia Semfone', 'STUDENT', '5511966660920'),
-    ('e1b', 'Paulo Semaviso', 'STUDENT', '5511966660921')
+    ('e1b', 'Paulo Semaviso', 'STUDENT', '5511966660921'),
+    ('e1c', 'Duda Antecipada', 'STUDENT', '5511966660922'),
+    ('e1d', 'Enzo Semtermo', 'STUDENT', '5511966660923')
   ) as v(id, nome, papel, fone)
  where p.id = ('00000000-0000-4000-8000-000000009' || v.id)::uuid;
 
@@ -261,7 +298,12 @@ from td,
 lateral (values
   ('00000000-0000-4000-8000-000000009eb1'::uuid, '00000000-0000-4000-8000-000000009e11'::uuid,
    (array['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'])[extract(dow from td.d)::int + 1], '10:00'),
-  ('00000000-0000-4000-8000-000000009eb2'::uuid, '00000000-0000-4000-8000-000000009e18'::uuid, 'Quarta', '15:00')
+  ('00000000-0000-4000-8000-000000009eb2'::uuid, '00000000-0000-4000-8000-000000009e18'::uuid, 'Quarta', '15:00'),
+  -- Duda e Enzo: aulas da titular daqui a 2 dias (cobertas pela substituta).
+  ('00000000-0000-4000-8000-000000009eb4'::uuid, '00000000-0000-4000-8000-000000009e1c'::uuid,
+   (array['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'])[extract(dow from td.d + 2)::int + 1], '10:00'),
+  ('00000000-0000-4000-8000-000000009eb5'::uuid, '00000000-0000-4000-8000-000000009e1d'::uuid,
+   (array['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'])[extract(dow from td.d + 2)::int + 1], '11:00')
 ) as b(id, student_id, dia, hora);
 
 insert into public.teacher_availability (tenant_id, teacher_id, day_of_week, start_time)
@@ -286,6 +328,20 @@ lateral (values
   ('00000000-0000-4000-8000-000000009ec4'::uuid, '00000000-0000-4000-8000-000000009e07'::uuid,
    '00000000-0000-4000-8000-000000009e1a'::uuid, null::uuid, 1, 'confirmed')
 ) as c(id, cover, student_id, booking_id, delta, status);
+
+-- Duda (10:00) e Enzo (11:00): coberturas confirmadas daqui a 2 dias, de
+-- agendamento — aceitas antes de a sala da escola existir.
+insert into public.class_coverages (id, tenant_id, original_teacher_id, cover_teacher_id, student_id, booking_id,
+  class_date, class_time, status, confirmed_at)
+select c.id, 'troca-prof-school', '00000000-0000-4000-8000-000000009e02', '00000000-0000-4000-8000-000000009e03',
+       c.student_id, c.booking_id, td.d + 2, c.hora, 'confirmed', now()
+from td,
+lateral (values
+  ('00000000-0000-4000-8000-000000009ec5'::uuid, '00000000-0000-4000-8000-000000009e1c'::uuid,
+   '00000000-0000-4000-8000-000000009eb4'::uuid, '10:00'),
+  ('00000000-0000-4000-8000-000000009ec6'::uuid, '00000000-0000-4000-8000-000000009e1d'::uuid,
+   '00000000-0000-4000-8000-000000009eb5'::uuid, '11:00')
+) as c(id, student_id, booking_id, hora);
 
 insert into public.reschedules (tenant_id, teacher_id, student_id, date, time, fault_type, closed_reason)
 select 'troca-prof-school', '00000000-0000-4000-8000-000000009e04', r.student_id, r.dia, '15:00', 'STUDENT', r.closed
@@ -326,7 +382,14 @@ from td;
 
 insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub, cohost_email, state, created_by)
 values ('00000000-0000-4000-8000-000000009ea1', 'troca-prof-school', 'spaces/trocaA1', 'https://meet.google.com/tro-caso-bru',
-        'troca-sub', 'tp-substituta@example.invalid', 'READY', '00000000-0000-4000-8000-000000009e03');
+        'troca-sub', 'tp-substituta@example.invalid', 'READY', '00000000-0000-4000-8000-000000009e03'),
+       -- A sala da aula da TITULAR (A0): link, conta Google dela e conta central.
+       -- Pela janela a substituta lê o resumo aprovado dessa aula, não a sala.
+       ('00000000-0000-4000-8000-000000009ea0', 'troca-prof-school', 'spaces/trocaA0', 'https://meet.google.com/tit-ular-aaa',
+        'MARCADOR-CONTA-CENTRAL', 'marcador-google-titular@example.invalid', 'READY', '00000000-0000-4000-8000-000000009e02');
+
+insert into private.google_meet_artifact_imports (lesson_session_id, tenant_id, provider_name, kind, status)
+values ('00000000-0000-4000-8000-000000009ea0', 'troca-prof-school', 'conferenceRecords/trocaA0/transcripts/1', 'TRANSCRIPT', 'IMPORTED');
 
 insert into private.meeting_artifact_revisions (tenant_id, lesson_session_id, provider_name, kind, document_id,
   content_sha256, source_text, expires_at, source)
@@ -498,6 +561,32 @@ select pg_temp.assert_true(
      'MARCADOR-TRANSCRICAO') > 0,
   'session_detail do substituto errado (sem acesso, ou com a transcrição de aula que não deu)'
 );
+-- Pela janela, "Sala e resumo" da aula da titular sai sem a sala (link do Meet,
+-- conta Google dela, conta central), sem a importação e sem a presença.
+select pg_temp.assert_true(
+  (d::jsonb ->> 'temporary_access') = 'true'
+  and (d::jsonb -> 'room') = 'null'::jsonb
+  and (d::jsonb -> 'imports') = '[]'::jsonb
+  and (d::jsonb ->> 'attendance_saved_reports') = '0'
+  and strpos(d, 'tit-ular-aaa') = 0
+  and strpos(d, 'marcador-google-titular') = 0
+  and strpos(d, 'MARCADOR-CONTA-CENTRAL') = 0
+  and strpos(d, 'conferenceRecords/trocaA0') = 0,
+  'session_detail pela janela entregou a sala, a conta Google da titular ou a importação: ' || left(d, 400)
+)
+from (select pg_temp.meet('session_detail', '00000000-0000-4000-8000-000000009e03', '00000000-0000-4000-8000-000000009ea0') as d) as x;
+-- Quem dá a aula continua com a sala: a titular na dela, a substituta na aula
+-- que ficou com ela (sessão dela, não a janela).
+select pg_temp.assert_true(
+  (t::jsonb -> 'room' ->> 'meeting_uri') = 'https://meet.google.com/tit-ular-aaa'
+  and (t::jsonb ->> 'temporary_access') = 'false'
+  and jsonb_array_length(t::jsonb -> 'imports') = 1
+  and (s::jsonb -> 'room' ->> 'meeting_uri') = 'https://meet.google.com/tro-caso-bru'
+  and (s::jsonb ->> 'temporary_access') = 'false',
+  'a professora da aula perdeu a sala em "Sala e resumo"'
+)
+from (select pg_temp.meet('session_detail', '00000000-0000-4000-8000-000000009e02', '00000000-0000-4000-8000-000000009ea0') as t,
+             pg_temp.meet('session_detail', '00000000-0000-4000-8000-000000009e03', '00000000-0000-4000-8000-000000009ea1') as s) as x;
 -- Fora da janela e em qualquer outra ação: continua fechado.
 select pg_temp.assert_true(
   pg_temp.meet('session_detail', '00000000-0000-4000-8000-000000009e03', '00000000-0000-4000-8000-000000009ea2')
@@ -536,11 +625,12 @@ select pg_temp.assert_true(
   and b.notification_kind = 'MANAGEMENT_NOTICE' and b.status = 'pending'
   -- Instância central: a fila sai pela conta da direção.
   and b.teacher_id = '00000000-0000-4000-8000-000000009e01'
-  and strpos(b.message_body, 'MARCADOR-PROXIMO-PASSO') > 0
-  and strpos(b.message_body, 'MARCADOR-ERRO-1') > 0
-  and strpos(b.message_body, 'MARCADOR-ERRO-2 com quebra') > 0
-  and strpos(b.message_body, 'MARCADOR-LICAO') > 0
-  and strpos(b.message_body, to_char(td.d - 3, 'DD/MM')) > 0
+  -- A última aula APROVADA (a de 3 dias atrás): a data e o caminho para o
+  -- dossiê — nem a rejeitada de ontem nem a aprovada de 10 dias atrás.
+  and strpos(b.message_body, format('Última aula com resumo aprovado: %s', to_char(td.d - 3, 'DD/MM'))) > 0
+  and strpos(b.message_body, 'estão no dossiê do aluno') > 0
+  and strpos(b.message_body, format('Última aula com resumo aprovado: %s', to_char(td.d - 1, 'DD/MM'))) = 0
+  and strpos(b.message_body, format('Última aula com resumo aprovado: %s', to_char(td.d - 10, 'DD/MM'))) = 0
   and strpos(b.message_body, 'https://meet.google.com/tro-caso-bru') > 0
   and strpos(b.message_body, 'https://portal-troca.example.invalid/dossie-do-aluno?aluno=00000000-0000-4000-8000-000000009e11') > 0
   and strpos(b.message_body, format('de %s a %s', to_char(td.d - 1, 'DD/MM'), to_char(td.d + 1, 'DD/MM'))) > 0,
@@ -550,7 +640,11 @@ from brief_rows as b, td
 where b.idempotency_key like '%:briefing';
 
 select pg_temp.assert_true(
-  strpos(b.message_body, 'MARCADOR-OBJETIVO-REAL') = 0
+  -- O texto do resumo aprovado fica no dossiê, atrás do login: nada dele na fila.
+  strpos(b.message_body, 'MARCADOR-PROXIMO-PASSO') = 0
+  and strpos(b.message_body, 'MARCADOR-ERRO') = 0
+  and strpos(b.message_body, 'MARCADOR-LICAO') = 0
+  and strpos(b.message_body, 'MARCADOR-OBJETIVO-REAL') = 0
   and strpos(b.message_body, 'MARCADOR-TEMA') = 0
   and strpos(b.message_body, 'MARCADOR-OBJETIVO-PERFIL') = 0
   and strpos(b.message_body, 'MARCADOR-RESPONSAVEL') = 0
@@ -558,10 +652,22 @@ select pg_temp.assert_true(
   and strpos(b.message_body, 'MARCADOR-VELHO') = 0
   and strpos(b.message_body, 'MARCADOR-OUTRA-ORIGEM') = 0
   and strpos(b.message_body, 'MARCADOR-TRANSCRICAO') = 0,
-  'pacote do substituto levou texto pessoal, resumo rejeitado/antigo ou transcrição: ' || b.message_body
+  'pacote do substituto levou texto do resumo aprovado, texto pessoal, resumo rejeitado/antigo ou transcrição: ' || b.message_body
 )
 from brief_rows as b
 where b.idempotency_key like '%:briefing';
+
+-- Pacote sem sala nem previsão de sala (o Beto não tem agendamento): o de
+-- sempre — o substituto combina o link com o aluno.
+select pg_temp.assert_true(
+  (r ->> 'ok')::boolean
+  and not (r ->> 'official_room')::boolean
+  and not (r ->> 'school_room_expected')::boolean
+  and strpos(r ->> 'briefing', 'combine direto e mande o link da aula') > 0
+  and strpos(r ->> 'briefing', 'Última aula com resumo aprovado') = 0,
+  'pacote sem sala e sem aula aprovada saiu errado: ' || r::text
+)
+from (select public.coverage_briefing_enqueue('00000000-0000-4000-8000-000000009ec2', false) as r) as x;
 
 select pg_temp.assert_true(
   (select count(*) = 3 from brief_rows)
@@ -604,6 +710,195 @@ from brief2;
 select pg_temp.assert_true(
   (public.coverage_briefing_enqueue('00000000-0000-4000-8000-000000009ec3', true) ->> 'error') = 'cobertura_nao_confirmada',
   'convite pendente gerou pacote'
+);
+
+-- Exclusão a pedido depois do pacote: não sobra na fila nada do resumo
+-- aprovado (a primeira versão copiava o próximo passo e os erros para
+-- notification_queue.message_body, que a exclusão e a retenção não alcançam).
+select pg_temp.as_user('00000000-0000-4000-8000-000000009e01');
+select pg_temp.assert_true(
+  (public.erase_student_lesson_records('00000000-0000-4000-8000-000000009e11') ->> 'ok')::boolean,
+  'fixture: exclusão a pedido dos registros da Ana falhou'
+);
+select pg_temp.as_service();
+select pg_temp.assert_true(
+  not exists (select 1 from public.student_learning_memories m
+               where m.student_id = '00000000-0000-4000-8000-000000009e11' and m.source_type = 'MEET_SESSION')
+  and not exists (select 1 from public.notification_queue q
+                   where q.tenant_id = 'troca-prof-school'
+                     and (strpos(q.message_body, 'MARCADOR-PROXIMO-PASSO') > 0
+                       or strpos(q.message_body, 'MARCADOR-ERRO') > 0
+                       or strpos(q.message_body, 'MARCADOR-LICAO') > 0)),
+  'depois da exclusão a pedido a fila ainda guarda texto do resumo aprovado'
+);
+
+-- ---------------------------------------------------------------------------
+-- 4b. Aceite antes de a sala da escola existir (ela nasce nas 24 h antes)
+-- ---------------------------------------------------------------------------
+-- Sala prevista para a substituta na aula da Duda: escola conectada, conta
+-- Google dela confirmada e aceite do termo da Duda (pelo responsável, com
+-- código) e da substituta. O Enzo não respondeu ao termo: sem sala prevista.
+do $termos$
+begin
+  -- O texto do termo é dado de migration: numa cópia só-estrutura ele não
+  -- existe, e o teste publica um provisório (desfeito no rollback).
+  if (private.lesson_recording_current_term('STUDENT')).version is null then
+    insert into private.lesson_recording_terms (audience, version, body)
+    values ('STUDENT', 'v1', repeat('Termo provisório do teste da troca de professor. ', 6));
+  end if;
+  if (private.lesson_recording_current_term('TEACHER')).version is null then
+    insert into private.lesson_recording_terms (audience, version, body)
+    values ('TEACHER', 'v1', repeat('Termo provisório do teste da troca de professor. ', 6));
+  end if;
+end
+$termos$;
+
+insert into private.google_workspace_connections (tenant_id, organizer_sub, organizer_email, status, connected_by)
+values ('troca-prof-school', 'troca-central-sub', 'escola-troca@example.invalid', 'CONNECTED',
+        '00000000-0000-4000-8000-000000009e01');
+insert into private.teacher_google_identities (teacher_id, tenant_id, google_sub, google_email, email_verified)
+values ('00000000-0000-4000-8000-000000009e03', 'troca-prof-school', 'troca-bruna-sub', 'bruna-google@example.invalid', true);
+insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+  signer_relation, term_audience, term_version, source, verification, verified_phone)
+values
+  ('troca-prof-school', '00000000-0000-4000-8000-000000009e1c', 'STUDENT', 'ACCEPTED', 'Responsavel Duda',
+   'GUARDIAN', 'STUDENT', (private.lesson_recording_current_term('STUDENT')).version, 'APP', 'WHATSAPP_CODE', '(11) •••••-0922'),
+  ('troca-prof-school', '00000000-0000-4000-8000-000000009e03', 'TEACHER', 'ACCEPTED', 'Bruna Substituta',
+   'SELF', 'TEACHER', (private.lesson_recording_current_term('TEACHER')).version, 'APP', null, null);
+
+-- Aula da Duda congelada com a TITULAR (aceite já marcado antes da cobertura):
+-- a sala, se vier, é dela — a substituta não entra nela, então não há sala
+-- prevista para a substituta.
+set local session_replication_role = replica;
+insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+  scheduled_start_at, scheduled_end_at, source_key, documentation_consent)
+select '00000000-0000-4000-8000-000000009ed0', 'troca-prof-school', '00000000-0000-4000-8000-000000009e1c',
+       '00000000-0000-4000-8000-000000009e02', td.d + 2,
+       (td.d + 2 + time '10:00') at time zone 'America/Sao_Paulo',
+       (td.d + 2 + time '10:30') at time zone 'America/Sao_Paulo', 'troca-prof-d-titular', true
+from td;
+insert into public.lesson_occurrences (tenant_id, session_id, source_type, source_id, class_date, start_time,
+  scheduled_start_at, scheduled_end_at, entitlement_date, status)
+select 'troca-prof-school', '00000000-0000-4000-8000-000000009ed0', 'booking', '00000000-0000-4000-8000-000000009eb4',
+       td.d + 2, time '10:00',
+       (td.d + 2 + time '10:00') at time zone 'America/Sao_Paulo',
+       (td.d + 2 + time '10:30') at time zone 'America/Sao_Paulo', td.d + 2, 'SCHEDULED'
+from td;
+set local session_replication_role = origin;
+select pg_temp.assert_true(
+  not private.coverage_school_room_expected('00000000-0000-4000-8000-000000009ec5'),
+  'aula congelada com a titular ainda previu sala da escola para a substituta'
+);
+-- A sessão da titular sai (sem a marca): a sessão da ocorrência é refeita para
+-- quem dá a aula.
+set local session_replication_role = replica;
+update public.lesson_occurrences set status = 'SUPERSEDED' where session_id = '00000000-0000-4000-8000-000000009ed0';
+update public.lesson_sessions set status = 'SUPERSEDED', documentation_consent = false
+ where id = '00000000-0000-4000-8000-000000009ed0';
+set local session_replication_role = origin;
+select pg_temp.assert_true(
+  private.coverage_school_room_expected('00000000-0000-4000-8000-000000009ec5')
+  and not private.coverage_school_room_expected('00000000-0000-4000-8000-000000009ec6'),
+  'previsão de sala errada (Duda com os dois aceites deveria ter; Enzo sem aceite, não)'
+);
+
+create temp table brief_duda as
+select public.coverage_briefing_enqueue('00000000-0000-4000-8000-000000009ec5', false) as r;
+create temp table brief_enzo as
+select public.coverage_briefing_enqueue('00000000-0000-4000-8000-000000009ec6', false) as r;
+
+select pg_temp.assert_true(
+  not (d.r ->> 'official_room')::boolean
+  and (d.r ->> 'school_room_expected')::boolean
+  and strpos(d.r ->> 'briefing', 'o link chega por aqui quando a sala ficar pronta') > 0
+  and strpos(d.r ->> 'briefing', 'Não mande outro link') > 0
+  and strpos(d.r ->> 'briefing', 'combine direto e mande o link da aula') = 0
+  and (select strpos(q.message_body, 'o link chega por aqui antes do horário') > 0
+            and strpos(q.message_body, 'vai te chamar pelo WhatsApp para combinar o link') = 0
+         from public.notification_queue q
+        where q.tenant_id = 'troca-prof-school'
+          and q.idempotency_key = 'coverage:00000000-0000-4000-8000-000000009ec5:family'),
+  'aceite antes da sala: substituta ou família mandadas combinar outro link numa aula que terá sala da escola: ' || d.r::text
+)
+from brief_duda as d;
+
+select pg_temp.assert_true(
+  not (e.r ->> 'school_room_expected')::boolean
+  and strpos(e.r ->> 'briefing', 'combine direto e mande o link da aula') > 0
+  and strpos(e.r ->> 'briefing', 'o link chega por aqui') = 0
+  and (select strpos(q.message_body, 'vai te chamar pelo WhatsApp para combinar o link') > 0
+         from public.notification_queue q
+        where q.tenant_id = 'troca-prof-school'
+          and q.idempotency_key = 'coverage:00000000-0000-4000-8000-000000009ec6:family'),
+  'sem sala prevista, o pacote deixou de mandar combinar o link: ' || e.r::text
+)
+from brief_enzo as e;
+
+-- A sala da escola fica pronta para a substituta (a sessão da ocorrência é
+-- dela): o link vai a ela e à família, uma vez.
+set local session_replication_role = replica;
+insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+  scheduled_start_at, scheduled_end_at, source_key, documentation_consent)
+select '00000000-0000-4000-8000-000000009ed1', 'troca-prof-school', '00000000-0000-4000-8000-000000009e1c',
+       '00000000-0000-4000-8000-000000009e03', td.d + 2,
+       (td.d + 2 + time '10:00') at time zone 'America/Sao_Paulo',
+       (td.d + 2 + time '10:30') at time zone 'America/Sao_Paulo', 'troca-prof-d-substituta', true
+from td;
+insert into public.lesson_occurrences (tenant_id, session_id, source_type, source_id, class_date, start_time,
+  scheduled_start_at, scheduled_end_at, entitlement_date, status)
+select 'troca-prof-school', '00000000-0000-4000-8000-000000009ed1', 'booking', '00000000-0000-4000-8000-000000009eb4',
+       td.d + 2, time '10:00',
+       (td.d + 2 + time '10:00') at time zone 'America/Sao_Paulo',
+       (td.d + 2 + time '10:30') at time zone 'America/Sao_Paulo', td.d + 2, 'SCHEDULED'
+from td;
+set local session_replication_role = origin;
+insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub, cohost_email, state, created_by)
+values ('00000000-0000-4000-8000-000000009ed1', 'troca-prof-school', 'spaces/trocaD1', 'https://meet.google.com/dud-aant-bru',
+        'troca-central-sub', 'bruna-google@example.invalid', 'CREATING', '00000000-0000-4000-8000-000000009e03');
+select pg_temp.assert_true(
+  not exists (select 1 from public.notification_queue q
+               where q.tenant_id = 'troca-prof-school'
+                 and q.idempotency_key like 'coverage:00000000-0000-4000-8000-000000009ec5:room%'),
+  'sala ainda sendo criada já avisou a substituta'
+);
+update private.google_meet_rooms set state = 'READY'
+ where lesson_session_id = '00000000-0000-4000-8000-000000009ed1';
+
+select pg_temp.assert_true(
+  (select count(*) = 1 from public.notification_queue q
+    where q.tenant_id = 'troca-prof-school'
+      and q.idempotency_key = 'coverage:00000000-0000-4000-8000-000000009ec5:room'
+      and q.student_phone = '5511977770903'
+      and q.notification_kind = 'MANAGEMENT_NOTICE'
+      and q.teacher_id = '00000000-0000-4000-8000-000000009e01'
+      and strpos(q.message_body, 'https://meet.google.com/dud-aant-bru') > 0
+      and strpos(q.message_body, 'não mande outro link') > 0)
+  and (select count(*) = 1 from public.notification_queue q
+    where q.tenant_id = 'troca-prof-school'
+      and q.idempotency_key = 'coverage:00000000-0000-4000-8000-000000009ec5:room-family'
+      and q.student_phone = '5511966660922'
+      and strpos(q.message_body, 'https://meet.google.com/dud-aant-bru') > 0),
+  'sala pronta depois do aceite não chegou à substituta e à família'
+);
+
+-- Uma vez só: gravar a sala de novo, ou pedir o aviso de novo, não repete. E a
+-- cobertura que já levou a sala no pacote (Ana) não recebe aviso nenhum.
+update private.google_meet_rooms set state = 'READY', updated_at = now()
+ where lesson_session_id = '00000000-0000-4000-8000-000000009ed1';
+select pg_temp.assert_true(
+  (private.coverage_room_notice_enqueue('00000000-0000-4000-8000-000000009ec5') -> 'queued') = '[]'::jsonb
+  and (select count(*) = 2 from public.notification_queue q
+        where q.tenant_id = 'troca-prof-school'
+          and q.idempotency_key like 'coverage:00000000-0000-4000-8000-000000009ec5:room%')
+  and coalesce(private.coverage_room_notice_enqueue('00000000-0000-4000-8000-000000009ec1') -> 'queued', '[]'::jsonb) = '[]'::jsonb
+  and not exists (select 1 from public.notification_queue q
+                   where q.tenant_id = 'troca-prof-school'
+                     and q.idempotency_key like 'coverage:00000000-0000-4000-8000-000000009ec1:room%')
+  -- Enzo sem sala: nada.
+  and not exists (select 1 from public.notification_queue q
+                   where q.tenant_id = 'troca-prof-school'
+                     and q.idempotency_key like 'coverage:00000000-0000-4000-8000-000000009ec6:room%'),
+  'aviso de sala pronta repetiu, ou foi a quem já tinha a sala, ou a quem não tem sala'
 );
 
 -- ---------------------------------------------------------------------------

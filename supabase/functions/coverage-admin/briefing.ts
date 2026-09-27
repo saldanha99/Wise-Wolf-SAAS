@@ -3,8 +3,9 @@
 /**
  * Cobertura FORÇADA pela coordenação já nasce confirmada, sem o aceite do
  * substituto — e por isso pulava o pacote que o aceite manda (contato do aluno,
- * o que ficou da última aula aprovada, sala oficial e link com login do
- * dossiê). Aqui ela passa pela mesma porta do banco
+ * últimas aulas lançadas, data da última aula com resumo aprovado, sala oficial
+ * e link com login do dossiê — o texto do resumo fica no dossiê). Aqui ela
+ * passa pela mesma porta do banco
  * (`coverage_briefing_enqueue`, migration 20260928100000), que enfileira na
  * instância central pela `notification_queue` — o teto do WhatsApp vale por
  * cima. O grupo da coordenação não é avisado: quem forçou foi ela, pela tela.

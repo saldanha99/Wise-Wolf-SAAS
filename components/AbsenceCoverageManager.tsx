@@ -248,7 +248,7 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
               <h3 className="font-black text-lg text-brand-text dark:text-slate-100">{done} cobertura(s) {mode === 'force' ? 'aplicada(s)' : 'enviada(s)'}</h3>
               <p className="text-sm text-brand-muted mt-1">
                 {mode === 'force'
-                  ? 'Os substitutos foram escalados e recebem no WhatsApp o pacote da aula (contato do aluno, última aula aprovada e link do dossiê). As aulas já aparecem na agenda deles.'
+                  ? 'Os substitutos foram escalados e recebem no WhatsApp o pacote da aula (contato do aluno, últimas aulas lançadas e link do dossiê, onde está o resumo aprovado). As aulas já aparecem na agenda deles.'
                   : 'Os substitutos receberam o link de confirmação por WhatsApp. A aula só muda quando aceitarem.'}
               </p>
               {doneWarnings.map(warning => <p key={warning} role="alert" className="text-xs font-bold text-amber-600 mt-2">⚠️ {warning}</p>)}

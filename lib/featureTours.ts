@@ -418,7 +418,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
         target: 'lesson-session-handover',
         view: 'lesson-sessions',
         title: 'Vai cobrir uma aula? O dossiê chega por link 🗂️',
-        text: 'Ao aceitar uma cobertura, o WhatsApp da escola manda o contato do aluno, o próximo passo, os erros recorrentes e a lição da última aula aprovada, a sala da escola no Meet quando a aula tiver uma, e o link do dossiê. Abra com o seu login: ele vale do dia anterior ao dia seguinte da aula (também numa reposição marcada com você) e mostra o histórico, o resumo aprovado e o cartão do aluno. A transcrição completa fica só com quem deu cada aula.',
+        text: 'Ao aceitar uma cobertura, o WhatsApp da escola manda o contato do aluno, as últimas aulas lançadas, a data da última aula com resumo aprovado, a sala da escola no Meet quando a aula tiver uma (se ela ainda não existir, o link chega depois, por aqui — não mande outro) e o link do dossiê. Abra com o seu login: ele vale do dia anterior ao dia seguinte da aula (também numa reposição marcada com você) e é lá que estão o próximo passo, os erros recorrentes e a lição do resumo aprovado, o histórico e o cartão do aluno. A transcrição completa fica só com quem deu cada aula.',
       },
       {
         target: null,

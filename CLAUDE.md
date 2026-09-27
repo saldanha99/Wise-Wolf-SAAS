@@ -500,10 +500,21 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   resumo aprovado (`session_detail`, só essa ação) do dia anterior ao seguinte da aula
   (`private.pedagogy_temporary_access`, a janela do Planner); `'Pendente'` e encerrada não abrem. A regra do
   dossiê é uma só, `private.student_pedagogy_access(escola, aluno, com_janela)`: `can_read_student_pedagogy`
-  com a janela, `student_learning_card_can_edit` sem (o substituto lê o cartão, não reescreve). O pacote da
-  cobertura leva a última aula APROVADA (próximo passo, erros, lição), a sala oficial de quem dá a aula e
-  `<portal>/dossie-do-aluno?aluno=<id>` — e deixou de levar o objetivo livre do cadastro e o nome do
-  responsável. Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
+  com a janela, `student_learning_card_can_edit` sem (o substituto lê o cartão, não reescreve). Quem entra
+  **só** pela janela recebe "Sala e resumo" sem a sala (`room: null` — nem `meeting_uri`, nem a conta Google
+  do professor da aula, nem a conta central), sem `imports` e sem presença (`v_temporary_only`,
+  `temporary_access`). O pacote da cobertura leva a **data** da última aula APROVADA e manda ao dossiê — ⚠️ o
+  **texto** do resumo (próximo passo, erros, lição) não vai no WhatsApp: o termo v3 promete o histórico ao
+  substituto "por um link que só abre com login", e o que sai no WhatsApp fica na fila, na inbox, no provedor
+  e no celular, onde a exclusão a pedido e a retenção não chegam. Leva também a sala oficial de quem dá a aula
+  e `<portal>/dossie-do-aluno?aluno=<id>` — e deixou de levar o objetivo livre do cadastro e o nome do
+  responsável. **Sem sala pronta no aceite**, `private.coverage_school_room_expected` (escola conectada,
+  conta Google do substituto, aceite do termo dos dois, aula não congelada com outro professor) decide se
+  substituto e família ouvem "o link da escola chega por aqui" ou "combine e mande o link"; quando a sala fica
+  `READY`, o gatilho em `private.google_meet_rooms` manda o link aos dois uma vez
+  (`coverage:<id>:room`/`room-family`). O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
+  sair do dossiê e **segura os tours** enquanto isso (o tour do login trocava de aba e o dossiê sumia).
+  Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
   `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
   desde 22/09 (o gatilho `bookings_sync_student_primary_teacher` já trocava o `professor_id` antes da trava
   da função) — remendada por âncora aqui.
@@ -1824,12 +1835,15 @@ a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
   ele; função com dono `postgres` que a chama precisa do `grant execute … to postgres` (feito
   nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
   booking — continua manual.
-- **Desde `20260928100000`** o pacote leva também a última aula com resumo APROVADO (próximo passo,
-  erros recorrentes, lição), a sala oficial quando vale para quem dá a aula e o link com login do dossiê
-  (válido do dia anterior ao seguinte da aula); o objetivo livre do cadastro e o nome do responsável
-  saíram do texto (ficam no dossiê). O modo **force** do `coverage-admin` também manda o pacote
-  (`coverage-admin/briefing.ts`). ⚠️ Não volte a pôr cartão, preferência ou objetivo do aluno em texto
-  no WhatsApp do substituto — decisão da direção: dado pessoal só atrás do login.
+- **Desde `20260928100000`** o pacote leva também a data da última aula com resumo APROVADO (o próximo
+  passo, os erros e a lição ficam no dossiê), a sala oficial quando vale para quem dá a aula (ou "o link
+  da escola chega por aqui" quando a sala é prevista e ainda não existe — e chega, pelo gatilho de sala
+  pronta) e o link com login do dossiê (válido do dia anterior ao seguinte da aula); o objetivo livre do
+  cadastro e o nome do responsável saíram do texto (ficam no dossiê). O modo **force** do `coverage-admin`
+  também manda o pacote (`coverage-admin/briefing.ts`). ⚠️ Não volte a pôr cartão, preferência, objetivo
+  do aluno **nem o texto do resumo aprovado** no WhatsApp do substituto — decisão da direção e termo v3:
+  dado pessoal e histórico do Meet só atrás do login (o WhatsApp copia para fila, inbox, provedor e
+  celular, fora do alcance da exclusão a pedido).
 
 ### 🚦 Teto e aquecimento do WhatsApp — todo envio automático pede licença ao banco ✅
 

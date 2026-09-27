@@ -1142,7 +1142,7 @@ async function requestCoverage(
     if (isForce) {
       successful += 1;
       // Forçada = confirmada sem aceite: o substituto recebe o mesmo pacote do
-      // aceite (contato, última aula aprovada, sala oficial e link do dossiê).
+      // aceite (contato, últimas aulas, sala oficial e link do dossiê).
       const briefingWarning = await enqueueForcedCoverageBriefing(
         (fn, args) => admin.rpc(fn, args),
         coverageId,
