@@ -39,6 +39,9 @@ export interface MeetSummaryBudget {
   // spent_usd já inclui. Ausentes em banco anterior à migration.
   card_suggestion_count?: number;
   card_suggestion_spent_usd?: number;
+  // A edge das sugestões pausou a escola (IA desligada, sem preço, provedor
+  // recusou): a tela não anuncia o recurso. Nulo = não pausada.
+  card_suggestions_pause_reason?: string | null;
 }
 
 const dateBr = (iso: string) =>

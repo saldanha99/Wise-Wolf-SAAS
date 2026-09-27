@@ -43,7 +43,8 @@ export default function StudentHandover({ studentId }: { studentId: string }) {
         onReload={() => void load()} />}
       {/* Sugestões da IA (20260928130000): só para quem edita o cartão; aceitar grava pelo cartão. */}
       {learningCard?.can_edit && <StudentCardSuggestions studentId={studentId} cardVersion={learningCard.version}
-        onCardSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)} />}
+        onCardSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)}
+        onReload={() => void load()} />}
       <h4 className="font-semibold">Memória revisada</h4>
       {data.memories.length ? data.memories.map(m => evidence(m, 'Memória revisada')) : <p className="text-sm text-slate-500">Ainda não há memória revisada.</p>}
       <h4 className="font-semibold">Lançamentos recentes — relato docente</h4>

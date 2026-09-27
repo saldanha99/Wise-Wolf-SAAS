@@ -31,6 +31,8 @@ export interface CardSuggestionsView {
   request_reason: string | null;
   request_class_date: string | null;
   budget_reached: boolean;
+  /** Sugestões de aula dada por outro professor: esperam quem deu a aula, a coordenação ou a direção. */
+  other_lessons_pending: number;
   suggestions: CardSuggestion[];
 }
 
@@ -64,6 +66,8 @@ export function readCardSuggestions(raw: unknown): CardSuggestionsView | null {
     request_reason: typeof raw.request_reason === 'string' ? raw.request_reason : null,
     request_class_date: typeof raw.request_class_date === 'string' ? raw.request_class_date : null,
     budget_reached: raw.budget_reached === true,
+    other_lessons_pending: typeof raw.other_lessons_pending === 'number' && raw.other_lessons_pending > 0
+      ? Math.trunc(raw.other_lessons_pending) : 0,
     suggestions,
   };
 }
@@ -116,6 +120,12 @@ export function cardSuggestionReasonText(reason: string | null | undefined): str
       return 'A sugestão por IA não está ligada nesta instalação.';
     case 'card_suggestions_pricing_required':
       return 'Falta cadastrar o preço do modelo de IA. Avise a direção.';
+    case 'card_suggestions_provider_credits':
+      return 'A conta de IA da escola está sem créditos. Avise a direção.';
+    case 'card_suggestions_provider_rejected':
+      return 'O provedor de IA recusou a configuração da escola. Avise a direção.';
+    case 'aula_de_outro_professor':
+      return 'As aulas aprovadas deste aluno foram dadas por outro professor: quem lê a aula para sugerir é quem a deu, a coordenação ou a direção.';
     case 'aluno_fora_da_escola':
       return 'O aluno não está mais na escola.';
     default:
@@ -145,6 +155,11 @@ export function cardSuggestionDecideErrorMessage(message: string | null | undefi
     return 'A aula dessa sugestão deixou de estar aprovada (ou a frase passou do prazo de 90 dias). A lista foi atualizada.';
   }
   if (raw.includes('sem_permissao')) return 'Você não pode mexer no cartão deste aluno.';
+  // O professor não estava editando nada: foi outra pessoa que salvou o cartão
+  // (ou aceitou outra sugestão) depois que o dossiê abriu. A tela recarrega.
+  if (raw.includes('cartao_alterado_por_outra_pessoa')) {
+    return 'Outra pessoa salvou este cartão enquanto o dossiê estava aberto. O cartão e as sugestões foram recarregados — confira e aceite de novo.';
+  }
   if (raw.startsWith('cartao_itens_demais')) {
     return 'A lista do cartão já está cheia. Tire um item no cartão e aceite de novo.';
   }

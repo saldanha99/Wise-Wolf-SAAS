@@ -51,19 +51,57 @@ describe('Sugestões da IA no dossiê', () => {
     await screen.findByText('Sugestão aceita: já está no cartão.');
   });
 
-  it('descartar não mexe no cartão; conflito de versão vira mensagem', async () => {
+  it('descartar não mexe no cartão; conflito de versão relê o cartão e a lista (não fica preso)', async () => {
     rpc.mockImplementation((name: string, args?: Record<string, unknown>) => Promise.resolve(
       name !== 'decide_student_card_suggestion' ? { data: view(), error: null }
         : args?.p_accept ? { data: null, error: { message: 'cartao_alterado_por_outra_pessoa' } }
         : { data: { ok: true, status: 'DISCARDED', learning_card: null }, error: null }));
     const onCardSaved = vi.fn();
-    render(<StudentCardSuggestions studentId="aluno-1" cardVersion={2} onCardSaved={onCardSaved} />);
+    const onReload = vi.fn();
+    render(<StudentCardSuggestions studentId="aluno-1" cardVersion={2} onCardSaved={onCardSaved} onReload={onReload} />);
     fireEvent.click(await screen.findByRole('button', { name: /^Descartar: No fim/ }));
-    await screen.findByText('Sugestão descartada. Ela não volta.');
+    await screen.findByText(/Sugestão descartada\. A IA não volta a sugeri-la nos próximos 90 dias/);
     expect(onCardSaved).not.toHaveBeenCalled();
+    expect(onReload).not.toHaveBeenCalled();
+    const listed = rpc.mock.calls.filter(call => call[0] === 'get_student_card_suggestions').length;
     fireEvent.click(screen.getByRole('button', { name: 'Aceitar: Apresentar resultados em reuniões' }));
-    await screen.findByText(/Outra pessoa atualizou este cartão/);
+    await screen.findByText(/Outra pessoa salvou este cartão enquanto o dossiê estava aberto/);
+    // O dossiê relê o cartão (versão nova) e a lista é relida: o próximo
+    // "Aceitar" sai com a versão atual, em vez de falhar igual para sempre.
+    expect(onReload).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(rpc.mock.calls.filter(call => call[0] === 'get_student_card_suggestions').length)
+      .toBe(listed + 1));
     expect(onCardSaved).not.toHaveBeenCalled();
+  });
+
+  it('com a versão nova do dossiê, o aceite seguinte usa a versão atual', async () => {
+    rpc.mockImplementation((name: string) => Promise.resolve(name === 'decide_student_card_suggestion'
+      ? { data: { ok: true, status: 'ACCEPTED', learning_card: { exists: true, version: 4 } }, error: null }
+      : { data: view(), error: null }));
+    const { rerender } = render(<StudentCardSuggestions studentId="aluno-1" cardVersion={2} onCardSaved={() => undefined} />);
+    await screen.findByText('Apresentar resultados em reuniões');
+    rerender(<StudentCardSuggestions studentId="aluno-1" cardVersion={3} onCardSaved={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Aceitar: Apresentar resultados em reuniões' }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('decide_student_card_suggestion', {
+      p_suggestion_id: 'sug-goal', p_accept: true, p_expected_version: 3,
+    }));
+  });
+
+  it('sugestões de aula dada por outro professor: só a contagem, sem a frase', async () => {
+    rpc.mockResolvedValue({ data: view({ suggestions: [], other_lessons_pending: 3,
+      request_reason: 'aula_de_outro_professor' }), error: null });
+    render(<StudentCardSuggestions studentId="aluno-1" cardVersion={0} onCardSaved={() => undefined} />);
+    await screen.findByText(/3 sugestões de aula dada por outro professor/);
+    expect(screen.getByText(/quem lê a aula para sugerir é quem a deu/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Sugerir/ })).toBeNull();
+  });
+
+  it('IA desligada na instalação: o botão não aparece, só o motivo', async () => {
+    rpc.mockResolvedValue({ data: view({ suggestions: [], can_request: false,
+      request_reason: 'card_suggestions_not_configured' }), error: null });
+    render(<StudentCardSuggestions studentId="aluno-1" cardVersion={0} onCardSaved={() => undefined} />);
+    await screen.findByText('A sugestão por IA não está ligada nesta instalação.');
+    expect(screen.queryByRole('button', { name: /Sugerir/ })).toBeNull();
   });
 
   it('o botão pede à edge a aula aprovada mais recente e relê a lista', async () => {

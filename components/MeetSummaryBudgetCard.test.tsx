@@ -59,5 +59,15 @@ describe('Teto mensal do resumo por IA (direção)', () => {
     render(<MeetSummaryBudgetCard aiEnabled />);
     await screen.findByText('Gasto em 2026-09: US$ 1.25 de US$ 20.00');
     expect(screen.queryByTestId('summary-card-suggestions')).toBeNull();
+    // Sem leitura no mês, a tela não anuncia as sugestões do cartão.
+    expect(screen.queryByText(/sugere itens para o cartão/)).toBeNull();
+  });
+
+  it('sugestões do cartão desligadas na instalação: dito como desligadas, não anunciadas', async () => {
+    rpc.mockResolvedValue({ data: budget({ card_suggestions_pause_reason: 'card_suggestions_not_configured' }), error: null });
+    render(<MeetSummaryBudgetCard aiEnabled />);
+    expect((await screen.findByTestId('summary-card-suggestions-off')).textContent)
+      .toMatch(/desligadas nesta instalação/);
+    expect(screen.queryByTestId('summary-card-suggestions')).toBeNull();
   });
 });

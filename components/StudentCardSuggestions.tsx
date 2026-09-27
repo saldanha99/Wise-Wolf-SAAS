@@ -27,9 +27,11 @@ interface Props {
   cardVersion: number;
   /** Cartão cru que o servidor gravou (mesmo formato do dossiê). */
   onCardSaved: (raw: unknown) => void;
+  /** Relê o dossiê (e a versão do cartão) — o aceite sobre versão velha não fica preso. */
+  onReload?: () => void;
 }
 
-export default function StudentCardSuggestions({ studentId, cardVersion, onCardSaved }: Props) {
+export default function StudentCardSuggestions({ studentId, cardVersion, onCardSaved, onReload }: Props) {
   const [view, setView] = useState<CardSuggestionsView | null>(null);
   const [hidden, setHidden] = useState(false);
   const [busyId, setBusyId] = useState('');
@@ -63,11 +65,14 @@ export default function StudentCardSuggestions({ studentId, cardVersion, onCardS
       });
       if (rpcError) {
         setError(cardSuggestionDecideErrorMessage(rpcError.message));
-        if (/sugestao_ja_decidida|sugestao_sem_aula_aprovada/.test(rpcError.message || '')) await load();
+        // Outra pessoa salvou o cartão depois que o dossiê abriu: relê o cartão
+        // (versão nova) e a lista — senão todo "Aceitar" falharia igual.
+        if (/cartao_alterado_por_outra_pessoa/.test(rpcError.message || '')) onReload?.();
+        if (/sugestao_ja_decidida|sugestao_sem_aula_aprovada|cartao_alterado_por_outra_pessoa/.test(rpcError.message || '')) await load();
         return;
       }
       if (data?.learning_card) onCardSaved(data.learning_card);
-      setMessage(accept ? 'Sugestão aceita: já está no cartão.' : 'Sugestão descartada. Ela não volta.');
+      setMessage(accept ? 'Sugestão aceita: já está no cartão.' : 'Sugestão descartada. A IA não volta a sugeri-la nos próximos 90 dias.');
       await load();
     } catch {
       setError(cardSuggestionDecideErrorMessage(null));
@@ -156,6 +161,13 @@ export default function StudentCardSuggestions({ studentId, cardVersion, onCardS
         <p className="text-sm text-slate-500">Nenhuma sugestão esperando você.</p>
       ))}
 
+      {view && view.other_lessons_pending > 0 && (
+        <p className="text-xs text-slate-500">
+          {view.other_lessons_pending === 1 ? '1 sugestão' : `${view.other_lessons_pending} sugestões`} de aula dada por outro professor
+          {view.other_lessons_pending === 1 ? ' espera' : ' esperam'} quem deu a aula, a coordenação ou a direção — a frase vem da transcrição daquela aula.
+        </p>
+      )}
+
       {view && (
         <div className="space-y-1 border-t border-indigo-100 pt-3 dark:border-indigo-900">
           {view.budget_reached ? (
@@ -169,7 +181,7 @@ export default function StudentCardSuggestions({ studentId, cardVersion, onCardS
             <p className="text-xs text-slate-500">{cardSuggestionReasonText(view.request_reason)}</p>
           )}
           <p className="text-xs text-slate-500">
-            A frase da aula fica guardada no máximo 90 dias depois da aula. Aceita ou descartada, a sugestão deixa de guardar o texto.
+            A frase da aula fica guardada no máximo 90 dias depois da aula. Aceita ou descartada, a sugestão deixa de guardar o texto; fica só uma marca, para a IA não repetir a sugestão, apagada 90 dias depois.
           </p>
         </div>
       )}

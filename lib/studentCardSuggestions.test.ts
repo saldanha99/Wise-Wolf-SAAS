@@ -35,6 +35,9 @@ describe('sugestões da IA para o cartão — leitura do servidor', () => {
       ['s2', 'correction_style', 'Please correct me only at the end.'],
     ]);
     expect(view.suggestions[1].already_in_card).toBe(true);
+    expect(view.other_lessons_pending).toBe(0);
+    expect(readCardSuggestions({ ...serverView, other_lessons_pending: 2 })!.other_lessons_pending).toBe(2);
+    expect(readCardSuggestions({ ...serverView, other_lessons_pending: 'x' })!.other_lessons_pending).toBe(0);
   });
 
   it('não confia no formato: resposta sem ok, sugestão sem frase ou campo desconhecido ficam de fora', () => {
@@ -76,6 +79,8 @@ describe('sugestões da IA para o cartão — textos', () => {
     expect(cardSuggestionReasonText('sem_aceite_da_ia')).toMatch(/versão 3/);
     expect(cardSuggestionReasonText('teto_atingido')).toMatch(/teto mensal/);
     expect(cardSuggestionReasonText('ja_sugerido')).toMatch(/já foram lidas/);
+    expect(cardSuggestionReasonText('aula_de_outro_professor')).toMatch(/outro professor/);
+    expect(cardSuggestionReasonText('card_suggestions_provider_credits')).toMatch(/sem créditos/);
     expect(cardSuggestionReasonText('qualquer_coisa')).toMatch(/Tente de novo/);
   });
 
@@ -90,7 +95,8 @@ describe('sugestões da IA para o cartão — textos', () => {
   });
 
   it('erros de aceitar: versão do cartão, lista cheia, já decidida', () => {
-    expect(cardSuggestionDecideErrorMessage('cartao_alterado_por_outra_pessoa')).toMatch(/Outra pessoa atualizou/);
+    expect(cardSuggestionDecideErrorMessage('cartao_alterado_por_outra_pessoa')).toMatch(/Outra pessoa salvou/);
+    expect(cardSuggestionDecideErrorMessage('cartao_alterado_por_outra_pessoa')).not.toMatch(/o que você escreveu/);
     expect(cardSuggestionDecideErrorMessage('cartao_itens_demais:engaging_topics')).toMatch(/cheia/);
     expect(cardSuggestionDecideErrorMessage('cartao_campo_de_menor:avoid_topics')).toMatch(/só objetivo e temas/);
     expect(cardSuggestionDecideErrorMessage('sugestao_ja_decidida')).toMatch(/já foi decidida/);

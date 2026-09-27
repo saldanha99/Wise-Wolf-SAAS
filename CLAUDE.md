@@ -2010,6 +2010,13 @@ Runbook: seção "Sugestões da IA para o cartão do aluno".
 
 - ⚠️ **IA só com o termo v3 do aluno E do professor, no fim da aula E hoje**
   (`private.student_card_suggestion_ai_allowed`); quem revogou depois da aula não tem a aula relida.
+- ⚠️ **A frase da aula segue a régua da transcrição bruta** (`session_detail`, `v_raw`):
+  `private.student_card_suggestion_source_visible` = professor DA aula, coordenação, direção. O
+  cartão é editável também pelo segundo professor, pela agenda e pela transferência pendente —
+  esses veem só a contagem (`other_lessons_pending`), não decidem e o botão não lê aula alheia
+  para eles (`aula_de_outro_professor`). Leitura das frases em `google_meet_access_events`
+  (`CARD_SUGGESTIONS_READ`). Correção da revisão (27/09): antes o segundo professor lia trechos
+  literais da transcrição da colega que `session_detail` lhe nega.
 - ⚠️ **A lista de exclusão existe duas vezes e tem de bater:** `BLOCKED_TERMS` (edge `core.ts`) =
   `private.student_card_suggestion_blocked_terms()` (banco, entre `termos-bloqueados:inicio/fim`);
   `source.test.ts` reprova divergência. Vale no valor E na citação; o banco confere de novo no `finish`.
@@ -2019,12 +2026,18 @@ Runbook: seção "Sugestões da IA para o cartão do aluno".
   remendadas por âncora — quem recriar mantém `student_card_suggestion_month_spend` e
   `card_suggestion_count` (o teste reprova sem eles). O botão também para no teto.
 - **Texto só enquanto espera decisão** (constraint): decidida, vencida (citação: 90 dias depois da
-  aula) ou retirada (resumo rejeitado, menor) fica só o hash. Exclusão a pedido apaga por gatilho em
-  `google_meet_original_sessions.records_erased_at`. Nunca `wolfie_memory_items`.
+  aula) ou retirada (resumo rejeitado, menor) fica só o hash — e a linha some 90 dias depois de
+  fechar (o hash sem sal de "avoid_topics:namoro" se reverte por dicionário). Exclusão a pedido apaga
+  por gatilho em `google_meet_original_sessions.records_erased_at`. Nunca `wolfie_memory_items`.
+- **IA desligada = botão some:** a fila e o próprio botão pausam a escola por 6 h
+  (`card_suggestions_not_configured`; sem preço 1 h) e `get_student_card_suggestions` devolve
+  `can_request = false` com o motivo. Conflito de versão no aceite relê o cartão e a lista.
 - Env: `STUDENT_CARD_SUGGESTIONS_ENABLED=true` (padrão desligado), `STUDENT_CARD_SUGGESTIONS_MODEL`
   (ausente = o do resumo) e a `OPENROUTER_API_KEY` de sempre; o modelo precisa de preço em
-  `ai_model_pricing`. Testes: `supabase/tests/sugestoes_do_cartao_pela_ia.sql`,
-  `student-card-suggestions/{core,runner}.test.ts` e `source.test.ts` (`--allow-read`).
+  `ai_model_pricing`. Testes: `supabase/tests/sugestoes_do_cartao_pela_ia.sql` (semeia a v2 e usa
+  o termo vigente — roda em cópia só-estrutura e depois da v4), `student-card-suggestions/{core,runner}.test.ts`
+  e `source.test.ts` (`--allow-read`: bloco `deno test --allow-read`, não o geral). O registro no
+  `release.sh` está listado no runbook.
 
 ### Planner a partir das aulas aprovadas (migration `20260927130000`)
 
