@@ -322,12 +322,14 @@ export function queueAudience(kind: unknown): {
 } {
   const normalized = normalizeNotificationKind(kind);
   if (
+    normalized === "LESSON_RECORDING_NOTICE_STUDENT" ||
     normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE" ||
     normalized === LESSON_RECORDING_CONSENT_KIND
   ) {
     return { audience: "student", centralOnly: true };
   }
   if (
+    normalized === "LESSON_RECORDING_NOTICE_TEACHER" ||
     normalized === "TEACHER_CHANGE_GROUP" ||
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||

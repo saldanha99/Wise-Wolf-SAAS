@@ -3477,3 +3477,11 @@ O update local compara também todos os campos usados como prova, impedindo corr
 Nenhuma cobrança, referência externa, cancelamento ou contrato é alterado por esse caminho.
 Os testes da prova de leitura integram os gates do release; os guards de mutação permanecem
 estritos. Pendências cadastrais sem prova continuam bloqueadas e requerem confirmação real.
+
+### 27/09/2026 — Identidade do portal e aviso de início da Memória das Aulas
+
+- HTML do portal e manifest PWA usam Wise Wolf Languages, marca oficial e ícones versionados; saem a descrição WiseCore e a prévia do Hub no acesso de alunos.
+- `components/marketing/portalLinkPages.json` alimenta 13 shells de acesso pelo gerador existente. Nginx (frontend e proxy) serve os metadados antes do React; as prévias são genéricas, `noindex,nofollow`, sem token, dados pessoais ou Meta Pixel. As LPs comerciais e o Hub conservam seus próprios metadados.
+- Avisos `LESSON_RECORDING_NOTICE_STUDENT` e `LESSON_RECORDING_NOTICE_TEACHER` passam pela fila oficial, instância central e revalidação de vínculo ativo; não são pedidos de consentimento. Envio autorizado pela direção nesta conversa, início comunicado para 28/09, com direito de recusa e autenticação Google individual dos professores mantidos.
+- Contratos futuros STUDENT e TEACHER da escola já oferecem versão 2: cláusula 8 do aluno e cláusula 11 do professor. Não se modifica contrato assinado nem se declara revisão jurídica concluída.
+- Tour `2026-09-27-identidade-e-previas-dos-links` inserido na posição cronológica, pois o catálogo já continha entradas datadas de 28 e 29/09.

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const MODULE_FILE_PATH = import.meta.url.startsWith('file:') ? fileURLToPath(import.meta.url) : '';
 const PROJECT_ROOT = MODULE_FILE_PATH ? path.dirname(path.dirname(MODULE_FILE_PATH)) : process.cwd();
 const PAGE_CONFIG_PATH = path.join(PROJECT_ROOT, 'components/hub/hubMarketingPages.json');
+const PORTAL_PAGE_CONFIG_PATH = path.join(PROJECT_ROOT, 'components/marketing/portalLinkPages.json');
 const SYSTEM_PAGE_CONFIG_PATH = path.join(PROJECT_ROOT, 'components/marketing/systemMarketingPages.json');
 
 export const SYSTEM_APP_ORIGIN = 'https://system.wisewolflanguage.com.br';
@@ -91,6 +92,19 @@ export const renderDedicatedHubMarketingHtml = (template, metadata) =>
 export const renderSystemMarketingHtml = (template, metadata) => {
   const canonicalUrl = new URL(metadata.path, SYSTEM_APP_ORIGIN).toString();
   return renderMarketingHtml(template, metadata, canonicalUrl);
+};
+
+// Generic link previews contain no bearer token or personal data.
+export const renderPortalLinkHtml = (template, metadata) => {
+  if (!/^\/[a-z0-9-]+$/.test(metadata.path)) throw new Error('Invalid portal preview path');
+  let html = removeMetaPixel(renderMarketingHtml(template, metadata, new URL(metadata.path, SYSTEM_APP_ORIGIN).toString()));
+  html = upsertMeta(html, 'name', 'robots', 'noindex, nofollow');
+  html = upsertMeta(html, 'name', 'theme-color', '#06142D');
+  html = upsertMeta(html, 'property', 'og:site_name', 'Wise Wolf Languages');
+  html = upsertMeta(html, 'property', 'og:image:width', '1200');
+  html = upsertMeta(html, 'property', 'og:image:height', '630');
+  html = upsertMeta(html, 'property', 'og:image:type', 'image/png');
+  return upsertMeta(html, 'name', 'twitter:image:alt', metadata.imageAlt);
 };
 
 export const renderHubNotFoundHtml = (template, { dedicatedHost }) => {
@@ -209,10 +223,11 @@ const writeHtml = async (targetPath, html) => {
 };
 
 export const generateHubStaticHtml = async ({ distDir = path.join(PROJECT_ROOT, 'dist') } = {}) => {
-  const [template, rawPages, rawSystemPages] = await Promise.all([
+  const [template, rawPages, rawSystemPages, rawPortalPages] = await Promise.all([
     readFile(path.join(distDir, 'index.html'), 'utf8'),
     readFile(PAGE_CONFIG_PATH, 'utf8'),
     readFile(SYSTEM_PAGE_CONFIG_PATH, 'utf8'),
+    readFile(PORTAL_PAGE_CONFIG_PATH, 'utf8'),
   ]);
   const pages = JSON.parse(rawPages);
   const systemPages = JSON.parse(rawSystemPages);
@@ -220,6 +235,11 @@ export const generateHubStaticHtml = async ({ distDir = path.join(PROJECT_ROOT, 
   assertSystemPageConfig(systemPages);
 
   const generatedPaths = [];
+  for (const metadata of Object.values(JSON.parse(rawPortalPages))) {
+    const target = path.join(distDir, metadata.path.slice(1), 'index.html');
+    await writeHtml(target, renderPortalLinkHtml(template, metadata));
+    generatedPaths.push(target);
+  }
   for (const metadata of Object.values(pages)) {
     const systemTarget = path.join(distDir, 'hub', metadata.segment, 'index.html');
     const dedicatedTarget = path.join(distDir, '__hub_host', metadata.segment, 'index.html');

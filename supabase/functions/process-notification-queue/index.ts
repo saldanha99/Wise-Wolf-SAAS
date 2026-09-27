@@ -1211,7 +1211,33 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (notificationKind === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+        if (
+          notificationKind === "LESSON_RECORDING_NOTICE_STUDENT" ||
+          notificationKind === "LESSON_RECORDING_NOTICE_TEACHER"
+        ) {
+          // School-authorized notice, never an individual-consent request.
+          const role = notificationKind === "LESSON_RECORDING_NOTICE_TEACHER"
+            ? "TEACHER"
+            : "STUDENT";
+          const memberId = role === "TEACHER"
+            ? relationOne(item.teacher)?.id
+            : item.student_id;
+          if (!memberId) invalid("recording_notice_binding_missing");
+          const member = await loadActiveMember(
+            supabaseClient,
+            String(tenant_id),
+            String(memberId),
+            role,
+          );
+          if (member.is_test_account !== false) {
+            invalid("test_fixture_suppressed");
+          }
+          const destination = normalizeQueueDestination(student_phone);
+          if (!destination || !message_body || message_body.length > 4096) {
+            invalid("recording_notice_invalid_payload");
+          }
+          prepared = { teacherId: null, destination, message: message_body };
+        } else if (notificationKind === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
           const { data: snapshot, error: snapshotError } = await supabaseClient
             .rpc(
               "get_schedule_change_delivery_snapshot",

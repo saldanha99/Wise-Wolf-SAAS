@@ -325,6 +325,17 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-27-identidade-e-previas-dos-links',
+    title: 'A identidade da escola nos seus links',
+    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    steps: [{
+      target: 'user-menu',
+      view: 'dashboard',
+      title: 'Os links agora têm a marca da escola',
+      text: 'A marca Wise Wolf aparece na aba do navegador, no aplicativo instalado e nas prévias dos links. Cada prévia indica se o acesso é para uma aula, matrícula ou contrato. Seus dados pessoais continuam disponíveis somente pelo acesso apropriado.',
+    }],
+  },
+  {
     id: '2026-09-27-minhas-aulas-registradas',
     title: 'Minhas aulas registradas',
     roles: ['STUDENT'],

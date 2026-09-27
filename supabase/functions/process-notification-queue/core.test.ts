@@ -454,3 +454,14 @@ Deno.test("fora da janela ou do ritmo o termo é adiado, sem gastar tentativa", 
     { ok: false, retryable: false, reason: "contato_mudou" },
   );
 });
+
+Deno.test("avisos do registro das aulas usam o WhatsApp central para cada publico", () => {
+  assertEquals(queueAudience("LESSON_RECORDING_NOTICE_STUDENT"), {
+    audience: "student",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience("LESSON_RECORDING_NOTICE_TEACHER"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});

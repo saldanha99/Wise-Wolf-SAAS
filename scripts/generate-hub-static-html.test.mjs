@@ -107,3 +107,22 @@ test('PWA precache excludes document marks blocked by the dedicated Hub', async 
   assert.match(globIgnores, /['"]director-signature\.png['"]/);
   assert.match(globIgnores, /['"]digital-stamp\.png['"]/);
 });
+
+test('school link previews are generic, private and available without JavaScript', async () => {
+  const { renderPortalLinkHtml } = await import('./generate-hub-static-html.mjs');
+  const pages = JSON.parse(await readFile(new URL('../components/marketing/portalLinkPages.json', import.meta.url), 'utf8'));
+  for (const page of Object.values(pages)) {
+    const html = renderPortalLinkHtml(template, page);
+    assert.match(html, /content="Wise Wolf Languages"/);
+    assert.match(html, /content="noindex, nofollow"/);
+    assert.match(html, /og:image:width" content="1200"/);
+    assert.match(html, /assets\/brand\/wise-wolf-/);
+    assert.doesNotMatch(html, /fbq|facebook\.com\/tr|WiseCore|hub-overview-og/);
+    assert.ok(html.includes(`content="https://system.wisewolflanguage.com.br${page.path}"`));
+    for (const file of ['frontend/nginx.conf', 'proxy/nginx-spa.conf']) {
+      const config = await readFile(new URL(`../deploy/vps/${file}`, import.meta.url), 'utf8');
+      assert.ok(config.includes(page.path.slice(1)), `${page.path} missing in ${file}`);
+    }
+  }
+  assert.throws(() => renderPortalLinkHtml(template, {...pages.matricula, path: '/matricula?token=private'}), /Invalid portal/);
+});

@@ -1,0 +1,93 @@
+{
+  "login": {
+    "path": "/login",
+    "title": "Portal do Aluno | Wise Wolf Languages",
+    "description": "Acesse suas aulas, materiais e evolução no inglês.",
+    "imagePath": "/assets/brand/wise-wolf-portal-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Portal do Aluno"
+  },
+  "matricula": {
+    "path": "/matricula",
+    "title": "Sua matrícula | Wise Wolf Languages",
+    "description": "Conheça seu plano e conclua a matrícula com a escola.",
+    "imagePath": "/assets/brand/wise-wolf-matricula-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Sua matrícula"
+  },
+  "new-student": {
+    "path": "/new-student",
+    "title": "Comece seu inglês | Wise Wolf Languages",
+    "description": "Conheça seu plano e faça sua matrícula na Wise Wolf Languages.",
+    "imagePath": "/assets/brand/wise-wolf-matricula-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Comece seu inglês"
+  },
+  "view-contract": {
+    "path": "/view-contract",
+    "title": "Seu contrato | Wise Wolf Languages",
+    "description": "Consulte o contrato e as condições das aulas na Wise Wolf Languages.",
+    "imagePath": "/assets/brand/wise-wolf-matricula-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Seu contrato"
+  },
+  "confirmar-presenca": {
+    "path": "/confirmar-presenca",
+    "title": "Confirmação da aula | Wise Wolf Languages",
+    "description": "Acompanhe sua aula e confirme a presença pelo acesso enviado pela escola.",
+    "imagePath": "/assets/brand/wise-wolf-aulas-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Confirmação da aula"
+  },
+  "confirmar-alteracao": {
+    "path": "/confirmar-alteracao",
+    "title": "Alteração de horário | Wise Wolf Languages",
+    "description": "Confira a alteração de horário da sua aula.",
+    "imagePath": "/assets/brand/wise-wolf-aulas-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Alteração de horário"
+  },
+  "mudar-plano": {
+    "path": "/mudar-plano",
+    "title": "Seu plano de aulas | Wise Wolf Languages",
+    "description": "Confira as opções do seu plano com a escola.",
+    "imagePath": "/assets/brand/wise-wolf-matricula-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Seu plano de aulas"
+  },
+  "renovar-curso": {
+    "path": "/renovar-curso",
+    "title": "Renovação do curso | Wise Wolf Languages",
+    "description": "Continue sua evolução no inglês com a Wise Wolf Languages.",
+    "imagePath": "/assets/brand/wise-wolf-matricula-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Renovação do curso"
+  },
+  "registro-das-aulas": {
+    "path": "/registro-das-aulas",
+    "title": "Memória das Aulas | Wise Wolf Languages",
+    "description": "Conheça o registro das aulas, a continuidade pedagógica e seus direitos de privacidade.",
+    "imagePath": "/assets/brand/wise-wolf-registro-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Memória das Aulas"
+  },
+  "transferencia": {
+    "path": "/transferencia",
+    "title": "Acompanhamento das aulas | Wise Wolf Languages",
+    "description": "Confira a atualização do acompanhamento das suas aulas.",
+    "imagePath": "/assets/brand/wise-wolf-aulas-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Acompanhamento das aulas"
+  },
+  "teacher-onboarding": {
+    "path": "/teacher-onboarding",
+    "title": "Acesso do professor | Wise Wolf Languages",
+    "description": "Conheça as orientações e crie seu acesso de professor.",
+    "imagePath": "/assets/brand/wise-wolf-portal-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Acesso do professor"
+  },
+  "vendor-onboarding": {
+    "path": "/vendor-onboarding",
+    "title": "Programa de afiliados | Wise Wolf Languages",
+    "description": "Indique a Wise Wolf Languages com seu cupom e acompanhe suas comissões no painel.",
+    "imagePath": "/assets/brand/wise-wolf-portal-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Programa de afiliados"
+  },
+  "claim-opportunity": {
+    "path": "/claim-opportunity",
+    "title": "Oportunidades de aulas | Wise Wolf Languages",
+    "description": "Confira a oportunidade e as orientações da escola.",
+    "imagePath": "/assets/brand/wise-wolf-aulas-20260928.png",
+    "imageAlt": "Wise Wolf Languages — Oportunidades de aulas"
+  }
+}
