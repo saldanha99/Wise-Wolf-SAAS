@@ -466,7 +466,7 @@ async function handlePost(req: Request): Promise<Response> {
       "Aula é sua! 🎉",
       `Você cobre a aula de ${
         String(result.student_name || "aluno")
-      } em ${date} às ${time}. Ela já aparece na sua lista para lançar e conta no seu pagamento.`,
+      } em ${date} às ${time}. Ela já aparece na sua lista para lançar e conta no seu pagamento. O contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login) chegam no seu WhatsApp.`,
       "success",
     );
   }

@@ -200,7 +200,7 @@ function resolutionResponse(
         ? "Esta cobertura já havia sido confirmada e não pode mais ser recusada por este link."
         : already
         ? "Você já havia confirmado esta cobertura. Obrigado! 💜"
-        : `Você assumiu a aula${when}. Ela será contabilizada no seu pagamento. O contato do aluno e o conteúdo das últimas aulas chegam no seu WhatsApp em instantes. Obrigado! 🐺💜`,
+        : `Você assumiu a aula${when}. Ela será contabilizada no seu pagamento. O contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login) chegam no seu WhatsApp em instantes. Obrigado! 🐺💜`,
       "success",
     );
   }

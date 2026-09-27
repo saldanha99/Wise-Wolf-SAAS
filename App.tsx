@@ -25,6 +25,7 @@ import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
+import { useStudentDossierLink } from './lib/studentDossierLink';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -287,6 +288,12 @@ const App: React.FC = () => {
     const destination = studentBillingDestination(window.location, user);
     if (destination) setActiveTab(destination);
   }, [user?.id, user?.role]);
+  // Link com login do dossiê (substituto e novo titular, pelo WhatsApp): também
+  // só destino. Quem decide se a pessoa lê é o servidor (get_student_handover).
+  // A URL volta para "/" (o dossiê abre só nesta visita), mas o foco fica até a
+  // pessoa sair do dossiê — e os tours esperam por ela (holdsTours): o primeiro
+  // passo de um tour troca de aba e a tirava do dossiê que o link acabou de abrir.
+  const dossierLink = useStudentDossierLink(user, activeTab, setActiveTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
   // Menu lateral clássico x barra no topo + trilho de atalhos (preferência por usuário).
@@ -1383,7 +1390,7 @@ const App: React.FC = () => {
       'lesson-quality': <LessonQualityCenter />,
       'schedule-requests': <ScheduleChangeRequests tenantId={currentTenant?.id} />,
       'quality-contacts': <ContactQualityManager manager />,
-      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} />,
+      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} focusStudentId={dossierLink.focusStudentId} onFocusClosed={dossierLink.release} />,
       'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
       'recording-consents': <LessonRecordingConsentsPanel schoolName={currentTenant?.name} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,
@@ -1475,7 +1482,7 @@ const App: React.FC = () => {
           }}
           pendingLessonsCount={pendingLessonsCount}
           pendingCounts={pendingCounts}
-          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
+          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
@@ -1818,8 +1825,8 @@ const App: React.FC = () => {
                   avatarUrl={user.avatar}
                   onProfile={() => setActiveTab('profile')}
                   onLogout={handleLogout}
-                  onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
-                  onOpenNews={latestFeatureTourFor(user.role) ? () => { const t = latestFeatureTourFor(user.role); if (t) setFeatureTour(t); } : undefined}
+                  onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
+                  onOpenNews={latestFeatureTourFor(user.role) ? () => { const t = latestFeatureTourFor(user.role); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
                 />
               </div>
             </div>
@@ -1851,7 +1858,7 @@ const App: React.FC = () => {
           <TeacherSupportCenter onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
         </Suspense>
       )}
-      {tourOpen && TOUR_ROLES.includes(user.role as string) && (
+      {tourOpen && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
             steps={flattenTour(user.role as TourRole)}
@@ -1867,7 +1874,7 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {featureTour && !tourOpen && (
+      {featureTour && !tourOpen && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

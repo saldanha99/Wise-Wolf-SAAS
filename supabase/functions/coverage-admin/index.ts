@@ -8,6 +8,7 @@ import {
 } from "../_shared/request-auth.ts";
 import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import { loadTenantCentralWhatsAppInstance } from "../_shared/tenant-communication.ts";
+import { enqueueForcedCoverageBriefing } from "./briefing.ts";
 
 /** Motivo em texto livre → enum aceito por `teacher_absences.reason`. */
 export function absenceReasonEnum(
@@ -1140,7 +1141,16 @@ async function requestCoverage(
     }
     if (isForce) {
       successful += 1;
-      out.push({ coverage: safeCoverage });
+      // Forçada = confirmada sem aceite: o substituto recebe o mesmo pacote do
+      // aceite (contato, últimas aulas, sala oficial e link do dossiê).
+      const briefingWarning = await enqueueForcedCoverageBriefing(
+        (fn, args) => admin.rpc(fn, args),
+        coverageId,
+      );
+      out.push({
+        coverage: safeCoverage,
+        ...(briefingWarning ? { warning: briefingWarning } : {}),
+      });
       continue;
     }
 

@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { readLearningCard } from '../lib/studentLearningCard';
 import StudentLearningCard from './StudentLearningCard';
+import { DOSSIER_LINK_DENIED } from '../lib/studentDossierLink';
 
 type Evidence = { id: string; occurred_at?: string; class_date?: string; lesson_objective?: string; content_practiced?: string[]; content_covered?: string; recurring_errors?: string[]; student_difficulties?: string; homework_assigned?: string; recommended_next_step?: string };
-export default function StudentHandover({ studentId }: { studentId: string }) {
+// viaLink: aberto pelo link com login do WhatsApp (substituto ou novo titular).
+// A recusa do servidor ganha a explicação do prazo em vez de "vinculação".
+export default function StudentHandover({ studentId, viaLink = false }: { studentId: string; viaLink?: boolean }) {
   const [data, setData] = useState<{ memories: Evidence[]; logs: Evidence[]; learning_card?: unknown } | null>(null);
   const [error, setError] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
@@ -15,9 +18,9 @@ export default function StudentHandover({ studentId }: { studentId: string }) {
       const result = await supabase.rpc('get_student_handover', { p_student_id: studentId, p_acknowledge: acknowledge });
       if (result.error || result.data?.ok !== true) throw new Error('unavailable');
       setData(result.data); if (acknowledge) setAcknowledged(true);
-    } catch { setError('Não foi possível acessar o dossiê. Verifique sua vinculação ao aluno.'); }
+    } catch { setError(viaLink ? DOSSIER_LINK_DENIED : 'Não foi possível acessar o dossiê. Verifique sua vinculação ao aluno.'); }
     finally { setBusy(false); }
-  }, [studentId]);
+  }, [studentId, viaLink]);
   useEffect(() => { setAcknowledged(false); void load(); }, [load]);
   // Cartão preenchido pelo professor (get_student_handover → learning_card).
   const learningCard = readLearningCard(data?.learning_card);

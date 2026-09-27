@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { googleMeetErrorMessage } from '../lib/googleMeet';
 import LessonPedagogicalSummary from './LessonPedagogicalSummary';
@@ -9,12 +9,38 @@ import LessonReviewQueue from './LessonReviewQueue';
 export type QualitySession = { id: string; student_id: string; student_name: string; teacher_name: string; scheduled_start_at: string; scheduled_end_at: string; class_date: string; status: string; documentation_consent: boolean };
 // canMarkDocumentation: só a direção registra ou retira a autorização de
 // documentação de uma aula (set_lesson_documentation_consent confere no banco).
-export default function LessonSessionsPanel({ tenantId, studentId, manager = false, canMarkDocumentation = false }: { tenantId?: string; studentId?: string; manager?: boolean; canMarkDocumentation?: boolean }) {
+// focusStudentId: o dossiê a abrir de cara — vem do link com login que o
+// substituto e o novo titular recebem no WhatsApp (lib/studentDossierLink.ts).
+// É só destino: quem decide se a pessoa lê é o servidor (get_student_handover).
+// O foco NÃO é consumido ao montar: o App o guarda até a pessoa sair do dossiê
+// (onFocusClosed — fechar, abrir outra coisa aqui), e o painel montado de novo
+// reabre o dossiê. Consumir na montagem deixava o tour do login levar a pessoa
+// para outra tela e o dossiê do link nunca mais aparecia.
+export default function LessonSessionsPanel({ tenantId, studentId, manager = false, canMarkDocumentation = false, focusStudentId = null, onFocusClosed }: { tenantId?: string; studentId?: string; manager?: boolean; canMarkDocumentation?: boolean; focusStudentId?: string | null; onFocusClosed?: () => void }) {
   const [sessions, setSessions] = useState<QualitySession[]>([]);
   const [selected, setSelected] = useState<QualitySession | null>(null);
   const [handover, setHandover] = useState<string | null>(null);
+  const [handoverFromLink, setHandoverFromLink] = useState(false);
+  const handoverRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const onFocusClosedRef = useRef(onFocusClosed);
+  onFocusClosedRef.current = onFocusClosed;
+  useEffect(() => {
+    if (!focusStudentId) return;
+    setSelected(null);
+    setHandover(focusStudentId);
+    setHandoverFromLink(true);
+  }, [focusStudentId]);
+  // A pessoa saiu do dossiê aberto pelo link: o App libera o foco (e os tours).
+  function leaveLinkedDossier() {
+    if (!handoverFromLink) return;
+    setHandoverFromLink(false);
+    onFocusClosedRef.current?.();
+  }
+  useEffect(() => {
+    if (handover && handoverFromLink) handoverRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [handover, handoverFromLink]);
   const load = useCallback(async () => {
     setBusy(true); setError('');
     const { data, error: rpcError } = await supabase.rpc('get_lesson_sessions', { p_student_id: studentId || null });
@@ -69,8 +95,8 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
         <p className="text-sm text-slate-500">{new Date(session.scheduled_start_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })} · {session.teacher_name}</p>
         <p className="mt-2 text-xs">{session.status === 'LOGGED' ? 'Com lançamento' : 'Prevista'} · Documentação {session.documentation_consent ? 'autorizada' : 'sem autorização registrada'}</p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
-          <button className="font-semibold text-blue-600" onClick={() => { setSelected(session); setHandover(null); }}>Sala e resumo</button>
-          <button data-tour="lesson-session-handover" className="text-blue-600" onClick={() => { setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
+          <button className="font-semibold text-blue-600" onClick={() => { leaveLinkedDossier(); setSelected(session); setHandover(null); }}>Sala e resumo</button>
+          <button data-tour="lesson-session-handover" className="text-blue-600" onClick={() => { leaveLinkedDossier(); setHandover(session.student_id); setSelected(null); }}>Dossiê do aluno</button>
           {canMarkDocumentation && <button disabled={busy} onClick={() => void consent(session)} className="text-slate-600">{session.documentation_consent ? 'Revogar autorização' : 'Registrar autorização'}</button>}
           {manager && <button disabled={busy} onClick={() => void report(session)} className="text-slate-600">Registrar ocorrência</button>}
           {manager && new Date(session.scheduled_start_at).getTime() > Date.now() && <button disabled={busy} onClick={() => void replan(session)} className="text-slate-600">Replanejar sessão futura</button>}
@@ -78,6 +104,10 @@ export default function LessonSessionsPanel({ tenantId, studentId, manager = fal
       </article>)}
     </div>
     {selected && <div className="rounded-xl border p-4"><button className="mb-3 text-sm underline" onClick={() => setSelected(null)}>Fechar detalhes</button><LessonPedagogicalSummary sessionId={selected.id} tenantId={tenantId} /></div>}
-    {handover && <div className="rounded-xl border p-4"><button className="mb-3 text-sm underline" onClick={() => setHandover(null)}>Fechar dossiê</button><StudentHandover studentId={handover} /></div>}
+    {handover && <div ref={handoverRef} className="rounded-xl border p-4">
+      <button className="mb-3 text-sm underline" onClick={() => { leaveLinkedDossier(); setHandover(null); }}>Fechar dossiê</button>
+      {handoverFromLink && <p role="note" className="mb-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">Dossiê aberto pelo link do WhatsApp. Para quem cobre uma aula ou dá uma reposição marcada, o acesso vale do dia anterior ao dia seguinte da aula; para o novo professor de uma transferência, a partir do aceite.</p>}
+      <StudentHandover studentId={handover} viaLink={handoverFromLink} />
+    </div>}
   </section>;
 }
