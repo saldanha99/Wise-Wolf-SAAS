@@ -65,11 +65,23 @@
 --          acabava dividida em duas salas; sem sala prevista, "combine e mande
 --          o link" como antes. Quando a sala fica pronta depois do aceite, um
 --          gatilho em private.google_meet_rooms manda o link a substituto e
---          família (private.coverage_room_notice_enqueue, uma vez por
---          cobertura);
+--          família (private.coverage_room_notice_enqueue, uma vez por AULA e
+--          substituto, com o horário da aula);
 --      (c) o LINK COM LOGIN do dossiê: <portal>/dossie-do-aluno?aluno=<id> (o
 --          portal é o de private.lesson_recording_portal_url; escola sem
---          portal conhecido recebe o caminho no app).
+--          portal conhecido recebe o caminho no app);
+--      (d) AULA DE 1 H (correção da integração): são dois agendamentos de 30
+--          min, cada um com a SUA cobertura (em produção, 16:30 e 17:00
+--          confirmadas com a mesma substituta em 16/09 e 18/09). O pacote é
+--          decidido pela aula (private.coverage_lesson_parts), não pela
+--          cobertura: enquanto uma parte não está confirmada com o mesmo
+--          substituto, o texto não promete nem nega a sala da escola (a sala
+--          depende de a aula inteira ser dele) e diz qual parte é dele; quando a
+--          última parte é confirmada, sai UMA mensagem da aula inteira
+--          (coverage-lesson:<cobertura da 1ª parte>) — a atualização curta
+--          quando uma parte já tinha sido avisada. Antes, cada metade mandava o
+--          seu pacote: "combine e mande o link" numa e "o link chega por aqui"
+--          na outra, e dois avisos de sala com horários diferentes.
 --    Dado pessoal NÃO vai em texto: o cartão do aluno e o objetivo livre do
 --    cadastro (learning_objective) saíram da mensagem — ficam no dossiê. Nome
 --    do responsável também saiu (a mensagem só diz que há responsável).
@@ -352,6 +364,78 @@ $function$;
 alter function private.briefing_line(text, integer) owner to postgres;
 revoke all on function private.briefing_line(text, integer) from public, anon, authenticated, service_role;
 
+-- As partes da aula a que a cobertura pertence. Aula de 1 h são dois
+-- agendamentos de 30 min seguidos do mesmo aluno com o mesmo professor, e cada
+-- um tem a SUA cobertura. Partes = os agendamentos do aluno com o professor da
+-- agenda da cobertura que valem na data (public.booking_schedule_on_date, a
+-- régua das sessões), em sequência de 30 em 30 min com o da cobertura; para
+-- cada parte, a cobertura viva dela com o MESMO substituto (ou null). O
+-- agendamento da cobertura que não vale na data é uma aula de uma parte só.
+create or replace function private.coverage_lesson_parts(p_coverage_id uuid)
+returns table (part_booking_id uuid, part_start_time time, part_coverage_id uuid)
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  with coverage as (
+    select c.id, c.tenant_id, c.student_id, c.booking_id, c.class_date, c.class_time, c.cover_teacher_id,
+      booking.teacher_id as scheduled_teacher_id
+      from public.class_coverages as c
+      join public.bookings as booking on booking.id = c.booking_id and booking.tenant_id = c.tenant_id
+     where c.id = p_coverage_id
+  ), slots as (
+    select distinct on (slot.start_time) booking.id as booking_id, slot.start_time
+      from coverage
+      join public.bookings as booking
+        on booking.tenant_id = coverage.tenant_id
+       and booking.student_id = coverage.student_id
+       and booking.teacher_id = coverage.scheduled_teacher_id
+       and pg_catalog.upper(coalesce(booking.status, 'SCHEDULED')) = 'SCHEDULED'
+      cross join lateral (select public.booking_schedule_on_date(booking.id, coverage.class_date) as schedule) as day
+      cross join lateral (
+        select case when day.schedule ->> 'time_slot' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                    then (day.schedule ->> 'time_slot')::time end as start_time
+      ) as slot
+     where coalesce((day.schedule ->> 'valid')::boolean, false)
+       and not coalesce((day.schedule ->> 'excluded')::boolean, false)
+       and slot.start_time is not null
+     order by slot.start_time, (booking.id = coverage.booking_id) desc, booking.id
+  ), runs as (
+    -- Ilhas de horários de 30 em 30 min (mesmo número = mesma aula).
+    select slots.booking_id, slots.start_time,
+      slots.start_time - interval '30 minutes' * pg_catalog.row_number() over (order by slots.start_time) as run
+      from slots
+  ), lesson as (
+    select runs.booking_id, runs.start_time
+      from runs
+     where runs.run = (select mine.run from runs as mine join coverage on coverage.booking_id = mine.booking_id)
+    union all
+    select coverage.booking_id,
+      case when pg_catalog.left(coalesce(coverage.class_time, ''), 5) ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+           then pg_catalog.left(coverage.class_time, 5)::time end
+      from coverage
+     where not exists (select 1 from runs join coverage as own on own.booking_id = runs.booking_id)
+  )
+  select lesson.booking_id, lesson.start_time, mine.id
+    from lesson
+    cross join coverage
+    left join lateral (
+      select other.id
+        from public.class_coverages as other
+       where other.tenant_id = coverage.tenant_id
+         and other.booking_id = lesson.booking_id
+         and other.class_date = coverage.class_date
+         and other.cover_teacher_id = coverage.cover_teacher_id
+         and pg_catalog.lower(coalesce(other.status, '')) in ('confirmed', 'scheduled', 'completed')
+       order by (other.id = coverage.id) desc, other.confirmed_at desc nulls last, other.id
+       limit 1
+    ) as mine on true;
+$function$;
+
+alter function private.coverage_lesson_parts(uuid) owner to postgres;
+revoke all on function private.coverage_lesson_parts(uuid) from public, anon, authenticated, service_role;
+
 -- A escola vai criar a sala do Meet desta aula coberta para o SUBSTITUTO?
 -- Previsão para o texto do aceite quando a sala ainda não está pronta (ela
 -- nasce nas 24 h antes da aula, depois que o job de 15 min marca o aceite
@@ -424,8 +508,6 @@ declare
   v_time text;
   v_when text;
   v_duration int := 30;
-  v_dow_name text;
-  v_slot time;
   v_student_phone text;
   v_cover_phone text;
   v_lessons text := '';
@@ -449,6 +531,18 @@ declare
   v_window text;
   v_memory_at timestamptz;
   v_approved text := '';
+  v_day text;
+  v_parts integer;
+  v_mine integer;
+  v_lesson_start time;
+  v_lesson_end time;
+  v_first_part_coverage uuid;
+  v_multi boolean := false;
+  v_complete boolean := true;
+  v_update boolean := false;
+  v_room_undecided boolean := false;
+  v_key text;
+  v_range text;
 begin
   if auth.role() <> 'service_role' then
     raise exception using errcode = '42501', message = 'service_role_required';
@@ -467,26 +561,40 @@ begin
   end if;
 
   v_time := left(coalesce(c.class_time, ''), 5);
-  v_when := format('%s %s às %s', private.weekday_label_pt(c.class_date), to_char(c.class_date, 'DD/MM'), v_time);
+  v_day := format('%s %s', private.weekday_label_pt(c.class_date), to_char(c.class_date, 'DD/MM'));
+  v_when := format('%s às %s', v_day, v_time);
   v_first_cover := split_part(btrim(coalesce(v_cover.full_name, 'Professor')), ' ', 1);
   v_first_original := split_part(btrim(coalesce(v_original.full_name, 'professor')), ' ', 1);
   v_first_student := split_part(btrim(coalesce(v_student.full_name, 'aluno')), ' ', 1);
 
-  -- Duração: aulas de 1 h são dois bookings de 30 min seguidos do mesmo aluno.
-  v_dow_name := (array['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'])[extract(dow from c.class_date)::int + 1];
-  begin
-    v_slot := v_time::time;
-    for i in 1..3 loop
-      exit when not exists (
-        select 1 from public.bookings b
-         where b.tenant_id = c.tenant_id and b.student_id = c.student_id
-           and b.teacher_id = c.original_teacher_id
-           and upper(coalesce(b.status, '')) = 'SCHEDULED' and b.date is null
-           and public.fold_accents(b.day_of_week) = public.fold_accents(v_dow_name)
-           and left(b.time_slot, 5) = left((v_slot + (i * interval '30 minutes'))::text, 5));
-      v_duration := v_duration + 30;
-    end loop;
-  exception when others then v_duration := 30; end;
+  -- A aula, não a cobertura (correção da integração): aula de 1 h são dois
+  -- agendamentos de 30 min, cada um com a sua cobertura. Enquanto uma parte
+  -- não está com este substituto, o pacote fala só da parte dele e não decide a
+  -- sala; confirmada a última parte, sai uma mensagem da aula inteira.
+  select pg_catalog.count(*)::integer, pg_catalog.count(part.part_coverage_id)::integer,
+         pg_catalog.min(part.part_start_time), pg_catalog.max(part.part_start_time) + interval '30 minutes',
+         (pg_catalog.array_agg(part.part_coverage_id order by part.part_start_time))[1]
+    into v_parts, v_mine, v_lesson_start, v_lesson_end, v_first_part_coverage
+    from private.coverage_lesson_parts(c.id) as part;
+  v_multi := coalesce(v_parts, 0) > 1;
+  v_complete := not v_multi or v_mine = v_parts;
+  v_key := format('coverage:%s', c.id);
+  if v_multi then
+    v_range := format('%s–%s', to_char(v_lesson_start, 'HH24:MI'), to_char(v_lesson_end, 'HH24:MI'));
+  end if;
+  if v_multi and v_complete then
+    v_key := format('coverage-lesson:%s', v_first_part_coverage);
+    v_when := format('%s às %s', v_day, to_char(v_lesson_start, 'HH24:MI'));
+    v_duration := v_parts * 30;
+    -- Uma parte já tinha sido avisada quando a aula ainda não era toda dele:
+    -- sai só a atualização (contato, últimas aulas e dossiê já foram).
+    v_update := exists (
+      select 1
+        from private.coverage_lesson_parts(c.id) as part
+        join public.notification_queue as q
+          on q.tenant_id = c.tenant_id
+         and q.idempotency_key = format('coverage:%s:briefing', part.part_coverage_id));
+  end if;
 
   -- Nível: `profiles.level` é o da gamificação (XP), não serve. O que vale é
   -- a última avaliação que um professor registrou na aula.
@@ -558,10 +666,17 @@ begin
   -- criar uma para quem dá a aula, substituto e família não combinam outro
   -- link — senão a aula acaba em duas salas. O link chega depois, pelo gatilho
   -- de private.google_meet_rooms (private.coverage_room_notice_enqueue).
+  -- Aula de mais de uma parte com parte que não é deste substituto: a sala
+  -- depende do resto (aula dividida entre professores não tem sala da escola;
+  -- toda dele, tem) — o texto não promete nem nega.
   if v_room is null then
-    begin
-      v_room_expected := private.coverage_school_room_expected(c.id);
-    exception when others then v_room_expected := false; end;
+    if v_multi and not v_complete then
+      v_room_undecided := true;
+    else
+      begin
+        v_room_expected := private.coverage_school_room_expected(c.id);
+      exception when others then v_room_expected := false; end;
+    end if;
   end if;
 
   -- (c) Dossiê por link com login (nunca o conteúdo no WhatsApp).
@@ -574,40 +689,75 @@ begin
   v_student_phone := private.whatsapp_digits(coalesce(nullif(v_student.attendance_phone, ''), nullif(v_student.phone, ''), nullif(v_student.guardian_phone, '')));
   v_cover_phone := private.whatsapp_digits(coalesce(nullif(v_cover.attendance_phone, ''), nullif(v_cover.phone, '')));
 
-  v_briefing := format(E'Olá %s! 🐺 Cobertura confirmada:\n\n👤 *%s* (aluno de %s)\n📅 %s · %s min\n', v_first_cover,
-      btrim(coalesce(v_student.full_name, 'Aluno')), v_first_original, v_when, v_duration)
-    || case when v_room is not null
-         then format(E'🎥 Sala da escola no Google Meet: %s — a aula é nela, não mande outro link.\n', v_room)
-         when v_room_expected
-         then E'🎥 A aula terá sala da escola no Google Meet: o link chega por aqui quando a sala ficar pronta (até 24 h antes da aula) e aparece no app. Não mande outro link; se ele não chegar até 30 min antes da aula, combine com o aluno e mande o seu.\n'
-         else '' end
-    || case when v_student_phone is not null
-         then format(E'📱 Contato: wa.me/%s%s — %s\n', v_student_phone,
-                     case when v_student.guardian_id is not null or nullif(btrim(coalesce(v_student.guardian_name, '')), '') is not null
-                          then ' (aluno com responsável)' else '' end,
-                     case when v_room is not null or v_room_expected then 'se precisar combinar algo antes da aula.'
-                          else 'combine direto e mande o link da aula.' end)
-         else E'📱 Contato: sem WhatsApp no cadastro — peça à coordenação.\n' end
-    || case when v_level is not null then format(E'🎯 Nível: %s\n', btrim(v_level)) else '' end
-    || case when v_student.is_kids then E'🧒 Aluno kids — material Kids na biblioteca.\n' else '' end
-    || v_approved
-    || case when v_lessons <> '' then E'📚 Últimas aulas:\n' || v_lessons else E'📚 Sem registro de aula anterior — comece por diagnóstico e conversa.\n' end
-    || case when v_dossier is not null
-         then format(E'📂 Dossiê do aluno (objetivo, cartão e histórico) — entre com o seu login: %s\nO link vale %s.\n', v_dossier, v_window)
-         else format(E'📂 Dossiê do aluno (objetivo, cartão e histórico): no app, em *Salas e continuidade* → *Dossiê do aluno*, %s.\n', v_window) end
-    || E'\nA aula conta no seu pagamento: depois de dar, lance em *Lançar Aula*. Dúvida, responda por aqui.';
+  if v_update then
+    -- Última parte de uma aula de que uma parte já foi avisada: só o que mudou.
+    v_briefing := format(E'Olá %s! 🐺 Cobertura confirmada também para a parte das %s: a aula de *%s* de %s (%s, %s min) agora é toda sua.\n',
+        v_first_cover, v_time, btrim(coalesce(v_student.full_name, 'Aluno')), v_day, v_range, v_duration)
+      || case when v_room is not null
+           then format(E'🎥 Sala da escola no Google Meet: %s — a aula é nela, não mande outro link.\n', v_room)
+           when v_room_expected
+           then E'🎥 A aula terá sala da escola no Google Meet: o link chega por aqui quando a sala ficar pronta (até 24 h antes da aula) e aparece no app. Não mande outro link; se ele não chegar até 30 min antes da aula, combine com o aluno e mande o seu.\n'
+           else E'🎥 A aula não terá sala da escola: combine com o aluno e mande o link da aula.\n' end
+      || E'📂 Contato do aluno, últimas aulas e dossiê: na mensagem anterior sobre esta aula.\n'
+      || format(E'\nA aula conta no seu pagamento: depois de dar, lance as %s partes em *Lançar Aula*. Dúvida, responda por aqui.', v_parts);
+  else
+    v_briefing := format(E'Olá %s! 🐺 Cobertura confirmada:\n\n👤 *%s* (aluno de %s)\n', v_first_cover,
+        btrim(coalesce(v_student.full_name, 'Aluno')), v_first_original)
+      || case when v_multi and not v_complete
+           then format(E'📅 %s · 30 min — esta parte é sua; a aula completa é de %s min (%s) e o restante ainda não está confirmado com você.\n',
+                  v_when, v_parts * 30, v_range)
+           else format(E'📅 %s · %s min\n', v_when, v_duration) end
+      || case when v_room is not null
+           then format(E'🎥 Sala da escola no Google Meet: %s — a aula é nela, não mande outro link.\n', v_room)
+           when v_room_expected
+           then E'🎥 A aula terá sala da escola no Google Meet: o link chega por aqui quando a sala ficar pronta (até 24 h antes da aula) e aparece no app. Não mande outro link; se ele não chegar até 30 min antes da aula, combine com o aluno e mande o seu.\n'
+           when v_room_undecided
+           then E'🎥 Link da aula: enquanto o restante da aula não estiver confirmado com você, não dá para saber se ela será na sala da escola. Se o link da escola não chegar por aqui até 30 min antes da aula, combine com o aluno e mande o seu.\n'
+           else '' end
+      || case when v_student_phone is not null
+           then format(E'📱 Contato: wa.me/%s%s — %s\n', v_student_phone,
+                       case when v_student.guardian_id is not null or nullif(btrim(coalesce(v_student.guardian_name, '')), '') is not null
+                            then ' (aluno com responsável)' else '' end,
+                       case when v_room is not null or v_room_expected or v_room_undecided then 'se precisar combinar algo antes da aula.'
+                            else 'combine direto e mande o link da aula.' end)
+           else E'📱 Contato: sem WhatsApp no cadastro — peça à coordenação.\n' end
+      || case when v_level is not null then format(E'🎯 Nível: %s\n', btrim(v_level)) else '' end
+      || case when v_student.is_kids then E'🧒 Aluno kids — material Kids na biblioteca.\n' else '' end
+      || v_approved
+      || case when v_lessons <> '' then E'📚 Últimas aulas:\n' || v_lessons else E'📚 Sem registro de aula anterior — comece por diagnóstico e conversa.\n' end
+      || case when v_dossier is not null
+           then format(E'📂 Dossiê do aluno (objetivo, cartão e histórico) — entre com o seu login: %s\nO link vale %s.\n', v_dossier, v_window)
+           else format(E'📂 Dossiê do aluno (objetivo, cartão e histórico): no app, em *Salas e continuidade* → *Dossiê do aluno*, %s.\n', v_window) end
+      || E'\nA aula conta no seu pagamento: depois de dar, lance em *Lançar Aula*. Dúvida, responda por aqui.';
+  end if;
 
-  v_family := format('Oi, %s! 🐺 A aula de %s será com a Teacher %s, no lugar de %s. ',
-      v_first_student, v_when, v_first_cover, v_first_original)
+  v_family := case
+      when v_multi and not v_complete
+      then format('Oi, %s! 🐺 Na aula de %s, a parte das %s será com a Teacher %s, no lugar de %s. ',
+             v_first_student, v_day, v_time, v_first_cover, v_first_original)
+      when v_multi
+      then format('Oi, %s! 🐺 A aula de %s (%s min) será com a Teacher %s, no lugar de %s. ',
+             v_first_student, v_when, v_duration, v_first_cover, v_first_original)
+      else format('Oi, %s! 🐺 A aula de %s será com a Teacher %s, no lugar de %s. ',
+             v_first_student, v_when, v_first_cover, v_first_original) end
     || case when v_room is not null
          then format('A aula continua na sala da escola no Google Meet: %s', v_room)
          when v_room_expected
          then format('A aula será na sala da escola no Google Meet: o link chega por aqui antes do horário. Se ele não chegar até 30 min antes, %s te chama pelo WhatsApp.', v_first_cover)
+         when v_room_undecided
+         then format('O link da aula chega por aqui antes do horário; se não chegar até 30 min antes, %s te chama pelo WhatsApp.', v_first_cover)
          else format('%s vai te chamar pelo WhatsApp para combinar o link.', v_first_cover) end
     || ' Qualquer dúvida, é só responder aqui.';
 
-  v_group := format('✅ *Cobertura aceita:* %s dá a aula de *%s* em %s (de %s). ',
-      v_first_cover, btrim(coalesce(v_student.full_name, 'aluno')), v_when, v_first_original)
+  v_group := case
+      when v_multi and not v_complete
+      then format('✅ *Cobertura aceita:* %s dá a parte das %s da aula de *%s* em %s (de %s); a aula vai de %s e o restante ainda não está com %s. ',
+             v_first_cover, v_time, btrim(coalesce(v_student.full_name, 'aluno')), v_day, v_first_original, v_range, v_first_cover)
+      when v_multi
+      then format('✅ *Cobertura aceita:* %s dá a aula inteira de *%s* em %s · %s min (de %s). ',
+             v_first_cover, btrim(coalesce(v_student.full_name, 'aluno')), v_when, v_duration, v_first_original)
+      else format('✅ *Cobertura aceita:* %s dá a aula de *%s* em %s (de %s). ',
+             v_first_cover, btrim(coalesce(v_student.full_name, 'aluno')), v_when, v_first_original) end
     || case when v_cover_phone is not null
          then format('%s recebe no WhatsApp o pacote da aula (contato, últimas aulas e link do dossiê)', v_first_cover)
          else format('⚠️ %s NÃO recebe o pacote (sem WhatsApp no cadastro): mande o contato do aluno e peça para abrir o dossiê em Salas e continuidade', v_first_cover) end
@@ -618,7 +768,7 @@ begin
     insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
         source_type, class_date, notification_kind, idempotency_key)
     values (c.tenant_id, v_director, v_cover.full_name, v_cover_phone, v_briefing, pg_catalog.now(), 'pending',
-        'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', format('coverage:%s:briefing', c.id))
+        'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', v_key || ':briefing')
     on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
     returning id into v_id;
     if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('briefing'::text); end if;
@@ -628,7 +778,7 @@ begin
     insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
         source_type, class_date, notification_kind, idempotency_key)
     values (c.tenant_id, v_director, v_student.full_name, v_student_phone, v_family, pg_catalog.now(), 'pending',
-        'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', format('coverage:%s:family', c.id))
+        'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', v_key || ':family')
     on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
     returning id into v_id;
     if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('family'::text); end if;
@@ -640,7 +790,7 @@ begin
       insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
           source_type, class_date, notification_kind, idempotency_key)
       values (c.tenant_id, v_director, 'Gestão', v_group_jid, v_group, pg_catalog.now(), 'pending',
-          'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', format('coverage:%s:group', c.id))
+          'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE', v_key || ':group')
       on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
       returning id into v_id;
       if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('group'::text); end if;
@@ -650,7 +800,9 @@ begin
   return pg_catalog.jsonb_build_object('ok', true, 'queued', v_queued, 'student_phone_known', v_student_phone is not null,
     'cover_phone_known', v_cover_phone is not null, 'briefing', v_briefing,
     'approved_lesson', v_approved <> '', 'official_room', v_room is not null,
-    'school_room_expected', v_room_expected, 'dossier_url', v_dossier);
+    'school_room_expected', v_room_expected, 'dossier_url', v_dossier,
+    'lesson_parts', greatest(coalesce(v_parts, 0), 1), 'lesson_complete', v_complete,
+    'room_undecided', v_room_undecided, 'lesson_update', v_update, 'idempotency_prefix', v_key);
 end
 $function$;
 
@@ -660,10 +812,14 @@ grant execute on function public.coverage_briefing_enqueue(uuid, boolean) to ser
 
 -- A sala da escola ficou pronta DEPOIS do aceite: o link vai ao substituto e à
 -- família (instância central, notification_queue — o teto do WhatsApp vale por
--- cima), uma vez por cobertura (coverage:<id>:room e coverage:<id>:room-family).
--- Só a sala que vale para quem dá a aula (official_lesson_link: régua única,
--- aceite efetivo), só para aula que ainda não começou, e só a quem recebeu o
--- pacote ou o aviso sem esse link — quem aceitou com a sala pronta já a tem.
+-- cima), UMA vez por aula e substituto. A aula é a sessão da ocorrência (aula de
+-- 1 h = uma sessão com as duas partes, cada uma com a sua cobertura): a chave é
+-- a da cobertura da primeira parte que é dele (coverage:<id>:room e
+-- coverage:<id>:room-family) e o horário é o do início da aula — antes saía um
+-- aviso por cobertura, com o horário de cada metade. Só a sala que vale para
+-- quem dá a aula (official_lesson_link: régua única, aceite efetivo), só para
+-- aula que ainda não começou, e só a quem recebeu um pacote desta aula sem esse
+-- link — quem aceitou com a sala pronta, ou já recebeu o aviso, já a tem.
 create or replace function private.coverage_room_notice_enqueue(p_coverage_id uuid)
 returns jsonb
 language plpgsql
@@ -674,14 +830,19 @@ declare
   c public.class_coverages%rowtype;
   v_student public.profiles%rowtype;
   v_cover public.profiles%rowtype;
+  v_session public.lesson_sessions%rowtype;
   v_director uuid;
   v_scheduled_teacher uuid;
   v_time text;
-  v_start timestamptz;
+  v_start_time time;
   v_when text;
   v_room text;
-  v_briefing_body text;
-  v_family_body text;
+  v_coverages uuid[];
+  v_first uuid;
+  v_cover_packaged boolean := false;
+  v_cover_has_link boolean := false;
+  v_family_packaged boolean := false;
+  v_family_informed boolean := false;
   v_family_phone text;
   v_family_has_link boolean;
   v_phone text;
@@ -695,44 +856,100 @@ begin
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'cobertura_sem_sala');
   end if;
   v_time := pg_catalog.left(coalesce(c.class_time, ''), 5);
-  v_start := (c.class_date + case when v_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-                                  then v_time::time else time '23:59' end)
-             at time zone 'America/Sao_Paulo';
-  if v_start <= pg_catalog.now() then
-    return pg_catalog.jsonb_build_object('ok', false, 'error', 'aula_ja_comecou');
+  if v_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+    v_start_time := v_time::time;
   end if;
 
   select b.teacher_id into v_scheduled_teacher
     from public.bookings b where b.id = c.booking_id and b.tenant_id = c.tenant_id;
   v_room := public.official_lesson_link(
     c.tenant_id, 'booking', c.booking_id::text, c.class_date,
-    coalesce(v_scheduled_teacher, c.original_teacher_id),
-    case when v_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then v_time::time end,
-    c.student_id);
+    coalesce(v_scheduled_teacher, c.original_teacher_id), v_start_time, c.student_id);
   if v_room is null then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_sala_para_quem_da_a_aula');
+  end if;
+
+  -- A aula (sessão) desta parte.
+  select session.* into v_session
+    from public.lesson_occurrences as occurrence
+    join public.lesson_sessions as session
+      on session.id = occurrence.session_id and session.tenant_id = occurrence.tenant_id
+   where occurrence.tenant_id = c.tenant_id
+     and occurrence.source_type = 'booking'
+     and occurrence.source_id = c.booking_id::text
+     and occurrence.class_date = c.class_date
+     and occurrence.status <> 'SUPERSEDED'
+     and session.status <> 'SUPERSEDED'
+     and (v_start_time is null or occurrence.start_time = v_start_time)
+   order by session.scheduled_start_at
+   limit 1;
+  if not found then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_sala_para_quem_da_a_aula');
+  end if;
+  if v_session.scheduled_start_at <= pg_catalog.now() then
+    return pg_catalog.jsonb_build_object('ok', false, 'error', 'aula_ja_comecou');
   end if;
 
   v_director := private.management_group_default_actor(c.tenant_id);
   if v_director is null then
     return pg_catalog.jsonb_build_object('ok', false, 'error', 'sem_diretor_ativo');
   end if;
-  select q.message_body into v_briefing_body from public.notification_queue q
-   where q.tenant_id = c.tenant_id and q.idempotency_key = format('coverage:%s:briefing', c.id);
-  select q.message_body into v_family_body from public.notification_queue q
-   where q.tenant_id = c.tenant_id and q.idempotency_key = format('coverage:%s:family', c.id);
+
+  -- As coberturas deste substituto nas partes desta aula, pela ordem do horário.
+  select pg_catalog.array_agg(part.id order by part.start_time, part.id) into v_coverages
+    from (
+      select distinct on (coverage.id) coverage.id, occurrence.start_time
+        from public.lesson_occurrences as occurrence
+        join public.class_coverages as coverage
+          on coverage.tenant_id = occurrence.tenant_id
+         and coverage.booking_id::text = occurrence.source_id
+         and coverage.class_date = occurrence.class_date
+       where occurrence.session_id = v_session.id
+         and occurrence.tenant_id = v_session.tenant_id
+         and occurrence.source_type = 'booking'
+         and occurrence.status <> 'SUPERSEDED'
+         and pg_catalog.lower(coalesce(coverage.status, '')) = 'confirmed'
+         and coverage.cover_teacher_id = c.cover_teacher_id
+       order by coverage.id, occurrence.start_time
+    ) as part;
+  if v_coverages is null or not (c.id = any(v_coverages)) then
+    v_coverages := coalesce(v_coverages, array[]::uuid[]) || c.id;
+  end if;
+  v_first := v_coverages[1];
+
+  -- O que substituto e família já receberam sobre esta aula: o pacote de cada
+  -- parte, o da aula inteira e o aviso de sala de antes.
+  select coalesce(pg_catalog.bool_or(q.idempotency_key like '%:briefing'), false),
+         coalesce(pg_catalog.bool_or(pg_catalog.strpos(q.message_body, v_room) > 0), false)
+    into v_cover_packaged, v_cover_has_link
+    from public.notification_queue as q
+   where q.tenant_id = c.tenant_id
+     and q.idempotency_key in (
+       select pg_catalog.format(pattern, id)
+         from pg_catalog.unnest(v_coverages) as id
+        cross join (values ('coverage:%s:briefing'), ('coverage-lesson:%s:briefing'), ('coverage:%s:room')) as keys(pattern));
+  select coalesce(pg_catalog.bool_or(q.idempotency_key like '%:family'), false),
+         coalesce(pg_catalog.bool_or(pg_catalog.strpos(q.message_body, v_room) > 0), false)
+    into v_family_packaged, v_family_informed
+    from public.notification_queue as q
+   where q.tenant_id = c.tenant_id
+     and q.idempotency_key in (
+       select pg_catalog.format(pattern, id)
+         from pg_catalog.unnest(v_coverages) as id
+        cross join (values ('coverage:%s:family'), ('coverage-lesson:%s:family'), ('coverage:%s:room-family')) as keys(pattern));
 
   select * into v_student from public.profiles where id = c.student_id;
   select * into v_cover from public.profiles where id = c.cover_teacher_id;
   v_first_cover := pg_catalog.split_part(pg_catalog.btrim(coalesce(v_cover.full_name, 'Professor')), ' ', 1);
   v_first_student := pg_catalog.split_part(pg_catalog.btrim(coalesce(v_student.full_name, 'aluno')), ' ', 1);
-  v_when := format('%s %s às %s', private.weekday_label_pt(c.class_date), pg_catalog.to_char(c.class_date, 'DD/MM'), v_time);
+  v_when := format('%s %s às %s', private.weekday_label_pt(v_session.class_date),
+    pg_catalog.to_char(v_session.class_date, 'DD/MM'),
+    pg_catalog.to_char(v_session.scheduled_start_at at time zone 'America/Sao_Paulo', 'HH24:MI'));
   v_family_phone := private.whatsapp_digits(coalesce(nullif(v_student.attendance_phone, ''), nullif(v_student.phone, ''), nullif(v_student.guardian_phone, '')));
-  -- A família fica com o link se o aviso dela já o tinha ou se ele vai agora.
-  v_family_has_link := v_family_body is not null
-    and (pg_catalog.strpos(v_family_body, v_room) > 0 or v_family_phone is not null);
+  -- A família fica com o link se um aviso dela já o tinha ou se ele vai agora.
+  v_family_has_link := v_family_packaged and (v_family_informed or v_family_phone is not null);
 
-  if v_briefing_body is not null and pg_catalog.strpos(v_briefing_body, v_room) = 0 then
+  if v_cover_packaged and not v_cover_has_link then
     v_phone := private.whatsapp_digits(coalesce(nullif(v_cover.attendance_phone, ''), nullif(v_cover.phone, '')));
     if v_phone is not null then
       insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
@@ -743,14 +960,14 @@ begin
             case when v_family_has_link then ' A família recebe o mesmo link.'
                  else ' A família não tem WhatsApp no cadastro: mande a ela este mesmo link.' end),
           pg_catalog.now(), 'pending', 'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE',
-          format('coverage:%s:room', c.id))
+          format('coverage:%s:room', v_first))
       on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
       returning id into v_id;
       if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('room'::text); end if;
     end if;
   end if;
   v_id := null;
-  if v_family_body is not null and pg_catalog.strpos(v_family_body, v_room) = 0 then
+  if v_family_packaged and not v_family_informed then
     v_phone := v_family_phone;
     if v_phone is not null then
       insert into public.notification_queue (tenant_id, teacher_id, student_name, student_phone, message_body, scheduled_for, status,
@@ -759,14 +976,15 @@ begin
           format('Oi, %s! 🐺 O link da aula de %s com a Teacher %s, na sala da escola no Google Meet: %s Qualquer dúvida, é só responder aqui.',
             v_first_student, v_when, v_first_cover, v_room),
           pg_catalog.now(), 'pending', 'MANAGEMENT_NOTICE', c.class_date, 'MANAGEMENT_NOTICE',
-          format('coverage:%s:room-family', c.id))
+          format('coverage:%s:room-family', v_first))
       on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
       returning id into v_id;
       if v_id is not null then v_queued := v_queued || pg_catalog.to_jsonb('room-family'::text); end if;
     end if;
   end if;
 
-  return pg_catalog.jsonb_build_object('ok', true, 'queued', v_queued, 'official_room', v_room);
+  return pg_catalog.jsonb_build_object('ok', true, 'queued', v_queued, 'official_room', v_room,
+    'lesson_session_id', v_session.id, 'notice_coverage_id', v_first);
 end
 $function$;
 

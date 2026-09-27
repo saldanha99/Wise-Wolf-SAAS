@@ -1502,6 +1502,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/extrato_de_pontualidade_do_professor.sql"
   "supabase/tests/sugestoes_do_cartao_pela_ia.sql"
   "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
+  "supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"

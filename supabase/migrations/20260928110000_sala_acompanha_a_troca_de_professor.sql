@@ -56,11 +56,23 @@
 -- professor ATUAL do agendamento não diz quem deu a aula da semana passada);
 -- cobertura, reposição, antecipação e experimental são da ocorrência e valem.
 --
+-- Cobertura desfeita volta ao titular também quando a sessão NASCEU com o
+-- substituto (cobertura confirmada antes de a sessão congelar — não há troca
+-- registrada): antes ela ficava presa com o ex-substituto, sem sala para
+-- ninguém e, depois da aula, com a pendência de lançamento contra quem não a
+-- deu. Depois da aula a régua segura para o passado também devolve ao titular a
+-- aula cuja cobertura deixou de valer, salvo se o ex-substituto a lançou.
+--
+-- Aula de 1 h (dois agendamentos de 30 min, cada um com a sua cobertura) que
+-- ficou em duas sessões congeladas e passou a ser toda do mesmo professor vira
+-- UMA sessão, com uma sala (private.lesson_session_merge_adjacent).
+--
 -- Integração com o pacote da cobertura (20260928100000, seção 6.8): a previsão
 -- de sala do pacote usa a régua desta troca (substituto pronto = conta Google
 -- confirmada + aceite do termo que vale no fim da aula) e o aviso "sala pronta"
 -- também sai quando a retenção da troca é solta — a sala retida nunca é
--- anunciada, e a de quem não está pronto nunca sai.
+-- anunciada, e a de quem não está pronto nunca sai. O aviso sai uma vez por aula
+-- e substituto, com o horário da aula (private.coverage_room_notice_enqueue).
 --
 -- Remendos por âncora (pg_get_functiondef + erro se a âncora sumir): outras
 -- frentes da onda 3 podem mexer nas mesmas funções. Re-executável: if not
@@ -109,7 +121,12 @@ grant update (teacher_handover_pending) on private.google_meet_rooms to postgres
 -- elas discordam ou alguma não tem dono claro). Sem ocorrência viva, o professor
 -- da sessão. Seguro para o passado: numa ocorrência de agendamento que já
 -- terminou, o professor ATUAL do agendamento recorrente não conta (ele pode ter
--- sido transferido depois); só a antecipação daquela data e a cobertura.
+-- sido transferido depois); só a antecipação daquela data e a cobertura. A
+-- cobertura que deixou de valer também conta (correção da integração): a sessão
+-- que ainda é do ex-substituto volta a quem a cobertura tirou a aula — a sessão
+-- pode ter nascido com ele (cobertura confirmada antes do congelamento), e sem
+-- isto o lançamento do titular nunca se ligava e a pendência de lançamento caía
+-- no ex-substituto —, salvo se o ex-substituto lançou a aula (ele a deu).
 create or replace function private.lesson_session_giver(p_session uuid)
 returns uuid
 language sql stable security definer set search_path = '' as $$
@@ -128,7 +145,7 @@ language sql stable security definer set search_path = '' as $$
         occurrence.tenant_id, occurrence.source_type, occurrence.source_id, occurrence.class_date,
         coalesce(
           case
-            when occurrence.source_type = 'booking' and occurrence.scheduled_end_at <= pg_catalog.now() then (
+            when occurrence.source_type = 'booking' and occurrence.scheduled_end_at <= pg_catalog.now() then coalesce((
               select advance.teacher_id
               from public.lesson_advances as advance
               where advance.booking_id::text = occurrence.source_id
@@ -137,7 +154,23 @@ language sql stable security definer set search_path = '' as $$
                 and advance.advance_time = occurrence.start_time
                 and advance.status <> 'CANCELLED'
               order by advance.created_at desc
-              limit 1)
+              limit 1), (
+              select coverage.original_teacher_id
+              from public.class_coverages as coverage
+              where coverage.tenant_id = occurrence.tenant_id
+                and coverage.booking_id::text = occurrence.source_id
+                and coverage.class_date = occurrence.class_date
+                and coverage.cover_teacher_id = session.teacher_id
+                and pg_catalog.lower(coalesce(coverage.status, '')) not in ('confirmed', 'scheduled', 'completed')
+                and not exists (
+                  select 1 from public.class_logs as log
+                  where log.tenant_id = occurrence.tenant_id
+                    and log.teacher_id = session.teacher_id
+                    and log.presence in ('COMPLETED', 'STUDENT_ABSENCE')
+                    and (log.id = occurrence.class_log_id
+                      or (log.booking_id::text = occurrence.source_id and log.class_date = occurrence.class_date)))
+              order by coverage.created_at desc nulls last, coverage.id
+              limit 1))
             else private.lesson_occurrence_scheduled_teacher(
               occurrence.tenant_id, occurrence.source_type, occurrence.source_id,
               occurrence.class_date, occurrence.start_time)
@@ -312,6 +345,155 @@ language sql stable security definer set search_path = '' as $$
   limit 1;
 $$;
 
+-- A aula da sessão aconteceu no horário dela? Lançamento, auditoria de presença
+-- ou documento do Meet (cópia, importação, planilha ou resumo). Aula que
+-- aconteceu não é arquivada nem juntada a outra.
+create or replace function private.lesson_session_happened(p_session uuid)
+returns text
+language sql stable security definer set search_path = '' as $$
+  select case
+    when exists (
+      select 1 from public.class_logs as cl
+      where cl.tenant_id = session.tenant_id
+        and (cl.lesson_session_id = session.id or exists (
+          select 1 from public.lesson_occurrences as o
+          where o.session_id = session.id and cl.class_date = o.class_date and cl.start_time = o.start_time
+            and (o.class_log_id = cl.id
+              or (o.source_type = 'booking' and cl.booking_id::text = o.source_id)
+              or (o.source_type = 'reschedule' and cl.reschedule_id::text = o.source_id)
+              or (o.source_type = 'appointment' and cl.appointment_id::text = o.source_id))))
+    ) then 'LOGGED'
+    when exists (
+      select 1 from public.attendance_confirmations as ac
+      where ac.tenant_id = session.tenant_id
+        and (ac.lesson_session_id = session.id or exists (
+          select 1 from public.lesson_occurrences as o
+          where o.session_id = session.id and ac.source_type = o.source_type
+            and ac.source_id::text = o.source_id and ac.class_date = o.class_date
+            and left(ac.class_time, 5) = to_char(o.start_time, 'HH24:MI')))
+    ) then 'ATTENDANCE_AUDIT'
+    when exists (select 1 from private.meeting_artifact_revisions as ar where ar.lesson_session_id = session.id)
+      or exists (select 1 from private.google_meet_artifact_imports as imp where imp.lesson_session_id = session.id)
+      or exists (select 1 from private.meeting_attendance_reports as rep where rep.lesson_session_id = session.id)
+      or exists (select 1 from private.lesson_summary_versions as sv where sv.lesson_session_id = session.id)
+    then 'DOCUMENTED'
+  end
+  from public.lesson_sessions as session
+  where session.id = p_session;
+$$;
+
+-- Aula de 1 h (dois agendamentos de 30 min, cada um com a sua cobertura) que
+-- ficou em DUAS sessões congeladas — uma parte coberta antes de a sessão
+-- congelar, a outra depois; ou a cobertura de uma parte desfeita — e passou a
+-- ser toda do mesmo professor: vira uma aula, uma sala (correção da
+-- integração: antes a família recebia dois links diferentes e o app listava as
+-- duas salas). Fica a sessão cuja sala já foi entregue (pronta e sem retenção
+-- da troca — o link que a família já tem), senão a que tem sala, senão a
+-- congelada, senão a mais cedo; as ocorrências da outra passam para ela e a
+-- outra é arquivada como a aula que saiu da agenda (sem aceite: a fila desliga
+-- a transcrição da sala dela). Só aula que ainda não começou, das duas
+-- sessões dadas pelo mesmo professor pela régua única e sem nada que mostre que
+-- aconteceu. Roda na troca e, para a parte que só congela depois dela, na
+-- reconciliação (sessões que passaram por troca).
+create or replace function private.lesson_session_merge_adjacent(p_session uuid)
+returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_session public.lesson_sessions%rowtype;
+  v_other public.lesson_sessions%rowtype;
+  v_keep public.lesson_sessions%rowtype;
+  v_drop public.lesson_sessions%rowtype;
+  v_session_rank integer;
+  v_other_rank integer;
+  v_next jsonb;
+  v_actor uuid;
+  v_drop_room boolean;
+begin
+  select * into v_session from public.lesson_sessions where id = p_session for update;
+  if not found or v_session.status <> 'SCHEDULED' or v_session.scheduled_start_at <= pg_catalog.now() then
+    return null;
+  end if;
+  select * into v_other
+  from public.lesson_sessions as other
+  where other.tenant_id = v_session.tenant_id
+    and other.student_id = v_session.student_id
+    and other.class_date = v_session.class_date
+    and other.teacher_id = v_session.teacher_id
+    and other.id <> v_session.id
+    and other.status = 'SCHEDULED'
+    and other.scheduled_start_at > pg_catalog.now()
+    and (other.scheduled_end_at = v_session.scheduled_start_at
+      or other.scheduled_start_at = v_session.scheduled_end_at)
+  order by other.scheduled_start_at
+  limit 1
+  for update;
+  if not found then
+    return null;
+  end if;
+  if private.lesson_session_taught_by_other(v_session.id)
+    or private.lesson_session_taught_by_other(v_other.id)
+    or private.lesson_session_happened(v_session.id) is not null
+    or private.lesson_session_happened(v_other.id) is not null then
+    return null;
+  end if;
+
+  select case
+      when exists (select 1 from private.google_meet_rooms as room
+        where room.lesson_session_id = v_session.id and room.state = 'READY' and not room.teacher_handover_pending) then 0
+      when exists (select 1 from private.google_meet_rooms as room where room.lesson_session_id = v_session.id) then 1
+      when private.lesson_session_has_evidence(v_session.id) then 2
+      else 3 end,
+    case
+      when exists (select 1 from private.google_meet_rooms as room
+        where room.lesson_session_id = v_other.id and room.state = 'READY' and not room.teacher_handover_pending) then 0
+      when exists (select 1 from private.google_meet_rooms as room where room.lesson_session_id = v_other.id) then 1
+      when private.lesson_session_has_evidence(v_other.id) then 2
+      else 3 end
+    into v_session_rank, v_other_rank;
+  if (v_session_rank, v_session.scheduled_start_at) <= (v_other_rank, v_other.scheduled_start_at) then
+    v_keep := v_session;
+    v_drop := v_other;
+  else
+    v_keep := v_other;
+    v_drop := v_session;
+  end if;
+
+  update public.lesson_occurrences set session_id = v_keep.id
+   where session_id = v_drop.id and tenant_id = v_drop.tenant_id and status <> 'SUPERSEDED';
+  update public.lesson_sessions
+     set scheduled_start_at = least(v_keep.scheduled_start_at, v_drop.scheduled_start_at),
+         scheduled_end_at = greatest(v_keep.scheduled_end_at, v_drop.scheduled_end_at),
+         updated_at = pg_catalog.now()
+   where id = v_keep.id
+  returning to_jsonb(lesson_sessions.*) into v_next;
+  insert into private.lesson_session_revisions (session_id, previous_snapshot, next_snapshot, actor_id, action, reason)
+  values (v_keep.id, to_jsonb(v_keep), v_next, null, 'MERGE_ADJACENT',
+    'A outra parte da mesma aula passou a ser do mesmo professor: as duas partes são uma aula só, nesta sessão e nesta sala.');
+
+  v_drop_room := exists (select 1 from private.google_meet_rooms as room where room.lesson_session_id = v_drop.id);
+  v_actor := coalesce(auth.uid(), private.management_group_default_actor(v_drop.tenant_id));
+  if v_actor is not null and (v_drop.documentation_consent or v_drop_room) then
+    insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at)
+    values (v_drop.id, v_actor, false,
+      'Sessão juntada à outra parte da mesma aula (aula de 1 h que passou a ser toda do mesmo professor). A transcrição da sala desta sessão é desligada; a aula segue na sala da outra sessão.',
+      pg_catalog.clock_timestamp());
+  end if;
+  update public.lesson_sessions
+     set status = 'SUPERSEDED', documentation_consent = false, updated_at = pg_catalog.now(),
+         source_key = v_drop.source_key || ':merged:' || v_drop.id::text
+   where id = v_drop.id
+  returning to_jsonb(lesson_sessions.*) into v_next;
+  insert into private.lesson_session_revisions (session_id, previous_snapshot, next_snapshot, actor_id, action, reason)
+  values (v_drop.id, to_jsonb(v_drop), v_next, null, 'MERGE_ADJACENT_ABSORBED',
+    'A aula passou a ser do mesmo professor da outra parte e foi juntada a ela (sessão ' || v_keep.id::text || ').');
+  if v_drop_room then
+    insert into private.google_meet_access_events (tenant_id, actor_id, lesson_session_id, action)
+    values (v_drop.tenant_id, null, v_drop.id, 'ROOM_SESSION_MERGED');
+  end if;
+  return v_keep.id;
+end;
+$$;
+
 -- 3. A troca ---------------------------------------------------------------------
 create or replace function private.lesson_session_follow_giver(p_session uuid)
 returns text
@@ -382,7 +564,10 @@ begin
        and advance.status <> 'CANCELLED' and advance.teacher_id = v_giver
       where occurrence.session_id = v_session.id and occurrence.status <> 'SUPERSEDED'
         and occurrence.source_type = 'booking') then 'ADVANCE'
-    -- Cobertura desfeita: a aula volta a quem a tinha antes da cobertura.
+    -- Cobertura desfeita: a aula volta a quem a tinha antes da cobertura — a
+    -- sessão passou ao substituto por uma troca, ou já NASCEU com ele (a
+    -- cobertura foi confirmada antes de a sessão congelar; correção da
+    -- integração: sem este ramo a sessão ficava presa com o ex-substituto).
     when exists (
       select 1 from (
         select handover.cause, handover.from_teacher_id
@@ -392,6 +577,18 @@ begin
         limit 1
       ) as last_handover
       where last_handover.cause = 'COVERAGE' and last_handover.from_teacher_id = v_giver
+    ) or exists (
+      select 1
+      from public.lesson_occurrences as occurrence
+      join public.class_coverages as coverage
+        on occurrence.source_type = 'booking'
+       and coverage.booking_id::text = occurrence.source_id
+       and coverage.tenant_id = occurrence.tenant_id
+       and coverage.class_date = occurrence.class_date
+      where occurrence.session_id = v_session.id and occurrence.status <> 'SUPERSEDED'
+        and coverage.cover_teacher_id = v_session.teacher_id
+        and coverage.original_teacher_id = v_giver
+        and pg_catalog.lower(coalesce(coverage.status, '')) not in ('confirmed', 'scheduled', 'completed')
     ) then 'COVERAGE_ENDED'
   end;
   -- Agendamento recorrente transferido para outro professor: a sessão congelada
@@ -441,6 +638,17 @@ begin
   values (v_session.tenant_id, v_session.id, v_session.teacher_id, v_giver,
     v_from_email, v_to_email, v_cause, v_coverage, v_ready, v_ended, coalesce(v_withheld, false));
 
+  -- Aula de 1 h que estava em duas sessões (uma parte coberta antes de a sessão
+  -- congelar, a outra depois): agora é toda deste professor — uma aula, uma
+  -- sala. Falha aqui não desfaz a troca.
+  if not v_ended then
+    begin
+      perform private.lesson_session_merge_adjacent(v_session.id);
+    exception when others then
+      raise warning '[sala da troca] sessão % não foi juntada à outra parte da aula: %', v_session.id, sqlerrm;
+    end;
+  end if;
+
   return case when v_ready then 'HANDED_OVER' else 'HANDED_OVER_DOCUMENTATION_OFF' end;
 end;
 $$;
@@ -484,41 +692,17 @@ declare
   v_actor uuid;
   v_next jsonb;
   v_has_room boolean;
+  v_happened text;
 begin
   select * into v_session from public.lesson_sessions where id = p_session for update;
   if not found or v_session.status <> 'SCHEDULED' then
     return 'SKIPPED';
   end if;
-  -- Evidência de que a aula aconteceu no horário antigo: não é fantasma.
-  if exists (
-    select 1 from public.class_logs as cl
-    where cl.tenant_id = v_session.tenant_id
-      and (cl.lesson_session_id = v_session.id or exists (
-        select 1 from public.lesson_occurrences as o
-        where o.session_id = v_session.id and cl.class_date = o.class_date and cl.start_time = o.start_time
-          and (o.class_log_id = cl.id
-            or (o.source_type = 'booking' and cl.booking_id::text = o.source_id)
-            or (o.source_type = 'reschedule' and cl.reschedule_id::text = o.source_id)
-            or (o.source_type = 'appointment' and cl.appointment_id::text = o.source_id))))
-  ) then
-    return 'LOGGED';
-  end if;
-  if exists (
-    select 1 from public.attendance_confirmations as ac
-    where ac.tenant_id = v_session.tenant_id
-      and (ac.lesson_session_id = v_session.id or exists (
-        select 1 from public.lesson_occurrences as o
-        where o.session_id = v_session.id and ac.source_type = o.source_type
-          and ac.source_id::text = o.source_id and ac.class_date = o.class_date
-          and left(ac.class_time, 5) = to_char(o.start_time, 'HH24:MI')))
-  ) then
-    return 'ATTENDANCE_AUDIT';
-  end if;
-  if exists (select 1 from private.meeting_artifact_revisions as ar where ar.lesson_session_id = v_session.id)
-    or exists (select 1 from private.google_meet_artifact_imports as imp where imp.lesson_session_id = v_session.id)
-    or exists (select 1 from private.meeting_attendance_reports as rep where rep.lesson_session_id = v_session.id)
-    or exists (select 1 from private.lesson_summary_versions as sv where sv.lesson_session_id = v_session.id) then
-    return 'DOCUMENTED';
+  -- Evidência de que a aula aconteceu no horário antigo (lançamento, auditoria
+  -- de presença, documento do Meet): não é fantasma.
+  v_happened := private.lesson_session_happened(v_session.id);
+  if v_happened is not null then
+    return v_happened;
   end if;
 
   v_has_room := exists (select 1 from private.google_meet_rooms as room where room.lesson_session_id = v_session.id);
@@ -558,6 +742,7 @@ declare
   v_row record;
   v_left integer := 0;
   v_handed integer := 0;
+  v_merged integer := 0;
 begin
   -- Saiu da agenda: só aula que ainda não passou do prazo da pendência de
   -- lançamento (24 h depois do fim). A mais antiga já virou caso na Central de
@@ -618,7 +803,31 @@ begin
       raise warning '[sala da troca] sessão % não passou para quem dá a aula: %', v_row.id, sqlerrm;
     end;
   end loop;
-  return pg_catalog.jsonb_build_object('left_schedule', v_left, 'handed_over', v_handed);
+
+  -- Aula de 1 h que ficou em duas sessões do mesmo professor depois de uma
+  -- troca, porque a outra parte só congelou depois dela (o substituto confirmou
+  -- a conta ou o termo mais tarde, por exemplo): a troca já tentou juntar e não
+  -- achou a vizinha; aqui junta quando ela aparece. Só sessão que passou por
+  -- troca, e só aula que ainda não começou.
+  for v_row in
+    select session.id
+    from public.lesson_sessions as session
+    where session.tenant_id = p_tenant and session.class_date between p_from and p_to
+      and (p_student is null or session.student_id = p_student)
+      and session.status = 'SCHEDULED'
+      and session.scheduled_start_at > pg_catalog.now()
+      and exists (select 1 from private.lesson_session_teacher_handovers as handover
+                  where handover.session_id = session.id)
+  loop
+    begin
+      if private.lesson_session_merge_adjacent(v_row.id) is not null then
+        v_merged := v_merged + 1;
+      end if;
+    exception when others then
+      raise warning '[sala da troca] sessão % não foi juntada à outra parte da aula: %', v_row.id, sqlerrm;
+    end;
+  end loop;
+  return pg_catalog.jsonb_build_object('left_schedule', v_left, 'handed_over', v_handed, 'merged', v_merged);
 end;
 $$;
 
@@ -1001,7 +1210,9 @@ begin
   loop
     begin
       -- A sala só sai se valer para quem dá a aula (official_lesson_link: régua
-      -- única, aceite efetivo, sem retenção) — nunca ao substituto sem aceite.
+      -- única, aceite efetivo, sem retenção) — nunca ao substituto sem aceite. A
+      -- aula de 1 h tem uma cobertura por parte: o aviso é um só por aula e
+      -- substituto (a chave é a da cobertura da primeira parte).
       perform private.coverage_room_notice_enqueue(v_coverage);
     exception when others then
       -- O aviso nunca derruba a gravação da sala.
@@ -1038,6 +1249,8 @@ begin
     'private.lesson_session_attendance_identity(uuid)',
     'private.lesson_session_last_handover(uuid)',
     'private.lesson_session_follow_giver(uuid)',
+    'private.lesson_session_happened(uuid)',
+    'private.lesson_session_merge_adjacent(uuid)',
     'private.google_meet_room_release_handover()',
     'private.lesson_session_left_schedule(uuid)',
     'private.reconcile_frozen_lesson_sessions(text,date,date,uuid)',

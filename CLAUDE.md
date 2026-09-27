@@ -513,8 +513,13 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   sala da troca** (redefinida em `20260928110000`, seção 6.8: escola conectada, substituto pronto por
   `lesson_teacher_documentation_ready`, aceite do aluno, aula não barrada); quando a sala fica `READY` **ou a
   retenção da troca é solta**, o gatilho em `private.google_meet_rooms` (sem lista de colunas: quem solta é o
-  gatilho BEFORE) manda o link aos dois uma vez (`coverage:<id>:room`/`room-family`) — nunca a sala retida, nunca
-  a de substituto sem aceite (`official_lesson_link`). O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
+  gatilho BEFORE) manda o link aos dois uma vez POR AULA (`coverage:<id da cobertura da 1ª parte>:room`/`room-family`,
+  com o horário da aula) — nunca a sala retida, nunca a de substituto sem aceite (`official_lesson_link`).
+  ⚠️ **Aula de 1 h = dois agendamentos, cada um com a SUA cobertura** (em produção, 16:30 e 17:00 com a mesma
+  substituta em 16/09 e 18/09): o pacote é da AULA (`private.coverage_lesson_parts`). Parte que não está com o
+  mesmo substituto → o texto não promete nem nega a sala; confirmada a última parte → uma mensagem da aula
+  inteira (`coverage-lesson:<cobertura da 1ª parte>:*`, a atualização curta se uma parte já tinha sido avisada).
+  Teste: `supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql`. O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
   sair do dossiê e **segura os tours** enquanto isso (o tour do login trocava de aba e o dossiê sumia).
   Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
   `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
@@ -522,15 +527,19 @@ retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
   da função) — remendada por âncora aqui.
 - **A sala acompanha a troca de professor** (migration `20260928110000`, runbook seção própria, teste
   `supabase/tests/sala_acompanha_a_troca_de_professor.sql`): a sessão CONGELADA (aceite ou sala) passa para quem
-  **dá** a aula quando a troca é de UMA aula — cobertura confirmada (e a volta ao titular quando ela é desfeita),
-  reposição, antecipação ou experimental com outro professor —, com trilha em
+  **dá** a aula quando a troca é de UMA aula — cobertura confirmada (e a volta ao titular quando ela é desfeita,
+  inclusive da sessão que NASCEU com o substituto — cobertura confirmada antes do congelamento —, e depois da aula
+  salvo se o ex-substituto a lançou), reposição, antecipação ou experimental com outro professor —, com trilha em
   `private.lesson_session_teacher_handovers` + revisão `TEACHER_HANDOVER`. Novo professor **pronto** (conta Google
   confirmada + aceite do termo que vale no fim da aula): a sala fica **retida** (`teacher_handover_pending`, fora do
   app e do lembrete) até a fila pôr a conta dele como coanfitriã (`room_claim` → `SYNC_COHOST` → `ensureCohost`, sai a
   do titular); o lançamento dele se liga à sessão (acabou o `MISSING_LOG` falso) e é ele quem revisa o resumo. **Não
   pronto**: a sessão passa assim mesmo, mas `lesson_session_handover_unconsented` entrou na régua única → sala com a
   transcrição desligada e link de sempre. Aula dada por outro professor e ainda não trocada também é barrada
-  (`lesson_session_taught_by_other` na régua). ⚠️ **Agendamento recorrente transferido não troca sozinho**: segue o
+  (`lesson_session_taught_by_other` na régua). Aula de 1 h que ficou em duas sessões congeladas (uma parte coberta
+  antes do congelamento, a outra depois) e passou a ser toda do mesmo professor vira UMA sessão com a sala já
+  entregue (`private.lesson_session_merge_adjacent`; a outra é arquivada `…:merged:<id>`, sala desligada).
+  ⚠️ **Agendamento recorrente transferido não troca sozinho**: segue o
   "Replanejar sessão futura" de 12/09. **Sessão congelada que sai da agenda** (remarcada, desmarcada, encerrada pela
   direção, cancelada) até 24 h depois do fim vira `SUPERSEDED` com a sala desligada; aula com lançamento, auditoria de
   presença ou documento do Meet não. Roda no `sync_lesson_quality_sessions` (remendo por âncora) e na hora por
