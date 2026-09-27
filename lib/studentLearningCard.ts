@@ -1,5 +1,6 @@
 /**
- * Cartão do aluno — preenchido pelo professor, sem IA.
+ * Cartão do aluno — escrito pelo professor. A IA só sugere, com a frase da aula
+ * (lib/studentCardSuggestions.ts); nada entra no cartão sem o aceite de quem edita.
  *
  * Fonte: `public.student_learning_cards` (migration 20260926220000). A tela lê
  * pelo dossiê (`get_student_handover` → `learning_card`) e grava por

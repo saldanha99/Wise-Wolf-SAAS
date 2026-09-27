@@ -52,6 +52,9 @@ export default function MeetSummaryBudgetCard({ aiEnabled, model }: { aiEnabled:
           <div className={`h-full ${budget.cap_reached ? 'bg-amber-500' : 'bg-indigo-600'}`} style={{ width: `${percent}%` }}/>
         </div>
       </div>
+      {/* Sugestões da IA para o cartão: só anunciadas quando leram aula neste mês; pausadas por configuração, dito como desligadas. */}
+      {Number(budget.card_suggestion_count) > 0 && <p className="text-xs text-brand-muted" data-testid="summary-card-suggestions">Inclui {formatUsd(Number(budget.card_suggestion_spent_usd ?? 0))} de {budget.card_suggestion_count} leitura(s) de aula aprovada para sugerir o cartão do aluno — o mesmo teto vale para as duas.</p>}
+      {budget.card_suggestions_pause_reason === 'card_suggestions_not_configured' && <p className="text-xs text-brand-muted" data-testid="summary-card-suggestions-off">As sugestões da IA para o cartão do aluno estão desligadas nesta instalação.</p>}
       {budget.cap_reached && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="summary-cap-reached">Teto do mês atingido: o rascunho automático parou até o mês virar ou você aumentar o teto. Na aula, o botão de gerar pela IA continua, com o aviso de custo.</p>}
       {budget.paused_until && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Rascunho automático pausado: {pauseReasonText(budget.pause_reason)}. Nova verificação às {new Date(budget.paused_until).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}.</p>}
       <div className="flex flex-wrap items-end gap-3">

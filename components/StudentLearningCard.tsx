@@ -133,7 +133,7 @@ export default function StudentLearningCard({ studentId, card, onSaved, onReload
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h4 id="student-learning-card-title" className="font-semibold">Cartão do aluno</h4>
-          <p className="text-xs text-slate-500">Preenchido pelo professor, sem IA. No Planner, vale mais do que o que o Wolfie deduziu das conversas.</p>
+          <p className="text-xs text-slate-500">Escrito pelo professor. A IA só sugere (logo abaixo, com a frase da aula) e nada entra sem aceite. No Planner, vale mais do que o que o Wolfie deduziu das conversas.</p>
         </div>
         {card.can_edit && !editing && (
           <button type="button" onClick={() => setEditing(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800">

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { readLearningCard } from '../lib/studentLearningCard';
 import StudentLearningCard from './StudentLearningCard';
 import { DOSSIER_LINK_DENIED } from '../lib/studentDossierLink';
+import StudentCardSuggestions from './StudentCardSuggestions';
 
 type Evidence = { id: string; occurred_at?: string; class_date?: string; lesson_objective?: string; content_practiced?: string[]; content_covered?: string; recurring_errors?: string[]; student_difficulties?: string; homework_assigned?: string; recommended_next_step?: string };
 // viaLink: aberto pelo link com login do WhatsApp (substituto ou novo titular).
@@ -42,6 +43,10 @@ export default function StudentHandover({ studentId, viaLink = false }: { studen
     {data && <>
       {learningCard && <StudentLearningCard studentId={studentId} card={learningCard}
         onSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)}
+        onReload={() => void load()} />}
+      {/* Sugestões da IA (20260928130000): só para quem edita o cartão; aceitar grava pelo cartão. */}
+      {learningCard?.can_edit && <StudentCardSuggestions studentId={studentId} cardVersion={learningCard.version}
+        onCardSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)}
         onReload={() => void load()} />}
       <h4 className="font-semibold">Memória revisada</h4>
       {data.memories.length ? data.memories.map(m => evidence(m, 'Memória revisada')) : <p className="text-sm text-slate-500">Ainda não há memória revisada.</p>}

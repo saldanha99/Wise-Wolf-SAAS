@@ -34,6 +34,8 @@ const FEATURE_LABELS: Record<string, string> = {
     wolfie_realtime_rag: 'Wolfie ao vivo — busca de contexto',
     pedagogical_content: 'Geração de material',
     lesson_planner: 'Planner de aula',
+    meet_pedagogical_summary: 'Resumo da aula (Meet)',
+    student_card_suggestions: 'Sugestões para o cartão do aluno',
 };
 
 /**
@@ -50,7 +52,15 @@ const PREMIUM_FEATURES = new Set([
     'wolfie_realtime_post_turn',
     'wolfie_realtime_rag',
 ]);
-const INTERNAL_FEATURES = new Set(['pedagogical_content', 'lesson_planner']);
+// Resumo da aula do Meet e sugestões do cartão (20260927110000/20260928130000)
+// são trabalho pedagógico da escola, dentro do teto do resumo por IA — não
+// prática do aluno.
+const INTERNAL_FEATURES = new Set([
+    'pedagogical_content',
+    'lesson_planner',
+    'meet_pedagogical_summary',
+    'student_card_suggestions',
+]);
 
 const featureTier = (feature: string): 'premium' | 'interno' | 'gratuito' =>
     PREMIUM_FEATURES.has(feature)
@@ -248,7 +258,7 @@ const AiCostPanel: React.FC = () => {
                             {([
                                 ['gratuito', 'Wolfie gratuito', 'Fala e escrita — incluído na mensalidade'],
                                 ['premium', 'Wolfie premium (voz)', 'Resposta falada e conversa ao vivo'],
-                                ['interno', 'Uso interno', 'Material e planner do professor'],
+                                ['interno', 'Uso interno', 'Material, planner e resumos das aulas'],
                             ] as const).map(([key, titulo, ajuda]) => (
                                 <div key={key} className="rounded-lg border border-brand-border p-3">
                                     <p className="text-[11px] font-bold uppercase tracking-wide text-brand-muted">

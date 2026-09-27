@@ -48,4 +48,26 @@ describe('Teto mensal do resumo por IA (direção)', () => {
     await screen.findByRole('alert');
     expect(rpc).not.toHaveBeenCalledWith('set_meet_summary_monthly_cap', expect.anything());
   });
+
+  it('as sugestões do cartão aparecem dentro do mesmo teto (e somem quando não há nenhuma)', async () => {
+    rpc.mockResolvedValue({ data: budget({ card_suggestion_count: 3, card_suggestion_spent_usd: 0.0123 }), error: null });
+    const first = render(<MeetSummaryBudgetCard aiEnabled />);
+    expect((await screen.findByTestId('summary-card-suggestions')).textContent)
+      .toMatch(/Inclui US\$ 0\.01 de 3 leitura\(s\) de aula aprovada para sugerir o cartão do aluno/);
+    first.unmount();
+    rpc.mockResolvedValue({ data: budget(), error: null });
+    render(<MeetSummaryBudgetCard aiEnabled />);
+    await screen.findByText('Gasto em 2026-09: US$ 1.25 de US$ 20.00');
+    expect(screen.queryByTestId('summary-card-suggestions')).toBeNull();
+    // Sem leitura no mês, a tela não anuncia as sugestões do cartão.
+    expect(screen.queryByText(/sugere itens para o cartão/)).toBeNull();
+  });
+
+  it('sugestões do cartão desligadas na instalação: dito como desligadas, não anunciadas', async () => {
+    rpc.mockResolvedValue({ data: budget({ card_suggestions_pause_reason: 'card_suggestions_not_configured' }), error: null });
+    render(<MeetSummaryBudgetCard aiEnabled />);
+    expect((await screen.findByTestId('summary-card-suggestions-off')).textContent)
+      .toMatch(/desligadas nesta instalação/);
+    expect(screen.queryByTestId('summary-card-suggestions')).toBeNull();
+  });
 });
