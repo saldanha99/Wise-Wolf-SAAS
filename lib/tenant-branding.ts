@@ -1,4 +1,4 @@
-const DEFAULT_PRIMARY_COLOR = '#002366';
+export const DEFAULT_PRIMARY_COLOR = '#002366';
 const DEFAULT_SECONDARY_COLOR = '#D32F2F';
 
 const HEX_COLOR_PATTERN = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;

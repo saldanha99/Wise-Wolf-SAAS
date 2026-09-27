@@ -49,6 +49,18 @@ export function affiliateCodeFromInvite(value: unknown): string | null {
   return /^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code) ? code : null;
 }
 
+/**
+ * Cupom que ficou na conta (o do convite ou o que o banco gerou quando o do
+ * convite já era de outro). A página de conclusão só oferece "Copiar" com este
+ * valor — antes do cadastro o cupom do convite ainda não vale na matrícula.
+ */
+export function registeredAffiliateCode(row: unknown): string | null {
+  if (!row || typeof row !== "object") return null;
+  return affiliateCodeFromInvite(
+    (row as { affiliate_code?: unknown }).affiliate_code,
+  );
+}
+
 /** Cupom tomado (ou recusado pelo banco) desde o convite. */
 function isAffiliateCodeRejection(
   error: { code?: string; message?: string } | null,
@@ -167,7 +179,19 @@ async function handleRequest(req: Request): Promise<Response> {
 
     await finalizeInvite(admin, invite, userId);
     finalized = true;
-    return json({ success: true, userId, role: "SALESPERSON" });
+    // Leitura de cortesia: a conta já existe e o convite foi usado, então
+    // falhar aqui nunca vira erro — a página só deixa de oferecer "Copiar".
+    let affiliateCode: string | null = null;
+    try {
+      const { data: saved } = await admin.from("profiles")
+        .select("affiliate_code")
+        .eq("id", userId)
+        .maybeSingle();
+      affiliateCode = registeredAffiliateCode(saved);
+    } catch {
+      affiliateCode = null;
+    }
+    return json({ success: true, userId, role: "SALESPERSON", affiliateCode });
   } catch (error) {
     if (!finalized) {
       if (userId) await admin.auth.admin.deleteUser(userId);
