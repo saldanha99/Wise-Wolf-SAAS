@@ -6,6 +6,7 @@ import {
   consentStatusText,
   exclusionRequestUrl,
   formatClassDate,
+  objectionRequestUrl,
   formatClassTime,
   lessonRecordsErrorMessage,
   parseStudentLessonRecords,
@@ -41,6 +42,11 @@ export default function StudentLessonRecords() {
   useEffect(() => { void load(); }, [load]);
 
   const exclusionUrl = view ? exclusionRequestUrl(view) : null;
+  // Registro autorizado pela escola (20260929100000): o texto é um aviso, e o
+  // aluno pede para não registrar pelo WhatsApp da escola.
+  const schoolDefault = view?.authorizationMode === 'SCHOOL_DEFAULT';
+  const objected = view?.consent.status === 'REFUSED' || view?.consent.status === 'REVOKED';
+  const objectionUrl = view && schoolDefault && !objected ? objectionRequestUrl(view) : null;
 
   return <div data-tour="student-lesson-records" className="space-y-6">
     <header className="flex items-start justify-between gap-4">
@@ -91,18 +97,26 @@ export default function StudentLessonRecords() {
           <li>A aula não é gravada em vídeo.</li>
         </ul>
         {view.term && <details className="rounded-xl border border-brand-border p-3">
-          <summary className="cursor-pointer text-sm font-bold text-brand-text">Ler o termo completo (versão {view.term.version})</summary>
+          <summary className="cursor-pointer text-sm font-bold text-brand-text">{schoolDefault ? 'Ler o aviso completo' : 'Ler o termo completo'} (versão {view.term.version})</summary>
           <p className="mt-3 max-h-80 overflow-y-auto whitespace-pre-line text-sm text-brand-muted">{view.term.body}</p>
         </details>}
       </section>
 
       <section aria-labelledby="lesson-records-consent" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
         <h2 id="lesson-records-consent" className="flex items-center gap-2 text-lg font-bold text-brand-text">
-          <ShieldCheck size={20} className="text-brand-accent" /> Sua autorização: {CONSENT_STATUS_LABEL[view.consent.status]}
+          <ShieldCheck size={20} className="text-brand-accent" /> {schoolDefault
+            ? `Registro das aulas: ${objected ? 'você pediu para não registrar' : CONSENT_STATUS_LABEL[view.consent.status]}`
+            : `Sua autorização: ${CONSENT_STATUS_LABEL[view.consent.status]}`}
         </h2>
-        <p className="text-sm text-brand-text">{consentStatusText(view.consent)}</p>
-        <p className="text-sm text-brand-muted">{revokeHowToText(view.consent)}</p>
-        <p className="text-sm text-brand-muted">Revogar vale para as aulas seguintes; o que já foi aprovado continua aqui. Para pedir que seja apagado, veja abaixo.</p>
+        <p className="text-sm text-brand-text">{consentStatusText(view.consent, view.authorizationMode)}</p>
+        <p className="text-sm text-brand-muted">{revokeHowToText(view.consent, view.authorizationMode)}</p>
+        {objectionUrl && <a href={objectionUrl} target="_blank" rel="noopener noreferrer" data-tour="student-recording-objection"
+          className="inline-flex items-center gap-2 rounded-xl border border-brand-border px-4 py-2 text-sm font-bold text-brand-text">
+          <MessageCircle size={16} /> Pedir para não registrar pelo WhatsApp
+        </a>}
+        <p className="text-sm text-brand-muted">{schoolDefault
+          ? 'O pedido vale para as aulas seguintes; o que já foi aprovado continua aqui. Para pedir que seja apagado, veja abaixo.'
+          : 'Revogar vale para as aulas seguintes; o que já foi aprovado continua aqui. Para pedir que seja apagado, veja abaixo.'}</p>
       </section>
 
       <section aria-labelledby="lesson-records-exclusion" className="space-y-3 rounded-2xl border border-brand-border bg-brand-surface p-5">
@@ -111,7 +125,7 @@ export default function StudentLessonRecords() {
             botão da ficha (erase_student_lesson_records, 20260927120000). A
             lista abaixo é a do que aquela RPC apaga — mudou lá, muda aqui. */}
         <p className="text-sm text-brand-text">
-          Você pode pedir a exclusão do registro das suas aulas a qualquer momento, pelo WhatsApp da escola{view.schoolName ? ` (${view.schoolName})` : ''}. A direção confere o pedido e apaga, de uma vez, o que o sistema da escola guardou das suas aulas já realizadas: os resumos (aprovados e rascunhos), as cópias da transcrição, das anotações e da presença, a memória das aulas usada para planejar e o seu cartão de aluno, com as sugestões da IA para ele que o professor ainda não tinha decidido. Os arquivos originais na conta Google da escola também são apagados (vão para a lixeira do Google, que os elimina de vez em até 30 dias). Continuam a presença e os pagamentos lançados e o registro das suas respostas ao termo. Para que as próximas aulas também não sejam transcritas, revogue a autorização (acima).
+          Você pode pedir a exclusão do registro das suas aulas a qualquer momento, pelo WhatsApp da escola{view.schoolName ? ` (${view.schoolName})` : ''}. A direção confere o pedido e apaga, de uma vez, o que o sistema da escola guardou das suas aulas já realizadas: os resumos (aprovados e rascunhos), as cópias da transcrição, das anotações e da presença, a memória das aulas usada para planejar e o seu cartão de aluno, com as sugestões da IA para ele que o professor ainda não tinha decidido. Os arquivos originais na conta Google da escola também são apagados (vão para a lixeira do Google, que os elimina de vez em até 30 dias). Continuam a presença e os pagamentos lançados e o registro das suas respostas ao termo. Para que as próximas aulas também não sejam transcritas, {schoolDefault ? 'peça para não registrar (acima)' : 'revogue a autorização (acima)'}.
         </p>
         {exclusionUrl
           ? <a href={exclusionUrl} target="_blank" rel="noopener noreferrer"

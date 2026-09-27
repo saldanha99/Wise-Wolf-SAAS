@@ -97,6 +97,14 @@ Deno.test("mensagem traz o código, a validade e o aviso de não repassar", () =
   });
   assert(self.includes("das suas aulas"));
   assert(self.startsWith("*Escola*"));
+  // Texto neutro (20260929100000): na escola que autoriza o registro por
+  // padrão, o código confirma o pedido para NÃO registrar.
+  assertFalse(self.includes("autoriza"), "o código não fala em autorização");
+  assertFalse(
+    guardian.includes("autoriza"),
+    "o código não fala em autorização",
+  );
+  assert(self.includes("sua resposta sobre o registro das suas aulas"));
 });
 
 Deno.test("resultado do envio decide o que conta no limite", () => {

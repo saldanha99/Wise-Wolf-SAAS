@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, MessageCircle, ShieldCheck, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
+  asAuthorizationMode,
   asDecision,
   asGuardianReason,
   asNotEffectiveReason,
@@ -14,6 +15,7 @@ import {
   fillTermMarkers,
   guardianReasonText,
   isFullName,
+  isObjection,
   isSixDigitCode,
   normalizeSignerName,
   notEffectiveText,
@@ -34,6 +36,9 @@ import {
 // resposta de novo. A decisão manda a versão exibida; se a escola publicou
 // outra enquanto a pessoa lia, o servidor recusa (`termo_mudou`) sem gastar o
 // código, e a página recarrega o texto novo para ela confirmar.
+// Desde 29/09/2026 (migration 20260929100000), na escola que autoriza o
+// registro por padrão a página mostra o AVISO (não um termo de aceite) e só
+// grava o pedido para não registrar — com o mesmo código do WhatsApp.
 
 type Relation = 'SELF' | 'GUARDIAN';
 
@@ -58,6 +63,8 @@ interface ConsentPublic {
   decided_term_version?: string | null;
   /** Valores dos marcadores {escola_nome}, {escola_documento} e {escola_contato_privacidade}. */
   school_identity?: unknown;
+  /** SCHOOL_DEFAULT: registro autorizado pela escola — aviso e pedido para não registrar. */
+  authorization_mode?: string;
 }
 
 interface CodeResponse {
@@ -182,6 +189,9 @@ export default function LessonRecordingConsentPage() {
     if (!response.ok) {
       setError(codeErrorMessage({ error: response.error, attemptsLeft: response.attempts_left }));
       if (response.error === 'codigo_expirado' || response.error === 'codigo_bloqueado') setCode('');
+      // A escola passou a autorizar o registro com a página aberta: mostra o
+      // aviso (o código não foi gasto e serve para o pedido de não registrar).
+      if (response.error === 'registro_autorizado_pela_escola') await loadPage();
       return;
     }
     setDone({ decision: asDecision(response.decision), phone: response.verified_phone || null });
@@ -204,6 +214,19 @@ export default function LessonRecordingConsentPage() {
             ? 'Por segurança, este link foi bloqueado: pediram ou digitaram códigos errados vezes demais.'
             : data?.expired ? 'Este link expirou ou foi substituído por um mais novo.' : 'Não encontramos este link.'} Peça um novo à escola pelo WhatsApp.
         </p>
+      </div>
+    </div>;
+  }
+
+  if (done && asAuthorizationMode(data.authorization_mode) === 'SCHOOL_DEFAULT') {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
+        <CheckCircle2 size={48} className="mx-auto mb-4 text-emerald-500" />
+        <h1 className="mb-2 text-xl font-black text-slate-800">Pedido registrado</h1>
+        <p className="text-sm text-slate-500">
+          As próximas aulas acontecem normalmente, sem transcrição. Para voltar a ter as aulas registradas, fale com a escola pelo WhatsApp.
+        </p>
+        {done.phone && <p className="mt-3 text-xs text-slate-400">Confirmado pelo WhatsApp {done.phone}.</p>}
       </div>
     </div>;
   }
@@ -232,20 +255,33 @@ export default function LessonRecordingConsentPage() {
     : null;
   const whoLabel = relation === 'SELF' ? 'do aluno' : 'do responsável';
   const termText = fillTermMarkers(data.term_body, asTermSchoolIdentity(data.school_identity, data.school_name));
+  const schoolDefault = asAuthorizationMode(data.authorization_mode) === 'SCHOOL_DEFAULT';
+  const objected = isObjection(data.current_decision);
 
   return <div className="min-h-screen bg-slate-100 px-4 py-8">
     <div className="mx-auto max-w-lg space-y-4">
       <div className="text-center">
         <ShieldCheck size={32} className="mx-auto mb-2 text-[#002366]" />
         <h1 className="text-xl font-black text-slate-800">Registro das aulas</h1>
-        <p className="mt-1 text-xs font-medium text-slate-500">{data.school_name || 'Wise Wolf'} · termo {data.term_version}</p>
+        <p className="mt-1 text-xs font-medium text-slate-500">{data.school_name || 'Wise Wolf'} · {schoolDefault ? 'aviso' : 'termo'} {data.term_version}</p>
       </div>
 
       <div className="space-y-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-600">
-          Este termo é sobre as aulas de <b className="text-slate-800">{firstName}</b>. Leia com calma e responda abaixo.
-        </p>
-        {notEffective
+        {schoolDefault
+          ? <p className="text-sm text-slate-600">
+              As aulas de <b className="text-slate-800">{firstName}</b> são registradas pela escola (faz parte das aulas). Leia o aviso abaixo.
+              {objected ? '' : ' Se você não quiser que as aulas sejam registradas, peça aqui: elas continuam normalmente, só que sem transcrição.'}
+            </p>
+          : <p className="text-sm text-slate-600">
+              Este termo é sobre as aulas de <b className="text-slate-800">{firstName}</b>. Leia com calma e responda abaixo.
+            </p>}
+        {schoolDefault
+          ? <p role="status" className={`rounded-2xl p-3 text-xs ${objected ? 'bg-amber-50 font-semibold text-amber-800' : 'bg-slate-50 text-slate-600'}`}>
+              {objected
+                ? 'Situação atual: já existe o pedido para não registrar as aulas. Para voltar a ter as aulas registradas, fale com a escola pelo WhatsApp.'
+                : 'Situação atual: registro autorizado pela escola.'}
+            </p>
+          : notEffective
           ? <p role="status" className="rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
               {notEffectiveText(notEffective, firstName, data.decided_term_version)}
             </p>
@@ -257,9 +293,12 @@ export default function LessonRecordingConsentPage() {
           {termText}
         </div>
 
+        {!(schoolDefault && objected) && <>
         {guardianReason
           ? <p className="rounded-2xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-              {guardianReasonText(guardianReason, firstName)}
+              {schoolDefault
+                ? `Como ${firstName} é menor de idade (ou a escola não confirmou a idade), o pedido para não registrar é feito pelo responsável legal.`
+                : guardianReasonText(guardianReason, firstName)}
             </p>
           : <fieldset className="space-y-2">
               <legend className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-500">Quem está respondendo</legend>
@@ -321,7 +360,12 @@ export default function LessonRecordingConsentPage() {
         </p>}
         {error && <p role="alert" className="text-xs font-bold text-red-600">{error}</p>}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        {schoolDefault
+          ? <button type="button" disabled={!!busy || !codeReady || !isSixDigitCode(code)} onClick={() => void decide(false)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#002366] py-4 text-[11px] font-black uppercase tracking-widest text-white hover:bg-blue-900 disabled:opacity-40">
+              {busy === 'decide' ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} Não quero que as aulas sejam registradas
+            </button>
+          : <div className="grid gap-3 sm:grid-cols-2">
           <button type="button" disabled={!!busy || !codeReady || !isSixDigitCode(code)} onClick={() => void decide(true)}
             className="flex items-center justify-center gap-2 rounded-2xl bg-[#002366] py-4 text-[11px] font-black uppercase tracking-widest text-white hover:bg-blue-900 disabled:opacity-40">
             {busy === 'decide' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Autorizo
@@ -330,10 +374,11 @@ export default function LessonRecordingConsentPage() {
             className="rounded-2xl border border-slate-300 py-4 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-40">
             Não autorizo
           </button>
-        </div>
+        </div>}
         <p className="text-center text-[10px] leading-relaxed text-slate-400">
           Registramos o nome digitado, a data e a hora da resposta, o endereço de conexão (IP) e o WhatsApp (com parte do número oculta) que recebeu o código.
         </p>
+        </>}
       </div>
     </div>
   </div>;

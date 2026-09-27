@@ -22,9 +22,9 @@ function blockedText(reason: unknown, handover: TeacherHandover | null | undefin
     return 'Esta aula é dada por outro professor e a sessão ainda não passou para ele (a cobertura está sendo processada, ou o agendamento foi transferido e a escola ainda não replanejou a sessão futura): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado. A aula segue pelo link de sempre.';
   }
   if (reason === 'TERM_LAPSED' || reason === 'MANUAL_MARK_OUTDATED') {
-    return 'O aceite que valia para esta aula deixou de valer (o termo mudou de versão, ou a escola passou a exigir o responsável do aluno): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
+    return 'A autorização que valia para esta aula deixou de valer (o termo mudou de versão, a escola passou a exigir o responsável do aluno ou voltou ao aceite individual, ou o aluno ou o professor deixou de estar ativo): a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
   }
-  return 'O aluno (ou o responsável) ou o professor recusou ou revogou o registro antes do fim desta aula: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
+  return 'O aluno (ou o responsável) ou o professor pediu para não registrar, recusou ou revogou o registro antes do fim desta aula: a sala da escola não é entregue, a transcrição dela é desligada no Google e nada desta aula é importado.';
 }
 
 export default function LessonPedagogicalSummary({sessionId,tenantId}:{sessionId:string;tenantId?:string}) {

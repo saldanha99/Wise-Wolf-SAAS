@@ -84,8 +84,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-28-sugestoes-do-cartao');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-28-tempo-na-sala');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-29-registro-autorizado-pela-escola');
     expect(latestFeatureTourFor('STUDENT')?.id).toBe('2026-09-27-minhas-aulas-registradas');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
   });
@@ -110,6 +110,23 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(text).toContain('sem ranking');
     expect(text).toContain('Atraso detectado pelo Meet');
     expect(text.toLowerCase()).not.toContain('já está ligado');
+  });
+
+  it('os tours do registro autorizado pela escola não pedem aceite e dizem como pedir para não registrar', () => {
+    // Migration 20260929100000: a escola autoriza o registro; ninguém precisa
+    // de link, código ou "Li e autorizo" — mas a conta Google continua exigida.
+    const admin = FEATURE_TOURS.find(t => t.id === '2026-09-29-registro-autorizado-pela-escola');
+    const teacher = FEATURE_TOURS.find(t => t.id === '2026-09-29-registro-autorizado-pela-escola-professor');
+    expect(admin?.roles).toEqual(['SCHOOL_ADMIN']);
+    expect(teacher?.roles).toEqual(['TEACHER']);
+    const adminText = (admin?.steps || []).map(step => step.text).join(' ');
+    const teacherText = (teacher?.steps || []).map(step => step.text).join(' ');
+    expect(adminText).toContain('Registrar pedido para não registrar');
+    expect(adminText).toContain('inclusive os menores de idade');
+    expect(adminText).toContain('conta Google');
+    expect(teacherText).toContain('Não quero que minhas aulas sejam registradas');
+    expect(teacherText).toContain('conta Google');
+    expect(teacherText).toContain('não precisa mais tocar em "Li e autorizo"');
   });
 
   it('achatar põe todos os passos sob o capítulo "Novidade"', () => {

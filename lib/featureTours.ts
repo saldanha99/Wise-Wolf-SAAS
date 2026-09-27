@@ -498,6 +498,59 @@ export const FEATURE_TOURS: FeatureTour[] = [
       },
     ],
   },
+  {
+    // Migration 20260929100000 — decisão da direção de 27/09/2026: a escola
+    // autoriza o registro das aulas; cada pessoa pode pedir para não ser
+    // registrada. A Wise Wolf entrou nesse modo pela própria migration.
+    id: '2026-09-29-registro-autorizado-pela-escola',
+    title: 'Registro das aulas autorizado pela escola',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      {
+        target: 'recording-authorization-mode',
+        view: 'recording-consents',
+        title: 'A escola autoriza o registro das aulas 🎙️',
+        text: 'Quando a escola autoriza o registro (contrato ou decisão da direção), alunos e professores ativos — inclusive os menores de idade — têm as aulas registradas sem link, sem código e sem aceite. Este quadro mostra como a escola autoriza, quem decidiu, quando e por quê. Só a direção troca o modo, com confirmação na tela e motivo registrado.',
+      },
+      {
+        target: 'recording-objection',
+        view: 'recording-consents',
+        title: 'Quem não quiser, pede',
+        text: 'Chegou pelo WhatsApp um pedido para não registrar? Toque em "Registrar pedido para não registrar" no aluno (ou no professor) e escreva como o pedido chegou. Vale na hora: a sala da escola tem a transcrição desligada, nada da aula é importado e a IA não lê. "Desfazer pedido" devolve, também com motivo. No modo da escola não há envio do termo nem link por aluno.',
+      },
+      {
+        target: null,
+        view: 'recording-consents',
+        title: 'A conta Google continua obrigatória',
+        text: 'A sala da escola só nasce para o professor que confirmou por login a conta Google com que entra nas aulas (em "Salas e continuidade"). Sem isso, a aula dele segue pelo link de sempre — a Central de Pendências mostra quem ainda não confirmou.',
+      },
+    ],
+  },
+  {
+    id: '2026-09-29-registro-autorizado-pela-escola-professor',
+    title: 'Registro das suas aulas pela escola',
+    roles: ['TEACHER'],
+    steps: [
+      {
+        target: 'recording-teacher-consent',
+        view: 'lesson-sessions',
+        title: 'Suas aulas são registradas pela escola 🎙️',
+        text: 'Quando a escola autoriza o registro das aulas, você não precisa mais tocar em "Li e autorizo": as aulas na sala da escola são transcritas pelo Google Meet (sem vídeo). O aviso completo — para que serve, quem vê, prazos e direitos — está em "Ler o aviso".',
+      },
+      {
+        target: 'recording-teacher-google',
+        view: 'lesson-sessions',
+        title: 'Confirme a sua conta Google',
+        text: 'A sala da escola só nasce para as suas aulas depois que você confirma, por login, a conta Google com que entra nas aulas. Sem isso, a aula segue pelo link de sempre.',
+      },
+      {
+        target: 'recording-teacher-objection',
+        view: 'lesson-sessions',
+        title: 'Se não quiser ser registrado',
+        text: '"Não quero que minhas aulas sejam registradas" vale na hora: as suas aulas seguintes acontecem normalmente, sem transcrição, e nada muda no seu pagamento. Dá para voltar atrás no mesmo lugar.',
+      },
+    ],
+  },
 ];
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */

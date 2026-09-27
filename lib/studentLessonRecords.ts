@@ -4,18 +4,26 @@
 // professor. Aqui ficam a leitura defensiva da resposta e os textos da tela.
 
 import {
+  asAuthorizationMode,
   asGuardianReason,
   asNotEffectiveReason,
   formatDecisionDate,
   isMissingRpcError,
+  objectionRequestMessage,
   whatsappUrl,
+  type AuthorizationMode,
   type GuardianReason,
   type NotEffectiveReason,
   type SignerRelation,
 } from './lessonRecordingConsent';
 
-/** Situação do termo do aluno, pela mesma régua que marca as aulas. */
-export type StudentConsentStatus = 'AUTHORIZED' | 'NOT_EFFECTIVE' | 'REFUSED' | 'REVOKED' | 'NONE';
+/**
+ * Situação do termo do aluno, pela mesma régua que marca as aulas.
+ * SCHOOL_AUTHORIZED (migration 20260929100000): a escola autoriza o registro e
+ * o aluno não pediu para não registrar — no modo da escola, REFUSED/REVOKED é
+ * o pedido para não registrar.
+ */
+export type StudentConsentStatus = 'AUTHORIZED' | 'SCHOOL_AUTHORIZED' | 'NOT_EFFECTIVE' | 'REFUSED' | 'REVOKED' | 'NONE';
 
 export interface StudentLessonRecord {
   sessionId: string;
@@ -64,6 +72,8 @@ export interface StudentRecordConsent {
 
 export interface StudentLessonRecordsView {
   schoolName: string | null;
+  /** Como a escola autoriza o registro (servidor antigo = aceite individual). */
+  authorizationMode: AuthorizationMode;
   schoolWhatsapp: string | null;
   consent: StudentRecordConsent;
   term: { version: string; body: string } | null;
@@ -83,7 +93,7 @@ const asObject = (value: unknown): Json | null =>
 const asText = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
-const STATUSES: readonly StudentConsentStatus[] = ['AUTHORIZED', 'NOT_EFFECTIVE', 'REFUSED', 'REVOKED', 'NONE'];
+const STATUSES: readonly StudentConsentStatus[] = ['AUTHORIZED', 'SCHOOL_AUTHORIZED', 'NOT_EFFECTIVE', 'REFUSED', 'REVOKED', 'NONE'];
 
 function asStatus(value: unknown): StudentConsentStatus {
   return STATUSES.includes(value as StudentConsentStatus) ? (value as StudentConsentStatus) : 'NONE';
@@ -128,6 +138,7 @@ export function parseStudentLessonRecords(data: unknown): StudentLessonRecordsVi
   const pending = Number(root.pending_review);
   return {
     schoolName: asText(root.school_name),
+    authorizationMode: asAuthorizationMode(root.authorization_mode),
     schoolWhatsapp: asText(root.school_whatsapp),
     consent: {
       status: asStatus(consent.status),
@@ -196,6 +207,7 @@ export function pendingReviewText(count: number): string {
 
 export const CONSENT_STATUS_LABEL: Record<StudentConsentStatus, string> = {
   AUTHORIZED: 'Autorizado',
+  SCHOOL_AUTHORIZED: 'Autorizado pela escola',
   NOT_EFFECTIVE: 'Autorização pendente de confirmação',
   REFUSED: 'Não autorizado',
   REVOKED: 'Revogado',
@@ -203,10 +215,21 @@ export const CONSENT_STATUS_LABEL: Record<StudentConsentStatus, string> = {
 };
 
 /** Frase da situação do termo, dita para o aluno. */
-export function consentStatusText(consent: StudentRecordConsent): string {
+export function consentStatusText(consent: StudentRecordConsent, mode: AuthorizationMode = 'INDIVIDUAL_CONSENT'): string {
   const when = formatDecisionDate(consent.decidedAt);
   const since = when ? ` desde ${when}` : '';
+  if (mode === 'SCHOOL_DEFAULT') {
+    if (consent.status === 'REFUSED' || consent.status === 'REVOKED') {
+      return `Existe o pedido para não registrar as suas aulas${since}. Elas acontecem normalmente, sem transcrição.`;
+    }
+    if (consent.status === 'SCHOOL_AUTHORIZED') {
+      return 'O registro das aulas faz parte das aulas da escola: as aulas na sala da escola no Google Meet são transcritas (sem vídeo). Você pode pedir para não ser registrado a qualquer momento, sem prejuízo das aulas.';
+    }
+    return 'As suas aulas não estão sendo registradas agora. Se tiver dúvida, fale com a escola.';
+  }
   switch (consent.status) {
+    case 'SCHOOL_AUTHORIZED':
+      return 'O registro das aulas foi autorizado pela escola.';
     case 'AUTHORIZED':
       return `Registro autorizado${since}${consent.signerRelation === 'GUARDIAN' ? ' pelo seu responsável' : ''}: as aulas na sala da escola no Google Meet podem ser transcritas (quando o professor da aula também autorizou).`;
     case 'NOT_EFFECTIVE':
@@ -232,9 +255,16 @@ export function consentStatusText(consent: StudentRecordConsent): string {
 
 /**
  * Como revogar: pelo link do termo — só quando o servidor sabe que ele chegou
- * (aberto ou mensagem aceita) — ou pela escola.
+ * (aberto ou mensagem aceita) — ou pela escola. No modo da escola, como pedir
+ * para não registrar (ou para voltar a registrar).
  */
-export function revokeHowToText(consent: StudentRecordConsent): string {
+export function revokeHowToText(consent: StudentRecordConsent, mode: AuthorizationMode = 'INDIVIDUAL_CONSENT'): string {
+  if (mode === 'SCHOOL_DEFAULT') {
+    if (consent.status === 'REFUSED' || consent.status === 'REVOKED') {
+      return 'Para voltar a ter as aulas registradas, fale com a escola pelo WhatsApp.';
+    }
+    return `Para pedir que as suas aulas não sejam registradas, mande a mensagem pelo WhatsApp da escola (o botão abaixo já leva o texto pronto)${consent.requiresGuardian ? ' — sendo menor de idade, o pedido pode vir do seu responsável' : ''}. O pedido vale para as aulas seguintes, sem prejuízo das aulas.`;
+  }
   const whose = consent.requiresGuardian ? 'do seu responsável' : 'do seu cadastro';
   const until = formatDecisionDate(consent.linkExpiresAt);
   if (until) {
@@ -251,6 +281,11 @@ export function revokeHowToText(consent: StudentRecordConsent): string {
 export function exclusionRequestMessage(schoolName: string | null): string {
   const school = schoolName || 'escola';
   return `Olá! Sou aluno(a) da ${school} e quero pedir a exclusão do registro das minhas aulas.`;
+}
+
+/** Link do WhatsApp da escola com o pedido para não registrar já escrito; sem número, nulo. */
+export function objectionRequestUrl(view: Pick<StudentLessonRecordsView, 'schoolName' | 'schoolWhatsapp'>): string | null {
+  return whatsappUrl(view.schoolWhatsapp, objectionRequestMessage(view.schoolName));
 }
 
 /** Link do WhatsApp da escola com o pedido já escrito; sem número, nulo. */
