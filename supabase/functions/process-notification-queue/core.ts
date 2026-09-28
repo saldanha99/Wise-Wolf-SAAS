@@ -334,6 +334,7 @@ export function queueAudience(kind: unknown): {
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||
     normalized === "TEACHER_AGENDA" ||
+    normalized === "TEACHER_MEET_ROOM" ||
     normalized === "TEACHER_BIRTHDAY" ||
     normalized === "SCHOOL_AI_BRIEFING" ||
     normalized === "CRON_ALERT" ||

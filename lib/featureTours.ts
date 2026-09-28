@@ -672,6 +672,20 @@ export const FEATURE_TOURS: FeatureTour[] = [
       text: 'Quem ainda não conectou a conta Google recebe uma configuração obrigatória ao entrar no portal. O botão abre o login, a confirmação é conferida ao voltar e a conta conectada aparece antes de continuar. Use essa mesma conta para entrar no link oficial de cada aula; você pode conferir ou trocar a conta neste cartão.',
     }],
   },
+  {
+    id: '2026-09-30-sala-oficial-para-os-dois',
+    title: 'Professor e aluno na mesma sala oficial',
+    roles: ['TEACHER'],
+    steps: [{ target: 'teacher-official-meet-link', view: 'dashboard', title: 'Use o link oficial de cada aula',
+      text: 'A sala oficial aparece no botão da aula no seu painel. Você também recebe no WhatsApp da escola um lembrete cerca de 30 minutos antes, com aluno, horário, link e conta Google confirmada. Professor e aluno devem usar o mesmo link; cada aula tem sua própria sala.' }],
+  },
+  {
+    id: '2026-09-30-sala-oficial-para-os-dois-aluno',
+    title: 'Seu link oficial para encontrar o professor',
+    roles: ['STUDENT'],
+    steps: [{ target: 'student-official-meet-link', view: 'dashboard', title: 'Entre na sala desta aula',
+      text: 'Quando sua aula tem uma sala oficial, o botão Entrar na sala oficial abre o mesmo link enviado no lembrete e usado pelo professor. Cada aula tem seu próprio link; confira sempre o botão da aula ou a mensagem mais recente.' }],
+  },
 ];
 
 /**

@@ -465,3 +465,10 @@ Deno.test("avisos do registro das aulas usam o WhatsApp central para cada public
     centralOnly: true,
   });
 });
+
+Deno.test("link oficial do professor sai pela central com audiência professor", () => {
+  assertEquals(queueAudience("TEACHER_MEET_ROOM"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});

@@ -5,7 +5,7 @@ import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { localMonth, localYMD } from '../lib/dateUtils';
-import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
+import { lessonMeetingLink, officialLessonRoom, type LessonRoom } from '../lib/lessonRooms';
 import { coverageAgendaItems, coverageCaption, coverageDisplayTime, type CoverageAgendaRow } from '../lib/coverageAgenda';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { setPlannerIntent } from '../lib/plannerIntent';
@@ -349,6 +349,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: b.time_slot,
           module: (b.student as any)?.module || 'N/A',
           img: (b.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(b.student as any)?.full_name}`,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'booking', b.id, todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', b.id, todayISO, (b.student as any)?.meeting_link),
           phone: (b.student as any)?.phone,
           type: b.lesson_advance_id ? 'ANTECIPAÇÃO' : 'REGULAR',
@@ -364,6 +365,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: r.time,
           module: (r.student as any)?.module || 'N/A',
           img: (r.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(r.student as any)?.full_name || 'R'}`,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'reschedule', r.id, todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'reschedule', r.id, todayISO, (r.student as any)?.meeting_link),
           phone: (r.student as any)?.phone,
           type: 'REPOSIÇÃO',
@@ -380,6 +382,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: local?.time || '',
           module: 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
           phone: t.student_phone,
           type: 'TRIAL',
@@ -399,6 +402,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: coverageDisplayTime(c),
           module: coverageCaption(c),
           img: c.studentAvatar,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'booking', c.bookingId || '', todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', c.bookingId || '', todayISO, c.studentMeetingLink),
           phone: c.studentPhone,
           type: 'COBERTURA',
@@ -810,10 +814,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         href={aula.meet}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-sm border border-brand-border"
-                        title="Entrar na Sala"
+                        data-tour="teacher-official-meet-link"
+                        className="min-h-10 rounded-xl bg-brand-accent px-3 text-white flex items-center justify-center gap-2 transition-all shadow-sm"
+                        title={aula.officialRoom ? "Link oficial desta aula. Entre com sua conta Google confirmada." : "Sala combinada para esta aula"}
                       >
-                        <Video size={18} />
+                        <Video size={18} /><span className="text-xs font-bold">{aula.officialRoom ? 'Sala oficial' : 'Entrar na sala'}</span>
                       </a>
                     )}
                   </div>

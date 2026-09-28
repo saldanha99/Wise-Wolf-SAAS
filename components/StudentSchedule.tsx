@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Calendar, Clock, MapPin, User, Video, RefreshCw, LifeBuoy } from 'lucide-react';
 import { User as UserType } from '../types';
 import { localYMD } from '../lib/dateUtils';
-import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
+import { lessonMeetingLink, officialLessonRoom, type LessonRoom } from '../lib/lessonRooms';
 
 interface StudentScheduleProps {
     user: UserType;
@@ -66,6 +66,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 time: b.start_time,
                 teacher: b.teacher_name,
                 teacherAvatar: b.teacher_avatar,
+                officialRoom: !!officialLessonRoom((rooms || []) as LessonRoom[], 'booking', b.booking_id, b.class_date)?.meeting_uri,
                 meetLink: lessonMeetingLink((rooms || []) as LessonRoom[], 'booking', b.booking_id, b.class_date, prof?.meeting_link),
                 dayIndex: b.class_date,
             }));
@@ -87,6 +88,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 time: r.time,
                 teacher: (r.teacher as any)?.full_name,
                 teacherAvatar: (r.teacher as any)?.avatar_url,
+                officialRoom: !!officialLessonRoom((rooms || []) as LessonRoom[], 'reschedule', r.id, r.date)?.meeting_uri,
                 meetLink: lessonMeetingLink((rooms || []) as LessonRoom[], 'reschedule', r.id, r.date, prof?.meeting_link),
             })).sort((a, b) => {
                 if (a.dateRaw === 'Pendente') return 1;
@@ -163,7 +165,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                         target="_blank"
                                         className="mt-2 w-full py-3 bg-brand-surface-2 text-brand-text hover:bg-brand-accent hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-brand-border hover:border-brand-accent shadow-sm"
                                     >
-                                        <Video size={14} /> Entrar
+                                        <Video size={14} /> {lesson.officialRoom ? 'Sala oficial' : 'Entrar'}
                                     </a>
                                 )}
                             </div>
@@ -217,7 +219,8 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                         href={lesson.meetLink}
                                         target="_blank"
                                         className="absolute inset-0 z-10"
-                                        title="Acessar Aula"
+                                        rel="noopener noreferrer"
+                                        title={lesson.officialRoom ? 'Entrar na sala oficial desta aula' : 'Acessar aula'}
                                     />
                                 )}
                             </div>

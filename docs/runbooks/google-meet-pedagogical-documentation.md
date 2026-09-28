@@ -392,3 +392,19 @@ conectou segue normalmente. Aba bloqueada recebe botão destacado; consulta
 indisponível oferece nova tentativa. Em Salas e continuidade é possível
 conferir ou trocar a conta. A conexão não altera a decisão de documentação da
 aula nem substitui o uso do link oficial da sessão.
+
+### Professor recebe o link oficial da aula (28/09/2026)
+
+Além do lembrete enviado ao aluno, uma sala oficial pronta agenda o aviso
+`TEACHER_MEET_ROOM` para o professor cerca de 30 minutos antes da aula.
+A varredura roda a cada 5 minutos; a mensagem sai pela conta central da escola
+e informa aluno, data, horário, o link exclusivo e o e-mail Google confirmado.
+Uma mensagem por sessão/professor, sem duplicar em reexecuções. Sala bloqueada,
+troca não concluída, identidade divergente, conta inativa/fixture ou aula já iniciada não recebem aviso. O envio refaz a validação
+na preparação e na cerca imediatamente anterior ao POST.
+O painel do professor e a Agenda do aluno identificam Sala oficial; o botão
+principal do aluno agora também resolve a sala por aula/data. Cada aula tem
+sua própria sala: os dois devem entrar no mesmo link daquela ocorrência.
+Diagnóstico: consultar `notification_queue` por `notification_kind =
+'TEACHER_MEET_ROOM'`, estado/horário/erro/recibo. Uma linha na fila não é entrega;
+`status = sent` com `provider_message_id` confirma aceitação pelo provedor.

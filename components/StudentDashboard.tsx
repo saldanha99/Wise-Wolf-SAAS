@@ -10,6 +10,7 @@ import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
+import { lessonMeetingLink, officialLessonRoom, type LessonRoom } from '../lib/lessonRooms';
 import { useStudentContext } from './contexts/StudentContext';
 import StudentAuditPanel from './StudentAuditPanel';
 import StudentAuditReminder from './StudentAuditReminder';
@@ -45,6 +46,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [lessonRooms, setLessonRooms] = useState<LessonRoom[] | null>(null);
   const contractDialogRef = useRef<HTMLDivElement>(null);
   const contractTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -70,6 +72,26 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const profile = studentContext?.profile;
   const gamification = studentContext?.gamification || { xp: 0, level: 1, streak: 0, nextLevelProgress: 0 };
 
+  const nextClassDate = String(studentContext?.nextClass?.start_time || '').slice(0, 10);
+  const nextClassId = String(studentContext?.nextClass?.id || '');
+  useEffect(() => {
+    let live = true;
+    setLessonRooms(null);
+    if (!nextClassDate || !nextClassId) return;
+    const load = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const { data, error } = await supabase.rpc('get_my_lesson_rooms', { p_from: nextClassDate, p_to: nextClassDate });
+        if (live) setLessonRooms(error ? null : (data || []) as LessonRoom[]);
+      } catch { if (live) setLessonRooms(null); }
+    };
+    void load();
+    window.addEventListener('focus', load);
+    document.addEventListener('visibilitychange', load);
+    const timer = window.setInterval(load, 60000);
+    return () => { live = false; window.removeEventListener('focus', load); document.removeEventListener('visibilitychange', load); window.clearInterval(timer); };
+  }, [user.id, nextClassDate, nextClassId]);
+
   // Construct nextClass object
   const nextClass = studentContext?.nextClass ? (() => {
     const nc = studentContext.nextClass;
@@ -80,7 +102,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
     return {
       time: nc.time_slot,
       teacher: assignedTeacher?.full_name || 'Professor',
-      meet: safeHttpUrl(profile?.meeting_link),
+      meet: lessonRooms === null ? null : safeHttpUrl(lessonMeetingLink(lessonRooms, 'booking', nc.id, nextClassDate, profile?.meeting_link)),
+      officialRoom: !!officialLessonRoom(lessonRooms || [], 'booking', nc.id, nextClassDate)?.meeting_uri,
       rawDate: typeof rawDate === 'number' ? new Date(rawDate) : rawDate
     };
   })() : null;
@@ -388,15 +411,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             </div>
             <div className="flex flex-col items-stretch md:items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
               {nextClass.meet ? (
-                <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto px-12 py-5 bg-brand-surface text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
+                <a data-tour="student-official-meet-link" href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto px-12 py-5 bg-brand-surface text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
                   <Video size={18} className="group-hover:scale-110 transition-transform" />
-                  Entrar na Sala
+                  {nextClass.officialRoom ? 'Entrar na sala oficial' : 'Entrar na sala'}
                 </a>
               ) : (
                 <p className="w-full rounded-2xl border border-white/30 bg-white/10 px-6 py-4 text-center text-sm font-bold text-white md:w-auto" role="status">
-                  Link ainda não cadastrado
+                  Aguarde a confirmação do link desta aula ou confira sua Agenda
                 </p>
               )}
+              {nextClass.officialRoom && <p className="max-w-sm text-center text-sm text-white">Use este link para encontrar seu professor. Cada aula tem sua própria sala oficial.</p>}
               <p className="text-[11px] font-black text-white/80 uppercase tracking-widest text-center">
                 {minutesToClass && minutesToClass > 0 ? `Começa em ${minutesToClass} minutos` : 'A sala já está aberta!'}
               </p>
@@ -421,7 +445,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                 </div>
                 <div className="h-16 w-px bg-brand-border hidden md:block"></div>
                 {nextClass.meet ? (
-                  <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto md:min-w-[180px] bg-brand-accent text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-brand-accent-hover transition-colors flex items-center justify-center gap-3 shadow-lg">
+                  <a data-tour="student-official-meet-link" href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto md:min-w-[180px] bg-brand-accent text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-brand-accent-hover transition-colors flex items-center justify-center gap-3 shadow-lg">
                     Ver Link <ChevronRight size={16} />
                   </a>
                 ) : (

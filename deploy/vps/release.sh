@@ -1494,6 +1494,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260929100000_registro_autorizado_pela_escola.sql"
   "supabase/migrations/20260928010243_meet_class_log_suggestions.sql"
   "supabase/migrations/20260928033600_renewal_month_end_legacy_issuer.sql"
+  "supabase/migrations/20260928114127_official_meet_link_for_teachers.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
@@ -1504,6 +1505,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/teacher_invite_google_identity.sql"
   "supabase/tests/meet_class_log_suggestions.sql"
   "supabase/tests/renewal_legacy_month_end.sql"
+  "supabase/tests/official_meet_link_for_teachers.sql"
   "supabase/tests/lembrete_leva_a_sala_oficial.sql"
   "supabase/tests/termo_seguro_do_aluno.sql"
   "supabase/tests/termo_de_registro_envio_em_lote.sql"

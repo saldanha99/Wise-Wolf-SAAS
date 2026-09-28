@@ -1321,6 +1321,31 @@ serve(async (req) => {
             destination !== normalizeQueueDestination(student_phone)
           ) invalid("training_phone_changed");
           prepared = { teacherId: null, destination, message: message_body };
+        } else if (notificationKind === "TEACHER_MEET_ROOM") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc(
+              "get_teacher_meet_room_notice_snapshot",
+              { p_notification_id: item.id },
+            );
+          if (snapshotError) {
+            unavailable("teacher_room_revalidation_unavailable");
+          }
+          if (snapshot?.ok !== true) {
+            if (snapshot?.defer_seconds) {
+              deferred(String(snapshot.reason), Number(snapshot.defer_seconds));
+            }
+            invalid(String(snapshot?.reason || "teacher_room_not_available"));
+          }
+          const destination = normalizeQueueDestination(snapshot.destination);
+          const message = String(snapshot.message || "");
+          if (!destination || !message || message.length > 4096) {
+            invalid("teacher_room_payload_invalid");
+          }
+          prepared = {
+            teacherId: String(snapshot.teacher_id),
+            destination,
+            message,
+          };
         } else if (
           notificationKind === "LESSON_REMINDER"
         ) {

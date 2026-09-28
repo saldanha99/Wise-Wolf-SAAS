@@ -3548,3 +3548,27 @@ continua com a prova OAuth obrigatória validada pelo servidor.
 Testes: `components/TeacherGoogleConnectionGate.test.tsx` (identidade existente,
 Escape, saída, abertura direta, retorno confirmado, aba bloqueada, erro sem
 liberação). Sem migration: reutiliza `get_my_google_identity`.
+
+### 28/09/2026 — Link oficial comunicado ao professor e ao aluno
+
+`TEACHER_MEET_ROOM` entra na fila existente pela varredura de 5 min
+(`private.queue_teacher_meet_room_notices(text)`, cron
+`wisewolf-teacher-meet-room-notices`). Sala pronta nas próximas 24 h agenda
+um aviso 30 min antes para o professor atual, uma vez por sessão × professor.
+A conta central envia aluno/data/horário/link exclusivo/conta Google confirmada.
+`get_teacher_meet_room_notice_snapshot(uuid)` é só service_role e refaz fonte,
+papéis, tenant/membership ativa, fixture, conta coanfitriã,
+aceite efetivo, régua de quem dá a aula e link exato da ocorrência; aviso
+após o início é descartado. A cerca `begin_notification_delivery_submission`
+revalida e trava as fontes com NOWAIT antes de autorização e replay. Recibos e
+resultados ambíguos seguem o motor existente. Não modifica presença ou folha.
+
+Painel do professor destaca o botão Sala oficial; Agenda do aluno identifica
+as salas oficiais. O botão principal do StudentDashboard, que ainda usava
+`profiles.meeting_link`, agora resolve booking + data via `get_my_lesson_rooms`,
+renovando a leitura ao voltar e a cada minuto com a aba visível; erro de consulta
+não abre link pessoal. Sala oficial ainda não pronta também não usa fallback.
+Tours: `2026-09-30-sala-oficial-para-os-dois` e versão `-aluno`.
+Migration `20260928114127` e teste SQL `official_meet_link_for_teachers.sql`
+registrados no release; teste roda em rollback com identidades isoladas e
+nenhuma fila visível externamente.
