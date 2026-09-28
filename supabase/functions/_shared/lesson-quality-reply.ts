@@ -52,6 +52,29 @@ export async function routeLessonQualityReply(
     quotedId: string | null;
   },
 ) {
+  // Número solto não comprova aula nem identidade do responsável. Mas, havendo
+  // auditoria recente para este destino, também não pode cair num check-in/SDR.
+  // Só pedimos contexto; o registro continua pela RPC com as cercas originais.
+  if (!input.quotedId && /^[123]$/.test(input.text.trim())) {
+    const now = new Date();
+    const { data: audits, error: auditError } = await client
+      .from("attendance_confirmations")
+      .select("id,canonical_confirmation_id")
+      .eq("tenant_id", input.tenantId)
+      .eq("provider_instance_name", input.instance.trim().toLowerCase())
+      .eq("quality_recipient_phone", input.phone)
+      .eq("delivery_status", "SENT")
+      .neq("status", "CANCELLED")
+      .gte("sent_at", new Date(now.getTime() - 48 * 3600000).toISOString())
+      .gt("token_expires_at", now.toISOString());
+    if (auditError) throw new Error("lesson_quality_context_failed");
+    if (
+      (audits || []).some((
+        a: { id: string; canonical_confirmation_id: string | null },
+      ) => !a.canonical_confirmation_id || a.canonical_confirmation_id === a.id)
+    ) return { handled: true, needs_context: true };
+    return { handled: false };
+  }
   const category = classifyLessonQualityReply(input.text, !!input.quotedId);
   if (!category) return { handled: false };
   const { data, error } = await client.rpc("ingest_lesson_quality_whatsapp", {

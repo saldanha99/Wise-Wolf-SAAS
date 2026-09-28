@@ -71,6 +71,7 @@ import { catalogFactsForPrompt, mentionsSchedule } from "./lead-pricing.ts";
 import {
   buildCareSystemPrompt,
   type CareContext,
+  careReplySpeaksAsStudent,
   isMoneyOrContractTopic,
   moneyHandoffReply,
   parseCareModelReply,
@@ -7305,10 +7306,29 @@ async function handleCareStudent(
     }
   }
 
-  // 3) A IA conduz.
+  // Número sem uma escolha aplicável não é opinião sobre a semana. Não deixe
+  // o modelo completar essa resposta como se fosse o aluno.
+  if (/^[123]$/.test(text.trim())) {
+    const reply = "Você pode me contar um pouco mais sobre o que quis dizer?";
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "care", "out", reply, {
+      touchpoint_id: ctx.id,
+      kind: "ambiguous_numeric_reply",
+      entregue,
+    });
+    return true;
+  }
+
+  // 3) A IA conduz. Histórico preservado no banco; fala com papel invertido
+  // não volta como exemplo de comportamento para a próxima geração.
   const hist = await history(sb, tenantId, phone, "care", 16, msgId);
+  const agentName = cfg?.agents?.atendente?.name || "Bia";
+  const safeHist = hist.filter((message) =>
+    message.role !== "assistant" ||
+    !careReplySpeaksAsStudent(message.content, agentName)
+  );
   const system = buildCareSystemPrompt({
-    agentName: cfg?.agents?.atendente?.name || "Bia",
+    agentName,
     schoolName: safeIdentityPart(cfg?.tenantIdentity?.name, "escola"),
     ctx,
     offeredSlots: quotaRemaining > 0 ? offered : [],
@@ -7316,20 +7336,33 @@ async function handleCareStudent(
   });
   const diag: string[] = [];
   const ai = parseCareModelReply(
-    await callAI(system, [...hist, { role: "user", content: text }], diag, {
+    await callAI(system, [...safeHist, { role: "user", content: text }], diag, {
       temperature: 0.4,
     }),
   );
-  if (!ai) {
-    console.error("[care] IA indisponível", JSON.stringify(diag).slice(0, 300));
+  const invalidCareRole = ai && careReplySpeaksAsStudent(
+    ai.reply,
+    agentName,
+  );
+  if (!ai || invalidCareRole) {
+    console.error(
+      invalidCareRole
+        ? "[care] resposta recusada: papel invertido"
+        : "[care] IA indisponível",
+      JSON.stringify(diag).slice(0, 300),
+    );
     await sb.rpc("care_touchpoint_reply", {
       p_id: ctx.id,
       p_status: "HANDOFF",
       p_sentiment: null,
-      p_summary: `IA indisponível; resposta do aluno: "${text.slice(0, 160)}"`,
+      p_summary: `${
+        invalidCareRole
+          ? "Resposta da IA recusada por inversão de papéis"
+          : "IA indisponível"
+      }; resposta do aluno: "${text.slice(0, 160)}"`,
     });
     await notifyDirector(
-      "💬 *Acompanhamento:* resposta do aluno sem IA disponível",
+      "💬 *Acompanhamento:* resposta do aluno exige atendimento humano",
       `“${text.slice(0, 300)}”`,
     );
     return true;

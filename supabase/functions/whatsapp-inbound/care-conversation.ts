@@ -205,6 +205,21 @@ const KIND_GOAL: Record<string, string> = {
     "Você perguntou se o curso está atendendo o que ele esperava. Objetivo: entender expectativa x realidade (fala? entende? sente evolução?), acolher crítica sem se defender, e registrar o que a escola precisa ajustar.",
 };
 
+/** Veta a inversão de papéis observada no acompanhamento: a escola não é o aluno. */
+export function careReplySpeaksAsStudent(
+  reply: string,
+  agentName: string,
+): boolean {
+  const name = fold(agentName).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const text = fold(reply).trim();
+  return (!!name &&
+    new RegExp(`^(oi|ola|bom dia|boa tarde|boa noite)[,! ]+${name}\\b`).test(
+      text,
+    )) ||
+    /^(?:oi[^.!?]*[.!?]\s*)?(?:a |minha )?semana foi (boa|otima|ruim)|\b(?:eu )?(?:tive|tenho) (?:um pouco de )?dificuldade (?:com|em) (?:a pronuncia|falar ingles|aprender ingles)/
+      .test(text);
+}
+
 /** O que a IA precisa para conduzir como gente — e o que ela NUNCA faz. */
 export function buildCareSystemPrompt(input: {
   agentName: string;
@@ -233,6 +248,7 @@ export function buildCareSystemPrompt(input: {
     : `Sem horário livre de ${teacher} nos próximos dias: se ele quiser repor, diga que vai pedir à coordenação um encaixe (com ela ou com outro professor).`;
   return [
     `Você é ${input.agentName}, da equipe da ${input.schoolName}, conversando pelo WhatsApp com ${student}, aluno(a) matriculado(a). Você é uma pessoa da escola cuidando do aluno — não um robô de pesquisa.`,
+    `IDENTIDADE: você responde COMO A ESCOLA a ${student}; nunca como aluno, nunca chama o destinatário de ${input.agentName}, nunca inventa opinião, dificuldade ou satisfação do aluno. Mensagem ambígua ou número isolado não responde ao check-in: peça esclarecimento, sem completar a resposta por ele. O resumo só contém fatos que o aluno efetivamente disse.`,
     `SITUAÇÃO: ${
       KIND_GOAL[ctx.kind] || "Conversa de acompanhamento com o aluno."
     }`,

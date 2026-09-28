@@ -5,6 +5,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildCareSystemPrompt,
+  careReplySpeaksAsStudent,
   isMoneyOrContractTopic,
   parseCareModelReply,
   parseRequestedSlot,
@@ -21,6 +22,29 @@ const slots = [
     label: "21/09 às 14:00",
   },
 ];
+
+Deno.test("acompanhamento veta a escola falando como Gabriela e preserva acolhimento", () => {
+  assert(
+    careReplySpeaksAsStudent(
+      "Oi Bia! A semana foi boa, mas tive um pouco de dificuldade com a pronúncia de algumas palavras em inglês.",
+      "Bia",
+    ),
+  );
+  assert(careReplySpeaksAsStudent("Olá, Bia! Obrigada pela mensagem.", "Bia"));
+  assert(careReplySpeaksAsStudent("Tive dificuldade em falar inglês.", "Bia"));
+  assert(
+    !careReplySpeaksAsStudent(
+      "Gabriela, fico feliz que você tenha gostado! O que achou das atividades?",
+      "Bia",
+    ),
+  );
+  assert(
+    !careReplySpeaksAsStudent(
+      "Você comentou que teve dificuldade com a pronúncia. Quer me contar mais?",
+      "Bia",
+    ),
+  );
+});
 
 Deno.test("escolha de horário oferecido: ordinal, hora, dia, data", () => {
   assertEquals(pickOfferedSlot("1", slots)?.time, "09:00");

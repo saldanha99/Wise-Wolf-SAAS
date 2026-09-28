@@ -1,5 +1,15 @@
 # Wise Wolf SAAS — CLAUDE.md
 
+### 28/09/2026 — Número de confirmação não cai no acompanhamento semanal
+
+`routeLessonQualityReply` intercepta 1/2/3 sem citação quando há auditoria canônica
+recente, enviada à mesma escola/instância/destino, e pede link ou RESPONDER; nunca
+grava presença por inferência nem afrouxa contato verificado. Sem auditoria, o
+número continua disponível aos demais menus. Consulta falhou → interrompe, não
+cai na IA. `careReplySpeaksAsStudent` veta inversão de papéis e entrega a humano
+sem enviar resposta/resumo inventado. Regressões nos testes já registrados dos
+dois módulos. Histórico e confirmações existentes permanecem intactos.
+
 Guia técnico para o Claude Code neste projeto.
 
 ---
