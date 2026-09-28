@@ -112,6 +112,18 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(text.toLowerCase()).not.toContain('já está ligado');
   });
 
+  it('o tour do extrato do professor explica ativação prospectiva, privacidade e limites', () => {
+    const tour = FEATURE_TOURS.find(t => t.id === '2026-09-28-tempo-na-sala-professor');
+    expect(tour?.roles).toEqual(['TEACHER']);
+    expect(tour?.steps[0].target).toBe('teacher-punctuality');
+    const text = (tour?.steps || []).map(step => step.text).join(' ');
+    expect(text).toContain('aprovação jurídica');
+    expect(text).toContain('sem retroativo');
+    expect(text).toContain('90 dias');
+    expect(text).toContain('nem alteração de pagamento');
+    expect(text).toContain('não uma conclusão de falta');
+  });
+
   it('os tours do registro autorizado pela escola não pedem aceite e dizem como pedir para não registrar', () => {
     // Migration 20260929100000: a escola autoriza o registro; ninguém precisa
     // de link, código ou "Li e autorizo" — mas a conta Google continua exigida.

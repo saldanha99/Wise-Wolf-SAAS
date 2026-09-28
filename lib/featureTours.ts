@@ -560,6 +560,22 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-28-tempo-na-sala-professor',
+    title: 'Seu extrato de pontualidade',
+    roles: ['TEACHER'],
+    steps: [{
+      target: 'teacher-punctuality',
+      view: 'dashboard',
+      title: 'Confira seu extrato mensal ⏱️',
+      text: 'Quando a escola ativa o extrato após aprovação jurídica, este cartão mostra seus horários e minutos nas salas oficiais, pelo relatório de presença do Google Meet. A medição começa nas aulas posteriores à ativação, sem retroativo. Você vê apenas o seu extrato; direção e coordenação consultam um professor por vez. Não há nota, ranking, comparação entre professores nem alteração de pagamento.',
+    }, {
+      target: null,
+      view: 'dashboard',
+      title: 'Sem medição não significa falta',
+      text: 'Aulas sem relatório ou sem identificação confiável mostram o motivo, não uma conclusão de falta ou atraso. Os registros ficam por até 90 dias depois da aula. Se encontrar uma divergência, peça à direção que confira a aula; o extrato não substitui seu lançamento de presença.',
+    }],
+  },
+  {
     // Migration 20260929100000 — decisão da direção de 27/09/2026: a escola
     // autoriza o registro das aulas; cada pessoa pode pedir para não ser
     // registrada. A Wise Wolf entrou nesse modo pela própria migration.

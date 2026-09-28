@@ -3582,3 +3582,17 @@ Tours: `2026-09-30-sala-oficial-para-os-dois` e versão `-aluno`.
 Migration `20260928114127` e teste SQL `official_meet_link_for_teachers.sql`
 registrados no release; teste roda em rollback com identidades isoladas e
 nenhuma fila visível externamente.
+
+### 28/09/2026 — Aprovação jurídica do extrato de pontualidade
+
+O responsável declarou ser o jurídico e autorizou expressamente nesta conversa:
+“sim, eu sou o juridico, pode aprovar!!”. Referência para a ativação administrativa
+prospectiva em `school-wise-wolf`, pela função existente
+`private.set_teacher_punctuality_enabled`, sem grant de API e sem retroativo.
+Backup prévio: `/opt/wisewolf/backups/punctuality-before-activation-20260928.sql`.
+Teste transacional confirmou ativação e ausência de acesso `anon`/`authenticated`,
+com rollback antes da execução definitiva. Tour novo do professor
+`2026-09-28-tempo-na-sala-professor`: consulta individual, motivos sem medição,
+retenção de 90 dias, sem ranking e sem alteração de pagamento. A autorização
+vale só para esta escola; a configuração e o evento no banco são a fonte do
+estado real. Não usar desligar como rollback: isso apaga o extrato existente.
