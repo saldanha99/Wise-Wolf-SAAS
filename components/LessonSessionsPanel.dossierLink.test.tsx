@@ -151,8 +151,8 @@ describe('link do dossiê com um tour pendente no login', () => {
   it('o App segura os dois tours pelo link e solta o foco quando a pessoa sai do dossiê', () => {
     const app = readFileSync(resolve(__dirname, '../App.tsx'), 'utf8');
     expect(app).toContain('useStudentDossierLink(user, activeTab, setActiveTab)');
-    expect(app).toContain('{tourOpen && !dossierLink.holdsTours &&');
-    expect(app).toContain('{featureTour && !tourOpen && !dossierLink.holdsTours &&');
+    expect(app).toContain('{tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours &&');
+    expect(app).toContain('{featureTour && !tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours &&');
     expect(app).toContain('focusStudentId={dossierLink.focusStudentId} onFocusClosed={dossierLink.release}');
     expect(app).not.toMatch(/onFocusConsumed/);
   });
