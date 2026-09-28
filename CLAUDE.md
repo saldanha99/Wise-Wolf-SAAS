@@ -3520,3 +3520,12 @@ essas declarações somente por clique. Motivo retroativo continua humano, com
 atalhos de preenchimento. Aprovação da memória continua no fluxo de revisão de
 resumos; salvar lançamento não aprova automaticamente um rascunho. Testes SQL
 `meet_class_log_suggestions.sql`, UI e tour `2026-09-30-meet-preenche-lancamento`.
+
+### 28/09/2026 — Bloqueio do release por renovação no fim do mês
+
+O emissor legado de renovação (assinatura com 8 argumentos) somava 5/6 meses
+inteiros à data inicial, divergindo dos checks de progressão mensal ao atravessar
+fevereiro. `20260928033600` ajusta somente esses dois cálculos para encadear
+`fim_do_servico`, como o emissor atual de 9 argumentos. Sem alteração de ofertas
+existentes ou cobranças. Regression `renewal_legacy_month_end.sql` cobre 29/30/31
+em ano comum e 31 em ano bissexto; migration e teste registrados no release.
