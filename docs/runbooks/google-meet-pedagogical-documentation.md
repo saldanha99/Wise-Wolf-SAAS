@@ -357,3 +357,12 @@ Decisão da direção (onda 3): extrato de pontualidade por professor e mês, **
 Não há coleta de `participantSessions` nem de horários de participantes pela API do Meet, que o Google declara não se destinar a acompanhamento de desempenho/avaliação de usuários. A única leitura de `participants` é o **nome de exibição** de quem falou, com máscara de campos, para rotular a transcrição do plano B — o mesmo rótulo que o documento do Google traria. A presença vem do relatório de presença que o próprio Google oferece no Business Plus e serve para abrir caso de conversa na Central de Qualidade — nunca para descontar, cortar pagamento ou pontuar professor automaticamente. O extrato de pontualidade (seção própria, desligado até o jurídico) usa o mesmo relatório, sem nota nem ranking.
 
 Fontes oficiais: [spaces.create](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/create), [configuração da sala (attendanceReportGenerationType)](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces), [membros/coanfitrião](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces.members/create), [smartNotes](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.smartNotes), [escopos](https://developers.google.com/workspace/meet/api/guides/authenticate-authorize), [visão geral e limite de uso](https://developers.google.com/workspace/meet/api/guides/overview), [controle de presença](https://support.google.com/meet/answer/10090454), [quando a verificação não é necessária](https://support.google.com/cloud/answer/13464323).
+
+### Correção do botão de confirmação (27/09/2026)
+
+No cartão do professor e no convite de contratação, o botão principal abre o login
+Google em uma nova aba. A aba é reservada no clique antes da chamada assíncrona,
+evitando bloqueio de popup. Se o navegador bloquear, a tela mostra um botão
+alternativo destacado. Ao retornar à plataforma, a identidade é conferida
+automaticamente; “Já confirmei” permanece disponível para conferir novamente.
+O professor usa a conta com que entrará nas aulas, que pode diferir do e-mail do portal.

@@ -444,7 +444,29 @@ async function resolveContract(
     throw new ApiError(503, "CONTRACT_UNAVAILABLE", "Contract is unavailable");
   }
   if (!data) {
-    throw new ApiError(404, "CONTRACT_NOT_FOUND", "Contract not found");
+    const { data: teacher, error: teacherError } = await context.admin
+      .from("profiles")
+      .select("full_name,contract_accepted")
+      .eq("tenant_id", tenant.tenantId)
+      .eq("id", userId)
+      .eq("role", "TEACHER")
+      .maybeSingle();
+    if (teacherError) {
+      throw new ApiError(
+        503,
+        "CONTRACT_UNAVAILABLE",
+        "Contract is unavailable",
+      );
+    }
+    if (!teacher) {
+      throw new ApiError(404, "CONTRACT_NOT_FOUND", "Contract not found");
+    }
+    return json({
+      archiveStatus: "MISSING",
+      full_name: teacher.full_name,
+      contractAccepted: teacher.contract_accepted === true,
+      canSign: context.userId === userId && teacher.contract_accepted !== true,
+    });
   }
 
   const party = isRecord(data.party_snapshot) ? data.party_snapshot : {};

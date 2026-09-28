@@ -4,6 +4,7 @@ import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherC
 import type { SchoolInfo } from './ContractDocument';
 import { Loader2, AlertCircle, FileText, Download } from 'lucide-react';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import TeacherContractAccept from './TeacherContractAccept';
 import { parseContractTermsVersion } from '../lib/contractTerms';
 
 interface PublicContractViewProps {
@@ -15,6 +16,8 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<any>(null);
     const [resolvedId, setResolvedId] = useState<string | null>(propId || null);
+    const [signing, setSigning] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
     const [downloading, setDownloading] = useState(false);
     const contractPdfRef = useRef<HTMLDivElement>(null);
     const schoolInfo = profile?.schoolInfo && typeof profile.schoolInfo === 'object'
@@ -63,6 +66,8 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
             return;
         }
 
+        setLoading(true);
+        setError(null);
         const fetchProfile = async () => {
             try {
                 const { data: authData } = await supabase.auth.getUser();
@@ -77,14 +82,14 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                 setProfile(data);
             } catch (err: any) {
                 console.error(err);
-                setError(err.message || "Erro ao carregar o contrato.");
+                setError(err.message?.includes("non-2xx") ? "Não foi possível carregar o contrato. Tente novamente ou avise a escola." : err.message || "Erro ao carregar o contrato.");
             } finally {
                 setLoading(false);
             }
         };
 
         fetchProfile();
-    }, [propId]);
+    }, [propId, reloadKey]);
 
     if (loading) {
         return (
@@ -104,6 +109,28 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     <p className="text-brand-muted mb-6">{error}</p>
                     <a href="/" className="text-tenant-primary font-bold hover:underline">Ir para o Portal</a>
                 </div>
+            </div>
+        );
+    }
+
+    if (profile.archiveStatus === 'MISSING') {
+        return (
+            <div className="min-h-screen bg-brand-surface-2 flex items-center justify-center p-4">
+                <section className="bg-brand-surface p-8 rounded-3xl shadow-xl max-w-lg w-full text-center">
+                    <FileText size={48} className="text-tenant-primary mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-brand-text mb-3">
+                        {profile.contractAccepted ? 'Cópia do contrato ainda não disponível' : 'Seu contrato ainda não foi assinado'}
+                    </h2>
+                    <p className="text-brand-muted mb-6">
+                        {profile.contractAccepted
+                            ? 'O aceite está registrado, mas a cópia assinada não está arquivada neste portal. Solicite à escola a via do seu contrato.'
+                            : profile.canSign
+                                ? 'Revise os dados e as condições do seu contrato. Depois da assinatura, a cópia ficará disponível aqui.'
+                                : 'O professor precisa acessar a própria conta para revisar e assinar o contrato.'}
+                    </p>
+                    {profile.canSign && <button onClick={() => setSigning(true)} className="bg-tenant-primary text-white font-bold px-5 py-3 rounded-xl">Revisar e assinar contrato</button>}
+                    {signing && resolvedId && <TeacherContractAccept userId={resolvedId} onClose={() => setSigning(false)} onAccepted={() => { setSigning(false); setReloadKey(value => value + 1); }} />}
+                </section>
             </div>
         );
     }

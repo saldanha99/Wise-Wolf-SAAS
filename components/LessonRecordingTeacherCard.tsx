@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { googleMeetAction } from '../lib/googleMeet';
+import { openGoogleAuthorization } from '../lib/googleAuthorizationWindow';
 import {
   asAuthorizationMode,
   asDecision,
@@ -60,6 +61,7 @@ export default function LessonRecordingTeacherCard() {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [authorizationUrl, setAuthorizationUrl] = useState('');
+  const [waitingForGoogle, setWaitingForGoogle] = useState(false);
 
   const loadIdentity = useCallback(async () => {
     const { data: result, error: rpcError } = await supabase.rpc('get_my_google_identity');
@@ -71,6 +73,16 @@ export default function LessonRecordingTeacherCard() {
     if (!rpcError && result) setData(result as MyConsent);
   }, []);
   useEffect(() => { void load(); void loadIdentity(); }, [load, loadIdentity]);
+  useEffect(() => {
+    if (!waitingForGoogle) return;
+    const refresh = () => { if (document.visibilityState === 'visible') void loadIdentity(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [waitingForGoogle, loadIdentity]);
 
   async function refreshIdentity() {
     setBusy('identity'); setError('');
@@ -81,9 +93,10 @@ export default function LessonRecordingTeacherCard() {
   async function connectGoogle() {
     setBusy('connect'); setError(''); setAuthorizationUrl('');
     try {
-      const result = await googleMeetAction<{ authorization_url?: string }>('teacher_identity_connect');
-      if (result?.authorization_url) setAuthorizationUrl(result.authorization_url);
-      else setError('Não foi possível abrir o login do Google agora. Tente de novo em instantes.');
+      const { result, opened } = await openGoogleAuthorization(() =>
+        googleMeetAction<{ authorization_url?: string }>('teacher_identity_connect'));
+      setWaitingForGoogle(true);
+      if (!opened) setAuthorizationUrl(result.authorization_url || '');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -141,10 +154,11 @@ export default function LessonRecordingTeacherCard() {
             {busy === 'identity' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Já confirmei
           </button>
         </div>
-        {authorizationUrl && <p className="mt-2 text-xs text-indigo-900 dark:text-indigo-200">
-          <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold">Entrar com o Google <ExternalLink size={12} /></a>
-          {' '}— abre em outra aba e vale por dez minutos. Depois volte aqui e toque em “Já confirmei”.
-        </p>}
+        {authorizationUrl && <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <p>Seu navegador bloqueou a nova aba. Use este botão para abrir o login:</p>
+          <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">Entrar com o Google <ExternalLink size={16} /></a>
+        </div>}
+        {waitingForGoogle && <p role="status" className="mt-3 text-sm text-slate-600 dark:text-slate-300">Conclua o login na aba do Google com a conta que usará nas aulas. Ao voltar, conferimos a confirmação automaticamente. Se necessário, toque em “Já confirmei”.</p>}
       </>}
       {identity?.status === 'unavailable' && <p className="mt-1 text-slate-600 dark:text-slate-300">
         {schoolDefault

@@ -632,6 +632,23 @@ export const FEATURE_TOURS: FeatureTour[] = [
       text: 'O cadastro de novos professores agora confirma a conta Google antes da assinatura. Confira aqui qual conta entrará como coanfitriã nas suas aulas; se você mudar de conta, confirme a nova neste cartão.',
     }],
   },
+  {
+    id: '2026-09-30-google-e-contrato-do-professor',
+    title: 'Google e contrato mais claros',
+    roles: ['TEACHER'],
+    recordingMode: 'SCHOOL_DEFAULT',
+    steps: [{
+      target: 'recording-teacher-google',
+      view: 'lesson-sessions',
+      title: 'O botão abre o login do Google',
+      text: 'Toque em Confirmar conta Google para abrir o login em outra aba. Use a conta com que entrará nas aulas. Ao voltar, a plataforma confere a confirmação; se o navegador bloquear a aba, aparece um botão destacado para abrir o login.',
+    }, {
+      target: null,
+      view: 'contract_teacher',
+      title: 'Seu contrato no portal',
+      text: 'Em Meu Contrato, quem ainda não assinou pode revisar os dados e assinar. Se o aceite já existe e a cópia não está arquivada, a tela explica como solicitar a via à escola.',
+    }],
+  },
 ];
 
 /**

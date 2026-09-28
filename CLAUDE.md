@@ -3497,3 +3497,9 @@ estritos. Pendências cadastrais sem prova continuam bloqueadas e requerem confi
 - Avisos `LESSON_RECORDING_NOTICE_STUDENT` e `LESSON_RECORDING_NOTICE_TEACHER` passam pela fila oficial, instância central e revalidação de vínculo ativo; não são pedidos de consentimento. Envio autorizado pela direção nesta conversa, início comunicado para 28/09, com direito de recusa e autenticação Google individual dos professores mantidos.
 - Contratos futuros STUDENT e TEACHER da escola já oferecem versão 2: cláusula 8 do aluno e cláusula 11 do professor. Não se modifica contrato assinado nem se declara revisão jurídica concluída.
 - Tour `2026-09-27-identidade-e-previas-dos-links` inserido na posição cronológica, pois o catálogo já continha entradas datadas de 28 e 29/09.
+
+### 27/09/2026 — Correção do acesso ao contrato e botão Google do professor
+
+- `PublicContractView` distingue contrato sem assinatura (abre `TeacherContractAccept`) de aceite legado sem arquivo (solicitar cópia à escola). `tenant-legal-assets` retorna esse estado somente após validar usuário, papel e tenant; não sintetiza documento assinado.
+- `openGoogleAuthorization` reserva a aba no clique antes do pedido assíncrono: o botão principal abre o Google no cartão e na contratação. Bloqueio de popup mostra botão destacado; retorno à aba confere a identidade automaticamente, mantendo conferência manual.
+- Tour `2026-09-30-google-e-contrato-do-professor` e testes de popup/ausência de arquivo acompanham a correção.

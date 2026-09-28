@@ -6,6 +6,7 @@ import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 import { contractIncludesLessonRecording } from '../lib/contractTerms';
 import { offeredContractTermsVersion } from '../services/contractTermsService';
+import { openGoogleAuthorization } from '../lib/googleAuthorizationWindow';
 
 const TeacherOnboarding: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -90,16 +91,40 @@ const TeacherOnboarding: React.FC = () => {
         setGoogleBusy(true); setGoogleError(''); setGoogleEmail('');
         setGoogleProof(''); setGoogleAuthorizationUrl('');
         try {
-            const { data, error } = await supabase.functions.invoke('google-meet', {
-                body: { action: 'teacher_invite_google_start', offerId },
+            const { result, opened } = await openGoogleAuthorization(async () => {
+                const { data, error } = await supabase.functions.invoke('google-meet', {
+                    body: { action: 'teacher_invite_google_start', offerId },
+                });
+                if (error || !data?.proof || !data?.authorization_url) throw new Error();
+                return data as { proof: string; authorization_url: string };
             });
-            if (error || !data?.proof || !data?.authorization_url) throw new Error();
-            setGoogleProof(data.proof);
-            setGoogleAuthorizationUrl(data.authorization_url);
+            setGoogleProof(result.proof);
+            if (!opened) setGoogleAuthorizationUrl(result.authorization_url);
         } catch {
             setGoogleError('Não foi possível iniciar a confirmação. Confira o convite e tente novamente.');
         } finally { setGoogleBusy(false); }
     };
+
+    useEffect(() => {
+        if (!googleProof || googleEmail) return;
+        const refresh = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const { data, error } = await supabase.functions.invoke('google-meet', {
+                    body: { action: 'teacher_invite_google_status', offerId, proof: googleProof },
+                });
+                if (!error && data?.verified && data?.email) {
+                    setGoogleEmail(data.email); setGoogleError('');
+                }
+            } catch { /* A conferência manual continua disponível. */ }
+        };
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, [googleProof, googleEmail, offerId]);
 
     const checkGoogleConfirmation = async () => {
         if (!googleProof) return;
@@ -481,13 +506,15 @@ const TeacherOnboarding: React.FC = () => {
                                     {!googleEmail ? (
                                         <div className="mt-3 flex flex-wrap items-center gap-3">
                                             <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar minha conta Google</button>
-                                            {googleAuthorizationUrl && <a href={googleAuthorizationUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-indigo-700 underline">Entrar com o Google ↗</a>}
+                                            {googleAuthorizationUrl && <a href={googleAuthorizationUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white">Abrir login Google ↗</a>}
                                             {googleProof && <button type="button" disabled={googleBusy} onClick={() => void checkGoogleConfirmation()} className="font-bold text-indigo-700 underline">Já confirmei</button>}
                                         </div>
                                     ) : (
                                         <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="mt-2 font-bold text-indigo-700 underline">Usar outra conta ou confirmar novamente</button>
                                     )}
                                     {googleError && <p role="alert" className="mt-3 font-bold text-red-700">{googleError}</p>}
+                                    {googleAuthorizationUrl && <p className="mt-2 text-sm font-bold text-amber-800">O navegador bloqueou a nova aba. Toque em “Abrir login Google”.</p>}
+                                    {googleProof && !googleEmail && <p role="status" className="mt-2 text-sm">Conclua o login na aba do Google. Ao voltar, conferimos a confirmação automaticamente.</p>}
                                     <p className="mt-2 text-xs text-slate-600">O link do Google dura 10 minutos. Não compartilhe sua senha ou código com a escola.</p>
                                 </div>
                             )}

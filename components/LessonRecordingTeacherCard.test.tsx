@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import LessonRecordingTeacherCard from './LessonRecordingTeacherCard';
 
 const { rpc, googleMeetAction } = vi.hoisted(() => ({ rpc: vi.fn(), googleMeetAction: vi.fn() }));
@@ -25,8 +25,12 @@ beforeEach(() => {
   googleMeetAction.mockReset();
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe('<LessonRecordingTeacherCard />', () => {
   it('sem conta Google confirmada o aceite fica desligado, e o login abre em outra aba', async () => {
+    const popup = { opener: window, closed: false, location: { href: '' }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
     mockRpc({ data: null, error: null });
     googleMeetAction.mockResolvedValueOnce({ authorization_url: 'https://accounts.google.com/o/oauth2/auth?fixture=1' });
     render(<LessonRecordingTeacherCard />);
@@ -36,10 +40,24 @@ describe('<LessonRecordingTeacherCard />', () => {
     expect(screen.getByText(/fica disponível depois que você confirmar a conta Google/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar conta Google' }));
-    const link = await screen.findByRole('link', { name: /entrar com o google/i });
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    await waitFor(() => expect(popup.location.href).toBe('https://accounts.google.com/o/oauth2/auth?fixture=1'));
+    expect(popup.opener).toBeNull();
     expect(googleMeetAction).toHaveBeenCalledWith('teacher_identity_connect');
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('href', 'https://accounts.google.com/o/oauth2/auth?fixture=1');
+    expect(screen.queryByRole('link', { name: /entrar com o google/i })).not.toBeInTheDocument();
+  });
+
+  it('bloqueio de popup oferece botão visível e confere a conta ao voltar', async () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    mockRpc({ data: null, error: null });
+    googleMeetAction.mockResolvedValue({ authorization_url: 'https://accounts.google.com/o/oauth2/auth?fixture=1' });
+    render(<LessonRecordingTeacherCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar conta Google' }));
+    expect(await screen.findByRole('link', { name: /entrar com o google/i })).toHaveAttribute('href', 'https://accounts.google.com/o/oauth2/auth?fixture=1');
+    expect(screen.getByText(/Seu navegador bloqueou a nova aba/)).toBeInTheDocument();
+    mockRpc({ data: { email: 'confirmada@gmail.com', verified_at: '2026-09-27T23:00:00Z' }, error: null });
+    fireEvent(window, new Event('focus'));
+    expect(await screen.findByText('confirmada@gmail.com')).toBeInTheDocument();
   });
 
   it('com a conta confirmada, autoriza', async () => {
