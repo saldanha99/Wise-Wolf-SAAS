@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, RefreshCw, Clock, Calendar, ClipboardCheck } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
+import { loadClassLogMeetDrafts } from '../lib/classLogMeetDrafts';
 import TrialFeedbackForm from './TrialFeedbackForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
@@ -719,7 +720,10 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                   )}
                   {regular.length > 0 && (
                     <ClassLogForm
-                      items={regular}
+                      items={regular.map(item => ({ ...item, classDate: item.dateObj,
+                        sourceType: String(item.id).startsWith('repo-') ? 'reschedule' : String(item.id).startsWith('trial-') ? 'appointment' : String(item.id).startsWith('advance-') ? 'advance' : 'booking',
+                        sourceId: String(item.id).replace(/^(repo-|trial-|advance-)/, '').split('|')[0] }))}
+                      loadSuggestions={loadClassLogMeetDrafts}
                       onSave={handleBulkSave}
                       title="Aulas Programadas para Hoje"
                       loading={isSubmitting}
@@ -737,7 +741,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                         Confirme o que aconteceu — presença, falta do aluno ou falta do professor. A reposição gerada por falta do professor é remunerada quando realizada; a reposição concedida por falta do aluno não entra na folha. Em coberturas, recebe quem efetivamente deu a aula.
                       </p>
                       <ClassLogForm
-                        items={repos}
+                        items={repos.map(item => ({ ...item, classDate: item.dateObj, sourceType: 'reschedule', sourceId: String(item.id).replace(/^repo-/, '') }))}
+                        loadSuggestions={loadClassLogMeetDrafts}
                         onSave={handleBulkSave}
                         title="Lançamento de Reposições"
                         loading={isSubmitting}

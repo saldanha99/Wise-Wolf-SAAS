@@ -3503,3 +3503,20 @@ estritos. Pendências cadastrais sem prova continuam bloqueadas e requerem confi
 - `PublicContractView` distingue contrato sem assinatura (abre `TeacherContractAccept`) de aceite legado sem arquivo (solicitar cópia à escola). `tenant-legal-assets` retorna esse estado somente após validar usuário, papel e tenant; não sintetiza documento assinado.
 - `openGoogleAuthorization` reserva a aba no clique antes do pedido assíncrono: o botão principal abre o Google no cartão e na contratação. Bloqueio de popup mostra botão destacado; retorno à aba confere a identidade automaticamente, mantendo conferência manual.
 - Tour `2026-09-30-google-e-contrato-do-professor` e testes de popup/ausência de arquivo acompanham a correção.
+
+### 28/09/2026 — Meet preenche o lançamento pedagógico
+
+`get_class_log_meet_drafts(jsonb)` (migration `20260928010243`, registrada no release)
+resolve origem + data exatas em `lesson_occurrences`, incluindo antecipação pela
+origem confirmada no servidor. Somente o professor ativo da sessão, no tenant
+operacional, lê cinco campos pedagógicos e incertezas. Sessão barrada/arquivada,
+registro apagado, versão rejeitada e rascunho com fonte vencida não fornecem
+sugestão. Leitura fica auditada. Nenhum lançamento, presença ou pagamento é criado.
+`ClassLogForm` busca em lotes em Lançar e Pendentes; preserva campos tocados pelo
+professor, mostra quadro de revisão com edição e exige seleção explícita do
+resultado. Atualizar resumos remove sugestões que deixaram de valer sem apagar
+edições humanas. Não inventa “sem tarefa”/“nenhuma dificuldade”: botões registram
+essas declarações somente por clique. Motivo retroativo continua humano, com
+atalhos de preenchimento. Aprovação da memória continua no fluxo de revisão de
+resumos; salvar lançamento não aprova automaticamente um rascunho. Testes SQL
+`meet_class_log_suggestions.sql`, UI e tour `2026-09-30-meet-preenche-lancamento`.

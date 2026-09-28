@@ -649,6 +649,17 @@ export const FEATURE_TOURS: FeatureTour[] = [
       text: 'Em Meu Contrato, quem ainda não assinou pode revisar os dados e assinar. Se o aceite já existe e a cópia não está arquivada, a tela explica como solicitar a via à escola.',
     }],
   },
+  {
+    id: '2026-09-30-meet-preenche-lancamento',
+    title: 'Lançamento preenchido pelo Meet',
+    roles: ['TEACHER'],
+    steps: [{
+      target: 'class-log-meet-prefill',
+      view: 'lessons',
+      title: 'Revise o resumo e registre a aula',
+      text: 'Quando o resumo da sala oficial estiver disponível, objetivo, conteúdo, dificuldades, tarefa e próximo passo aparecem preenchidos. Confira o quadro, ajuste o que precisar e escolha o resultado da aula. Campos não identificados continuam em branco; Atualizar resumos busca o processamento mais recente. O motivo de um lançamento atrasado é informado por você.',
+    }],
+  },
 ];
 
 /**

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, RefreshCw } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
+import { loadClassLogMeetDrafts } from '../lib/classLogMeetDrafts';
 import {
   fetchPendingLessons as fetchPendingLessonsRule,
   PendingLesson,
@@ -231,6 +232,9 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
             <ClassLogForm
               items={[{
                 id: selectedLesson.id,
+                classDate: selectedLesson.rawDate,
+                sourceType: selectedLesson.lessonAdvanceId ? 'advance' : selectedLesson.rescheduleId ? 'reschedule' : 'booking',
+                sourceId: selectedLesson.lessonAdvanceId || selectedLesson.rescheduleId || selectedLesson.bookingId,
                 name: selectedLesson.student,
                 date: `${selectedLesson.date} às ${selectedLesson.time}`,
                 isLate: true,
@@ -238,6 +242,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               }]}
               onCancel={() => setSelectedLesson(null)}
               onSave={handleSave}
+              loadSuggestions={loadClassLogMeetDrafts}
               title="Regularizar Aula"
               loading={isSubmitting}
             />
@@ -252,6 +257,9 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
             <ClassLogForm
               items={pending.map(p => ({
                 id: p.id,
+                classDate: p.rawDate,
+                sourceType: p.lessonAdvanceId ? 'advance' : p.rescheduleId ? 'reschedule' : 'booking',
+                sourceId: p.lessonAdvanceId || p.rescheduleId || p.bookingId,
                 name: p.student,
                 date: `${p.date} às ${p.time}`,
                 isLate: true,
@@ -259,6 +267,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               }))}
               onCancel={() => setIsBulkRegularizing(false)}
               onSave={handleSave}
+              loadSuggestions={loadClassLogMeetDrafts}
               title="Regularizar Todas as Pendências"
               loading={isSubmitting}
             />

@@ -366,3 +366,17 @@ evitando bloqueio de popup. Se o navegador bloquear, a tela mostra um botão
 alternativo destacado. Ao retornar à plataforma, a identidade é conferida
 automaticamente; “Já confirmei” permanece disponível para conferir novamente.
 O professor usa a conta com que entrará nas aulas, que pode diferir do e-mail do portal.
+
+### Lançamento pedagógico preenchido pelo resumo (28/09/2026)
+
+Em Lançar Aula e Pendentes, a plataforma procura o resumo da origem e data daquela
+aula. Os cinco campos disponíveis aparecem em um quadro de revisão; “Editar dados
+preenchidos” permite corrigir. O professor escolhe presença/falta e confirma o
+lançamento. A sugestão não decide presença nem altera pagamento e não substitui
+texto que o professor já editou. Informações ausentes exigem complementação;
+“sem tarefa” e “nenhuma dificuldade” têm botões de confirmação explícita.
+A coleta/importação é assíncrona: se o resumo não chegou, aguarde e use “Atualizar
+resumos” ou preencha manualmente. Não há transcrição retroativa de aulas anteriores
+à integração nem de salas pessoais. Motivo do lançamento atrasado é informado
+pelo professor. O rascunho usado permanece identificado como rascunho; aprovação
+para a memória do aluno continua na revisão em Salas e continuidade.
