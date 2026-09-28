@@ -660,6 +660,18 @@ export const FEATURE_TOURS: FeatureTour[] = [
       text: 'Quando o resumo da sala oficial estiver disponível, objetivo, conteúdo, dificuldades, tarefa e próximo passo aparecem preenchidos. Confira o quadro, ajuste o que precisar e escolha o resultado da aula. Campos não identificados continuam em branco; Atualizar resumos busca o processamento mais recente. O motivo de um lançamento atrasado é informado por você.',
     }],
   },
+  {
+    id: '2026-09-30-portal-exige-google',
+    title: 'Conta Google obrigatória para professores',
+    roles: ['TEACHER'],
+    recordingMode: 'SCHOOL_DEFAULT',
+    steps: [{
+      target: 'recording-teacher-google',
+      view: 'lesson-sessions',
+      title: 'Use a mesma conta Google nas aulas',
+      text: 'Quem ainda não conectou a conta Google recebe uma configuração obrigatória ao entrar no portal. O botão abre o login, a confirmação é conferida ao voltar e a conta conectada aparece antes de continuar. Use essa mesma conta para entrar no link oficial de cada aula; você pode conferir ou trocar a conta neste cartão.',
+    }],
+  },
 ];
 
 /**

@@ -9,6 +9,7 @@ import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
 const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
+const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogleConnectionGate'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
@@ -340,6 +341,7 @@ const App: React.FC = () => {
   // decide entre os tours do termo e os do registro autorizado pela escola.
   // Nulo = desconhecido (nenhum tour que dependa do modo abre).
   const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
+  const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -1875,7 +1877,12 @@ const App: React.FC = () => {
           <TeacherSupportCenter onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
         </Suspense>
       )}
-      {tourOpen && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
+      {user.role === UserRole.TEACHER && recordingMode === 'SCHOOL_DEFAULT' && (
+        <Suspense fallback={null}>
+          <TeacherGoogleConnectionGate key={user.id} onActiveChange={setTeacherGoogleRequired} onLogout={handleLogout} />
+        </Suspense>
+      )}
+      {tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
             steps={flattenTour(user.role as TourRole)}
@@ -1891,7 +1898,7 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !dossierLink.holdsTours && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

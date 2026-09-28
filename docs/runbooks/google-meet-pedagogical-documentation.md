@@ -380,3 +380,15 @@ resumos” ou preencha manualmente. Não há transcrição retroativa de aulas a
 à integração nem de salas pessoais. Motivo do lançamento atrasado é informado
 pelo professor. O rascunho usado permanece identificado como rascunho; aprovação
 para a memória do aluno continua na revisão em Salas e continuidade.
+
+### Conexão obrigatória no portal do professor (28/09/2026)
+
+Escolas no modo `SCHOOL_DEFAULT` exigem a confirmação de identidade ao entrar
+como professor. Sem conta confirmada, um diálogo modal explica os três passos
+e bloqueia a navegação até conectar; permite sair da conta do portal. Escolher
+a mesma conta usada nas aulas, concluir o login Google e voltar: a confirmação
+é conferida automaticamente e mostra o e-mail antes de continuar. Quem já
+conectou segue normalmente. Aba bloqueada recebe botão destacado; consulta
+indisponível oferece nova tentativa. Em Salas e continuidade é possível
+conferir ou trocar a conta. A conexão não altera a decisão de documentação da
+aula nem substitui o uso do link oficial da sessão.

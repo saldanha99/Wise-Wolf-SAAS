@@ -3529,3 +3529,22 @@ fevereiro. `20260928033600` ajusta somente esses dois cálculos para encadear
 `fim_do_servico`, como o emissor atual de 9 argumentos. Sem alteração de ofertas
 existentes ou cobranças. Regression `renewal_legacy_month_end.sql` cobre 29/30/31
 em ano comum e 31 em ano bissexto; migration e teste registrados no release.
+
+### 28/09/2026 — Conexão Google obrigatória ao entrar como professor
+
+No modo `SCHOOL_DEFAULT`, o portal monta `TeacherGoogleConnectionGate` para
+professores: identidade já confirmada segue normalmente; ausente abre diálogo
+modal nativo sem adiar, fechamento por Escape ou clique fora. O professor pode
+sair da conta. A consulta falhou → mensagem e nova tentativa, sem liberar por
+erro. O botão reserva a aba no clique (`openGoogleAuthorization`) e mostra
+alternativa destacada se bloqueada. Foco/visibilidade e consulta a cada 5 s
+enquanto espera conferem a confirmação; mostra o e-mail antes de continuar.
+O texto exige a conta com que entra no Meet, que pode diferir do e-mail do
+portal, e orienta usar o link oficial por aula. Tours ficam suspensos enquanto
+o diálogo está ativo; novidade `2026-09-30-portal-exige-google`.
+A exigência é de configuração de identidade no portal: não registra aceite
+do termo nem altera pedidos para não registrar aulas. Convite de contratação
+continua com a prova OAuth obrigatória validada pelo servidor.
+Testes: `components/TeacherGoogleConnectionGate.test.tsx` (identidade existente,
+Escape, saída, abertura direta, retorno confirmado, aba bloqueada, erro sem
+liberação). Sem migration: reutiliza `get_my_google_identity`.

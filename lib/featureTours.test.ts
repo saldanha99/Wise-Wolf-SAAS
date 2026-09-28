@@ -84,7 +84,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-30-meet-preenche-lancamento');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-30-portal-exige-google');
     expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-29-registro-autorizado-pela-escola');
     expect(latestFeatureTourFor('STUDENT')?.id).toBe('2026-09-27-minhas-aulas-registradas');
     expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
@@ -143,7 +143,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
       '2026-09-26-termo-seguro-envio', '2026-09-26-termo-seguro-professor', '2026-09-27-termo-v3',
       '2026-09-27-termo-v3-professor',
     ]));
-    expect(schoolTours).toEqual(['2026-09-29-registro-autorizado-pela-escola', '2026-09-29-registro-autorizado-pela-escola-professor', '2026-09-30-conta-google-na-contratacao', '2026-09-30-google-e-contrato-do-professor']);
+    expect(schoolTours).toEqual(['2026-09-29-registro-autorizado-pela-escola', '2026-09-29-registro-autorizado-pela-escola-professor', '2026-09-30-conta-google-na-contratacao', '2026-09-30-google-e-contrato-do-professor', '2026-09-30-portal-exige-google']);
 
     for (const role of ['TEACHER', 'SCHOOL_ADMIN']) {
       const inSchool = pendingFeatureTours(role, [], school).map(t => t.id);
@@ -167,7 +167,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
 
     // "Novidades" também segue o modo.
-    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-09-30-meet-preenche-lancamento');
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-09-30-portal-exige-google');
     expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-09-30-meet-preenche-lancamento');
     expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-09-28-tempo-na-sala');
     expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-09-28-tempo-na-sala');
