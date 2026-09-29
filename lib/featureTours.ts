@@ -702,6 +702,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
     steps: [{ target: 'student-official-meet-link', view: 'dashboard', title: 'Entre na sala desta aula',
       text: 'Quando sua aula tem uma sala oficial, o botão Entrar na sala oficial abre o mesmo link enviado no lembrete e usado pelo professor. Cada aula tem seu próprio link; confira sempre o botão da aula ou a mensagem mais recente.' }],
   },
+  {
+    id: '2026-09-30-z-antecipacoes-ja-realizadas',
+    title: 'Contabilizar antecipações já realizadas',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'historical-lesson-advances', view: 'lesson-advances', title: 'A data realizada define o pagamento',
+      text: 'Em Aulas → Antecipações, selecione as ocorrências futuras e informe as datas em que foram dadas. Marque que já foram realizadas somente com confirmação da direção: o registro entra no mês realizado e bloqueia as ocorrências originais, sem duplicar pagamento. Horário desconhecido permanece não informado. Aula futura deve continuar no modo de agendamento.' }],
+  },
 ];
 
 /**

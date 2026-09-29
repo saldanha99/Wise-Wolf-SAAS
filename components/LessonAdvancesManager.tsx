@@ -60,11 +60,12 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
   const [students, setStudents] = useState<any[]>([]);
   const [studentId, setStudentId] = useState('');
   const [sourceMonth, setSourceMonth] = useState(nextMonth);
-  const [reason, setReason] = useState('Viagem');
+  const [reason, setReason] = useState('Viagem da aluna');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [existing, setExisting] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [alreadyTaught, setAlreadyTaught] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadBase = async () => {
@@ -120,20 +121,28 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
       setError('Informe uma data anterior válida para cada aula selecionada.');
       return;
     }
+    if (alreadyTaught && selected.some(row => row.advanceDate >= localYMD(new Date()))) {
+      setError('Para contabilizar aulas já realizadas, informe somente datas anteriores a hoje.');
+      return;
+    }
+    if (alreadyTaught && !window.confirm(`Confirmo que as ${selected.length} aulas selecionadas foram realizadas nas datas informadas. Elas serão contabilizadas nesse mês e as ocorrências originais ficarão bloqueadas, sem horário inventado.`)) return;
     setSaving(true);
     setError(null);
-    const { error: createError } = await supabase.rpc('create_lesson_advances', {
+    const { error: createError } = await supabase.rpc(alreadyTaught ? 'settle_historical_lesson_advances' : 'create_lesson_advances', {
       p_student_id: studentId,
       p_reason: reason,
       p_entries: selected.map(row => ({
         booking_id: row.bookingId,
         original_date: row.originalDate,
         advance_date: row.advanceDate,
-        advance_time: row.time,
+        ...(alreadyTaught ? {} : { advance_time: row.time }),
       })),
     });
     if (createError) {
       const messages: Record<string, string> = {
+        historical_advance_actual_date_already_used: 'Já existe aula deste aluno na data realizada. Confira o histórico antes de contabilizar outra.',
+        historical_advance_month_locked: 'O fechamento desse mês está protegido. Confira com o financeiro antes de alterar.',
+        invalid_historical_advance_dates: 'Use datas realizadas nos últimos 120 dias e ocorrências futuras de outro mês.',
         lesson_advance_origin_already_used: 'Uma das aulas escolhidas já foi antecipada.',
         lesson_advance_actual_date_has_regular_occurrence: 'Esse agendamento já possui uma aula regular na data escolhida. Escolha outra data para antecipar esta ocorrência.',
         lesson_advance_actual_slot_conflict: 'Há outra antecipação nesse horário ou para o mesmo agendamento nessa data. Escolha outro horário/data.',
@@ -167,7 +176,11 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
 
       {error && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
 
-      <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm">
+      <section data-tour="historical-lesson-advances" className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm">
+        <label className="mb-5 flex items-start gap-3 rounded-xl border border-brand-border p-3 text-sm text-brand-text">
+          <input type="checkbox" checked={alreadyTaught} onChange={event => setAlreadyTaught(event.target.checked)} className="mt-1 h-4 w-4" />
+          <span><strong>As aulas já foram realizadas e estão confirmadas pela direção</strong><br />Contabiliza pelas datas reais, sem inventar horário ou conteúdo, e bloqueia as aulas originais. Não use para aula ainda não realizada.</span>
+        </label>
         <div className="grid gap-4 md:grid-cols-3">
           <label className="text-xs font-black uppercase tracking-wider text-brand-muted">Aluno
             <select value={studentId} onChange={event => setStudentId(event.target.value)} className="mt-2 w-full rounded-xl border border-brand-border bg-brand-surface-2 p-3 text-sm font-bold text-brand-text">
@@ -196,7 +209,7 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
               </div>
             ))}
             <button disabled={saving || selected.length === 0} onClick={create} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">
-              {saving ? <Loader2 className="animate-spin" size={18} /> : <CalendarArrowDown size={18} />} Criar {selected.length || ''} antecipação{selected.length === 1 ? '' : 'ões'}
+              {saving ? <Loader2 className="animate-spin" size={18} /> : <CalendarArrowDown size={18} />} {alreadyTaught ? 'Contabilizar' : 'Criar'} {selected.length || ''} antecipação{selected.length === 1 ? '' : 'ões'}
             </button>
           </div>
         )}
@@ -210,7 +223,7 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
               <div key={item.id} className="flex flex-col gap-3 rounded-2xl border border-brand-border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-black text-brand-text">{item.student?.full_name || 'Aluno'} · {item.teacher?.full_name || 'Professor'}</p>
-                  <p className="text-xs text-brand-muted">{formatLocalDateBr(item.original_date)} → {formatLocalDateBr(item.advance_date)} às {String(item.advance_time).substring(0, 5)} · {item.reason}</p>
+                  <p className="text-xs text-brand-muted">{formatLocalDateBr(item.original_date)} → {formatLocalDateBr(item.advance_date)} · {item.advance_time ? `às ${String(item.advance_time).substring(0, 5)}` : 'Horário não informado'} · {item.reason}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-black uppercase ${item.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : item.status === 'CANCELLED' ? 'bg-slate-100 text-slate-500' : 'bg-blue-100 text-blue-700'}`}>

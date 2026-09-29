@@ -3596,3 +3596,17 @@ com rollback antes da execução definitiva. Tour novo do professor
 retenção de 90 dias, sem ranking e sem alteração de pagamento. A autorização
 vale só para esta escola; a configuração e o evento no banco são a fonte do
 estado real. Não usar desligar como rollback: isso apaga o extrato existente.
+
+### 29/09/2026 — Antecipações já realizadas, com competência real
+
+A direção pode contabilizar antecipações históricas no gerenciador de
+antecipações. `settle_historical_lesson_advances` cria atomicamente antecipação
+COMPLETED e class_log COMPLETED na data efetiva; o pagamento continua lendo
+`v_payable_class_logs`. Horário desconhecido permanece NULL, fora de salas,
+lembretes e fontes de qualidade. A ocorrência original fica consumida, não
+lançável novamente. Retry exato é idempotente; fechamento mensal bloqueia
+alteração. Constraint diferida impede histórico sem log correspondente.
+`exclude_booking_occurrence` permite exclusão administrativa auditada de uma
+ocorrência futura específica (não é calendário global de feriados).
+Migration 20260929151406 e teste SQL transacional registrados no release.
+Tour administrativo: `2026-09-30-z-antecipacoes-ja-realizadas`.
