@@ -1173,16 +1173,21 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   );
 
   const handleRealtimeFallback = useCallback(
-    (_reason: string, message: string) => {
+    (reason: string, message: string) => {
       resetRealtimeGate();
       detachTransportSession("handoff_to_classic");
       setVoiceTransport("classic");
       setShowTextInput(true);
       setState("IDLE");
-      setError(`${message} O Wolfie ativou o modo clássico (você pode falar ou digitar).`);
-      window.setTimeout(() => {
-        if (isMountedRef.current) setError(null);
-      }, 6000);
+      if (reason === "provider_billing_blocked") {
+        setAutoSpeakEnabled(false);
+        setError(message);
+      } else {
+        setError(`${message} O Wolfie ativou o modo clássico (você pode falar ou digitar).`);
+        window.setTimeout(() => {
+          if (isMountedRef.current) setError(null);
+        }, 6000);
+      }
     },
     [detachTransportSession, resetRealtimeGate],
   );
@@ -2811,6 +2816,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // Web Speech remains only as a compatibility fallback.
   // ============================================================
   const startRecording = () => {
+    if (realtime.fallbackReason === "provider_billing_blocked") {
+      setShowTextInput(true);
+      setError("A conversa por voz está indisponível no momento. Você ainda pode praticar digitando.");
+      return;
+    }
     if (hubModeRequested) {
       setShowTextInput(true);
       setError("No Hub, esta assinatura usa a prática por texto.");
@@ -4264,7 +4274,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           <button
             type="button"
             onClick={isRealtimeMode ? useClassicVoice : useRealtimeVoice}
-            disabled={isRealtimeMode && isRealtimePostTurnPending}
+            disabled={(isRealtimeMode && isRealtimePostTurnPending) || realtime.fallbackReason === "provider_billing_blocked"}
             aria-pressed={isRealtimeMode}
             aria-label={isRealtimeMode
               ? "Usar a voz clássica"
@@ -5193,7 +5203,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <button
               type="button"
               onClick={isRealtimeMode ? useClassicVoice : useRealtimeVoice}
-              disabled={isRealtimeMode && isRealtimePostTurnPending}
+              disabled={(isRealtimeMode && isRealtimePostTurnPending) || realtime.fallbackReason === "provider_billing_blocked"}
               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 isRealtimeMode
                   ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"

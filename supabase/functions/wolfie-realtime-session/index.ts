@@ -22,6 +22,7 @@ import {
 } from "../_shared/wolfie-global-meeting-policy.ts";
 import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
 import { buildRealtimeCallForm } from "./realtime-call-form.ts";
+import { realtimeProviderFallback } from "./provider-fallback.ts";
 import { buildSafetyIdentifier } from "./safety-identifier.ts";
 import {
   buildRealtimeRetrievalQuery,
@@ -1059,13 +1060,6 @@ function openAiSession(
   };
 }
 
-function upstreamFailureStatus(status: number): number {
-  if (status === 429) return 429;
-  if (status === 401 || status === 403) return 503;
-  if (status >= 500) return 503;
-  return 502;
-}
-
 async function hangupRealtimeCall(
   openAiApiKey: string,
   providerCallId: string,
@@ -1798,15 +1792,11 @@ serve(async (req) => {
       providerErrorParam,
     });
     await releaseRealtimeGrant(auth.context.admin, liveGrant.grantId);
-    return fallbackResponse(
-      upstreamFailureStatus(upstream.status),
-      upstream.status === 429
-        ? "REALTIME_RATE_LIMITED"
-        : "REALTIME_PROVIDER_UNAVAILABLE",
-      upstream.status === 429
-        ? "O modo em tempo real está ocupado. Tente novamente em instantes."
-        : "O modo em tempo real não pôde ser iniciado. Use o modo de voz atual.",
+    const failure = realtimeProviderFallback(
+      upstream.status,
+      providerErrorCode,
     );
+    return fallbackResponse(failure.status, failure.code, failure.message);
   }
 
   const location = upstream.headers.get("location") ?? "";
