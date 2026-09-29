@@ -11,7 +11,7 @@ create table if not exists public.booking_occurrence_exclusions (
 );
 alter table public.booking_occurrence_exclusions enable row level security;
 revoke all on public.booking_occurrence_exclusions from public,anon,authenticated,service_role;
-grant select on public.booking_occurrence_exclusions to authenticated;
+grant select on public.booking_occurrence_exclusions to authenticated,service_role;
 drop policy if exists occurrence_exclusions_read on public.booking_occurrence_exclusions;
 create policy occurrence_exclusions_read on public.booking_occurrence_exclusions for select to authenticated
  using(tenant_id=(select public._my_tenant_id()) and ((select public._my_role()) in ('SCHOOL_ADMIN','COORDINATOR','SUPER_ADMIN')

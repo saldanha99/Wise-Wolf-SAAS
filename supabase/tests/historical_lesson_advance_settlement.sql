@@ -22,7 +22,7 @@ create temp table historical_dates as select
  (now() at time zone 'America/Sao_Paulo')::date-1 as actual,
  (date_trunc('month',now() at time zone 'America/Sao_Paulo')+interval '1 month 2 days')::date as original;
 update historical_dates set original=original+1 where extract(dow from original)=extract(dow from actual);
-grant select on historical_dates to authenticated;
+grant select on historical_dates to authenticated,service_role;
 insert into public.bookings(id,tenant_id,teacher_id,student_id,day_of_week,time_slot,status,start_date)
  select 'e9200000-0000-4000-8000-000000000001','historical-advance-fixture',
  'e9100000-0000-4000-8000-000000000001','e9100000-0000-4000-8000-000000000002',
@@ -50,6 +50,12 @@ select pg_temp.assert_true(not (public.booking_schedule_on_date('e9200000-0000-4
  and not (public.booking_schedule_on_date('e9200000-0000-4000-8000-000000000001',original+7)->>'valid')::boolean,'origin and holiday excluded') from historical_dates;
 select pg_temp.assert_true((select count(*)=1 from public.booking_occurrence_exclusions where tenant_id='historical-advance-fixture'),'holiday retry no duplicate');
 select pg_temp.assert_true(not has_function_privilege('anon','public.settle_historical_lesson_advances(uuid,jsonb,text)','EXECUTE'),'anonymous denied');
+select pg_temp.assert_true(has_table_privilege('service_role','public.booking_occurrence_exclusions','SELECT')
+ and not has_table_privilege('anon','public.booking_occurrence_exclusions','SELECT'),'schedule reader has service grant without anonymous grant');
+set local role service_role;
+select pg_temp.assert_true(not (public.booking_schedule_on_date('e9200000-0000-4000-8000-000000000001',original+7)->>'valid')::boolean,
+ 'service reader observes excluded date') from historical_dates;
+reset role;
 select set_config('request.jwt.claims','{"sub":"e9100000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 set local role authenticated;
 do $$ begin
