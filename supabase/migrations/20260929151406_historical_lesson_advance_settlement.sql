@@ -83,10 +83,10 @@ alter function private.check_historical_advance_settled() owner to postgres;
 revoke all on function private.check_historical_advance_settled() from public,anon,authenticated,service_role;
 drop trigger if exists historical_advance_must_be_settled on public.lesson_advances;
 create constraint trigger historical_advance_must_be_settled after insert or update on public.lesson_advances
- deferrable initially deferred for each row execute function private.check_historical_advance_settled();
+ deferrable initially deferred for each row when (new.historical_settlement) execute function private.check_historical_advance_settled();
 drop trigger if exists historical_advance_log_must_be_settled on public.class_logs;
-create constraint trigger historical_advance_log_must_be_settled after update or delete on public.class_logs
- deferrable initially deferred for each row execute function private.check_historical_advance_settled();
+create trigger historical_advance_log_must_be_settled after update or delete on public.class_logs
+ for each row execute function private.check_historical_advance_settled();
 
 -- Keep unknown-time historical records out of time-based rooms, reminders,
 -- attendance requests and quality sessions. The payroll still reads class_logs.
