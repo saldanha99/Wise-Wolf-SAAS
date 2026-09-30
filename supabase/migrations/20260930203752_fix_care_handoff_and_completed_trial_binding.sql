@@ -3,12 +3,20 @@ alter table public.whatsapp_conversations
   add column if not exists handoff_requires_release boolean not null default false;
 
 create or replace function private.clear_care_handoff_release_flag()
-returns trigger language plpgsql set search_path = '' as $$
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if not new.handoff_active then new.handoff_requires_release := false; end if;
+  if not new.handoff_active then
+    new.handoff_requires_release := false;
+    if old.handoff_active and old.handoff_requires_release then
+      update public.care_touchpoints t set status='CLOSED',closed_at=pg_catalog.now(),updated_at=pg_catalog.now()
+       where t.tenant_id=new.tenant_id and t.subject_role='STUDENT' and t.status='HANDOFF'
+         and private.notification_phones_same_recipient(t.phone,new.phone);
+    end if;
+  end if;
   return new;
 end;
 $$;
+alter function private.clear_care_handoff_release_flag() owner to postgres;
 drop trigger if exists clear_care_handoff_release_flag on public.whatsapp_conversations;
 create trigger clear_care_handoff_release_flag before update of handoff_active
 on public.whatsapp_conversations for each row

@@ -58,6 +58,8 @@ begin
   update public.whatsapp_conversations set handoff_active=false where id=conversation;
   if (select handoff_requires_release from public.whatsapp_conversations where id=conversation) then
     raise exception 'explicit release did not clear durable fence'; end if;
+  if (select status from public.care_touchpoints where id=touchpoint)<>'CLOSED' then
+    raise exception 'explicit release left care handoff blocking future turns'; end if;
 end;
 $$;
 do $$ begin
