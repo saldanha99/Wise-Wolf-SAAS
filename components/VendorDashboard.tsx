@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     TrendingUp, Users, Clock, CheckCircle, Award, Copy, Wallet, Check, BadgePercent,
     MessageCircle, BookOpen, RefreshCw, AlertTriangle, KeyRound, Loader2,
@@ -51,25 +51,59 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, onNavigate }) =
 
     const [withdrawing, setWithdrawing] = useState(false);
     const [withdrawMessage, setWithdrawMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+    const requestVersion = useRef(0);
+    const requestInFlight = useRef(false);
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        setLoadError(null);
-        const { data, error } = await supabase.rpc('get_my_affiliate_panel');
-        const record = data as (AffiliatePanelData & { ok?: boolean; error?: string }) | null;
-        if (error || !record?.ok) {
-            setLoadError(affiliateErrorMessage(record?.error));
-            setLoading(false);
-            return;
+    const load = useCallback(async (background = false) => {
+        if (background && requestInFlight.current) return;
+        const version = ++requestVersion.current;
+        requestInFlight.current = true;
+        if (!background) {
+            setLoading(true);
+            setLoadError(null);
         }
-        setPanel(record);
-        setPixType(record.affiliate.pix_key_type || 'CPF');
-        setPixKey(record.affiliate.pix_key || '');
-        setEditingPix(!record.affiliate.pix_key);
-        setLoading(false);
+        try {
+            const { data, error } = await supabase.rpc('get_my_affiliate_panel');
+            if (version !== requestVersion.current) return;
+            const record = data as (AffiliatePanelData & { ok?: boolean; error?: string }) | null;
+            if (error || !record?.ok) {
+                setLoadError(affiliateErrorMessage(record?.error));
+                return;
+            }
+            setPanel(record);
+            setLoadError(null);
+            // Atualização automática não apaga uma chave PIX que está sendo digitada.
+            if (!background) {
+                setPixType(record.affiliate.pix_key_type || 'CPF');
+                setPixKey(record.affiliate.pix_key || '');
+                setEditingPix(!record.affiliate.pix_key);
+            }
+        } catch {
+            if (version === requestVersion.current) setLoadError('Não foi possível atualizar o painel. Tente novamente.');
+        } finally {
+            if (version === requestVersion.current) {
+                requestInFlight.current = false;
+                setLoading(false);
+            }
+        }
     }, []);
 
-    useEffect(() => { void load(); }, [load, user.id]);
+    useEffect(() => {
+        void load();
+        const refresh = () => {
+            if (document.visibilityState === 'visible') void load(true);
+        };
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        const timer = window.setInterval(refresh, 60_000);
+        return () => {
+            requestVersion.current++;
+            requestInFlight.current = false;
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+            window.clearInterval(timer);
+        };
+    }, [load, user.id]);
 
     const copy = async (kind: 'code' | 'message', text: string) => {
         try {

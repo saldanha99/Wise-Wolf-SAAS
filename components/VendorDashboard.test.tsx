@@ -125,4 +125,26 @@ describe('painel do afiliado', () => {
         render(<VendorDashboard user={{ id: 'u1' } as never} />);
         expect(await screen.findByText('Esta área é exclusiva de afiliados.')).toBeInTheDocument();
     });
+
+    it('atualiza o saldo ao voltar à aba sem apagar o PIX em edição', async () => {
+        const before = panel({
+            totals: { ...panel().totals, available_cents: 0, released: 0 },
+            referrals: [],
+        });
+        const after = panel({
+            totals: { ...panel().totals, available_cents: 21800, released: 2 },
+        });
+        rpc.mockResolvedValueOnce({ data: before, error: null })
+            .mockResolvedValue({ data: after, error: null });
+        render(<VendorDashboard user={{ id: 'u1' } as never} />);
+
+        expect(await screen.findByText('AFILIADA10')).toBeInTheDocument();
+        const pixInput = screen.getByLabelText('Chave PIX');
+        fireEvent.change(pixInput, { target: { value: 'minha-chave-em-edicao' } });
+        fireEvent.focus(window);
+
+        await waitFor(() => expect(screen.getByText(/R\$\s*218,00/, { selector: 'p.text-xl' })).toBeInTheDocument());
+        expect(pixInput).toHaveValue('minha-chave-em-edicao');
+        expect(rpc).toHaveBeenCalledTimes(2);
+    });
 });
