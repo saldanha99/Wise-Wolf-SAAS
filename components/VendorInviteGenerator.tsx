@@ -25,9 +25,11 @@ interface Props {
 const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
     const [commissionReais, setCommissionReais] = useState(String(DEFAULT_AFFILIATE_COMMISSION_CENTS / 100));
     const [name, setName] = useState('');
+    const [accountMode, setAccountMode] = useState<'solo' | 'student'>('solo');
+    const [studentEmail, setStudentEmail] = useState('');
     const [couponCode, setCouponCode] = useState('');
     const [generatedLink, setGeneratedLink] = useState('');
-    const [generatedFor, setGeneratedFor] = useState<{ name: string; code: string; commission: string } | null>(null);
+    const [generatedFor, setGeneratedFor] = useState<{ name: string; code: string; commission: string; mode: 'solo' | 'student' } | null>(null);
     const [copied, setCopied] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -45,18 +47,28 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
             setError('Cupom inválido: use de 4 a 32 letras, números, "-" ou "_", começando por letra ou número.');
             return;
         }
+        if (accountMode === 'student' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail.trim())) {
+            setError('Informe o e-mail exato da conta de aluno a vincular.');
+            return;
+        }
         setGenerating(true);
         setError(null);
         setGeneratedLink('');
         try {
-            const { data: offerId, error: rpcError } = await supabase.rpc('create_affiliate_invite', {
-                p_commission_cents: commissionCents,
-                p_suggested_name: name.trim() || null,
-                p_affiliate_code: normalizedCode || null,
-            });
+            const { data: offerId, error: rpcError } = accountMode === 'student'
+                ? await supabase.rpc('create_linked_affiliate_invite', {
+                    p_commission_cents: commissionCents,
+                    p_affiliate_code: normalizedCode || null,
+                    p_student_email: studentEmail.trim().toLowerCase(),
+                })
+                : await supabase.rpc('create_affiliate_invite', {
+                    p_commission_cents: commissionCents,
+                    p_suggested_name: name.trim() || null,
+                    p_affiliate_code: normalizedCode || null,
+                });
             if (rpcError || !offerId) throw rpcError || new Error('offer vazio');
             setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${offerId}`);
-            setGeneratedFor({ name: name.trim(), code: normalizedCode, commission: formatCents(commissionCents) });
+            setGeneratedFor({ name: name.trim(), code: normalizedCode, commission: formatCents(commissionCents), mode: accountMode });
         } catch (e) {
             console.error('Não foi possível criar o convite de afiliado:', e);
             setError(affiliateInviteErrorMessage(e));
@@ -75,7 +87,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
     const inviteMessage = generatedFor
         ? `Oi${generatedFor.name ? ` ${generatedFor.name.split(' ')[0]}` : ''}! Você foi convidado(a) para o nosso programa de afiliados. `
             + `${generatedFor.code ? `Seu cupom será *${generatedFor.code}* e ` : ''}a comissão é de ${generatedFor.commission} por matrícula. `
-            + `Crie seu acesso por este link — lá explica tudo, do cupom ao saque: ${generatedLink}`
+            + `${generatedFor.mode === 'student' ? 'Entre com sua conta de aluno por este link para aceitar o programa' : 'Crie seu acesso por este link — lá explica tudo, do cupom ao saque'}: ${generatedLink}`
         : '';
 
     return (
@@ -86,13 +98,29 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
             </h3>
 
             <p className="text-sm text-gray-500 mb-6">
-                Defina o cupom e a comissão. O afiliado cria o próprio acesso pelo link, já lendo como o programa
-                funciona, e acompanha as indicações e os saques no painel dele.
+                Defina o cupom e a comissão. Escolha se a pessoa terá uma conta própria ou usará a conta de aluno já existente.
             </p>
 
             <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <fieldset className="space-y-2" aria-label="Tipo de acesso do afiliado">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-brand-text">
+                        <input type="radio" name="affiliate-account-mode" checked={accountMode === 'solo'} onChange={() => { setAccountMode('solo'); setGeneratedLink(''); }} />
+                        Conta própria de afiliado
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-brand-text">
+                        <input type="radio" name="affiliate-account-mode" checked={accountMode === 'student'} onChange={() => { setAccountMode('student'); setGeneratedLink(''); }} />
+                        Vincular à conta de aluno existente
+                    </label>
+                </fieldset>
+                {accountMode === 'student' && (
                     <div className="space-y-1">
+                        <label htmlFor="affiliate-student-email" className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">E-mail da conta de aluno</label>
+                        <input id="affiliate-student-email" type="email" value={studentEmail} onChange={event => setStudentEmail(event.target.value)} placeholder="aluno@email.com" className="w-full px-4 py-2 bg-gray-50 dark:bg-brand-surface-2 rounded-xl text-sm text-brand-text" />
+                        <p className="text-xs text-gray-500">O aluno precisará entrar nessa conta e aceitar as regras antes de ver o painel de afiliado.</p>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {accountMode === 'solo' && <div className="space-y-1">
                         <label htmlFor="affiliate-invite-name" className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">
                             Nome do afiliado
                         </label>
@@ -107,7 +135,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
                                 className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary text-brand-text"
                             />
                         </div>
-                    </div>
+                    </div>}
 
                     <div className="space-y-1">
                         <label htmlFor="affiliate-invite-code" className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">

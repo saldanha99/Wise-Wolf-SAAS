@@ -138,6 +138,9 @@ const GENERIC_REGISTRATION_ERROR = 'Não foi possível criar a sua conta agora. 
 export function vendorRegistrationErrorMessage(raw: string | null | undefined): string {
     const text = (raw || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     if (!text) return GENERIC_REGISTRATION_ERROR;
+    if (text.includes('conta de aluno vinculada')) {
+        return 'Entre na conta de aluno que recebeu este convite e tente novamente.';
+    }
     if (text.includes('already registered') || text.includes('already been registered') || text.includes('ja cadastrado')) {
         return 'Este e-mail já está cadastrado.';
     }

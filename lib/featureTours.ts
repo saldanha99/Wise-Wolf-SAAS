@@ -717,6 +717,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       text: 'Quando sua aula tem uma sala oficial, o botão Entrar na sala oficial abre o mesmo link enviado no lembrete e usado pelo professor. Cada aula tem seu próprio link; confira sempre o botão da aula ou a mensagem mais recente.' }],
   },
   {
+    id: '2026-09-30-vincular-aluno-afiliado',
+    title: 'Afiliado com conta de aluno',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'affiliate-invite', view: 'vendors-mgmt', title: 'Escolha o tipo de acesso',
+      text: 'No convite, escolha entre conta própria de afiliado e vincular uma conta de aluno existente pelo e-mail exato. No segundo caso, o aluno entra com o acesso que já usa e aceita as regras; comissões e créditos de indicação continuam separados na aba Indicações.' }],
+  },
+  {
     id: '2026-09-30-z-antecipacoes-ja-realizadas',
     title: 'Contabilizar antecipações já realizadas',
     roles: ['SCHOOL_ADMIN'],

@@ -287,6 +287,9 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       affiliateCode: typeof data.affiliateCode === "string"
         ? data.affiliateCode
         : null,
+      linkedStudentId: typeof data.linkedStudentId === "string"
+        ? data.linkedStudentId
+        : null,
       schoolName: typeof data.schoolName === "string" ? data.schoolName : null,
       tenantId: data.tenantId,
       _offerId: data._offerId,

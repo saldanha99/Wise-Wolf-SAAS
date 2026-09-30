@@ -363,6 +363,12 @@ export function affiliateInviteErrorMessage(error: unknown): string {
         .filter(value => typeof value === 'string')
         .join(' ')
         .toLowerCase();
+    if (raw.includes('student_not_found')) {
+        return 'Não encontramos um aluno ativo com esse e-mail nesta escola.';
+    }
+    if (raw.includes('student_already_invited_or_linked')) {
+        return 'Este aluno já está vinculado a um afiliado ou tem um convite ativo.';
+    }
     if (raw.includes('affiliate_code_in_use') || raw.includes('23505')) {
         return 'Este cupom já é de outro afiliado ou está reservado em outro convite. Escolha outro.';
     }

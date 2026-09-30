@@ -116,16 +116,6 @@ async function handleRequest(req: Request): Promise<Response> {
       throw new InputError("payload");
     }
 
-    const email = normalizedEmail(body.email);
-    const password = requiredString(body.password, "password", 8, 128);
-    const name = requiredString(body.name, "name", 2, 120);
-    const rawPhone =
-      body.phone === undefined || body.phone === null || body.phone === ""
-        ? ""
-        : requiredString(body.phone, "phone", 8, 24).replace(/\D/g, "");
-    if (rawPhone && (rawPhone.length < 10 || rawPhone.length > 15)) {
-      throw new InputError("phone");
-    }
     // A página de cadastro mostra as regras do programa (comissão, liquidação,
     // saque) e pede o aceite; sem ele a conta não nasce.
     if (body.acceptedTerms !== true) throw new InputError("terms");
@@ -133,6 +123,59 @@ async function handleRequest(req: Request): Promise<Response> {
     invite = await claimInvite(admin, body.offerPayload, "VENDOR_INVITE");
     const commissionRate = Number(invite.data.commissionRate);
     const requestedCode = affiliateCodeFromInvite(invite.data.affiliateCode);
+    const linkedStudentId = invite.data.linkedStudentId;
+    let email: string;
+    let password: string;
+    let name: string;
+    let rawPhone: string;
+    if (typeof linkedStudentId === "string") {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{4}-[0-9a-f]{12}$/i
+          .test(linkedStudentId)
+      ) {
+        throw new InputError("linkedStudentId");
+      }
+      const bearer = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)
+        ?.[1];
+      if (!bearer) throw new InputError("student_identity");
+      const { data: verified, error: verifyError } = await admin.auth.getUser(
+        bearer,
+      );
+      if (verifyError || verified.user?.id !== linkedStudentId) {
+        throw new InputError("student_identity");
+      }
+      const { data: student, error: studentError } = await admin.from(
+        "profiles",
+      )
+        .select("id,full_name,phone,role,tenant_id,email,lifecycle_status")
+        .eq("id", linkedStudentId).maybeSingle();
+      if (
+        studentError || !student || student.role !== "STUDENT" ||
+        student.tenant_id !== invite.tenantId ||
+        String(student.lifecycle_status || "active").toLowerCase() !== "active"
+      ) {
+        throw new InputError("student_identity");
+      }
+      // O perfil financeiro permanece separado internamente, sem outro login
+      // oferecido ao aluno. Seu acesso existente resolve o vínculo privado.
+      email = `affiliate-${crypto.randomUUID()}@accounts.invalid`;
+      password = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+      name = requiredString(student.full_name, "name", 2, 120);
+      rawPhone = typeof student.phone === "string"
+        ? student.phone.replace(/\D/g, "")
+        : "";
+    } else {
+      email = normalizedEmail(body.email);
+      password = requiredString(body.password, "password", 8, 128);
+      name = requiredString(body.name, "name", 2, 120);
+      rawPhone =
+        body.phone === undefined || body.phone === null || body.phone === ""
+          ? ""
+          : requiredString(body.phone, "phone", 8, 24).replace(/\D/g, "");
+      if (rawPhone && (rawPhone.length < 10 || rawPhone.length > 15)) {
+        throw new InputError("phone");
+      }
+    }
     const { data: authData, error: authError } = await admin.auth.admin
       .createUser({
         email,
@@ -177,7 +220,29 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     if (profileError) throw new Error("profile_creation_failed");
 
-    await finalizeInvite(admin, invite, userId);
+    if (typeof linkedStudentId === "string") {
+      const { data: linked, error: linkedError } = await admin.rpc(
+        "finalize_linked_vendor_invite_server",
+        {
+          p_offer_id: invite.offerId,
+          p_claim_token: invite.claimToken,
+          p_student_user_id: linkedStudentId,
+          p_vendor_user_id: userId,
+        },
+      );
+      if (linkedError || linked !== true) {
+        // A resposta de rede pode falhar depois do commit. Não apague o perfil
+        // financeiro se a transação já consumiu este convite para ele.
+        const { data: savedOffer } = await admin.from("offers")
+          .select("consumed_by,consumed_at")
+          .eq("id", invite.offerId).maybeSingle();
+        if (savedOffer?.consumed_by !== userId || !savedOffer.consumed_at) {
+          throw new Error("linked_invite_finalize_failed");
+        }
+      }
+    } else {
+      await finalizeInvite(admin, invite, userId);
+    }
     finalized = true;
     // Leitura de cortesia: a conta já existe e o convite foi usado, então
     // falhar aqui nunca vira erro — a página só deixa de oferecer "Copiar".
@@ -191,13 +256,25 @@ async function handleRequest(req: Request): Promise<Response> {
     } catch {
       affiliateCode = null;
     }
-    return json({ success: true, userId, role: "SALESPERSON", affiliateCode });
+    return json({
+      success: true,
+      userId,
+      role: "SALESPERSON",
+      affiliateCode,
+      linkedStudent: typeof linkedStudentId === "string",
+    });
   } catch (error) {
     if (!finalized) {
       if (userId) await admin.auth.admin.deleteUser(userId);
       await releaseInviteClaim(admin, invite);
     }
     if (error instanceof InputError) {
+      if (error.message === "student_identity") {
+        return json(
+          { error: "Entre na conta de aluno vinculada ao convite." },
+          403,
+        );
+      }
       return json({ error: "Revise os dados obrigatorios do cadastro." }, 400);
     }
     if (error instanceof InviteRegistrationError) {

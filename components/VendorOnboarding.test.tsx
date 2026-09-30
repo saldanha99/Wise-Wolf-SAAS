@@ -3,8 +3,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VendorOnboarding from './VendorOnboarding';
 
-const { invoke, vendorOffer } = vi.hoisted(() => ({ invoke: vi.fn(), vendorOffer: vi.fn() }));
-vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke } } }));
+const { invoke, vendorOffer, getUser, signInWithPassword } = vi.hoisted(() => ({
+    invoke: vi.fn(), vendorOffer: vi.fn(), getUser: vi.fn(), signInWithPassword: vi.fn(),
+}));
+vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke }, auth: { getUser, signInWithPassword } } }));
 vi.mock('../services/tenantLegalAssetsService', () => ({
     tenantLegalAssetsService: { vendorOffer },
 }));
@@ -14,6 +16,8 @@ const OFFER_ID = '11111111-2222-4333-8444-555555555555';
 beforeEach(() => {
     invoke.mockReset();
     vendorOffer.mockReset();
+    getUser.mockReset();
+    signInWithPassword.mockReset();
     window.history.pushState({}, '', `/vendor-onboarding?offer=${OFFER_ID}`);
     vendorOffer.mockResolvedValue({
         kind: 'VENDOR_INVITE',
@@ -23,6 +27,47 @@ beforeEach(() => {
         schoolName: 'Wise Wolf',
         tenantId: 'school-wise-wolf',
         _offerId: OFFER_ID,
+    });
+});
+
+describe('convite vinculado a conta de aluno', () => {
+    const STUDENT_ID = 'aaaa1111-2222-4333-8444-555555555555';
+    beforeEach(() => {
+        vendorOffer.mockResolvedValue({
+            kind: 'VENDOR_INVITE', commissionRate: 10900, suggestedName: 'Aluna Afiliada',
+            affiliateCode: 'ALUNA10', schoolName: 'Wise Wolf', linkedStudentId: STUDENT_ID,
+        });
+        getUser.mockResolvedValue({ data: { user: { id: STUDENT_ID } }, error: null });
+        invoke.mockResolvedValue({ data: { success: true, affiliateCode: 'ALUNA10' }, error: null });
+    });
+
+    it('usa o login de aluno sem criar senha nova e exige aceite', async () => {
+        render(<VendorOnboarding />);
+        expect(await screen.findByText('Vincule sua conta de aluno')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Nome completo')).toBeNull();
+        expect(screen.queryByLabelText('WhatsApp')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Vincular minha conta de aluno' }));
+        expect(invoke).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('checkbox'));
+        fireEvent.click(screen.getByRole('button', { name: 'Vincular minha conta de aluno' }));
+        await waitFor(() => expect(invoke).toHaveBeenCalledWith('register-vendor', {
+            body: { offerPayload: OFFER_ID, acceptedTerms: true },
+        }));
+        expect(signInWithPassword).not.toHaveBeenCalled();
+        expect(await screen.findByText(/Acesse Indicações na sua conta de aluno/)).toBeInTheDocument();
+    });
+
+    it('não aceita sessão de outro aluno', async () => {
+        getUser.mockResolvedValue({ data: { user: { id: 'bbbb1111-2222-4333-8444-555555555555' } }, error: null });
+        signInWithPassword.mockResolvedValue({ data: { user: { id: 'bbbb1111-2222-4333-8444-555555555555' } }, error: null });
+        render(<VendorOnboarding />);
+        await screen.findByText('Vincule sua conta de aluno');
+        fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'outra@example.com' } });
+        fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'segredo123' } });
+        fireEvent.click(screen.getByRole('checkbox'));
+        fireEvent.click(screen.getByRole('button', { name: 'Vincular minha conta de aluno' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('outra conta de aluno');
+        expect(invoke).not.toHaveBeenCalled();
     });
 });
 

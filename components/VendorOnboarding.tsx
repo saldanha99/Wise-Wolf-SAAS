@@ -84,6 +84,7 @@ interface VendorOffer {
     couponCode: string | null;
     schoolName: string | null;
     brand: AffiliateBrand;
+    linkedStudentId: string | null;
 }
 
 const cleanText = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
@@ -99,6 +100,7 @@ function parseVendorOffer(payload: Record<string, unknown>): VendorOffer | null 
         couponCode: cleanText(payload.affiliateCode),
         schoolName: cleanText(payload.schoolName),
         brand: resolveAffiliateBrand(payload),
+        linkedStudentId: cleanText(payload.linkedStudentId),
     };
 }
 
@@ -181,7 +183,9 @@ const VendorOnboarding: React.FC = () => {
     };
 
     const handleRegister = async () => {
-        const problem = validateAffiliateSignup({ name, email, password, phone, acceptedTerms });
+        const problem = offer?.linkedStudentId
+            ? (!acceptedTerms ? { field: 'terms' as const, message: 'Aceite as regras para continuar.' } : null)
+            : validateAffiliateSignup({ name, email, password, phone, acceptedTerms });
         if (problem) {
             setFormError(problem);
             // O aviso aparece logo abaixo do campo; centralizar mostra os dois juntos.
@@ -194,9 +198,26 @@ const VendorOnboarding: React.FC = () => {
         setFormError(null);
 
         try {
+            if (offer?.linkedStudentId) {
+                const { data: current } = await supabase.auth.getUser();
+                if (current.user?.id !== offer.linkedStudentId) {
+                    if (!email.trim() || !password) {
+                        throw new Error('Entre com o e-mail e a senha da conta de aluno vinculada ao convite.');
+                    }
+                    const { data: signedIn, error: signInError } = await supabase.auth.signInWithPassword({
+                        email: email.trim(), password,
+                    });
+                    if (signInError || signedIn.user?.id !== offer.linkedStudentId) {
+                        throw new Error('Este convite foi destinado a outra conta de aluno. Confira o acesso com a escola.');
+                    }
+                }
+            }
             const params = new URLSearchParams(window.location.search);
             const { data, error: fnError } = await supabase.functions.invoke('register-vendor', {
-                body: {
+                body: offer?.linkedStudentId ? {
+                    offerPayload: params.get('offer'),
+                    acceptedTerms: true,
+                } : {
                     email: email.trim(),
                     password,
                     name: name.trim(),
@@ -214,7 +235,9 @@ const VendorOnboarding: React.FC = () => {
             setRegisteredCode(typeof data?.affiliateCode === 'string' && data.affiliateCode.trim() ? data.affiliateCode.trim() : null);
             setStep('SUCCESS');
         } catch (err) {
-            setFormError({ message: vendorRegistrationErrorMessage(await functionErrorText(err)) });
+            const rawError = await functionErrorText(err);
+            setFormError({ message: offer?.linkedStudentId && err instanceof Error && /conta de aluno|outra conta de aluno/.test(err.message)
+                ? err.message : vendorRegistrationErrorMessage(rawError) });
         } finally {
             setLoading(false);
         }
@@ -267,13 +290,13 @@ const VendorOnboarding: React.FC = () => {
                         Cadastro concluído!
                     </h2>
                     <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                        Entre com seu e-mail e senha para acessar o seu painel de afiliado:
+                        {offer.linkedStudentId ? 'Acesse Indicações na sua conta de aluno para ver o painel de afiliado:' : 'Entre com seu e-mail e senha para acessar o seu painel de afiliado:'}
                         {registeredCode ? <> o cupom <strong className="font-semibold text-slate-900 dark:text-white">{registeredCode}</strong>,</> : ' o seu cupom,'} as suas indicações e os seus saques.
                     </p>
                     {registeredCode && <CouponTicket code={registeredCode} mode="active" />}
                     <ol className="mt-6 space-y-3 border-t border-slate-200 pt-6 text-sm text-slate-700 dark:border-white/10 dark:text-slate-300">
                         {[
-                            'Entre com o e-mail e a senha que você acabou de criar.',
+                            offer.linkedStudentId ? 'Entre na sua conta de aluno e abra Indicações.' : 'Entre com o e-mail e a senha que você acabou de criar.',
                             'No painel, cadastre a sua chave PIX: é por ela que a escola paga as comissões.',
                             'Compartilhe o seu cupom com quem quiser indicar.',
                         ].map((item, index) => (
@@ -329,10 +352,12 @@ const VendorOnboarding: React.FC = () => {
                     className={`${card} p-5 sm:p-8 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1 lg:-mt-[224px] lg:self-start lg:p-7 ${STICKY_FORM}`}
                 >
                     <h2 id="aff-form-title" className="text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl" style={{ fontFamily: DISPLAY }}>
-                        Crie seu acesso
+                        {offer.linkedStudentId ? 'Vincule sua conta de aluno' : 'Crie seu acesso'}
                     </h2>
                     <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                        Com ele você acompanha as suas indicações e pede o saque das comissões.
+                        {offer.linkedStudentId
+                            ? 'Entre na conta de aluno que recebeu o convite. Seu acesso atual mostrará também as comissões e os saques.'
+                            : 'Com ele você acompanha as suas indicações e pede o saque das comissões.'}
                     </p>
 
                     <form
@@ -341,11 +366,11 @@ const VendorOnboarding: React.FC = () => {
                         aria-busy={loading || undefined}
                         onSubmit={event => { event.preventDefault(); void handleRegister(); }}
                     >
-                        <Field
+                        {!offer.linkedStudentId && <Field
                             id="aff-name" label="Nome completo" icon={User} value={name} inputRef={fieldRefs.name}
                             onChange={value => edit('name', () => setName(value))}
                             placeholder="Seu nome" autoComplete="name" error={fieldError('name')}
-                        />
+                        />}
                         <Field
                             id="aff-email" label="E-mail" icon={Mail} value={email} inputRef={fieldRefs.email}
                             onChange={value => edit('email', () => setEmail(value))}
@@ -354,8 +379,8 @@ const VendorOnboarding: React.FC = () => {
                         <Field
                             id="aff-password" label="Senha" icon={Lock} value={password} inputRef={fieldRefs.password}
                             onChange={value => edit('password', () => setPassword(value))}
-                            type={showPassword ? 'text' : 'password'} placeholder="Crie uma senha" autoComplete="new-password"
-                            hint="Mínimo de 8 caracteres." error={fieldError('password')}
+                            type={showPassword ? 'text' : 'password'} placeholder={offer.linkedStudentId ? 'Senha da conta de aluno' : 'Crie uma senha'} autoComplete={offer.linkedStudentId ? 'current-password' : 'new-password'}
+                            hint={offer.linkedStudentId ? 'Se já estiver conectado nessa conta, não precisa informar.' : 'Mínimo de 8 caracteres.'} error={fieldError('password')}
                             trailing={(
                                 <button
                                     type="button"
@@ -368,12 +393,12 @@ const VendorOnboarding: React.FC = () => {
                                 </button>
                             )}
                         />
-                        <Field
+                        {!offer.linkedStudentId && <Field
                             id="aff-phone" label="WhatsApp" icon={Phone} value={phone} inputRef={fieldRefs.phone}
                             onChange={value => edit('phone', () => setPhone(value))}
                             type="tel" inputMode="tel" placeholder="(11) 99999-9999" autoComplete="tel"
                             hint="Com DDD." error={fieldError('phone')}
-                        />
+                        />}
 
                         <div>
                             <label
@@ -426,17 +451,19 @@ const VendorOnboarding: React.FC = () => {
                             {loading ? (
                                 <>
                                     <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-                                    Criando sua conta…
+                                    {offer.linkedStudentId ? 'Vinculando…' : 'Criando sua conta…'}
                                 </>
                             ) : (
                                 <>
-                                    Criar minha conta de afiliado
+                                    {offer.linkedStudentId ? 'Vincular minha conta de aluno' : 'Criar minha conta de afiliado'}
                                     <ArrowRight size={18} aria-hidden="true" />
                                 </>
                             )}
                         </button>
                         <p className="text-center text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                            Depois, é só entrar com este e-mail e senha para ver o seu painel.
+                            {offer.linkedStudentId
+                                ? 'Depois, abra Indicações na sua conta de aluno. Não será criado um segundo login para você.'
+                                : 'Depois, é só entrar com este e-mail e senha para ver o seu painel.'}
                         </p>
                     </form>
                 </section>
