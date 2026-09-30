@@ -542,6 +542,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/care-messages.test.ts \
   supabase/functions/whatsapp-inbound/care-conversation.ts \
   supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/care-turn.ts \
+  supabase/functions/whatsapp-inbound/care-turn.test.ts \
   supabase/functions/whatsapp-inbound/teacher-schedule-change.ts \
   supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
   supabase/functions/whatsapp-inbound/teacher-reschedule-move.ts \
@@ -804,6 +806,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
   supabase/functions/whatsapp-inbound/care-messages.test.ts \
   supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/care-turn.test.ts \
   supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
@@ -1499,8 +1502,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260930140000_link_student_affiliate_identity.sql"
   "supabase/migrations/20260930143000_linked_affiliate_invites.sql"
   "supabase/migrations/20260930171439_overdue_thirty_day_email_outbox.sql"
+  "supabase/migrations/20260930203752_fix_care_handoff_and_completed_trial_binding.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/care_handoff_completed_trial.sql"
   "supabase/tests/linked_affiliate_invites.sql"
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
   "supabase/tests/termo_de_registro_das_aulas.sql"

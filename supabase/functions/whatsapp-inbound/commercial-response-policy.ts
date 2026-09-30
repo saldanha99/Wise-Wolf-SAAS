@@ -18,6 +18,45 @@ import {
 export const CLASS_DURATION_MINUTES = 30;
 export const MINIMUM_PLAN_PRICE_BRL = 169;
 
+/** School operating hours are not the free slots of a particular teacher. */
+export function schoolOperatingHoursAnswer(
+  tenantId: string,
+  currentMessage: string,
+  history: { role: string; content: string }[] = [],
+): string | null {
+  if (tenantId !== "school-wise-wolf") return null;
+  const text = foldQuestion(currentMessage);
+  const asksHours =
+    /(?:de que horario|qual.*periodo|primeiros? horarios?|ultimos? horarios?|ate (?:que|qual) hora|horario.*ate.*horario|horario (?:de funcionamento|da escola))/
+      .test(text);
+  const followup = /^\s*(?:nao entendi|\d{1,2}[:h]\d{2}\??)\s*$/.test(text) &&
+    history.slice(-6).some((m) =>
+      m.role === "user" &&
+      /(?:primeiros? horarios?|ultimos? horarios?|horario.*ate.*horario)/
+        .test(foldQuestion(m.content))
+    );
+  if (!asksHours && !followup) return null;
+  // A specific trial/teacher slot remains subject to the corresponding calendar.
+  if (/experimental|\b(?:teacher|professor|professora)\b/.test(text)) {
+    return null;
+  }
+  return "As aulas da escola acontecem de manhã, à tarde e à noite, das 7h às 22h30. A disponibilidade dos dias e horários desejados precisa ser confirmada com o professor.";
+}
+
+export function completedTrialReply(
+  reply: string,
+  afterTrial: boolean,
+): string {
+  if (!afterTrial) return reply;
+  if (
+    /\b(?:agendar|marcar|escolher|fazer|oferecer)\b[^.!?\n]{0,80}\bexperimental\b|\bexperimental\b[^.!?\n]{0,180}\b(?:temos|disponiveis|qual|prefere|que tal|agendar)\b/
+      .test(foldQuestion(reply))
+  ) {
+    return "Sua aula experimental já foi realizada. Podemos continuar o fechamento a partir do que você já conversou com a escola.";
+  }
+  return reply;
+}
+
 type HistoryMessage = { role: string; content: string };
 export interface TrialFeedbackFacts {
   recommendedLevel?: string | null;

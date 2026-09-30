@@ -127,7 +127,7 @@ function messageText(message: WhatsappMessage): string {
 }
 
 function handoffIsActive(conversation: WhatsappConversation | null): boolean {
-    return Boolean(conversation?.human_handoff_until)
+    return conversation?.handoff_requires_release === true || Boolean(conversation?.human_handoff_until)
         && dateValue(conversation?.human_handoff_until) > Date.now();
 }
 
@@ -683,7 +683,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                 : null;
             setConversations((current) => current.map((conversation) =>
                 conversation.id === selectedConversation.id
-                    ? { ...conversation, human_handoff_until: handoffUntil, assigned_to: active ? user.id : null }
+                    ? { ...conversation, human_handoff_until: handoffUntil, handoff_requires_release: active ? conversation.handoff_requires_release : false, assigned_to: active ? user.id : null }
                     : conversation
             ));
         } catch (handoffError) {
@@ -1047,6 +1047,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                         </p>
                                     </div>
                                     <button
+                                        data-tour="whatsapp-human-handoff"
                                         type="button"
                                         onClick={() => void handleHandoff(!humanHandoffActive)}
                                         disabled={changingHandoff}

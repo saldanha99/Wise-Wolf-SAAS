@@ -1,5 +1,27 @@
 # Wise Wolf SAAS — CLAUDE.md
 
+### 30/09/2026 — Encaminhamento do acompanhamento e experimental concluída
+
+`care_begin_handoff` faz a tomada única do encaminhamento; o trigger ativa a
+trava canônica com `handoff_requires_release`. O prazo visual de 72 h não libera
+essa trava: a direção usa Devolver para IA. A inbox mostra esse estado mesmo após
+o prazo. Mensagens fragmentadas aguardam 8 s; somente a última pode responder,
+com releitura após o modelo e antes de marcar reposição. HANDOFF não cai no
+recado genérico. Falha de consulta interrompe o atendimento automático.
+
+`reconcile_completed_trial_lead` (somente service_role) liga CRM a uma única
+experimental concluída, no mesmo tenant e telefone, sem fixture nem conflito,
+com auditoria e preservando handoff/estado terminal. Existência de aula concluída
+bloqueia novo agendamento mesmo quando o contexto de fechamento envelhece. O
+treinamento de novos leads deixa de entrar no fechamento; pergunta sobre o
+período da Wise Wolf recebe 7h–22h30, sujeito à confirmação do professor, sem
+confundir esse período com slots livres da experimental. Migration
+`20260930203752` e teste transacional `care_handoff_completed_trial.sql` no
+release; testes de fragmentação e política comercial. Reparos exatos: vínculo
+de Marcelo à aula de 22/09 e trava do encaminhamento de Verônica, sem mensagens,
+contratos, reservas ou alteração do pedido de cancelamento. Backup prévio:
+`/opt/wisewolf/backups/care-trial-before-20260930.sql`.
+
 ### 28/09/2026 — Número de confirmação não cai no acompanhamento semanal
 
 `routeLessonQualityReply` intercepta 1/2/3 sem citação quando há auditoria canônica

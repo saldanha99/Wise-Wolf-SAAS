@@ -63,8 +63,10 @@ import {
 import {
   applyCommercialReplyPolicy,
   applyPostTrialAnswerPolicy,
+  completedTrialReply,
   resolveAtendenteTraining,
   resolveCommercialPolicy,
+  schoolOperatingHoursAnswer,
 } from "./commercial-response-policy.ts";
 import { wiseWolfLeadTraining } from "./wise-wolf-lead-training.ts";
 import { catalogFactsForPrompt, mentionsSchedule } from "./lead-pricing.ts";
@@ -79,6 +81,7 @@ import {
   pickOfferedSlot,
 } from "./care-conversation.ts";
 import type { CareSlot } from "./care-messages.ts";
+import { loadCareTurn } from "./care-turn.ts";
 import {
   annotateConflicts,
   type BusySlot,
@@ -7023,7 +7026,7 @@ async function loadTrialClosingContext(
   });
   if (error) {
     console.warn("[sdr] pós-experimental indisponível", error.message);
-    return null;
+    throw new Error("post_trial_context_unavailable");
   }
   if (!data || typeof data !== "object") return null;
   const ctx = data as TrialClosingContext;
@@ -7177,14 +7180,32 @@ async function handleCareStudent(
     p_tenant: tenantId,
     p_phone: phone,
   });
-  if (error || !raw || typeof raw !== "object") return false;
+  if (error) throw new Error("care_context_unavailable");
+  if (!raw || typeof raw !== "object") return false;
   const ctx = raw as CareContext;
   if (ctx.subject_role !== "STUDENT" || ctx.subject_id !== profile.id) {
     return false;
   }
-  // Conversa já entregue a gente: o recado padrão + aviso continuam.
-  if (ctx.status === "HANDOFF") return false;
+  // Once escalated, later acknowledgements must not fall into generic support.
+  if (ctx.status === "HANDOFF") return true;
   if (isMedia) return false;
+
+  // Give fragmented replies a quiet window, then discard superseded workers.
+  await new Promise((resolve) => setTimeout(resolve, 8_000));
+  const merged = await loadCareTurn(sb, tenantId, instance, phone, msgId, text);
+  if (merged === null) return true;
+  text = merged;
+  const mayReply = async () =>
+    await loadCareTurn(sb, tenantId, instance, phone, msgId, text) === text;
+  const handoff = async (summary: string, sentiment: string | null = null) => {
+    const { data, error: claimError } = await sb.rpc("care_begin_handoff", {
+      p_id: ctx.id,
+      p_sentiment: sentiment,
+      p_summary: summary,
+    });
+    if (claimError) throw new Error("care_handoff_claim_failed");
+    return data === true;
+  };
 
   await logMsg(sb, tenantId, phone, "care", "in", text, {
     student_id: profile.id,
@@ -7206,20 +7227,17 @@ async function handleCareStudent(
 
   // 1) Dinheiro e contrato: nunca pela IA.
   if (isMoneyOrContractTopic(text)) {
+    if (
+      !await mayReply() || !await handoff(
+        `Trouxe assunto financeiro/contrato: "${text.slice(0, 160)}"`,
+      )
+    ) return true;
     const reply = moneyHandoffReply(studentName);
-    const entregue = await sendWhats(instance, phone, reply, {
-      simulateTyping: true,
-    });
+    const entregue = await sendWhats(instance, phone, reply);
     await logMsg(sb, tenantId, phone, "care", "out", reply, {
       touchpoint_id: ctx.id,
       kind: "money_handoff",
       entregue,
-    });
-    await sb.rpc("care_touchpoint_reply", {
-      p_id: ctx.id,
-      p_status: "HANDOFF",
-      p_sentiment: null,
-      p_summary: `Trouxe assunto financeiro/contrato: "${text.slice(0, 160)}"`,
     });
     await notifyDirector(
       "💬 *Acompanhamento:* aluno trouxe assunto financeiro/contrato",
@@ -7243,6 +7261,7 @@ async function handleCareStudent(
     slot: { date: string; time: string; day?: string },
   ): Promise<string | null> => {
     if (!ctx.reschedule_id || quotaRemaining <= 0) return null;
+    if (!await mayReply()) return null;
     const { data, error: bookError } = await sb.rpc(
       "care_set_reschedule_slot",
       {
@@ -7304,11 +7323,13 @@ async function handleCareStudent(
       });
       return true;
     }
+    if (!await mayReply()) return true;
   }
 
   // Número sem uma escolha aplicável não é opinião sobre a semana. Não deixe
   // o modelo completar essa resposta como se fosse o aluno.
   if (/^[123]$/.test(text.trim())) {
+    if (!await mayReply()) return true;
     const reply = "Você pode me contar um pouco mais sobre o que quis dizer?";
     const entregue = await sendWhats(instance, phone, reply);
     await logMsg(sb, tenantId, phone, "care", "out", reply, {
@@ -7344,6 +7365,7 @@ async function handleCareStudent(
     ai.reply,
     agentName,
   );
+  if (!await mayReply()) return true;
   if (!ai || invalidCareRole) {
     console.error(
       invalidCareRole
@@ -7351,16 +7373,15 @@ async function handleCareStudent(
         : "[care] IA indisponível",
       JSON.stringify(diag).slice(0, 300),
     );
-    await sb.rpc("care_touchpoint_reply", {
-      p_id: ctx.id,
-      p_status: "HANDOFF",
-      p_sentiment: null,
-      p_summary: `${
-        invalidCareRole
-          ? "Resposta da IA recusada por inversão de papéis"
-          : "IA indisponível"
-      }; resposta do aluno: "${text.slice(0, 160)}"`,
-    });
+    if (
+      !await handoff(
+        `${
+          invalidCareRole
+            ? "Resposta da IA recusada por inversão de papéis"
+            : "IA indisponível"
+        }; resposta do aluno: "${text.slice(0, 160)}"`,
+      )
+    ) return true;
     await notifyDirector(
       "💬 *Acompanhamento:* resposta do aluno exige atendimento humano",
       `“${text.slice(0, 300)}”`,
@@ -7382,17 +7403,24 @@ async function handleCareStudent(
     }
   }
   if (ai.sentiment === "NEGATIVE" && status !== "HANDOFF") status = "HANDOFF";
-
-  const entregue = await sendWhats(instance, phone, reply, {
-    simulateTyping: true,
-  });
+  if (!await mayReply()) return true;
+  if (
+    status === "HANDOFF" && !await handoff(
+      ai.summary || text.slice(0, 200),
+      ai.sentiment,
+    )
+  ) return true;
+  const entregue = await sendWhats(instance, phone, reply);
   await logMsg(sb, tenantId, phone, "care", "out", reply, {
     touchpoint_id: ctx.id,
     sentiment: ai.sentiment,
     handoff: status === "HANDOFF",
     entregue,
   });
-  if (status !== "CLOSED" || !reply.startsWith("Fechado:")) {
+  if (
+    status !== "HANDOFF" &&
+    (status !== "CLOSED" || !reply.startsWith("Fechado:"))
+  ) {
     await sb.rpc("care_touchpoint_reply", {
       p_id: ctx.id,
       p_status: status,
@@ -7620,6 +7648,22 @@ async function handleSDR(
   // again below, before any scheduling mutation or external side effect.
   if (!(await isLatestSdrTurn(sb, tenantId, phone, msgId))) return;
   const hist = await history(sb, tenantId, phone, "sdr", 22, msgId);
+  const { data: completedTrial, error: completedTrialError } = await sb.rpc(
+    "reconcile_completed_trial_lead",
+    { p_tenant: tenantId, p_lead: lead.id },
+  );
+  if (completedTrialError) throw new Error("sdr_completed_trial_unavailable");
+  if (completedTrial?.changed === true) lead.status = "TRIAL_DONE";
+  const hoursAnswer = schoolOperatingHoursAnswer(tenantId, text, hist);
+  if (hoursAnswer) {
+    if (!await beginEffects()) return;
+    await sendWhats(instance, phone, hoursAnswer);
+    await logMsg(sb, tenantId, phone, "sdr", "out", hoursAnswer, {
+      lead_id: lead.id,
+      kind: "school_operating_hours",
+    });
+    return;
+  }
   // Keep earlier burst messages in history; the current turn is appended once.
   const { data: waitingRequest, error: waitingError } = await sb.from(
     "trial_reschedule_requests",
@@ -7824,10 +7868,12 @@ async function handleSDR(
       .eq("tenant_id", tenantId).eq("id", lead.opportunity_id).maybeSingle()
     : { data: null, error: null };
   if (stageResult.error) throw new Error("sdr_stage_unavailable");
-  const afterTrial = (lead.status === "TRIAL_DONE" &&
-    ["DONE", "COMPLETED"].includes(
-      String(stageResult.data?.trial_status).toUpperCase(),
-    )) || closing !== null;
+  const afterTrial = completedTrial?.completed === true ||
+    (lead.status === "TRIAL_DONE" &&
+      ["DONE", "COMPLETED"].includes(
+        String(stageResult.data?.trial_status).toUpperCase(),
+      )) ||
+    closing !== null;
   const availableSlots = afterTrial ? [] : await loadAvailableTrialSlots(
     sb,
     tenantId,
@@ -7884,7 +7930,7 @@ async function handleSDR(
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
-    }\n${leadTraining}${styleBlock}${trialContext}${
+    }\n${afterTrial ? "" : leadTraining}${styleBlock}${trialContext}${
       waiting
         ? `\nPEDIDO DE REMARCAÇÃO EXISTENTE: ${waiting.requested_start_time}; estado=${waiting.status}; limite de espera de 60 minutos desde ${waiting.created_at}. Não abra novamente o mesmo pedido ao receber agradecimento ou cobrança de retorno. Se o prazo passou, negocie outro horário, sem repetir promessas passadas.`
         : ""
@@ -8004,6 +8050,7 @@ async function handleSDR(
     })
     : { reply, policy: null };
   reply = postTrialAnswer.reply;
+  reply = completedTrialReply(reply, afterTrial);
   if (
     commercialReply.policy === "price_unavailable" ||
     commercialReply.policy === "custom_duration_quote_required"
@@ -8678,7 +8725,7 @@ async function inboxConversationHasActiveHandoff(
   const canonicalJid = remoteJid.trim().toLowerCase();
   if (!canonicalJid) return false;
   const { data, error } = await sb.from("whatsapp_conversations")
-    .select("id,handoff_active,human_handoff_until")
+    .select("id,handoff_active,human_handoff_until,handoff_requires_release")
     .eq("tenant_id", tenantId)
     .eq("instance_name", instanceName)
     .eq("remote_jid", canonicalJid)
@@ -8691,6 +8738,8 @@ async function inboxConversationHasActiveHandoff(
     throw new InboxPersistenceError("HANDOFF_LOOKUP_FAILED");
   }
   if (data?.handoff_active !== true) return false;
+  // Automated escalation has no expiry; only explicit release resumes it.
+  if (data.handoff_requires_release === true) return true;
   const handoffUntil = Date.parse(String(data.human_handoff_until || ""));
   if (Number.isFinite(handoffUntil) && handoffUntil > Date.now()) return true;
 

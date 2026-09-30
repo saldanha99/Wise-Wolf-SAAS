@@ -103,6 +103,18 @@ function serviceHarness(options: {
 afterEach(() => vi.restoreAllMocks());
 
 describe('<WhatsappInbox />', () => {
+    it('mantém encaminhamento automático visível depois do prazo e permite liberação explícita', async () => {
+        const service = serviceHarness({ enabled: true, withConversations: true });
+        vi.mocked(service.listConversations).mockResolvedValue([
+            { ...conversations[0], human_handoff_until: '2020-01-01T00:00:00Z', handoff_requires_release: true },
+        ]);
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        render(<WhatsappInbox user={user} tenantId="tenant-1" service={service} />);
+        fireEvent.click(await screen.findByRole('button', { name: /Ana Aluna/i }));
+        fireEvent.click(await screen.findByRole('button', { name: /Devolver para IA/i }));
+        await waitFor(() => expect(service.setHandoff).toHaveBeenCalledWith('tenant-1', 'escola-central', 'conversation-1', false));
+        expect(await screen.findByRole('button', { name: /Assumir atendimento/i })).toBeInTheDocument();
+    });
     it('ignora conexões antigas quando a escola muda durante o carregamento', async () => {
         const service = serviceHarness({ enabled: true });
         let resolveFirst!: (value: WhatsappInstance[]) => void;

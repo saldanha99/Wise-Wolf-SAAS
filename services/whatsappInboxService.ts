@@ -22,6 +22,7 @@ export interface WhatsappConversation {
     unread_count: number;
     assigned_to: string | null;
     human_handoff_until: string | null;
+    handoff_requires_release?: boolean;
     archived: boolean;
     updated_at: string;
 }
@@ -103,6 +104,7 @@ const CONVERSATION_COLUMNS = [
     'unread_count',
     'assigned_to',
     'human_handoff_until',
+    'handoff_requires_release',
     'archived',
     'updated_at',
 ].join(',');

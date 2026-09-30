@@ -303,3 +303,67 @@ Deno.test("mensagem sem pergunta de feedback passa intacta", () => {
   assertEquals(result.reply, original);
   assertEquals(result.policy, null);
 });
+import {
+  completedTrialReply,
+  schoolOperatingHoursAnswer,
+} from "./commercial-response-policy.ts";
+
+Deno.test("período da escola não se confunde com os dois slots da experimental", () => {
+  for (
+    const text of [
+      "As aulas são de que horário até qual horário?",
+      "Quais os primeiros horários e os últimos?",
+      "E as aulas normais qual o período?",
+      "Até que hora?",
+    ]
+  ) {
+    const answer = schoolOperatingHoursAnswer("school-wise-wolf", text);
+    assertEquals(answer?.includes("das 7h às 22h30"), true);
+    assertEquals(answer?.includes("confirmada com o professor"), true);
+  }
+  assertEquals(
+    schoolOperatingHoursAnswer("outra-escola", "Até que hora?"),
+    null,
+  );
+  assertEquals(
+    schoolOperatingHoursAnswer("school-wise-wolf", "Qual horário na segunda?"),
+    null,
+  );
+  assertEquals(
+    schoolOperatingHoursAnswer(
+      "school-wise-wolf",
+      "Qual horário da experimental?",
+    ),
+    null,
+  );
+});
+
+Deno.test("aula concluída impede convite gerado pelo modelo para uma nova experimental", () => {
+  assertEquals(
+    completedTrialReply(
+      "Para a aula experimental, temos horários disponíveis pela manhã, como às 08:00 ou 08:30. Qual desses horários funcionaria melhor para você?",
+      true,
+    ).includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply("Vamos agendar sua experimental amanhã?", true)
+      .includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply(
+      "Para a aula experimental, qual dia e horário você prefere agendar?",
+      true,
+    ).includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply("Você foi classificado em B1.", true),
+    "Você foi classificado em B1.",
+  );
+  assertEquals(
+    completedTrialReply("Vamos agendar sua experimental?", false),
+    "Vamos agendar sua experimental?",
+  );
+});

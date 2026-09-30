@@ -730,6 +730,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
     steps: [{ target: 'historical-lesson-advances', view: 'lesson-advances', title: 'A data realizada define o pagamento',
       text: 'Em Aulas → Antecipações, selecione as ocorrências futuras e informe as datas em que foram dadas. Marque que já foram realizadas somente com confirmação da direção: o registro entra no mês realizado e bloqueia as ocorrências originais, sem duplicar pagamento. Horário desconhecido permanece não informado. Aula futura deve continuar no modo de agendamento.' }],
   },
+  {
+    id: '2026-09-30-z-atendimento-humano',
+    title: 'Encaminhamento à coordenação',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'whatsapp-human-handoff', view: 'whatsapp', title: 'Conversa com a equipe', text: 'Quando o acompanhamento encaminha um assunto à coordenação, a IA pausa a conversa. Use Devolver para IA apenas quando a equipe decidir retomar o atendimento automático.' }],
+  },
 ];
 
 /**
