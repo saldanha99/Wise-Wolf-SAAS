@@ -1498,6 +1498,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260928114127_official_meet_link_for_teachers.sql"
   "supabase/migrations/20260930140000_link_student_affiliate_identity.sql"
   "supabase/migrations/20260930143000_linked_affiliate_invites.sql"
+  "supabase/migrations/20260930171439_overdue_thirty_day_email_outbox.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/linked_affiliate_invites.sql"

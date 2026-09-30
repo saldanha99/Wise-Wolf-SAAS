@@ -70,3 +70,29 @@ Deno.test("legacy markers are repaired only after durable SENT", () => {
     ),
   );
 });
+
+Deno.test("30-day collection is live-provider verified and email is claimed before POST", () => {
+  assert(source.includes("const OVERDUE_MILESTONES = [3, 10, 20, 30]"));
+  assert(source.includes('provider.status !== "OVERDUE"'));
+  assert(source.includes("profile.contract_accepted !== true"));
+  assert(
+    source.includes(
+      "provider.subscription !== charge.authoritative_subscription_id",
+    ),
+  );
+  assert(source.includes("provider.customer !== charge.provider_customer_id"));
+  assert(source.includes('email.endsWith("@accounts.invalid")'));
+  const start = source.indexOf("async function deliverThirtyDayEmail(");
+  const end = source.indexOf("\nasync function", start + 20);
+  const helper = source.slice(start, end < 0 ? source.length : end);
+  assert(start >= 0);
+  assert(
+    helper.indexOf("payment_overdue_email_attempts") <
+      helper.indexOf('fetch("https://api.resend.com/emails"'),
+  );
+  assert(helper.includes('"Idempotency-Key": key'));
+  assertEquals(
+    (helper.match(/fetch\("https:\/\/api\.resend\.com\/emails"/g) || []).length,
+    1,
+  );
+});

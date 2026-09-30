@@ -129,6 +129,7 @@ Deno.test("overdue milestones have a closed durable notification kind", () => {
   assertEquals(overdueNotificationKind(3), "PAYMENT_OVERDUE_3");
   assertEquals(overdueNotificationKind(10), "PAYMENT_OVERDUE_10");
   assertEquals(overdueNotificationKind(20), "PAYMENT_OVERDUE_20");
+  assertEquals(overdueNotificationKind(30), "PAYMENT_OVERDUE_30");
   assertThrows(
     () => overdueNotificationKind(4),
     Error,

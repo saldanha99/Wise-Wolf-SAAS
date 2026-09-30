@@ -54,9 +54,9 @@ const SECOND_WAVE_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // fatura de 05/08 de uma aluna ficou parada em silêncio: um aviso no dia 2 e
 // nada mais, enquanto ela seguia tendo aula.
 //
-// Três toques bastam. Mais que isso vira perseguição e o aluno bloqueia o
-// número da escola — aí a escola perde o canal, não só a fatura.
-const OVERDUE_MILESTONES = [3, 10, 20];
+// O quarto marco é uma comunicação única, após 30 dias, com dois canais
+// independentes. Não retroage para dívidas anteriores à janela da régua.
+const OVERDUE_MILESTONES = [3, 10, 20, 30];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -229,6 +229,8 @@ type ProviderPayment = {
   dueDate: string;
   value: number;
   invoiceUrl: string | null;
+  customer: string | null;
+  subscription: string | null;
 };
 
 async function segundaOnda(supabase: any, campaignDate: string) {
@@ -410,6 +412,10 @@ async function readProviderPayment(
     value,
     invoiceUrl: typeof provider.invoiceUrl === "string"
       ? provider.invoiceUrl
+      : null,
+    customer: typeof provider.customer === "string" ? provider.customer : null,
+    subscription: typeof provider.subscription === "string"
+      ? provider.subscription
       : null,
   };
 }
@@ -614,7 +620,9 @@ async function reguaVencidas(
 
   const { data: vencidas, error: overdueError } = await supabase
     .from("student_payments")
-    .select("id, student_id, tenant_id, value, due_date, invoice_url")
+    .select(
+      "id, student_id, tenant_id, value, due_date, invoice_url, asaas_payment_id, provider_customer_id, authoritative_subscription_id",
+    )
     .in("status", ["OVERDUE", "PENDING"])
     .lt("due_date", hoje.toISOString().split("T")[0])
     // Janela fechada: não perseguir dívida antiga indefinidamente. Fatura mais
@@ -637,6 +645,7 @@ async function reguaVencidas(
     (vencidas || []).map((c: { id: string }) => c.id),
   );
   let suprimidas = 0;
+  const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
 
   for (const c of vencidas || []) {
     try {
@@ -671,7 +680,7 @@ async function reguaVencidas(
         motivos.push(`${c.id}: marcador legado indisponível`);
         continue;
       }
-      if (jaEnviado) continue;
+      if (jaEnviado && marco !== 30) continue;
 
       if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
         motivos.push(`${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`);
@@ -681,6 +690,71 @@ async function reguaVencidas(
       const dest = await resolveRecipient(supabase, c, instCache);
       if (!dest.ok) {
         motivos.push(`${c.id}: ${dest.motivo}`);
+        continue;
+      }
+      if (marco === 30) {
+        const thirtyDay = await verifyThirtyDayCollection(
+          supabase,
+          c,
+          asaasCache,
+        );
+        if (!thirtyDay.ok) {
+          motivos.push(`${c.id}: ${thirtyDay.reason}`);
+          continue;
+        }
+        const text = `Oi ${dest.nome}, aqui é a ${dest.brandName}.\n\n` +
+          `A mensalidade de *${brl(c.value)}*, vencida em *${
+            dataBR(c.due_date)
+          }*, ` +
+          `continua em aberto há 30 dias. O contrato permite suspender as aulas ` +
+          `após a tolerância de pagamento. Se houver suspensão, ao retomar ` +
+          `confirmaremos a disponibilidade de professor e horário. Para ` +
+          `regularizar ou conversar, responda esta mensagem.\n\n` +
+          `Fatura: ${thirtyDay.invoiceUrl}\n\n` +
+          `Se já pagou, envie o comprovante para conferirmos a baixa.`;
+        if (!jaEnviado) {
+          const integration = await resolveTenantEvolutionIntegration(
+            supabase,
+            c.tenant_id,
+            integrationCache,
+          );
+          const delivery = await deliverPaymentNotification(supabase, {
+            tenantId: c.tenant_id,
+            studentId: c.student_id,
+            paymentId: c.id,
+            notificationKind: kind,
+            integration,
+            instance: dest.instance,
+            phone: dest.phone,
+            text,
+          });
+          if (delivery.status === "SENT") {
+            await recordAutomationSent(supabase, kind, c.id, c.due_date);
+            if (delivery.sentNow) enviados++;
+          } else {
+            motivos.push(`${c.id}: WhatsApp ${delivery.reason}`);
+          }
+        }
+        // A primeira consulta precede um POST ao WhatsApp. Releia a fatura
+        // antes do segundo canal: uma baixa no intervalo bloqueia o e-mail.
+        const beforeEmail = await verifyThirtyDayCollection(
+          supabase,
+          c,
+          asaasCache,
+        );
+        if (!beforeEmail.ok) {
+          motivos.push(`${c.id}: e-mail suprimido (${beforeEmail.reason})`);
+          continue;
+        }
+        const email = await deliverThirtyDayEmail(supabase, c, {
+          recipientEmail: beforeEmail.email,
+          recipientName: dest.nome,
+          brandName: dest.brandName,
+          invoiceUrl: beforeEmail.invoiceUrl,
+        });
+        if (email !== "SENT" && email !== "ALREADY_ATTEMPTED") {
+          motivos.push(`${c.id}: e-mail ${email}`);
+        }
         continue;
       }
       const integration = await resolveTenantEvolutionIntegration(
@@ -724,6 +798,204 @@ async function reguaVencidas(
   }
 
   return { enviados, motivos, suprimidas };
+}
+
+type ThirtyDayCharge = SecondWavePayment & {
+  provider_customer_id: string | null;
+  authoritative_subscription_id: string | null;
+};
+
+async function verifyThirtyDayCollection(
+  supabase: any,
+  charge: ThirtyDayCharge,
+  asaasCache: Record<string, ResolvedAsaasIntegration>,
+): Promise<{ ok: boolean; reason: string; email: string; invoiceUrl: string }> {
+  const reject = (reason: string) => ({
+    ok: false,
+    reason,
+    email: "",
+    invoiceUrl: "",
+  });
+  if (
+    !charge.student_id || !charge.tenant_id || !charge.asaas_payment_id ||
+    !charge.provider_customer_id || !charge.authoritative_subscription_id
+  ) {
+    return reject("vínculo da cobrança incompleto");
+  }
+  const { data: local, error: localError } = await supabase
+    .from("student_payments")
+    .select(
+      "status,provider_status,due_date,value,exclusion_reason,refunded_amount,student_id,tenant_id,asaas_payment_id",
+    )
+    .eq("id", charge.id).maybeSingle();
+  if (
+    localError || !local || local.status !== "OVERDUE" ||
+    local.provider_status !== "OVERDUE" || local.exclusion_reason ||
+    Number(local.refunded_amount || 0) > 0 ||
+    local.student_id !== charge.student_id ||
+    local.tenant_id !== charge.tenant_id ||
+    local.asaas_payment_id !== charge.asaas_payment_id ||
+    local.due_date !== charge.due_date
+  ) {
+    return reject("estado local divergente ou não cobrável");
+  }
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select(
+      "id,email,role,status,lifecycle_status,status_financial,is_test_account,contract_accepted,accepted_at,subscription_id,guardian_id,guardian_cpf",
+    )
+    .eq("id", charge.student_id).eq("tenant_id", charge.tenant_id)
+    .maybeSingle();
+  if (
+    profileError || !profile || profile.role !== "STUDENT" ||
+    profile.status !== "Ativo" || profile.lifecycle_status !== "active" ||
+    profile.status_financial === "ARCHIVED" ||
+    profile.is_test_account === true ||
+    profile.contract_accepted !== true || !profile.accepted_at ||
+    profile.subscription_id !== charge.authoritative_subscription_id ||
+    profile.guardian_id || profile.guardian_cpf
+  ) {
+    return reject("aluno ou contrato não elegível");
+  }
+  const { data: membership, error: membershipError } = await supabase
+    .from("tenant_memberships").select("user_id")
+    .eq("user_id", charge.student_id).eq("tenant_id", charge.tenant_id)
+    .eq("role", "STUDENT").eq("status", "ACTIVE").maybeSingle();
+  if (membershipError || !membership) return reject("vínculo escolar inativo");
+  const { data: settings, error: settingsError } = await supabase
+    .from("tenant_admin_settings")
+    .select("student_notifications_enabled")
+    .eq("tenant_id", charge.tenant_id).maybeSingle();
+  if (settingsError || settings?.student_notifications_enabled !== true) {
+    return reject("notificações de alunos desativadas");
+  }
+  const { data: authData, error: authError } = await supabase.auth.admin
+    .getUserById(charge.student_id);
+  const email = String(profile.email || "").trim().toLowerCase();
+  if (
+    authError || !authData?.user?.email_confirmed_at ||
+    authData.user.email?.toLowerCase() !== email ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    email.endsWith("@accounts.invalid")
+  ) {
+    return reject("e-mail do titular não confirmado");
+  }
+  if (!asaasCache[charge.tenant_id]) {
+    asaasCache[charge.tenant_id] = await resolveAsaasIntegration(
+      supabase,
+      charge.tenant_id,
+      "payment.read",
+    );
+  }
+  if (asaasCache[charge.tenant_id].baseUrl.includes("sandbox")) {
+    return reject("integração Asaas de teste");
+  }
+  const provider = await readProviderPayment(supabase, charge, asaasCache);
+  if (
+    provider.status !== "OVERDUE" || provider.dueDate !== charge.due_date ||
+    Math.abs(provider.value - Number(charge.value)) > 0.009 ||
+    provider.customer !== charge.provider_customer_id ||
+    provider.subscription !== charge.authoritative_subscription_id
+  ) {
+    return reject("Asaas diverge da fatura local");
+  }
+  let invoiceUrl = "";
+  try {
+    const url = new URL(provider.invoiceUrl || "");
+    if (
+      url.protocol === "https:" &&
+      ["asaas.com", "www.asaas.com"].includes(url.hostname)
+    ) {
+      invoiceUrl = url.toString();
+    }
+  } catch { /* Fatura sem link válido: nunca trocar por outra. */ }
+  if (!invoiceUrl) return reject("link da própria fatura indisponível");
+  return { ok: true, reason: "", email, invoiceUrl };
+}
+
+async function deliverThirtyDayEmail(
+  supabase: any,
+  charge: ThirtyDayCharge,
+  input: {
+    recipientEmail: string;
+    recipientName: string;
+    brandName: string;
+    invoiceUrl: string;
+  },
+): Promise<string> {
+  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
+  if (!apiKey || !fromEmail) return "PROVIDER_UNAVAILABLE";
+  const key = `wise-wolf-overdue-30-${charge.id}`;
+  const { data: attempt, error: insertError } = await supabase
+    .from("payment_overdue_email_attempts")
+    .insert({
+      tenant_id: charge.tenant_id,
+      payment_id: charge.id,
+      student_id: charge.student_id,
+      milestone: 30,
+      due_date: charge.due_date,
+      recipient_email: input.recipientEmail,
+      provider_idempotency_key: key,
+      status: "SUBMITTING",
+    }).select("id").single();
+  if (insertError?.code === "23505") return "ALREADY_ATTEMPTED";
+  if (insertError || !attempt?.id) return "CLAIM_FAILED";
+
+  const body = `Olá, ${input.recipientName}.\n\n` +
+    `A mensalidade de ${brl(charge.value)}, vencida em ${
+      dataBR(charge.due_date)
+    }, ` +
+    `continua em aberto há 30 dias. O contrato permite suspender as aulas ` +
+    `após a tolerância de pagamento. Se houver suspensão, ao retomar ` +
+    `confirmaremos a disponibilidade de professor e horário. Para ` +
+    `regularizar ou conversar, responda este e-mail ou contate a escola.\n\n` +
+    `Fatura: ${input.invoiceUrl}\n\n` +
+    `Se já pagou, envie o comprovante para conferirmos a baixa.`;
+  let status = "UNKNOWN";
+  let providerMessageId: string | null = null;
+  let providerHttpStatus: number | null = null;
+  let lastError: string | null = null;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [input.recipientEmail],
+        subject: `Mensalidade em aberto - ${
+          input.brandName.replace(/[\r\n]/g, " ")
+        }`,
+        text: body,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    providerHttpStatus = response.status;
+    const result = await response.json().catch(() => null);
+    providerMessageId = typeof result?.id === "string" ? result.id : null;
+    if (response.ok && providerMessageId) status = "SENT";
+    else if (response.status >= 400 && response.status < 500) {
+      status = "REJECTED";
+      lastError = "provider_rejected";
+    } else lastError = "provider_outcome_unknown";
+  } catch {
+    lastError = "provider_outcome_unknown";
+  }
+  const { error: finishError } = await supabase
+    .from("payment_overdue_email_attempts")
+    .update({
+      status,
+      provider_message_id: providerMessageId,
+      provider_http_status: providerHttpStatus,
+      last_error: lastError,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", attempt.id).eq("status", "SUBMITTING");
+  return finishError ? "RESULT_NOT_PERSISTED" : status;
 }
 
 /**

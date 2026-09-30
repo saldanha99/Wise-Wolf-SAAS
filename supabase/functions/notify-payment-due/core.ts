@@ -128,10 +128,15 @@ export function paymentNotificationFinish(
 
 export function overdueNotificationKind(
   milestone: number,
-): "PAYMENT_OVERDUE_3" | "PAYMENT_OVERDUE_10" | "PAYMENT_OVERDUE_20" {
+):
+  | "PAYMENT_OVERDUE_3"
+  | "PAYMENT_OVERDUE_10"
+  | "PAYMENT_OVERDUE_20"
+  | "PAYMENT_OVERDUE_30" {
   if (milestone === 3) return "PAYMENT_OVERDUE_3";
   if (milestone === 10) return "PAYMENT_OVERDUE_10";
   if (milestone === 20) return "PAYMENT_OVERDUE_20";
+  if (milestone === 30) return "PAYMENT_OVERDUE_30";
   throw new Error("unsupported_payment_overdue_milestone");
 }
 

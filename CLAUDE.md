@@ -1036,7 +1036,7 @@ onClick texto → sendMessage() → unlockAudio()
 - `rate_attendance(token, stars)` — avaliação 1-5 do aluno na confirmação de presença → alimenta `avg_rating` do professor.
 
 **Tabelas/colunas:** `student_teacher_notes` (observações), `profile_audit_log` + trigger `log_profile_changes` (auditoria STUDENT: financeiro/contrato; TEACHER: hourly_rate/commission/status/pix), `attendance_confirmations.student_rating`, `student_payments.due_reminder_sent_at`.
-**Crons:** `wisewolf-notify-payment-due` (aviso de vencimento 3 dias antes).
+**Crons:** `wisewolf-notify-payment-due` (aviso de vencimento 3 dias antes; régua de vencidas 3/10/20/30 dias). No marco de 30 dias, o aviso adicional sai por WhatsApp e e-mail com travas independentes e sem retroagir para faturas mais antigas que a janela de 45 dias. Exige fatura `OVERDUE` no banco e no Asaas, mesmo cliente/assinatura, contrato aceito, vínculo e aulas ativos, e-mail autenticado do aluno titular e link da própria fatura. Menores com responsável financeiro não recebem e-mail automático enquanto não houver e-mail do responsável validado. A tentativa de e-mail fica em `payment_overdue_email_attempts`; resultado ambíguo não é reenviado automaticamente. O texto informa a possibilidade contratual de suspensão, sem afirmar perda automática do professor.
 **Regra de risco:** sinais FRACOS sozinhos NÃO alertam (evita ruído de `class_logs` esparso). Ajuste thresholds nos RPCs `list_*_overview`.
 
 ---
