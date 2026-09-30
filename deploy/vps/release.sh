@@ -1496,6 +1496,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260928010243_meet_class_log_suggestions.sql"
   "supabase/migrations/20260928033600_renewal_month_end_legacy_issuer.sql"
   "supabase/migrations/20260928114127_official_meet_link_for_teachers.sql"
+  "supabase/migrations/20260930140000_link_student_affiliate_identity.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_coupon_commission_settlement.sql"
