@@ -83,6 +83,13 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(pendingFeatureTours('STUDENT', [])).toEqual(FEATURE_TOURS.filter(t => t.roles.includes('STUDENT')));
   });
 
+  it('mostra o tour da conta vinculada só à aluna que também é afiliada', () => {
+    const unlinked = pendingFeatureTours('STUDENT', [], { recordingMode: null, linkedAffiliate: false });
+    const linked = pendingFeatureTours('STUDENT', [], { recordingMode: null, linkedAffiliate: true });
+    expect(unlinked.some(t => t.id === '2026-09-30-aluno-e-afiliado')).toBe(false);
+    expect(linked.some(t => t.id === '2026-09-30-aluno-e-afiliado')).toBe(true);
+  });
+
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
     expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-30-sala-oficial-para-os-dois');
     expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-09-30-z-antecipacoes-ja-realizadas');

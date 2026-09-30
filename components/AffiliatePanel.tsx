@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
 import { UserRole } from '../types';
+import VendorDashboard from './VendorDashboard';
 
 interface AffiliatePanelProps {
     user: {
@@ -14,6 +15,7 @@ interface AffiliatePanelProps {
         name?: string;
         role: UserRole;
     };
+    linkedAffiliate?: boolean;
 }
 
 interface ReferredUser {
@@ -31,7 +33,7 @@ interface AffiliateStats {
 
 const BONUS_PER_REFERRAL = 45;
 
-const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
+const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user, linkedAffiliate = false }) => {
     const [copied, setCopied] = useState(false);
     const [stats, setStats] = useState<AffiliateStats>({
         referrals: 0,
@@ -135,6 +137,16 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+
+            {linkedAffiliate ? (
+                <section data-tour="linked-affiliate-panel" className="space-y-4">
+                    <p className="text-sm text-brand-muted">
+                        Sua conta de aluna também dá acesso ao programa de afiliados. As comissões abaixo são independentes dos créditos por indicar outros alunos.
+                    </p>
+                    <VendorDashboard user={user} />
+                    <h2 className="pt-4 text-lg font-black text-brand-text">Indicações como aluna</h2>
+                </section>
+            ) : null}
 
             {/* ── Hero / CTA Banner ── */}
             <div className="relative rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-2xl shadow-emerald-500/30">

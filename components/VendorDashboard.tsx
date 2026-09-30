@@ -4,7 +4,6 @@ import {
     MessageCircle, BookOpen, RefreshCw, AlertTriangle, KeyRound, Loader2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { User } from '../types';
 import {
     PIX_KEY_TYPES,
     STAGE_LABEL,
@@ -18,7 +17,7 @@ import {
 } from '../lib/affiliateProgram';
 
 interface VendorDashboardProps {
-    user: User;
+    user: { id: string };
     tenantId?: string;
     teachers?: any[];
     onNavigate?: (tab: string) => void;
@@ -186,12 +185,14 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, onNavigate }) =
                     </p>
                 </div>
                 <div className="flex gap-2">
-                    <button
-                        onClick={() => onNavigate?.('vendor_guide')}
-                        className="flex items-center gap-2 rounded-xl border border-brand-border px-3 py-2 text-xs font-bold text-brand-text hover:bg-brand-surface-2"
-                    >
-                        <BookOpen size={14} /> Como funciona
-                    </button>
+                    {onNavigate ? (
+                        <button
+                            onClick={() => onNavigate('vendor_guide')}
+                            className="flex items-center gap-2 rounded-xl border border-brand-border px-3 py-2 text-xs font-bold text-brand-text hover:bg-brand-surface-2"
+                        >
+                            <BookOpen size={14} /> Como funciona
+                        </button>
+                    ) : null}
                     <button onClick={() => void load()} aria-label="Atualizar painel" className="rounded-xl border border-brand-border p-2 text-brand-muted hover:text-brand-text">
                         <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                     </button>

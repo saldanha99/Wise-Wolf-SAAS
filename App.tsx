@@ -341,6 +341,7 @@ const App: React.FC = () => {
   // decide entre os tours do termo e os do registro autorizado pela escola.
   // Nulo = desconhecido (nenhum tour que dependa do modo abre).
   const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
+  const [hasLinkedAffiliate, setHasLinkedAffiliate] = useState(false);
   const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
@@ -371,13 +372,19 @@ const App: React.FC = () => {
       // na leitura não derruba as outras novidades: só os tours que dependem
       // do modo ficam de fora.
       const { data: mode, error: modeError } = await supabase.rpc('my_lesson_recording_authorization_mode');
+      let linkedAffiliate = false;
+      if (role === UserRole.STUDENT) {
+        const { data: affiliatePanel, error: affiliateError } = await supabase.rpc('get_my_affiliate_panel');
+        linkedAffiliate = !affiliateError && (affiliatePanel as { ok?: boolean } | null)?.ok === true;
+      }
       if (!vivo) return;
       const recording = modeError ? null : asRecordingAuthorizationMode(mode);
       setRecordingMode(recording);
+      setHasLinkedAffiliate(linkedAffiliate);
       if (data?.onboarded === false) { setTourOpen(true); return; }
       const { data: seen, error } = await supabase.from('feature_tour_views').select('tour_id').eq('user_id', uid);
       if (!vivo || error) { if (error) console.warn('[tour] novidades indisponíveis', error.message); return; }
-      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id), { recordingMode: recording })[0];
+      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id), { recordingMode: recording, linkedAffiliate })[0];
       if (next) setFeatureTour(next);
     })();
     return () => { vivo = false; };
@@ -1436,7 +1443,7 @@ const App: React.FC = () => {
       'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || (user as any).is_trainer
         ? <TrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TrainingView user={user} />,
-      'referral': <AffiliatePanel user={user} />,
+      'referral': <AffiliatePanel user={user} linkedAffiliate={hasLinkedAffiliate} />,
       'recruiting': <div className="max-w-2xl mx-auto py-6 space-y-4">
         <TeacherInviteGenerator tenantId={currentTenant?.id || ''} />
         <VendorInviteGenerator tenantId={currentTenant?.id || ''} />
@@ -1845,7 +1852,7 @@ const App: React.FC = () => {
                   onProfile={() => setActiveTab('profile')}
                   onLogout={handleLogout}
                   onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
-                  onOpenNews={latestFeatureTourFor(user.role, { recordingMode }) ? () => { const t = latestFeatureTourFor(user.role, { recordingMode }); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
+                  onOpenNews={latestFeatureTourFor(user.role, { recordingMode, linkedAffiliate: hasLinkedAffiliate }) ? () => { const t = latestFeatureTourFor(user.role, { recordingMode, linkedAffiliate: hasLinkedAffiliate }); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
                 />
               </div>
             </div>
@@ -1892,7 +1899,7 @@ const App: React.FC = () => {
               // Quem acabou de conhecer o produto viu tudo como novo: as
               // novidades já lançadas não voltam como tour separado.
               await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
-              await markFeatureToursSeen(pendingFeatureTours(user.role, []));
+              await markFeatureToursSeen(pendingFeatureTours(user.role, [], { recordingMode, linkedAffiliate: hasLinkedAffiliate }));
             }}
             onClose={() => setTourOpen(false)}
           />

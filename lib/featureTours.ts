@@ -20,6 +20,7 @@ export interface FeatureTourContext {
    * está no modo da escola (ou o contrário) é pior do que não mostrar.
    */
   recordingMode: RecordingAuthorizationMode | null;
+  linkedAffiliate?: boolean;
 }
 
 /**
@@ -56,6 +57,7 @@ export interface FeatureTour {
    * aceite individual (migration 20260929100000).
    */
   recordingMode?: RecordingAuthorizationMode;
+  linkedAffiliateOnly?: boolean;
 }
 
 export const FEATURE_TOURS: FeatureTour[] = [
@@ -637,6 +639,18 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
+    id: '2026-09-30-aluno-e-afiliado',
+    title: 'Seu perfil de afiliada na conta de aluna',
+    roles: ['STUDENT'],
+    linkedAffiliateOnly: true,
+    steps: [{
+      target: 'linked-affiliate-panel',
+      view: 'referral',
+      title: 'Dois programas, um só acesso',
+      text: 'Nesta aba você acompanha primeiro seu cupom, comissões e saques como afiliada. Mais abaixo ficam as indicações feitas como aluna; são programas diferentes. Sua agenda e suas aulas continuam na mesma conta.',
+    }],
+  },
+  {
     id: '2026-09-30-conta-google-na-contratacao',
     title: 'Conta Google confirmada na contratação',
     roles: ['TEACHER'],
@@ -716,8 +730,9 @@ export const FEATURE_TOURS: FeatureTour[] = [
  * como visto no fim do tour de boas-vindas), vale tudo.
  */
 function fitsContext(tour: FeatureTour, context?: FeatureTourContext): boolean {
-  if (!context || !tour.recordingMode) return true;
-  return context.recordingMode === tour.recordingMode;
+  if (!context) return true;
+  if (tour.linkedAffiliateOnly && context.linkedAffiliate !== true) return false;
+  return !tour.recordingMode || context.recordingMode === tour.recordingMode;
 }
 
 /** Tours do papel que a pessoa ainda não viu, na ordem em que saíram. */
