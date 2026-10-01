@@ -9,8 +9,8 @@ declare c public.teacher_closings%rowtype; w public.vendor_withdrawal_requests%r
 begin
   if p_source_type='TEACHER_CLOSING' then
     select * into c from public.teacher_closings where id=p_source_id;
-    if not found or c.paid_at is null or c.total_amount<=0
-       or upper(c.status) not in ('PAGO','PAID','PAID_WAITING_NF','UNDER_REVIEW','COMPLETED','REJECTED','REJEITADO') then
+    if not found or c.paid_at is null or coalesce(c.total_amount,0)<=0
+       or upper(coalesce(c.status,'')) not in ('PAGO','PAID','PAID_WAITING_NF','UNDER_REVIEW','COMPLETED','REJECTED','REJEITADO') then
       return jsonb_build_object('ok',false,'reason','payout_not_confirmed');
     end if;
     if exists(select 1 from public.asaas_teacher_transfer_attempts a
@@ -24,7 +24,7 @@ begin
     detail:=format(E'Competência: *%s*\nAulas no fechamento: %s\nConfira seu relatório e a situação da nota fiscal em Financeiro.',reference,c.total_lessons);
   elsif p_source_type='AFFILIATE_WITHDRAWAL' then
     select * into w from public.vendor_withdrawal_requests where id=p_source_id;
-    if not found or w.status<>'PAID' or w.paid_at is null or w.amount_brl<=0 then
+    if not found or coalesce(w.status,'')<>'PAID' or w.paid_at is null or coalesce(w.amount_brl,0)<=0 then
       return jsonb_build_object('ok',false,'reason','payout_not_confirmed');
     end if;
     tenant:=w.tenant_id;recipient_id:=w.vendor_id;amount:=w.amount_brl/100.0;paid:=w.paid_at;
@@ -142,7 +142,7 @@ begin
     or c.asaas_transfer_id is not null then
     return jsonb_build_object('ok',false,'error','PROVIDER_RECONCILIATION_REQUIRED');
   end if;
-  if upper(c.status) not in ('PENDENTE','WAITING_PAYMENT','CONFIRMADO') or c.total_amount<=0 then
+  if upper(coalesce(c.status,'')) not in ('PENDENTE','WAITING_PAYMENT','CONFIRMADO') or coalesce(c.total_amount,0)<=0 then
     return jsonb_build_object('ok',false,'error','INVALID_STATE');
   end if;
   select * into teacher from public.profiles where id=c.teacher_id and tenant_id=c.tenant_id

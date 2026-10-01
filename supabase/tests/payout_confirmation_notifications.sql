@@ -143,6 +143,15 @@ set local request.jwt.claims='{"role":"authenticated","sub":"00000000-0000-4000-
 select pg_temp.assert_true(not (public.confirm_teacher_payout('60000000-0000-4000-8000-00000000cf01')->>'ok')::boolean,
  'professor não confirma o próprio pagamento');
 set local request.jwt.claims='{"role":"authenticated","sub":"00000000-0000-4000-8000-00000000cf03"}';
+update public.teacher_closings set total_amount=null where id='60000000-0000-4000-8000-00000000cf02';
+select pg_temp.assert_true(public.confirm_teacher_payout('60000000-0000-4000-8000-00000000cf02')->>'error'='INVALID_STATE',
+ 'fechamento sem valor não permite baixa');
+update public.teacher_closings set total_amount=105,status=null where id='60000000-0000-4000-8000-00000000cf02';
+select pg_temp.assert_true(public.confirm_teacher_payout('60000000-0000-4000-8000-00000000cf02')->>'error'='INVALID_STATE',
+ 'fechamento sem situação não permite baixa');
+select pg_temp.assert_true((select paid_at is null from public.teacher_closings
+ where id='60000000-0000-4000-8000-00000000cf02'),'recusa de fechamento incompleto não grava pagamento');
+update public.teacher_closings set status='PENDENTE' where id='60000000-0000-4000-8000-00000000cf02';
 select pg_temp.assert_true((public.confirm_teacher_payout('60000000-0000-4000-8000-00000000cf01')->>'ok')::boolean,
  'direção registra PIX já efetuado');
 select pg_temp.assert_true((select paid_at is not null and status='PAID_WAITING_NF' and payment_method='PIX_MANUAL'
