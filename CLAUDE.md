@@ -1,5 +1,28 @@
 # Wise Wolf SAAS — CLAUDE.md
 
+### 01/10/2026 — Confirmação privada de repasses pagos
+
+A direção faz o PIX do professor e usa **Confirmar PIX feito**, pela RPC
+`confirm_teacher_payout`: grava `paid_at` e `PIX_MANUAL`, preserva NF/isentos e
+prepara o aviso privado. Não inicia transferência. Tentativa Asaas vinculada
+exige conciliação; no caminho integrado, só `COMPLETED` com identidade correta
+preenche a data e prepara a confirmação. Fechamento do mês e aprovação de NF
+não equivalem a pagamento. No saque, `set_vendor_withdrawal_status(...,'PAID')`
+prepara o aviso ao afiliado depois de registrar a baixa.
+
+Dois tipos na fila oficial: `TEACHER_PAYOUT_CONFIRMED` e
+`AFFILIATE_PAYOUT_CONFIRMED`, sempre pela instância central para o telefone do
+próprio perfil do tenant. Valor/competência/data saem da fonte financeira. Uma
+intenção por repasse; revalidação imediatamente antes do envio bloqueia telefone,
+tenant, valor ou pagamento alterados. Fixtures suprimidos; contato ausente é
+mostrado à direção na confirmação. Sem backfill de pagamentos históricos.
+
+Migration `20261001202946` e teste transacional `payout_confirmation_notifications.sql`
+registrados no release; testes do botão manual e de roteamento. Tours da direção,
+professor, afiliado e aluno com conta afiliada vinculada. O motor de novidades
+agora atende SALESPERSON sem inventar tour de boas-vindas para esse papel.
+PIX Asaas permanece sujeito às três flags de homologação/habilitação existentes.
+
 ### 01/10/2026 — Saques de afiliados e rateio com comissão/Turbo
 
 Novo pedido de saque entra na fila oficial para o canal Financeiro, com fallback

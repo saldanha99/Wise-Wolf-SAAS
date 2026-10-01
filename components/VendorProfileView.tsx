@@ -57,6 +57,7 @@ const VendorProfileView: React.FC<Props> = ({ vendorId, onClose, onChanged }) =>
   };
 
   const setWithdrawalStatus = async (id: string, status: string) => {
+    if (status === 'PAID' && !window.confirm('O PIX deste saque já foi realizado? Confirmar registra o pagamento e prepara o aviso automático no WhatsApp do afiliado.')) return;
     setBusy(id);
     const { data, error } = await supabase.rpc('set_vendor_withdrawal_status', {
       p_request_id: id,
@@ -65,6 +66,7 @@ const VendorProfileView: React.FC<Props> = ({ vendorId, onClose, onChanged }) =>
     });
     setBusy(null);
     if (error || !(data as any)?.ok) { alert('Não foi possível atualizar o saque.'); return; }
+    if (status === 'PAID' && (data as any)?.notice?.ok !== true) alert('Saque registrado como pago. O aviso não pôde ser preparado: confira o WhatsApp cadastrado do afiliado.');
     load(); onChanged?.();
   };
 

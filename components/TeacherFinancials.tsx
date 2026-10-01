@@ -448,6 +448,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 emissão vêm antes do dinheiro. `viewOnly` é o diretor olhando a
                 tela de um professor — nesse caso não há nada a instruir. */}
             {!viewOnly && <NfIssuanceTour />}
+            <p data-tour="teacher-payout-confirmation" className="rounded-xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted">
+                Quando a direção registrar seu repasse como pago, você recebe a confirmação automaticamente no WhatsApp cadastrado,
+                com valor e competência. Confira também o fechamento e a nota fiscal nesta tela.
+            </p>
             {/* Month Selector code ... */}
             <div className="flex flex-col items-stretch justify-between gap-4 bg-brand-surface p-4 sm:p-6 rounded-[2rem] border border-brand-border shadow-sm sm:flex-row sm:items-center">
                 <div className="min-w-0">

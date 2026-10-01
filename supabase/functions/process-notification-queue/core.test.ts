@@ -478,3 +478,13 @@ Deno.test("saque do afiliado avisa somente pela instância central", () => {
     centralOnly: true,
   });
 });
+
+Deno.test("confirmações de repasse são privadas e saem pela central", () => {
+  for (
+    const kind of ["TEACHER_PAYOUT_CONFIRMED", "AFFILIATE_PAYOUT_CONFIRMED"]
+  ) {
+    const route = queueAudience(kind);
+    assertEquals(route.audience, "teacher");
+    assertEquals(route.centralOnly, true);
+  }
+});

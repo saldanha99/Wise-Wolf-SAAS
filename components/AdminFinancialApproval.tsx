@@ -54,12 +54,20 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
   }, [tenantId]);
 
   const handleAction = async (id: string, approve: boolean) => {
+    if (approve && !window.confirm('O PIX deste professor já foi realizado? Confirmar registra a baixa e prepara o aviso no WhatsApp.')) return;
     setIsProcessing(id);
     try {
+      if (approve) {
+        const { data, error } = await supabase.rpc('confirm_teacher_payout', { p_closing_id: id });
+        if (error || !data?.ok) throw new Error('Não foi possível confirmar o pagamento. Confira a situação do fechamento e da transferência.');
+        if (data.notice?.ok !== true) alert('Pagamento registrado. Confira o WhatsApp do professor para preparar o aviso.');
+        await fetchRequests();
+        return;
+      }
       const { error } = await supabase
         .from('teacher_closings')
         .update({
-          status: approve ? 'PAGO' : 'REJEITADO',
+          status: 'REJEITADO',
           updated_at: new Date().toISOString()
         })
         .eq('id', id);
@@ -68,15 +76,11 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
 
       setRequests(prev => prev.map(req =>
         req.id === id
-          ? { ...req, status: approve ? 'PAGO' : 'REJEITADO' }
+          ? { ...req, status: 'REJEITADO' }
           : req
       ));
 
-      if (approve) {
-        alert("Sucesso! Pagamento marcado como Liquidado. O repasse será processado via Split EduCore.");
-      } else {
-        alert("Solicitação recusada. O professor será notificado para conferência de dados.");
-      }
+      alert("Solicitação recusada.");
     } catch (err) {
       alert("Erro ao processar ação financeira.");
     } finally {
@@ -189,14 +193,14 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
                           className="flex items-center gap-2 bg-brand-surface text-white dark:bg-sky-600 px-6 py-3 rounded-2xl text-[10px] font-black hover:scale-105 transition-all uppercase tracking-widest shadow-xl shadow-slate-900/10"
                         >
                           {isProcessing === req.id ? <RefreshCw className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                          Liberar Pagamento
+                          Confirmar PIX feito
                         </button>
                       </div>
                     ) : (
                       <div className="flex justify-end">
                         <span className={`text-[10px] px-4 py-2 rounded-full font-black uppercase tracking-widest flex items-center gap-1.5 border ${req.status === 'PAGO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-200'
                           }`}>
-                          {req.status === 'PAGO' ? 'Liquidado Asaas' : 'Cancelado'}
+                          {req.status === 'PAGO' ? 'Pagamento registrado' : 'Cancelado'}
                         </span>
                       </div>
                     )}

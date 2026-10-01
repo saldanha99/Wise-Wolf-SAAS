@@ -48,7 +48,7 @@ export interface FeatureTour {
   id: string;
   /** Título curto, aparece no cabeçalho do balão e no menu "Novidades". */
   title: string;
-  roles: TourRole[];
+  roles: (TourRole | 'SALESPERSON')[];
   steps: TourStep[];
   /**
    * Só para escolas neste modo de autorização do registro das aulas. Os tours
@@ -745,6 +745,25 @@ export const FEATURE_TOURS: FeatureTour[] = [
       { target: 'affiliate-withdrawal-notice', view: 'vendors-mgmt', title: 'Pedido de saque avisa o Financeiro', text: 'Novos pedidos de saque entram na fila de avisos do canal Financeiro, com alternativa na Direção/Gestão. Abra a ficha do afiliado, confira o PIX e aprove. Aprovar não envia dinheiro: faça o repasse e depois marque pago.' },
     ],
   },
+  {
+    id: '2026-10-01-z-confirmacao-de-repasses', title: 'Pagamento confirmado avisa quem recebe', roles: ['SCHOOL_ADMIN'],
+    steps: [
+      { target: 'payout-confirmation', view: 'payments', title: 'Confirme o PIX já realizado', text: 'Depois de fazer o PIX do professor, use Confirmar PIX feito. A baixa registra a data e prepara o WhatsApp com valor e competência. No pagamento integrado, a confirmação depende da transferência concluída.' },
+      { target: 'affiliate-withdrawal-notice', view: 'vendors-mgmt', title: 'O afiliado recebe a confirmação', text: 'Após efetuar o PIX do saque, abra a ficha do afiliado e marque pago. Essa baixa prepara o aviso privado no WhatsApp dele. Aprovar o pedido sozinho continua sem registrar pagamento.' },
+    ],
+  },
+  {
+    id: '2026-10-01-z-confirmacao-de-repasses-afiliado', title: 'Confirmação do saque no WhatsApp', roles: ['SALESPERSON'],
+    steps: [{ target: 'affiliate-payout-confirmation', view: 'vendor_dashboard', title: 'Sua confirmação de saque', text: 'Quando a escola registrar o saque como pago, a confirmação será preparada para o seu WhatsApp cadastrado. O pedido também aparecerá como pago neste histórico.' }],
+  },
+  {
+    id: '2026-10-01-z-confirmacao-de-repasses-aluno-afiliado', title: 'Seu saque confirmado no WhatsApp', roles: ['STUDENT'], linkedAffiliateOnly: true,
+    steps: [{ target: 'affiliate-payout-confirmation', view: 'referral', title: 'Confirmação do pagamento do saque', text: 'Quando a escola registrar seu saque como pago, a confirmação será preparada para o WhatsApp cadastrado na sua conta de afiliado. O pedido também permanece no histórico do painel.' }],
+  },
+  {
+    id: '2026-10-01-z-confirmacao-de-repasses-professor', title: 'Seu repasse confirmado no WhatsApp', roles: ['TEACHER'],
+    steps: [{ target: 'teacher-payout-confirmation', view: 'teacher-financials', title: 'Confirmação do seu pagamento', text: 'Quando a direção registrar seu repasse como pago, você recebe no WhatsApp cadastrado a confirmação com valor e competência. O fechamento mensal e a revisão da nota fiscal continuam disponíveis no Financeiro.' }],
+  },
 ];
 
 /**
@@ -764,12 +783,12 @@ export function pendingFeatureTours(
   context?: FeatureTourContext,
 ): FeatureTour[] {
   const seen = new Set(seenIds);
-  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole) && !seen.has(t.id) && fitsContext(t, context));
+  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole | 'SALESPERSON') && !seen.has(t.id) && fitsContext(t, context));
 }
 
 /** Tour mais recente do papel — é o que "Novidades" reabre. */
 export function latestFeatureTourFor(role: string, context?: FeatureTourContext): FeatureTour | undefined {
-  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole) && fitsContext(t, context));
+  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole | 'SALESPERSON') && fitsContext(t, context));
 }
 
 /** Passos achatados para o motor, todos sob o capítulo "Novidade". */

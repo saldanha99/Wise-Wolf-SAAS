@@ -364,7 +364,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const uid = user?.id;
     const role = String(user?.role);
-    if (!uid || !TOUR_ROLES.includes(role)) return;
+    if (!uid || (!TOUR_ROLES.includes(role) && role !== UserRole.SALESPERSON)) return;
     let vivo = true;
     void (async () => {
       const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
@@ -381,7 +381,7 @@ const App: React.FC = () => {
       const recording = modeError ? null : asRecordingAuthorizationMode(mode);
       setRecordingMode(recording);
       setHasLinkedAffiliate(linkedAffiliate);
-      if (data?.onboarded === false) { setTourOpen(true); return; }
+      if (data?.onboarded === false && TOUR_ROLES.includes(role)) { setTourOpen(true); return; }
       const { data: seen, error } = await supabase.from('feature_tour_views').select('tour_id').eq('user_id', uid);
       if (!vivo || error) { if (error) console.warn('[tour] novidades indisponíveis', error.message); return; }
       const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id), { recordingMode: recording, linkedAffiliate })[0];

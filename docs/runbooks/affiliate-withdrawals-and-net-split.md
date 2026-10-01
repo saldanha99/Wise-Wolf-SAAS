@@ -14,7 +14,8 @@ Atualizado em 01/10/2026.
    além do caminho na plataforma. A chave PIX fica na ficha do afiliado.
 5. A direção abre **Afiliados → ficha → Solicitações de saque**, confere o PIX,
    aprova, realiza o repasse e só depois marca **Pago**. Aprovar não realiza PIX.
-   A confirmação de pagamento baixa as comissões vinculadas ao pedido.
+   A confirmação de pagamento baixa as comissões vinculadas ao pedido e prepara
+   automaticamente o aviso privado no WhatsApp do afiliado.
 
 Cancelamento e troca de destino são revalidados antes do envio. Uma intenção por
 pedido impede duplicatas. Resultado incerto do provedor exige revisão pelas
@@ -74,3 +75,22 @@ central. Tour da direção: `2026-10-01-rateio-liquido-e-saques`.
 Publicar somente com `deploy/vps/release.sh`, árvore limpa na branch configurada.
 Não invocar funções de envio para testar em produção. Consultas não disparam
 avisos; mensagens anteriores permanecem como foram enviadas.
+
+## Aviso de pagamento do professor
+
+No fechamento mensal a direção confere o valor, faz o PIX e usa **Confirmar PIX
+feito** em Repasse a Profs. Essa confirmação registra a data do pagamento e
+prepara a mensagem privada com valor e competência no WhatsApp do professor.
+Quem é isento de NF fica PAGO; os demais ficam PAID_WAITING_NF. Aprovar/anexar NF
+não gera um segundo aviso. Se não houver telefone válido, a direção recebe o
+alerta no painel; a baixa financeira permanece registrada.
+
+A confirmação manual não inicia Asaas e recusa fechamento com transferência
+integrada vinculada que precise de conciliação. Quando a integração concluir o
+repasse, o mesmo aviso é preparado automaticamente; SUBMITTED e UNKNOWN não
+confirmam pagamento. Não habilitar flags de transferência sem homologação.
+
+Uma intenção por professor/fechamento ou afiliado/saque. O worker central
+revalida fonte, valor, telefone e tenant antes do envio. Sem backfill de valores
+já pagos antes da publicação. Migration `20261001202946`; teste transacional
+`payout_confirmation_notifications.sql` com rollback e sem chamadas externas.

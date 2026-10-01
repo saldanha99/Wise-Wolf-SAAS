@@ -87,7 +87,7 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
       <p data-tour="affiliate-withdrawal-notice" className="rounded-xl border border-brand-border bg-brand-surface p-3 text-xs text-brand-muted">
         Novos pedidos de saque avisam o grupo configurado no canal Financeiro (ou Direção/Gestão).
         Abra a ficha do afiliado para aprovar. A aprovação não transfere dinheiro: faça o PIX
-        e só depois marque o saque como pago.
+        e só depois marque o saque como pago. Essa baixa prepara a confirmação automática no WhatsApp do afiliado.
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

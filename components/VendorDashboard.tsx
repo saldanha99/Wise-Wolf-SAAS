@@ -199,6 +199,10 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, onNavigate }) =
                 </div>
             </header>
 
+            <p data-tour="affiliate-payout-confirmation" className="rounded-xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted">
+                Quando a escola registrar seu saque como pago, a confirmação será preparada automaticamente para o seu WhatsApp cadastrado.
+                O pedido pago permanece no histórico abaixo.
+            </p>
             {!affiliate.active ? (
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300" role="status">
                     <AlertTriangle size={18} className="mt-0.5 shrink-0" />

@@ -113,8 +113,22 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     };
 
     const handleStatusUpdate = async (id: string, newStatus: string) => {
+        if (newStatus === 'PAID_WAITING_NF') {
+            const invoice = invoices.find(inv => inv.id === id);
+            if (!window.confirm(`O PIX de R$ ${Number(invoice?.total_amount || 0).toFixed(2).replace('.', ',')} para ${invoice?.teacher?.full_name || 'este professor'} já foi realizado? Confirmar registra a baixa e prepara o aviso automático no WhatsApp.`)) return;
+        }
         setUpdating(id);
         try {
+            if (newStatus === 'PAID_WAITING_NF') {
+                const { data, error } = await supabase.rpc('confirm_teacher_payout', { p_closing_id: id });
+                if (error || !data?.ok) {
+                    if (data?.error === 'PROVIDER_RECONCILIATION_REQUIRED') throw new Error('Há uma transferência Asaas vinculada. Confira a conciliação antes de registrar outro pagamento.');
+                    throw new Error(error?.message || 'Não foi possível confirmar o pagamento.');
+                }
+                if (data.notice?.ok !== true) alert('Pagamento registrado. O aviso não pôde ser preparado: confira o WhatsApp cadastrado do professor.');
+                await fetchInvoices();
+                return;
+            }
             const { error } = await supabase
                 .from('teacher_closings')
                 .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -124,7 +138,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             // Optimistic update
             setInvoices(invoices.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
         } catch (err) {
-            alert('Erro ao atualizar status.');
+            alert(err instanceof Error ? err.message : 'Erro ao atualizar status.');
         } finally {
             setUpdating(null);
         }
@@ -197,6 +211,11 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     </div>
                 </div>
             </div>
+
+            <p data-tour="payout-confirmation" className="mb-6 rounded-xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted">
+                Depois de fazer o PIX, use <strong>Confirmar PIX feito</strong>. A baixa registra a data e prepara
+                automaticamente a confirmação no WhatsApp do professor. No PIX integrado, o aviso depende da transferência concluída.
+            </p>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -363,9 +382,10 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                                 onClick={(e) => { e.stopPropagation(); handleStatusUpdate(invoice.id, 'PAID_WAITING_NF'); }}
                                                 disabled={updating === invoice.id}
                                                 className="px-3 py-1.5 bg-brand-surface-2 text-brand-muted rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors flex items-center gap-1 disabled:opacity-50"
-                                                title="Marcar como Pago (Manual)"
+                                                title="Confirmar PIX já realizado e avisar o professor"
                                             >
                                                 {updating === invoice.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                Confirmar PIX feito
                                             </button>
 
                                             {/* Auto Pay (Asaas) */}

@@ -88,13 +88,15 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     const linked = pendingFeatureTours('STUDENT', [], { recordingMode: null, linkedAffiliate: true });
     expect(unlinked.some(t => t.id === '2026-09-30-aluno-e-afiliado')).toBe(false);
     expect(linked.some(t => t.id === '2026-09-30-aluno-e-afiliado')).toBe(true);
+    expect(linked.some(t => t.id === '2026-10-01-z-confirmacao-de-repasses-aluno-afiliado')).toBe(true);
+    expect(unlinked.some(t => t.id === '2026-10-01-z-confirmacao-de-repasses-aluno-afiliado')).toBe(false);
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-09-30-sala-oficial-para-os-dois');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-01-rateio-liquido-e-saques');
-    expect(latestFeatureTourFor('STUDENT')?.id).toBe('2026-09-30-sala-oficial-para-os-dois-aluno');
-    expect(latestFeatureTourFor('SALESPERSON')).toBeUndefined();
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-01-z-confirmacao-de-repasses');
+    expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-09-30-sala-oficial-para-os-dois-aluno');
+    expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
   });
 
   it('o tour da lixeira dos originais sobe com a lixeira desligada: não a dá como ligada nem manda reconectar', () => {
@@ -186,10 +188,10 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
 
     // "Novidades" também segue o modo.
-    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-09-30-sala-oficial-para-os-dois');
-    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-09-30-sala-oficial-para-os-dois');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-01-rateio-liquido-e-saques');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-01-rateio-liquido-e-saques');
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
+    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-01-z-confirmacao-de-repasses');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-01-z-confirmacao-de-repasses');
   });
 
   it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {
