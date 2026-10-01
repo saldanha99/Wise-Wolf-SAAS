@@ -84,6 +84,11 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
       </div>
 
       {showInvite && <div className="animate-in fade-in"><VendorInviteGenerator tenantId={tenantId || ''} /></div>}
+      <p data-tour="affiliate-withdrawal-notice" className="rounded-xl border border-brand-border bg-brand-surface p-3 text-xs text-brand-muted">
+        Novos pedidos de saque avisam o grupo configurado no canal Financeiro (ou Direção/Gestão).
+        Abra a ficha do afiliado para aprovar. A aprovação não transfere dinheiro: faça o PIX
+        e só depois marque o saque como pago.
+      </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={<Users size={16} />} label="Afiliados" value={`${stats.active}/${stats.total}`} />

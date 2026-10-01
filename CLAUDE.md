@@ -1,5 +1,33 @@
 # Wise Wolf SAAS — CLAUDE.md
 
+### 01/10/2026 — Saques de afiliados e rateio com comissão/Turbo
+
+Novo pedido de saque entra na fila oficial para o canal Financeiro, com fallback
+Direção/Gestão. O envio revalida pedido, tenant, destino e texto; fixtures não
+entram na fila. Aprovação continua manual e **não transfere dinheiro**: conferir
+o PIX na ficha, efetuar o repasse e só depois marcar pago. Não há reenvio ou
+backfill de pedidos anteriores.
+
+A base operacional do rateio desconta salário previsto pela régua canônica,
+incluindo Turbo, **e a comissão confirmada/paga da matrícula uma única vez**, no
+primeiro pagamento mensal vinculado à oferta. Taxa de matrícula e mensalidades
+seguintes não repetem essa comissão. Atribuição retroativa só entra com vendor e
+autorização registrados na metadata da oferta. Resultado negativo implica base
+e dízimo zero; o déficit aparece no aviso. Essa prévia não substitui o lucro
+final do DRE, que considera as demais despesas/taxas e a folha realizada.
+
+O contexto do bot da gestão, avisos individuais, fechamento mensal e tela de
+rateio usam essa base. O custo docente já seguia `teacher_student_rate`; agora
+os avisos explicitam Turbo e as tarifas aplicadas ao aluno. A regra vigente é
+`rolling_30_days` (não mês fechado): 30 dias sem falta confirmada do professor,
+carteira mínima e sem contestação aberta. Na Wise Wolf, desde 09/09, as posições
+1–6 têm R$ 8/aula e 7+ R$ 10,50/aula quando elegíveis; Turbo ativo não eleva toda
+a carteira. Preservar eventuais pisos contratuais por aula.
+
+Migration `20261001164903`, teste transacional
+`supabase/tests/affiliate_net_payment_split.sql` e tour da direção registrados
+no release. Fluxo detalhado: [runbook](docs/runbooks/affiliate-withdrawals-and-net-split.md).
+
 ### 30/09/2026 — Encaminhamento do acompanhamento e experimental concluída
 
 `care_begin_handoff` faz a tomada única do encaminhamento; o trigger ativa a

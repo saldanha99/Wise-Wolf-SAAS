@@ -1503,8 +1503,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260930143000_linked_affiliate_invites.sql"
   "supabase/migrations/20260930171439_overdue_thirty_day_email_outbox.sql"
   "supabase/migrations/20260930203752_fix_care_handoff_and_completed_trial_binding.sql"
+  "supabase/migrations/20261001164903_rateio_liquido_afiliados_turbo_e_avisos_de_saque.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/affiliate_net_payment_split.sql"
   "supabase/tests/care_handoff_completed_trial.sql"
   "supabase/tests/linked_affiliate_invites.sql"
   "supabase/tests/affiliate_coupon_commission_settlement.sql"

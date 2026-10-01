@@ -4194,6 +4194,21 @@ async function handleGestao(
     .eq("ledger_allowed", true)
     .in("kind", ["CUSTO", "DESPESA", "DEDUCAO"])
     .order("sort_order");
+  const { data: affiliateTurboContext, error: affiliateTurboError } = await sb
+    .rpc(
+      "gestao_affiliate_turbo_context",
+      { p_tenant: tenantId },
+    );
+  if (
+    affiliateTurboError || !affiliateTurboContext || affiliateTurboContext.error
+  ) {
+    await sendWhats(
+      instance,
+      groupJid,
+      "Não consegui conferir saques, comissões e Turbo agora. Tente novamente em alguns minutos.",
+    );
+    return;
+  }
   const dadosGestao = {
     ...(snap as Record<string, unknown>),
     inadimplencia: financialContext.inadimplencia,
@@ -4201,6 +4216,7 @@ async function handleGestao(
     fechamento_financeiro_mensal: financialContext.fechamento_mensal,
     hoje: todayBRT(),
     contas_lancaveis: contasLancaveis || [],
+    afiliados_e_turbo: affiliateTurboContext,
   };
 
   const system =
@@ -4214,6 +4230,8 @@ REGRAS ABSOLUTAS:
 - Para dizer que "todos os alunos pagaram", consulte fechamento_financeiro_mensal. Só afirme isso quando o bloco do mês estiver com status READY ou SENT e alunos.blocked_students for 0. OPEN, BLOCKED, REVIEW e NOT_CALCULATED nunca significam que todos pagaram.
 - Em fechamento_financeiro_mensal, WAITING_CREDIT é cartão confirmado mas ainda não recebido em caixa. Não trate como dinheiro recebido. Use alunos.pendentes para dizer quem ainda bloqueia o fechamento.
 - Não misture competência e caixa: competencia mostra cobranças do mês; caixa mostra o dinheiro efetivamente recebido e os totais prontos de rateio (dízimo, investimento e sobra). Repita esses campos sem recalcular.
+- Para dízimo e rateio atualizado, use afiliados_e_turbo.rateio_mes_corrente ou rateio_mes_anterior, que já descontam professor e comissão do afiliado. Não use valor bruto nem repita comissão nas mensalidades seguintes. Sem base positiva, dízimo é zero. Essa base é prévia operacional; lucro final é o resultado do DRE com as demais despesas.
+- Saques e Turbo estão em afiliados_e_turbo. Explique que aprovar saque não transfere dinheiro; o repasse é feito pela direção antes de marcar pago. Para Turbo, cite o estado, a ofensiva e as faixas recebidas: tarifa superior vale pelas posições da carteira, não para todos os alunos do professor. Não confunda rolling_30_days com mês fechado.
 - Se a resposta não estiver nos dados, diga que não tem esse dado e sugira onde ver no sistema. NUNCA invente número, nome ou data.
 - Valores em reais no formato R$ 1.234,56.
 - Negrito do WhatsApp é *asterisco simples*, não **duplo**.

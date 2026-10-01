@@ -736,6 +736,15 @@ export const FEATURE_TOURS: FeatureTour[] = [
     roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'whatsapp-human-handoff', view: 'whatsapp', title: 'Conversa com a equipe', text: 'Quando o acompanhamento encaminha um assunto à coordenação, a IA pausa a conversa. Use Devolver para IA apenas quando a equipe decidir retomar o atendimento automático.' }],
   },
+  {
+    id: '2026-10-01-rateio-liquido-e-saques',
+    title: 'Comissão, Turbo e avisos de saque',
+    roles: ['SCHOOL_ADMIN'],
+    steps: [
+      { target: 'net-payment-split', view: 'dre', title: 'Rateio sobre a sobra operacional', text: 'O rateio desconta o salário previsto do professor, incluindo a tarifa Turbo, e a comissão do afiliado na primeira mensalidade vinculada. Sem sobra positiva, o dízimo é zero. Essa conta é uma prévia: confira as aulas lançadas e as demais despesas no DRE para apurar o lucro final.' },
+      { target: 'affiliate-withdrawal-notice', view: 'vendors-mgmt', title: 'Pedido de saque avisa o Financeiro', text: 'Novos pedidos de saque entram na fila de avisos do canal Financeiro, com alternativa na Direção/Gestão. Abra a ficha do afiliado, confira o PIX e aprove. Aprovar não envia dinheiro: faça o repasse e depois marque pago.' },
+    ],
+  },
 ];
 
 /**

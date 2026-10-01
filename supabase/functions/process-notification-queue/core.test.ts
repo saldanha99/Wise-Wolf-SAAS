@@ -472,3 +472,9 @@ Deno.test("link oficial do professor sai pela central com audiência professor",
     centralOnly: true,
   });
 });
+Deno.test("saque do afiliado avisa somente pela instância central", () => {
+  assertEquals(queueAudience("AFFILIATE_WITHDRAWAL_REQUESTED"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});

@@ -331,6 +331,7 @@ export function queueAudience(kind: unknown): {
   if (
     normalized === "LESSON_RECORDING_NOTICE_TEACHER" ||
     normalized === "TEACHER_CHANGE_GROUP" ||
+    normalized === "AFFILIATE_WITHDRAWAL_REQUESTED" ||
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||
     normalized === "TEACHER_AGENDA" ||

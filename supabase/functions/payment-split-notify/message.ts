@@ -7,8 +7,18 @@
  */
 
 const MESES = [
-  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+  "janeiro",
+  "fevereiro",
+  "março",
+  "abril",
+  "maio",
+  "junho",
+  "julho",
+  "agosto",
+  "setembro",
+  "outubro",
+  "novembro",
+  "dezembro",
 ];
 
 /** Formatação sem depender de ICU: o runtime da VPS não é o do navegador. */
@@ -55,10 +65,16 @@ function linhaDaFatura(b: Record<string, unknown>): string {
   const recebidoEm = b.recebido_em ?? b.paid_at;
   const competencia = String(b.competencia ?? "");
   const mesDoDinheiro = String(recebidoEm ?? "").slice(0, 7);
-  if (/^\d{4}-\d{2}$/.test(competencia) && /^\d{4}-\d{2}$/.test(mesDoDinheiro) &&
-      competencia !== mesDoDinheiro) {
-    const vencimento = b.vencimento ? ` (vencimento ${dataCurta(b.vencimento)})` : "";
-    return `_fatura de ${mesAno(competencia)}${vencimento} confirmada em ${dataCurta(recebidoEm)}_`;
+  if (
+    /^\d{4}-\d{2}$/.test(competencia) && /^\d{4}-\d{2}$/.test(mesDoDinheiro) &&
+    competencia !== mesDoDinheiro
+  ) {
+    const vencimento = b.vencimento
+      ? ` (vencimento ${dataCurta(b.vencimento)})`
+      : "";
+    return `_fatura de ${mesAno(competencia)}${vencimento} confirmada em ${
+      dataCurta(recebidoEm)
+    }_`;
   }
   return `_fatura confirmada em ${dataCurta(recebidoEm)}_`;
 }
@@ -70,10 +86,14 @@ export interface Professor {
   custo?: number | null;
   /** false = direção: aparece na mensagem, mas não desconta da base. */
   descontado?: boolean;
+  turbo_ativo?: boolean;
+  tarifa_min?: number;
+  tarifa_max?: number;
 }
 
 export function montarMensagem(b: Record<string, unknown>): string {
-  const professores = (Array.isArray(b.professores) ? b.professores : []) as Professor[];
+  const professores =
+    (Array.isArray(b.professores) ? b.professores : []) as Professor[];
   const mes = nomeDoMes(String(b.month ?? ""));
   const partes: string[] = [];
 
@@ -104,16 +124,24 @@ export function montarMensagem(b: Record<string, unknown>): string {
 
   if (mensal && sequencia > 1) {
     // Parcela k: o dinheiro entrou meses atrás; o que sai agora é o rateio do mês.
-    partes.push(`🗓️ *Rateio de ${mes}: ${aluno}* — parcela ${sequencia}/${meses}`);
     partes.push(
-      `_pagamento completo de ${money(b.recebido_total)} já recebido em ${dataCurta(recebidoEm)}_`,
+      `🗓️ *Rateio de ${mes}: ${aluno}* — parcela ${sequencia}/${meses}`,
+    );
+    partes.push(
+      `_pagamento completo de ${money(b.recebido_total)} já recebido em ${
+        dataCurta(recebidoEm)
+      }_`,
     );
   } else if (completo) {
     partes.push(
-      `💰 *${aluno} pagou ${money(b.recebido_total ?? b.valor)}* — pagamento completo de ${meses} meses`,
+      `💰 *${aluno} pagou ${
+        money(b.recebido_total ?? b.valor)
+      }* — pagamento completo de ${meses} meses`,
     );
     partes.push(
-      `_recebido por completo em ${dataCurta(recebidoEm)} · cobre ${mesAno(b.cobertura_inicio)} a ${mesAno(b.cobertura_fim)}_`,
+      `_recebido por completo em ${dataCurta(recebidoEm)} · cobre ${
+        mesAno(b.cobertura_inicio)
+      } a ${mesAno(b.cobertura_fim)}_`,
     );
   } else {
     partes.push(`💰 *${aluno} pagou ${money(b.valor)}*`);
@@ -122,12 +150,20 @@ export function montarMensagem(b: Record<string, unknown>): string {
   partes.push("");
 
   if (mensal) {
-    partes.push(`🗓️ Rateio de ${mes}: parcela ${sequencia}/${meses} de *${money(b.parcela)}*`);
-    partes.push(`🔒 Segue reservado para os próximos meses: *${money(b.reservado)}*`);
+    partes.push(
+      `🗓️ Rateio de ${mes}: parcela ${sequencia}/${meses} de *${
+        money(b.parcela)
+      }*`,
+    );
+    partes.push(
+      `🔒 Segue reservado para os próximos meses: *${money(b.reservado)}*`,
+    );
     partes.push("");
   } else if (completo) {
     // LEGADO: o valor cheio é rateado neste aviso e os meses só ficam cobertos.
-    partes.push(`🗓️ Rateio do valor cheio neste aviso; os ${meses} meses ficam cobertos sem novo rateio.`);
+    partes.push(
+      `🗓️ Rateio do valor cheio neste aviso; os ${meses} meses ficam cobertos sem novo rateio.`,
+    );
     partes.push("");
   }
 
@@ -139,28 +175,61 @@ export function montarMensagem(b: Record<string, unknown>): string {
         // Direção: sem valor por aula, de propósito. Ela não recebe tarifa —
         // fica com o resto do pagamento, que sai na linha de pró-labore abaixo.
         partes.push(`👑 Aula com ${p.teacher_name ?? "—"} (direção)`);
-        partes.push(`      ${p.aulas ?? 0} aulas em ${mes} · sem salário a descontar`);
+        partes.push(
+          `      ${p.aulas ?? 0} aulas em ${mes} · sem salário a descontar`,
+        );
       } else {
         partes.push(
-          `👨‍🏫 Professor ${p.teacher_name ?? "—"} · salário deste aluno: *${money(p.custo)}*`,
+          `👨‍🏫 Professor ${p.teacher_name ?? "—"} · salário deste aluno: *${
+            money(p.custo)
+          }*`,
         );
-        partes.push(`      ${p.aulas ?? 0} aulas previstas na agenda de ${mes}`);
+        partes.push(
+          `      ${p.aulas ?? 0} aulas previstas na agenda de ${mes}`,
+        );
+        if (p.turbo_ativo === true) {
+          const tarifas = p.tarifa_min === p.tarifa_max
+            ? money(p.tarifa_min)
+            : `${money(p.tarifa_min)} a ${money(p.tarifa_max)}`;
+          partes.push(
+            `      ⚡ Turbo ativo · tarifa deste aluno: ${tarifas}/aula, já incluída no salário`,
+          );
+        }
       }
     }
   } else if (b.eh_matricula === true) {
     // Taxa de matrícula não separa salário: a aula do mês é paga pela
     // mensalidade. Dizer "aluno sem aulas na agenda" mandaria o diretor
     // corrigir uma agenda que está certa.
-    partes.push(`🎓 Taxa de matrícula: não desconta salário de professor — a aula do mês é paga pela mensalidade`);
+    partes.push(
+      `🎓 Taxa de matrícula: não desconta salário de professor — a aula do mês é paga pela mensalidade`,
+    );
   } else if (b.sem_aluno) {
     // Pagamento que chegou sem aluno vinculado: mostrar custo zero sem explicar
     // faria o líquido parecer lucro cheio de uma aula que ninguém deu.
     partes.push(`👨‍🏫 Professor: *${money(0)}* — pagamento sem aluno vinculado`);
   } else {
-    partes.push(`👨‍🏫 Professor: *${money(0)}* — aluno sem aulas na agenda de ${mes}`);
+    partes.push(
+      `👨‍🏫 Professor: *${money(0)}* — aluno sem aulas na agenda de ${mes}`,
+    );
   }
 
+  if (Number(b.custo_afiliado ?? 0) > 0) {
+    partes.push(
+      `🤝 Comissão do afiliado: *${
+        money(b.custo_afiliado)
+      }* — descontada nesta 1ª mensalidade, mesmo antes do saque`,
+    );
+  }
   partes.push(`➖ Base do rateio: *${money(b.liquido)}*`);
+  if (Number(b.resultado_antes_rateio ?? b.liquido) <= 0) {
+    partes.push(
+      "Sem sobra positiva após professor e afiliado: não há base para dízimo neste pagamento.",
+    );
+    if (Number(b.deficit ?? 0) > 0) {
+      partes.push(`⚠️ Custos acima do pagamento: *${money(b.deficit)}*`);
+    }
+  }
   partes.push("");
   partes.push(`🙏 Dízimo (${pct(b.dizimo_pct)}): *${money(b.dizimo)}*`);
 
@@ -178,8 +247,14 @@ export function montarMensagem(b: Record<string, unknown>): string {
   // configurados descreve o total.
   const liquido = Number(b.liquido ?? 0);
   const naEscola = Number(b.investimento ?? 0) + Number(b.sobra ?? 0);
-  const pctEscola = liquido > 0 ? Math.round((naEscola / liquido) * 1000) / 10 : 0;
-  partes.push(`📈 Investimento que fica na escola (${pct(pctEscola)}): *${money(naEscola)}*`);
+  const pctEscola = liquido > 0
+    ? Math.round((naEscola / liquido) * 1000) / 10
+    : 0;
+  partes.push(
+    `📈 Investimento que fica na escola (${pct(pctEscola)}): *${
+      money(naEscola)
+    }*`,
+  );
 
   // O pró-labore é o que sai da empresa para a direção — a única das três
   // linhas que NÃO fica na escola. Por isso vem por último e sozinha.
@@ -192,6 +267,9 @@ export function montarMensagem(b: Record<string, unknown>): string {
   partes.push("");
   partes.push(
     `_Custo do professor é previsto pela agenda de ${mes} (calendário do mês) e pela tarifa vigente. O valor real fecha com as aulas lançadas._`,
+  );
+  partes.push(
+    "_Base operacional após professor e comissão; outras despesas e taxas devem ser conferidas no DRE antes de tratar a sobra como lucro final._",
   );
 
   return partes.join("\n");

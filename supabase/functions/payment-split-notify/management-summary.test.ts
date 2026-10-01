@@ -55,6 +55,7 @@ Deno.test("monthly close separates competence from cash and applies frozen total
     cash: {
       recebido: 8327.04,
       custo_professor: 1776,
+      custo_afiliado: 218,
       liquido: 4249.14,
       dizimo: 424.92,
       investimento: 1769.42,
@@ -73,6 +74,9 @@ Deno.test("monthly close separates competence from cash and applies frozen total
       "Plano de saúde e benefícios: R$ 717,00",
       "Resultado operacional: *R$ 4.180,04*",
       "Caixa efetivamente recebido",
+      "Comissões de afiliados: *R$ 218,00*",
+      "incluindo Turbo",
+      "antes de tratar a base como lucro final",
       "R$ 424,92",
       "R$ 1.769,42",
       "Saldo destinado à escola: *R$ 125,50*",

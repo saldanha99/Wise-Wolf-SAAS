@@ -1211,7 +1211,21 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (
+        if (notificationKind === "AFFILIATE_WITHDRAWAL_REQUESTED") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_affiliate_withdrawal_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) unavailable("withdrawal_revalidation_unavailable");
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "withdrawal_notice_invalid"));
+          }
+          prepared = {
+            teacherId: null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
           notificationKind === "LESSON_RECORDING_NOTICE_STUDENT" ||
           notificationKind === "LESSON_RECORDING_NOTICE_TEACHER"
         ) {
