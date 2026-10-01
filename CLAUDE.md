@@ -26,7 +26,9 @@ a carteira. Preservar eventuais pisos contratuais por aula.
 
 Migration `20261001164903`, teste transacional
 `supabase/tests/affiliate_net_payment_split.sql` e tour da direção registrados
-no release. Fluxo detalhado: [runbook](docs/runbooks/affiliate-withdrawals-and-net-split.md).
+no release. O fixture de integridade de antecipação usa o mês da data original
+(`today-7`) para escolher uma competência anterior, inclusive na virada do mês.
+Fluxo detalhado: [runbook](docs/runbooks/affiliate-withdrawals-and-net-split.md).
 
 ### 30/09/2026 — Encaminhamento do acompanhamento e experimental concluída
 
