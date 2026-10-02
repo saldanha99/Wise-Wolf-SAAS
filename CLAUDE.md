@@ -1,3 +1,14 @@
+## 02/10/2026 — Retomada das cobranças diárias adiadas por cadência
+
+A rotina diária tem um cron privado de retomada a cada dois minutos entre 09h
+e 19h58 Brasília. Ele seleciona somente intenções WhatsApp do dia em CLAIMED,
+lease vencida, zero POSTs e motivo throttled_*. Revalida a elegibilidade local e
+chama o endpoint oficial, que revalida Asaas e a cerca durável. Nunca retoma
+SENT/SUBMITTING/UNKNOWN, dias anteriores, aluno que pagou ou escola sem opt-in.
+Migration `20261002195356_retry_daily_student_collections.sql`, teste SQL com
+rollback e runbook `docs/runbooks/daily-student-collections.md` registrados no
+release. É conclusão de envio pendente; não é uma segunda cobrança no dia.
+
 # Wise Wolf SAAS — CLAUDE.md
 
 ### 02/10/2026 — Cobrança diária em WhatsApp e e-mail

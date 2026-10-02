@@ -35,6 +35,15 @@ habilitado e `student_ids` com os IDs exatos autorizados. Corpo vazio é o cron.
 Não chamar o endpoint de envio em testes. Fixtures de SQL sempre dão rollback;
 Deno usa transportes falsos. Publicar apenas pelo release oficial.
 
+O cron privado `wisewolf-retry-daily-payment-collections` confere a cada dois
+minutos, das 09h às 19h58 Brasília, somente WhatsApps do dia em `CLAIMED`, lease
+expirada, `submit_attempt_count = 0` e motivo `throttled_*`. Chama o endpoint
+oficial em lotes de até 100 alunos, que confere novamente Asaas e destinatário.
+Isso conclui avisos ainda não enviados após o intervalo da instância; não cria
+segunda cobrança aceita no mesmo dia. `SENT`, `SUBMITTING`, `UNKNOWN`, faturas
+pagas e escolas sem opt-in ficam fora. Requests ficam registrados em
+`private.daily_collection_retry_requests` para correlacionar com pg_net.
+
 Monitorar as intenções dos dois canais, falhas do cron e resultados dos
 provedores. Reexecutar a mesma intenção não autoriza um segundo POST aceito ou
 incerto. Desabilitar o opt-in preserva o histórico e devolve a escola à régua
