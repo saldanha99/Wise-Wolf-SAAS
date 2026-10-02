@@ -44,6 +44,10 @@ const CashflowPanel: React.FC<Props> = ({ tenantId }) => {
         <button onClick={() => load(month)} className="p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
       </div>
 
+      <p data-tour="daily-collection" className="rounded-xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted">
+        Na cobrança diária habilitada pela direção, mensalidades vencidas são conferidas no Asaas e lembradas por WhatsApp e e-mail às 9h, inclusive nos fins de semana. Pagamentos recebidos, cobranças excluídas e alunos sem vínculo ativo saem do envio automático.
+      </p>
+
       {loading || !data ? <div className="py-16 text-center text-brand-muted"><RefreshCw size={24} className="animate-spin mx-auto" /></div> : (
         <>
           {/* KPIs */}

@@ -640,7 +640,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/notify-payment-due/daily.ts \
   supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/notify-payment-due/daily.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
@@ -819,6 +821,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/notify-payment-due/daily.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
@@ -970,6 +973,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/notify-payment-due/daily.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
   supabase/functions/create-enrollment-pix/index.ts \
   supabase/functions/pedagogical-content/index.ts \
@@ -1505,10 +1509,12 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260930203752_fix_care_handoff_and_completed_trial_binding.sql"
   "supabase/migrations/20261001164903_rateio_liquido_afiliados_turbo_e_avisos_de_saque.sql"
   "supabase/migrations/20261001202946_payout_confirmation_notifications.sql"
+  "supabase/migrations/20261002192214_daily_student_collections.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/affiliate_net_payment_split.sql"
   "supabase/tests/payout_confirmation_notifications.sql"
+  "supabase/tests/daily_student_collections.sql"
   "supabase/tests/care_handoff_completed_trial.sql"
   "supabase/tests/linked_affiliate_invites.sql"
   "supabase/tests/affiliate_coupon_commission_settlement.sql"

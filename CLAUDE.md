@@ -1,5 +1,21 @@
 # Wise Wolf SAAS — CLAUDE.md
 
+### 02/10/2026 — Cobrança diária em WhatsApp e e-mail
+
+A direção autorizou cobrança diária por ambos os canais. O opt-in em
+`daily_payment_collection_settings` troca os marcos da escola pelo fluxo
+`notify-payment-due/daily.ts`, no cron existente às 09h Brasília, todos os dias.
+Cada dia usa o calendário local. Revalida pagamento não excluído e OVERDUE no
+Asaas, cliente/assinatura do aluno, vínculo e atividade atuais, sem fixture ou
+encerramento em andamento. Não muda status financeiro para autorizar envio.
+Dependente usa responsável financeiro; e-mail autenticado e endereço coincidente.
+WhatsApp e e-mail independentes e duráveis por fatura/dia; resultado incerto não
+autoriza um segundo POST naquele dia. Faturas antigas sem vínculo ativo não
+entram na rotina. Texto firme, com link, regularização/negociação, sem ameaça
+inventada. Migration `20261002192214` e teste transacional registrados no release,
+teste Deno de identidade/cancelamento/dia/canais/idempotência. Tour da direção.
+Fluxo e execução pontual: [runbook](docs/runbooks/daily-student-collections.md).
+
 ### 01/10/2026 — Confirmação privada de repasses pagos
 
 A direção faz o PIX do professor e usa **Confirmar PIX feito**, pela RPC

@@ -49,6 +49,7 @@ Deno.test("payment reminder scope is exact and test accounts are suppressed", ()
   assert(source.includes("notificationKind: kind"));
   assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 3);
   assert(source.includes("ACTIVE_STUDENT_WINDOW_DAYS = 30"));
+  assert(source.includes("stillStudies: (charge) =>"));
 });
 
 Deno.test("second overdue wave is service-triggered, provider-confirmed and idempotent", () => {

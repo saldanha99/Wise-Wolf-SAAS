@@ -764,6 +764,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-01-z-confirmacao-de-repasses-professor', title: 'Seu repasse confirmado no WhatsApp', roles: ['TEACHER'],
     steps: [{ target: 'teacher-payout-confirmation', view: 'teacher-financials', title: 'Confirmação do seu pagamento', text: 'Quando a direção registrar seu repasse como pago, você recebe no WhatsApp cadastrado a confirmação com valor e competência. O fechamento mensal e a revisão da nota fiscal continuam disponíveis no Financeiro.' }],
   },
+  {
+    id: '2026-10-02-cobranca-diaria', title: 'Cobrança diária nos dois canais', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'daily-collection', view: 'cashflow', title: 'Lembrete diário de mensalidade vencida', text: 'Com a rotina habilitada pela direção, a escola confere o Asaas antes de cobrar por WhatsApp e e-mail às 9h, todos os dias. Cada canal tem registro próprio; quem pagou ou teve a cobrança excluída não recebe. Dependentes são cobrados pelo responsável financeiro cadastrado.' }],
+  },
 ];
 
 /**

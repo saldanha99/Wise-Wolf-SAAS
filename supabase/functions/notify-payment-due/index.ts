@@ -32,6 +32,11 @@ import {
   paymentNotificationFinish,
   resolvePaymentRecipient,
 } from "./core.ts";
+import {
+  enabledDailyTenants,
+  runDailyCollections,
+  schoolDate,
+} from "./daily.ts";
 
 // Cron diário: avisa o aluno X dias antes do vencimento da mensalidade (WhatsApp).
 // Envia pela instância central da escola (admin do tenant). Idempotente via due_reminder_sent_at.
@@ -72,10 +77,51 @@ serve(async (req) => {
 
     const today = new Date();
     const limit = new Date(today.getTime() + DAYS_AHEAD * 86400_000);
-    const todayISO = today.toISOString().split("T")[0];
+    const todayISO = schoolDate(today);
     const limitISO = limit.toISOString().split("T")[0];
 
     const body = await req.json().catch(() => ({}));
+    const daily = (scope?: { tenant_id: string; student_ids: string[] }) => {
+      const instances: Record<string, TenantCentralWhatsAppContext | null> = {};
+      const evolution: Record<string, ResolvedEvolutionIntegration> = {};
+      const asaas: Record<string, ResolvedAsaasIntegration> = {};
+      return runDailyCollections(supabase, todayISO, {
+        readProvider: (charge) => readProviderPayment(supabase, charge, asaas),
+        stillStudies: (charge) =>
+          aindaEstuda(supabase, charge.tenant_id, charge.student_id),
+        recipient: (charge) => resolveRecipient(supabase, charge, instances),
+        whatsapp: async (charge, input) =>
+          deliverPaymentNotification(supabase, {
+            tenantId: charge.tenant_id,
+            studentId: charge.student_id,
+            paymentId: charge.id,
+            notificationKind: input.kind,
+            integration: await resolveTenantEvolutionIntegration(
+              supabase,
+              charge.tenant_id,
+              evolution,
+            ),
+            instance: input.instance,
+            phone: input.phone,
+            text: input.text,
+          }),
+      }, scope);
+    };
+    if (
+      body?.mode === "DAILY_COLLECTION" && body.campaign_date === todayISO &&
+      typeof body.tenant_id === "string" && Array.isArray(body.student_ids) &&
+      body.student_ids.length > 0 && body.student_ids.length <= 100 &&
+      body.student_ids.every((id: unknown) =>
+        typeof id === "string" && /^[0-9a-f-]{36}$/.test(id)
+      ) &&
+      Object.keys(body).length === 4
+    ) {
+      const result = await daily(body);
+      return new Response(JSON.stringify(result), {
+        status: result.failures ? 207 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (isSecondWaveRequest(body, todayISO)) {
       const result = await segundaOnda(supabase, todayISO);
       return new Response(JSON.stringify(result), {
@@ -184,6 +230,7 @@ serve(async (req) => {
       instCache,
       integrationCache,
     );
+    const dailyResult = await daily();
 
     return new Response(
       JSON.stringify({
@@ -192,6 +239,7 @@ serve(async (req) => {
         suppressed: suprimidas + regua.suprimidas,
         failures: failures.length + regua.motivos.length,
         reasons: [...failures, ...regua.motivos].slice(0, 10),
+        daily: dailyResult,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -231,6 +279,7 @@ type ProviderPayment = {
   invoiceUrl: string | null;
   customer: string | null;
   subscription: string | null;
+  deleted: boolean;
 };
 
 async function segundaOnda(supabase: any, campaignDate: string) {
@@ -407,7 +456,7 @@ async function readProviderPayment(
   }
   return {
     id,
-    status,
+    status: provider.deleted === true ? "DELETED" : status,
     dueDate,
     value,
     invoiceUrl: typeof provider.invoiceUrl === "string"
@@ -417,6 +466,7 @@ async function readProviderPayment(
     subscription: typeof provider.subscription === "string"
       ? provider.subscription
       : null,
+    deleted: provider.deleted === true,
   };
 }
 
@@ -646,8 +696,9 @@ async function reguaVencidas(
   );
   let suprimidas = 0;
   const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
-
+  const dailyTenants = new Set(await enabledDailyTenants(supabase));
   for (const c of vencidas || []) {
+    if (dailyTenants.has(c.tenant_id)) continue;
     try {
       const diasVencida = Math.floor(
         (hoje.getTime() - new Date(c.due_date + "T00:00:00").getTime()) /
