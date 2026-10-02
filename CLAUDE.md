@@ -3701,3 +3701,16 @@ alteração. Constraint diferida impede histórico sem log correspondente.
 ocorrência futura específica (não é calendário global de feriados).
 Migration 20260929151406 e teste SQL transacional registrados no release.
 Tour administrativo: `2026-09-30-z-antecipacoes-ja-realizadas`.
+
+### 02/10/2026 — Teste oral com reserva e avisos individuais
+
+`schedule_oral_test` reserva appointment `oral_test` de 30 minutos para o examinador
+apto e ativo; impede professor titular/segundo do aluno, passado e conflito de agenda.
+A reserva tem data, aparece nas agendas dos dois e no painel de hoje do professor,
+e não troca titular nem cria class_log/pagamento. Reagendamento move a mesma reserva;
+conclusão, desmarcação e exclusão a encerram. Avisos e lembretes ORAL_TEST_* usam a
+fila oficial pela central, com versão/idempotência, fixture suprimido e revalidação
+no worker e na cerca. O painel mostra estado real da fila. Sem contato/link não
+inventa entrega/sala; Diretoria sem examinador continua sem reserva individual.
+Migration `20261002193942`, teste transacional e tours registrados no release.
+Detalhes: [runbook](docs/runbooks/oral-test-scheduling.md).

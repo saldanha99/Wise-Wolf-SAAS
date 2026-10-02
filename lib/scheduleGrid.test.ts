@@ -123,3 +123,13 @@ describe('trialsForGrid', () => {
         expect(trialsForGrid([{ ...trial, start_time: 'nao-e-data' }], semanaDaRepo)).toEqual([]);
     });
 });
+
+
+describe('reserva oral datada na grade', () => {
+    it('mantém identificação do teste e ocupa somente a semana agendada', () => {
+        const oral = { id: 'oral', type: 'oral_test', student_name: 'Aluno', status: 'scheduled', start_time: new Date(2026, 6, 23, 19).toISOString() };
+        expect(trialsForGrid([oral], semanaDaRepo)[0]).toMatchObject({ type: 'oral_test', time: '19:00', date: '2026-07-23' });
+        expect(trialsForGrid([oral], weekStartOf(new Date(2026, 6, 30)))).toEqual([]);
+        expect(trialsForGrid([{ ...oral, status: 'cancelled' }], semanaDaRepo)).toEqual([]);
+    });
+});

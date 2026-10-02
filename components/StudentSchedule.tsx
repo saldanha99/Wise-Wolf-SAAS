@@ -15,6 +15,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
     const [loading, setLoading] = useState(true);
     const [regularLessons, setRegularLessons] = useState<any[]>([]);
     const [reschedules, setReschedules] = useState<any[]>([]);
+    const [oralTests, setOralTests] = useState<{ id: string; scheduled_at: string; examiner_name: string; meeting_link: string | null }[]>([]);
     const [profile, setProfile] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +29,9 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
         setLoading(true);
         setError(null);
         try {
+            const { data: oral, error: oralError } = await supabase.rpc('my_oral_test_agenda');
+            if (oralError) throw oralError;
+            setOralTests(oral || []);
             // 1. Fetch Profile for meeting link
             const { data: prof } = await supabase.from('profiles').select('meeting_link').eq('id', user.id).single();
             setProfile(prof);
@@ -123,6 +127,13 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
             </header>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
 
+            <section data-tour="student-oral-test-agenda" className="rounded-2xl border border-brand-border p-4">
+                <h2 className="font-bold text-brand-text">Teste oral</h2>
+                {oralTests.length === 0 ? <p className="text-sm text-brand-muted">Seu próximo teste aparecerá aqui quando a escola agendar.</p> : oralTests.map(test => <div key={test.id} className="mt-3 text-sm text-brand-text">
+                    <p><b>{new Date(test.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</b> · 30 minutos · Examinador: {test.examiner_name}</p>
+                    {test.meeting_link?.startsWith('https://') && <a href={test.meeting_link} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 font-bold text-tenant-primary">Entrar no teste oral</a>}
+                </div>)}
+            </section>
             {/* SECTION 1: Fixed Schedule */}
             <section>
                 <div className="flex items-center gap-3 mb-6">

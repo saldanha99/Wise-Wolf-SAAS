@@ -93,9 +93,9 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-02-cobranca-diaria');
-    expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-09-30-sala-oficial-para-os-dois-aluno');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-10-02-teste-oral-com-agenda');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-02-teste-oral-com-agenda');
+    expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-10-02-teste-oral-na-agenda-aluno');
     expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
   });
 
@@ -188,10 +188,10 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
 
     // "Novidades" também segue o modo.
-    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
-    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-10-01-z-confirmacao-de-repasses-professor');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-02-cobranca-diaria');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-02-cobranca-diaria');
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-10-02-teste-oral-com-agenda');
+    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-10-02-teste-oral-com-agenda');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-02-teste-oral-com-agenda');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-02-teste-oral-com-agenda');
   });
 
   it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {

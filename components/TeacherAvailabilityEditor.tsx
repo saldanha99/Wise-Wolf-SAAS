@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { localYMD } from '../lib/dateUtils';
+import { dateForDayIndex, weekStartOf } from '../lib/scheduleGrid';
 import { coverageAgendaItems, dateWindow, rescheduleAgendaItems, type CoverageAgendaRow, type RescheduleAgendaRow } from '../lib/coverageAgenda';
 import StudentProfileForm from './StudentProfileForm';
 
@@ -104,7 +105,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       .from('appointments')
       .select('id, start_time, student_name, student_phone, type, status')
       .eq('professor_id', teacherId)
-      .eq('type', 'experimental')
+      .in('type', ['experimental', 'oral_test'])
       .in('status', ['scheduled', 'confirmed']); // Adjust status as needed based on ClaimOpportunity
 
     if (appointmentsError) {
@@ -142,6 +143,8 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         if (!app.start_time) return;
 
         const dt = new Date(app.start_time);
+        // Reserva oral ocupa somente a semana atual desta grade.
+        if (app.type === 'oral_test' && (localYMD(dt) < dateForDayIndex(weekStartOf(), 0) || localYMD(dt) > dateForDayIndex(weekStartOf(), 5))) return;
 
         // FILTER: Hide past experimental classes
         const now = new Date();
@@ -173,7 +176,8 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
             studentId: 'experimental-' + app.id, // Fake ID for edit safety
             student: app.student_name || 'Exp. Student',
             module: 'EXP', // Badge Type
-            type: 'EXPERIMENTAL',
+            type: app.type === 'oral_test' ? 'TESTE ORAL' : 'EXPERIMENTAL',
+            readOnly: app.type === 'oral_test',
             avatar: null, // Optional
             fullProfile: {
               full_name: app.student_name,
@@ -516,7 +520,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                               )}
                             </div>
                             {/* Only show badge if space permits or on hover */}
-                            {booking.isExperimental && <span className="text-[8px] font-black opacity-80 relative z-10">EXP</span>}
+                            {booking.isExperimental && <span className="text-[8px] font-black opacity-80 relative z-10">{booking.type === 'TESTE ORAL' ? 'ORAL' : 'EXP'}</span>}
                             {!booking.isExperimental && booking.type === 'REPOSIÇÃO' && <span className="text-[8px] font-black opacity-80 relative z-10">REPO</span>}
                             {!booking.isExperimental && booking.type === 'COBERTURA' && <span className="text-[8px] font-black opacity-80 relative z-10">COB</span>}
                           </div>

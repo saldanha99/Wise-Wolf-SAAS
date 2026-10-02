@@ -1510,8 +1510,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261001164903_rateio_liquido_afiliados_turbo_e_avisos_de_saque.sql"
   "supabase/migrations/20261001202946_payout_confirmation_notifications.sql"
   "supabase/migrations/20261002192214_daily_student_collections.sql"
+  "supabase/migrations/20261002193942_oral_test_scheduling_lifecycle.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/oral_test_scheduling_lifecycle.sql"
   "supabase/tests/affiliate_net_payment_split.sql"
   "supabase/tests/payout_confirmation_notifications.sql"
   "supabase/tests/daily_student_collections.sql"

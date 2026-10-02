@@ -488,3 +488,16 @@ Deno.test("confirmações de repasse são privadas e saem pela central", () => {
     assertEquals(route.centralOnly, true);
   }
 });
+
+Deno.test("teste oral e lembrete vão pela central aos dois públicos", () => {
+  for (const prefix of ["ORAL_TEST", "ORAL_TEST_REMINDER"]) {
+    assertEquals(queueAudience(`${prefix}_STUDENT`), {
+      audience: "student",
+      centralOnly: true,
+    });
+    assertEquals(queueAudience(`${prefix}_TEACHER`), {
+      audience: "teacher",
+      centralOnly: true,
+    });
+  }
+});

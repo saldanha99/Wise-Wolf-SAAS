@@ -331,10 +331,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       const { data: trials } = await supabase
         .from('appointments')
         .select(`
-          id, start_time, student_name, student_phone, type, status
+          id, start_time, student_name, student_phone, type, status, meeting_link
         `)
         .eq('teacher_id', user.id)
-        .eq('type', 'experimental')
+        .in('type', ['experimental', 'oral_test'])
         .eq('status', 'scheduled')
         .gte('start_time', `${todayISO}T00:00:00-03:00`)
         .lt('start_time', `${localYMD(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))}T00:00:00-03:00`)
@@ -380,12 +380,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .map(({ row: t, local }) => ({
           name: t.student_name || 'Aula Experimental',
           time: local?.time || '',
-          module: 'EXPERIMENTAL',
+          module: t.type === 'oral_test' ? 'TESTE ORAL' : 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
           officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO)?.meeting_uri,
-          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
+          meet: t.type === 'oral_test' ? t.meeting_link : lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
           phone: t.student_phone,
-          type: 'TRIAL',
+          type: t.type === 'oral_test' ? 'ORAL_TEST' : 'TRIAL',
           source_id: t.id,
           source_type: 'APPOINTMENT',
           class_date: todayISO,
@@ -759,7 +759,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         o mesmo lembrete seja enviado pelos dois caminhos. */}
                     {/* Cobertura não tem lembrete daqui: a edge só conhece booking/reposição/experimental. */}
                     {teacherWa.automation === false && (
-                      aula.source_type !== 'COVERAGE' && <button
+                      aula.source_type !== 'COVERAGE' && aula.type !== 'ORAL_TEST' && <button
                         onClick={() => handleDispatch(aula, dispatchKey)}
                         disabled={dispatchState === 'sending' || dispatchState === 'sent'}
                         className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm border text-xs font-bold ${

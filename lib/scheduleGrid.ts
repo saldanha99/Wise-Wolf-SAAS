@@ -108,6 +108,7 @@ export const findRescheduleForSlot = (
 // desenhada na grade. Era código morto que parecia funcionalidade, e virou a
 // referência de "temporário" que a reposição deveria seguir.
 export interface GridTrial {
+    type?: string;
     id: string;
     start_time: string;      // timestamptz
     student_name?: string | null;
@@ -115,6 +116,7 @@ export interface GridTrial {
 }
 
 export interface GridTrialSlot {
+    type?: string;
     id: string;
     studentName: string;
     date: string;            // YYYY-MM-DD
@@ -130,6 +132,7 @@ const trialSlotOf = (t: GridTrial): GridTrialSlot | null => {
     const mm = String(d.getMinutes()).padStart(2, '0');
     return {
         id: String(t.id),
+        type: t.type,
         studentName: (t.student_name || '').trim() || 'Aula Experimental',
         date: localYMD(d),
         time: `${hh}:${mm}`,

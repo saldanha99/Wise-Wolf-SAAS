@@ -110,9 +110,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       // bloco da experimental nunca era desenhado.
       supabase
         .from('appointments')
-        .select('id, start_time, student_name, status')
+        .select('id, start_time, student_name, status, type')
         .eq('teacher_id', selectedTeacher.id)
-        .eq('type', 'experimental')
+        .in('type', ['experimental', 'oral_test'])
         .eq('status', 'scheduled'),
       supabase
         .from('profiles')
@@ -924,7 +924,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                     <Zap size={13} aria-hidden="true" className="shrink-0" />
                                     <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
                                     <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{trial.studentName}</span>
-                                    <span className="text-[9px] font-bold uppercase opacity-80">Experimental · só hoje</span>
+                                    <span className="text-[9px] font-bold uppercase opacity-80">{trial.type === 'oral_test' ? 'Teste oral · só hoje' : 'Experimental · só hoje'}</span>
                                   </div>
                                 )}
                                 {booking && (
@@ -1009,7 +1009,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                           const overlay = reschedule
                             ? { label: 'Reposição', name: reschedule.studentName, tone: 'yellow' as const }
                             : trial
-                              ? { label: 'Experimental', name: trial.studentName, tone: 'purple' as const }
+                              ? { label: trial.type === 'oral_test' ? 'Teste oral' : 'Experimental', name: trial.studentName, tone: 'purple' as const }
                               : null;
 
                           return (

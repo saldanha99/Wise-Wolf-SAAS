@@ -322,6 +322,8 @@ export function queueAudience(kind: unknown): {
 } {
   const normalized = normalizeNotificationKind(kind);
   if (
+    normalized === "ORAL_TEST_STUDENT" ||
+    normalized === "ORAL_TEST_REMINDER_STUDENT" ||
     normalized === "LESSON_RECORDING_NOTICE_STUDENT" ||
     normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE" ||
     normalized === LESSON_RECORDING_CONSENT_KIND
@@ -329,6 +331,8 @@ export function queueAudience(kind: unknown): {
     return { audience: "student", centralOnly: true };
   }
   if (
+    normalized === "ORAL_TEST_TEACHER" ||
+    normalized === "ORAL_TEST_REMINDER_TEACHER" ||
     normalized === "LESSON_RECORDING_NOTICE_TEACHER" ||
     normalized === "TEACHER_CHANGE_GROUP" ||
     normalized === "AFFILIATE_WITHDRAWAL_REQUESTED" ||

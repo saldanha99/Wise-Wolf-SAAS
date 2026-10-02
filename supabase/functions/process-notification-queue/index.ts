@@ -1212,6 +1212,29 @@ serve(async (req) => {
       };
       try {
         if (
+          [
+            "ORAL_TEST_STUDENT",
+            "ORAL_TEST_TEACHER",
+            "ORAL_TEST_REMINDER_STUDENT",
+            "ORAL_TEST_REMINDER_TEACHER",
+          ].includes(notificationKind)
+        ) {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_oral_test_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) unavailable("oral_test_revalidation_unavailable");
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "oral_test_notice_invalid"));
+          }
+          prepared = {
+            teacherId: typeof snapshot.teacherId === "string"
+              ? snapshot.teacherId
+              : null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
           notificationKind === "TEACHER_PAYOUT_CONFIRMED" ||
           notificationKind === "AFFILIATE_PAYOUT_CONFIRMED"
         ) {

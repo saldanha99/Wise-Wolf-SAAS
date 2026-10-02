@@ -7,7 +7,7 @@ import { UserRole } from '../types';
 // PAINEL DE TESTES ORAIS
 // Regra: todo aluno precisa de um teste oral obrigatório a cada ~45 dias, aplicado por um
 // PROFESSOR APTO (can_oral_test) ou pela DIRETORIA — NUNCA pelo professor do próprio aluno.
-// Não é pago à parte: o professor apto aplica no próprio horário já agendado e lança a aula
+// Reserva temporária de 30 minutos na agenda do examinador. Não é pago à parte: o professor apto aplica no próprio horário já agendado e lança a aula
 // normalmente (fluxo padrão). Este painel só rastreia o checkpoint (pendente → agendado → feito).
 //
 // Detecção/aviso rodam no backend (edge oral-test-scan + cron). Aqui o admin gerencia aptidão,
@@ -31,9 +31,12 @@ interface OralTest {
   result: string | null;
   notes: string | null;
   done_at: string | null;
+  appointment_id?: string | null;
 }
 
 interface TeacherRow { id: string; full_name: string; can_oral_test: boolean; }
+
+const noticeLabel = (status?: string) => ({ queued: 'na fila', preparing: 'preparando', submitting: 'enviando', accepted: 'aceito pelo WhatsApp', sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou', uncertain: 'aguarda conferência', skipped: 'cancelado' }[status || ''] || 'indisponível — confira o cadastro');
 
 const brandCard = 'bg-brand-surface border border-brand-border rounded-2xl shadow-sm';
 
@@ -43,6 +46,7 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
   const [tests, setTests] = useState<OralTest[]>([]);
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [studentNames, setStudentNames] = useState<Record<string, string>>({});
+  const [noticeStatus, setNoticeStatus] = useState<Record<string, Record<string, string>>>({});
   const [scheduling, setScheduling] = useState<OralTest | null>(null);
   const [finishing, setFinishing] = useState<OralTest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -76,13 +80,18 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
       const list = (ot || []) as OralTest[];
       setTests(list);
 
+      const { data: context, error: contextError } = await supabase.rpc('oral_test_panel_context');
+      if (contextError) throw contextError;
+      const contexts = (context || []) as { id: string; student_name: string; notices: Record<string, string> }[];
+      setNoticeStatus(Object.fromEntries(contexts.map(row => [row.id, row.notices])));
       // Nomes dos alunos
       const studentIds = [...new Set(list.map(t => t.student_id))];
       if (studentIds.length) {
         const { data: studs, error: studentsError } = await supabase.from('profiles').select('id, full_name').in('id', studentIds);
         if (studentsError) throw studentsError;
         const map: Record<string, string> = {};
-        (studs || []).forEach((s: any) => { map[s.id] = (s.full_name || 'Aluno').trim(); });
+        (studs || []).forEach((s: { id: string; full_name: string | null }) => { map[s.id] = (s.full_name || 'Aluno').trim(); });
+        contexts.forEach(row => { const test = list.find(t => t.id === row.id); if (test) map[test.student_id] = row.student_name; });
         setStudentNames(map);
       } else {
         setStudentNames({});
@@ -138,7 +147,7 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
   const done = tests.filter(t => t.status === 'DONE').slice(0, 30);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="oral-test-scheduling">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-tenant-primary/10 text-tenant-primary flex items-center justify-center"><Mic size={22} /></div>
@@ -212,8 +221,10 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
                     Prof. do aluno: <b>{teacherName(t.native_teacher_id)}</b> · Vence {new Date(t.due_date).toLocaleDateString('pt-BR')}
                     {t.status === 'SCHEDULED' && t.scheduled_at && <> · Examinador: <b>{t.examiner_id ? teacherName(t.examiner_id) : 'Diretoria'}</b> em {new Date(t.scheduled_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</>}
                   </p>
+                  {t.status === 'SCHEDULED' && <p className="text-xs text-brand-muted mt-1">{t.appointment_id ? 'Reserva de 30 min na agenda' : 'Sem reserva de professor'} · Aviso aluno: {noticeLabel(noticeStatus[t.id]?.ORAL_TEST_STUDENT)} · Aviso examinador: {noticeLabel(noticeStatus[t.id]?.ORAL_TEST_TEACHER)}</p>}
                 </div>
                 <div className="flex items-center gap-2">
+                  {isAdmin && t.status === 'SCHEDULED' && <button onClick={async () => { if (!window.confirm('Desmarcar o teste e liberar o horário do examinador? Os avisos pendentes serão cancelados. Avise os participantes sobre o cancelamento.')) return; const { error } = await supabase.rpc('unschedule_oral_test', { p_test_id: t.id }); if (error) { flash(error.message); return; } await load(); flash('Teste desmarcado e horário liberado.'); }} className="px-3 py-1.5 rounded-lg text-xs border border-brand-border">Desmarcar</button>}
                   {isAdmin && <button onClick={() => setScheduling(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold border border-tenant-primary text-tenant-primary hover:bg-tenant-primary/10 flex items-center gap-1"><CalendarClock size={14} /> {t.status === 'SCHEDULED' ? 'Reagendar' : 'Agendar'}</button>}
                   {(isAdmin || t.examiner_id === user.id) && <button onClick={() => setFinishing(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-600 text-white hover:bg-green-700 flex items-center gap-1"><CheckCircle size={14} /> Concluir</button>}
                 </div>
@@ -242,8 +253,8 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
         </div>
       )}
 
-      {scheduling && <ScheduleModal test={scheduling} aptTeachers={aptTeachers} onClose={() => setScheduling(null)} onSaved={() => { setScheduling(null); load(); flash('Teste oral agendado.'); }} />}
-      {finishing && <FinishModal test={finishing} onClose={() => setFinishing(null)} onSaved={() => { setFinishing(null); load(); flash('Teste oral concluído. Lance a aula normalmente pelo seu horário.'); }} />}
+      {scheduling && <ScheduleModal test={scheduling} aptTeachers={aptTeachers} onClose={() => setScheduling(null)} onSaved={() => { setScheduling(null); load(); flash('Teste agendado. Confira a reserva e os avisos abaixo.'); }} />}
+      {finishing && <FinishModal test={finishing} onClose={() => setFinishing(null)} onSaved={() => { setFinishing(null); load(); flash('Resultado do teste oral registrado.'); }} />}
 
       {toast && <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-xl bg-brand-text text-brand-surface text-sm font-bold shadow-lg">{toast}</div>}
     </div>
@@ -254,8 +265,8 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
 const ScheduleModal: React.FC<{ test: OralTest; aptTeachers: TeacherRow[]; onClose: () => void; onSaved: () => void; }> = ({ test, aptTeachers, onClose, onSaved }) => {
   // Exclui o professor do próprio aluno da lista de examinadores.
   const options = aptTeachers.filter(t => t.id !== test.native_teacher_id);
-  const [examiner, setExaminer] = useState<string>('DIRETORIA');
-  const [when, setWhen] = useState<string>('');
+  const [examiner, setExaminer] = useState<string>(test.examiner_id || 'DIRETORIA');
+  const [when, setWhen] = useState<string>(test.scheduled_at ? new Date(new Date(test.scheduled_at).getTime() - new Date(test.scheduled_at).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '');
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -264,27 +275,29 @@ const ScheduleModal: React.FC<{ test: OralTest; aptTeachers: TeacherRow[]; onClo
       return;
     }
     setSaving(true);
-    const { error } = await supabase.rpc('schedule_oral_test', {
+    const { data, error } = await supabase.rpc('schedule_oral_test', {
       p_test_id: test.id,
       p_examiner_id: examiner === 'DIRETORIA' ? null : examiner,
       p_scheduled_at: new Date(when).toISOString(),
     });
     setSaving(false);
     if (error) { alert('Erro ao agendar: ' + error.message); return; }
+    const notices = Object.values((data?.notices || {}) as Record<string, string>);
+    if (notices.some(status => status !== 'queued')) alert('O teste foi reservado, mas há avisos indisponíveis. Confira os contatos do aluno e do professor no cadastro.');
     onSaved();
   };
 
   return (
     <ModalShell title="Agendar teste oral" onClose={onClose}>
-      <p className="text-xs text-brand-muted mb-3">O examinador não pode ser o professor do próprio aluno.</p>
+      <p className="text-xs text-brand-muted mb-3">Reserve 30 minutos com um examinador apto. O horário será ocupado somente na data escolhida; conflitos impedem o agendamento. A escola prepara avisos para aluno e professor e lembretes 30 minutos antes. O envio depende dos contatos e da conexão WhatsApp.</p>
       <label className="block text-xs font-bold text-brand-muted mb-1">Examinador</label>
       <select value={examiner} onChange={e => setExaminer(e.target.value)} className="w-full mb-3 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm">
-        <option value="DIRETORIA">Diretoria (não pago)</option>
+        <option value="DIRETORIA">Diretoria (sem reserva de professor)</option>
         {options.map(t => <option key={t.id} value={t.id}>{t.full_name} (professor apto)</option>)}
       </select>
       {options.length === 0 && <p className="text-xs text-amber-600 mb-3">Nenhum professor apto disponível (além do professor do aluno). Marque aptos ou use a Diretoria.</p>}
       <label className="block text-xs font-bold text-brand-muted mb-1">Data e hora</label>
-      <input type="datetime-local" required value={when} onChange={e => setWhen(e.target.value)} className="w-full mb-4 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm" />
+      <input type="datetime-local" step={1800} required value={when} onChange={e => setWhen(e.target.value)} className="w-full mb-4 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm" />
       <button disabled={saving} onClick={save} className="w-full py-2.5 rounded-xl bg-tenant-primary text-white font-bold text-sm disabled:opacity-50">{saving ? 'Salvando…' : 'Agendar'}</button>
     </ModalShell>
   );
@@ -311,7 +324,7 @@ const FinishModal: React.FC<{ test: OralTest; onClose: () => void; onSaved: () =
 
   return (
     <ModalShell title="Concluir teste oral" onClose={onClose}>
-      <p className="text-xs text-brand-muted mb-3">O aluno consegue se apresentar em inglês? Registre a nota e observações. <b>Lembre-se de lançar a aula normalmente pelo seu horário</b> — o pagamento é o padrão da aula.</p>
+      <p className="text-xs text-brand-muted mb-3">O aluno consegue se apresentar em inglês? Registre a nota e observações. A conclusão registra o resultado da avaliação. O lançamento das aulas continua no fluxo habitual.</p>
       <label className="block text-xs font-bold text-brand-muted mb-1">Nota (0–10)</label>
       <input type="number" min={0} max={10} value={score} onChange={e => setScore(e.target.value)} className="w-full mb-3 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm" placeholder="Ex.: 7" />
       <label className="block text-xs font-bold text-brand-muted mb-1">Observações</label>

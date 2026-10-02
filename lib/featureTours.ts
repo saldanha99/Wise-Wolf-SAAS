@@ -768,6 +768,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-02-cobranca-diaria', title: 'Cobrança diária nos dois canais', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'daily-collection', view: 'cashflow', title: 'Lembrete diário de mensalidade vencida', text: 'Com a rotina habilitada pela direção, a escola confere o Asaas antes de cobrar por WhatsApp e e-mail às 9h, todos os dias. Cada canal tem registro próprio; quem pagou ou teve a cobrança excluída não recebe. Dependentes são cobrados pelo responsável financeiro cadastrado.' }],
   },
+  {
+    id: '2026-10-02-teste-oral-com-agenda', title: 'Teste oral com reserva e avisos', roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    steps: [{ target: 'oral-test-scheduling', view: 'oral-tests', title: 'O teste ocupa um horário do examinador', text: 'O agendamento reserva 30 minutos somente na data escolhida e prepara avisos para aluno e examinador, com lembretes antes da prova. Confira a situação dos avisos no painel. Remarcar cancela mensagens pendentes antigas; desmarcar libera o horário. O examinador registra o resultado em Testes Orais.' }],
+  },
+  {
+    id: '2026-10-02-teste-oral-na-agenda-aluno', title: 'Seu teste oral na agenda', roles: ['STUDENT'],
+    steps: [{ target: 'student-oral-test-agenda', view: 'schedule', title: 'Confira a data do seu teste oral', text: 'Seu teste oral aparece na Agenda com data, horário e examinador. A escola prepara o aviso e o lembrete pelo WhatsApp cadastrado. Quando houver link, use Entrar no teste oral para conversar com o examinador.' }],
+  },
 ];
 
 /**
