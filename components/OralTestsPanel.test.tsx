@@ -29,7 +29,7 @@ describe('agendamento oral conectado à agenda e aos avisos', () => {
     expect(screen.getByRole('combobox')).toHaveValue('examiner');
     expect(document.querySelector<HTMLInputElement>('input[type="datetime-local"]')?.value).not.toBe('');
     rpc.mockImplementation((name: string) => Promise.resolve(name === 'schedule_oral_test' ? { error: { message: 'O examinador já tem um compromisso nesse horário.' }, data: null } : { data: [], error: null }));
-    fireEvent.click(screen.getByRole('button', { name: 'Agendar', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar' }));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('já tem um compromisso')));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(rpc).toHaveBeenCalledWith('schedule_oral_test', expect.objectContaining({ p_test_id: 'test', p_examiner_id: 'examiner', p_scheduled_at: test.scheduled_at.replace('00Z','00.000Z') }));

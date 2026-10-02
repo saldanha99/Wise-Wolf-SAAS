@@ -180,7 +180,7 @@ begin
   if t.status in('DONE','SKIPPED') then raise exception 'Completed oral tests cannot be scheduled'; end if;
   if p_scheduled_at is null or p_scheduled_at<=now() then raise exception 'Escolha uma data e hora futuras.'; end if;
   if t.status='SCHEDULED' and t.examiner_id is not distinct from p_examiner_id and t.scheduled_at=p_scheduled_at and (t.appointment_id is not null or p_examiner_id is null) then
-    return jsonb_build_object('test_id',t.id,'status',t.status,'unchanged',true); end if;
+    return jsonb_build_object('test_id',t.id,'status',t.status,'unchanged',true,'reserved',t.appointment_id is not null,'notices',private.enqueue_oral_test_notices(t.id)); end if;
   update public.oral_tests set examiner_id=p_examiner_id,scheduled_at=p_scheduled_at,status='SCHEDULED' where id=t.id returning * into t;
   return jsonb_build_object('test_id',t.id,'status',t.status,'scheduled_at',t.scheduled_at,'examiner_id',t.examiner_id,'reserved',t.appointment_id is not null,'notices',private.enqueue_oral_test_notices(t.id));
 end; $$;
