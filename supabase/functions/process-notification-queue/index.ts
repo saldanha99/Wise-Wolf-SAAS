@@ -1211,7 +1211,23 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (
+        if (notificationKind === "ENROLLMENT_STUDENT_CONFIRMED") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_enrollment_access_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) {
+            unavailable("enrollment_access_revalidation_unavailable");
+          }
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "enrollment_access_invalid"));
+          }
+          prepared = {
+            teacherId: null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
           [
             "ORAL_TEST_STUDENT",
             "ORAL_TEST_TEACHER",

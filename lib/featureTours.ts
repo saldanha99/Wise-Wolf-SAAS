@@ -776,6 +776,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-02-teste-oral-na-agenda-aluno', title: 'Seu teste oral na agenda', roles: ['STUDENT'],
     steps: [{ target: 'student-oral-test-agenda', view: 'schedule', title: 'Confira a data do seu teste oral', text: 'Seu teste oral aparece na Agenda com data, horário e examinador. A escola prepara o aviso e o lembrete pelo WhatsApp cadastrado. Quando houver link, use Entrar no teste oral para conversar com o examinador.' }],
   },
+  {
+    id: '2026-10-02-z-matricula-com-acesso', title: 'Matrícula concluída entrega o acesso', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'contracts-recording-clause', view: 'contracts', title: 'Acesso junto das boas-vindas', text: 'Quando a matrícula termina com os pagamentos exigidos confirmados, o servidor prepara as boas-vindas com e-mail de login, endereço do portal e orientação de senha. O envio fica registrado mesmo que o aluno feche a página. O feedback pedagógico da experimental continua pendente para o professor, sem bloquear a conclusão financeira da matrícula.' }],
+  },
 ];
 
 /**

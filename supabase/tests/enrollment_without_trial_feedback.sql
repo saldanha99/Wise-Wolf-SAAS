@@ -66,4 +66,19 @@ select pg_temp.assert_true(
   'a pendência pedagógica de feedback foi removida junto com a trava comercial'
 );
 
+select pg_temp.assert_true(
+  (
+    select pg_catalog.pg_get_functiondef(procedure.oid) not ilike '%trial_feedback_required%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) not ilike '%trial_feedback_is_complete%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) ilike '%lock_trial_conversion_graph%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) ilike '%OPPORTUNITY_CLOSED%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) ilike '%OFFER_REVOKED%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) ilike '%FORBIDDEN%'
+      and pg_catalog.pg_get_functiondef(procedure.oid) ilike '%complete_enrollment_offer_pre_trial_lifecycle_impl%'
+    from pg_catalog.pg_proc procedure
+    where procedure.oid='public.complete_enrollment_offer_pre_crm_won_impl(uuid,uuid)'::regprocedure
+  ),
+  'conclusão ainda exige feedback ou perdeu guardas de autoridade/CRM'
+);
+
 rollback;

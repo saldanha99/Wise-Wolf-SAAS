@@ -1511,6 +1511,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261001202946_payout_confirmation_notifications.sql"
   "supabase/migrations/20261002192214_daily_student_collections.sql"
   "supabase/migrations/20261002195356_retry_daily_student_collections.sql"
+  "supabase/migrations/20261002195026_enrollment_completion_without_feedback.sql"
+  "supabase/migrations/20261002195728_enrollment_portal_access_in_completion_queue.sql"
   "supabase/migrations/20261002193942_oral_test_scheduling_lifecycle.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1667,6 +1669,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/encerrar_reposicao.sql"
   "supabase/tests/experimental_historico_e_remarcacao.sql"
   "supabase/tests/enrollment_without_trial_feedback.sql"
+  "supabase/tests/enrollment_portal_access_notifications.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.

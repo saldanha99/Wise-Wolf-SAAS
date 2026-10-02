@@ -11,6 +11,19 @@ release. É conclusão de envio pendente; não é uma segunda cobrança no dia.
 
 # Wise Wolf SAAS — CLAUDE.md
 
+### 02/10/2026 — Boas-vindas com acesso pela fila da matrícula
+
+Conclusão não exige mais feedback pedagógico da experimental (a emissão já não
+exigia); mantém as guardas financeiras e do CRM. `ENROLLMENT_STUDENT_CONFIRMED`
+leva login, portal verificado e orientação de senha pela fila durável. Worker e
+cerca revalidam identidade e origem; recibo aceito marca `wa_welcome_sent` sem
+reescrever `contract_sent_at`. A página não envia em paralelo com a fila.
+Sem backfill de avisos antigos. Migrations `20261002195026`/`20261002195728`,
+testes SQL e tour da direção no release. Rastreio e reparos autorizados de Maria
+Izabela/André/Cleice, atribuição retroativa da Maria à Gabriela com R$109 pendentes
+até a PRIMEIRA MENSALIDADE (nunca taxa), e acompanhamento de liquidação:
+[runbook](docs/runbooks/enrollment-welcome-and-access.md).
+
 ### 02/10/2026 — Cobrança diária em WhatsApp e e-mail
 
 A direção autorizou cobrança diária por ambos os canais. O opt-in em
