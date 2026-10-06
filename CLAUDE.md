@@ -3766,3 +3766,11 @@ Testes: `whatsapp-inbound/trial-access.test.ts` (fixtures/fetch falso, sem conta
 externos), `lib/trialAccessWiring.test.ts`, `lib/featureTours.test.ts`.
 Tours de novidade: `2026-10-06-acesso-experimental-atendimento` e
 `2026-10-06-acesso-experimental-professor`. Sem migration/dados reais alterados.
+
+Publicação de 06/10: a tentativa oficial do commit `b2b2fd9e` parou em
+`npm audit --audit-level=moderate`, antes da ativação. `braces <=3.0.3` não tem
+versão corrigida (GHSA-vfj7-8cjw-p6xm); a solução sugerida migra Tailwind 3 para 4,
+com impacto no CSS/configuração. NÃO desativar a auditoria nem publicar por SCP.
+A produção permaneceu na release `20261002T202037Z-6f23d076a27c`; as correções
+acima estão no código, não no runtime. Migração de dependências depende de
+direção da pessoa proprietária, com regressão visual e testes completos.
