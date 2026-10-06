@@ -65,7 +65,7 @@ const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => 
   }), [rows]);
 
   return (
-    <section className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] shadow-sm overflow-hidden">
+    <section className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl shadow-xs overflow-hidden">
       <div className="p-5 md:p-6 border-b border-gray-100 dark:border-brand-border flex flex-col md:flex-row md:items-center gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-3 rounded-2xl bg-orange-50 dark:bg-orange-900/20 text-orange-600 shrink-0">
@@ -134,7 +134,7 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
       title: `Turbo ativo há ${row.active_days} dia${row.active_days === 1 ? '' : 's'}`,
       detail: `Ativo desde ${date(row.active_since)} · ofensiva de ${row.streak_days} dias`,
       badge: 'Ativo',
-      cls: 'border-orange-200 dark:border-orange-800/60 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 text-orange-700 dark:text-orange-300',
+      cls: 'border-orange-200 dark:border-orange-800/60 bg-linear-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 text-orange-700 dark:text-orange-300',
     };
     if (row.turbo_status === 'BUILDING') return {
       icon: <TimerReset size={18} />,

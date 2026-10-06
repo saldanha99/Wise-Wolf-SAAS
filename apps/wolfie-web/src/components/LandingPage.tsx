@@ -208,9 +208,9 @@ function ProductPhone({ activeStep = 0, compact = false }: { activeStep?: number
 
   return (
     <div aria-hidden="true" className={`relative mx-auto w-full ${compact ? "max-w-[310px]" : "max-w-[390px]"}`}>
-      <div className={`${compact ? "rounded-[44px] border-[8px]" : "rounded-[54px] border-[10px]"} border-[#17191f] bg-[#17191f] p-2 shadow-[0_38px_90px_rgba(35,31,44,.2)]`}>
+      <div className={`${compact ? "rounded-[44px] border-8" : "rounded-[54px] border-10"} border-[#17191f] bg-[#17191f] p-2 shadow-[0_38px_90px_rgba(35,31,44,.2)]`}>
         <div className={`${compact ? "rounded-[31px]" : "rounded-[38px]"} overflow-hidden bg-white`}>
-          <div className="flex items-center justify-between border-b border-black/[.06] px-5 py-4">
+          <div className="flex items-center justify-between border-b border-black/6 px-5 py-4">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#e72d3d]">{screen.eyebrow}</p>
               <p className="mt-1 font-display text-lg font-extrabold text-[#171717]">{screen.title}</p>
@@ -234,7 +234,7 @@ function ProductPhone({ activeStep = 0, compact = false }: { activeStep?: number
         </div>
       </div>
       {!compact ? (
-        <div className="absolute -left-12 top-[28%] hidden rounded-2xl border border-black/[.06] bg-white p-4 shadow-[0_20px_50px_rgba(38,34,48,.13)] sm:block">
+        <div className="absolute -left-12 top-[28%] hidden rounded-2xl border border-black/6 bg-white p-4 shadow-[0_20px_50px_rgba(38,34,48,.13)] sm:block">
           <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-[#8b8f98]">Etapa ativa</p>
           <p className="mt-1 font-display text-xl font-extrabold text-[#e72d3d]">0{activeStep + 1}</p>
         </div>
@@ -289,7 +289,7 @@ function StickyLearningJourney() {
     <div ref={journeyRef} className="mt-20 grid items-start gap-12 lg:grid-cols-[.88fr_1.12fr] lg:gap-20">
       <div>
         {journeySteps.map(({ number, title, description, icon: Icon }, index) => (
-          <article ref={(element) => { stepRefs.current[index] = element; }} key={number} aria-current={activeStep === index ? "step" : undefined} className={`premium-journey-step flex flex-col justify-center border-b border-black/[.055] py-14 last:border-b-0 lg:min-h-[58vh] lg:py-20 ${activeStep === index ? "is-active" : ""}`}>
+          <article ref={(element) => { stepRefs.current[index] = element; }} key={number} aria-current={activeStep === index ? "step" : undefined} className={`premium-journey-step flex flex-col justify-center border-b border-black/5.5 py-14 last:border-b-0 lg:min-h-[58vh] lg:py-20 ${activeStep === index ? "is-active" : ""}`}>
             <Reveal amount={0.24}>
               <div className="flex items-center gap-3">
                 <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#fff0ec] text-[#e72d3d]"><Icon size={19} /></span>
@@ -325,12 +325,12 @@ export function LandingPage() {
         <section className="px-5 pb-14 pt-28 sm:pt-32">
           <div className="mx-auto grid max-w-7xl overflow-hidden rounded-[34px] bg-[linear-gradient(135deg,#d9273a_0%,#f6534b_48%,#ffad57_100%)] shadow-[0_30px_90px_rgba(196,42,58,.18)] lg:min-h-[610px] lg:grid-cols-[.93fr_1.07fr]">
             <Reveal className="flex flex-col justify-center p-7 text-white sm:p-12 lg:p-16" amount={0.08}>
-              <p className="inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[.16em] backdrop-blur-sm"><Sparkles size={15} /> Inglês para situações reais</p>
+              <p className="inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[.16em] backdrop-blur-xs"><Sparkles size={15} /> Inglês para situações reais</p>
               <h1 className="mt-7 max-w-xl font-display text-[clamp(3.2rem,6vw,5.8rem)] font-extrabold leading-[.94] tracking-[-.065em]">A conversa chega. Você chega preparado.</h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-white/85">Treine reuniões, entrevistas, apresentações e viagens com uma IA que entende seu objetivo, escuta sua tentativa e ajuda você a responder melhor.</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <WolfieLink href="/quiz" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#b91f32] shadow-[0_16px_38px_rgba(111,20,39,.18)] transition hover:-translate-y-0.5">Descobrir meu treino <ArrowRight size={18} /></WolfieLink>
-                <WolfieLink href="/entrar" className="inline-flex min-h-14 items-center justify-center rounded-full border border-white/30 bg-white/10 px-7 py-4 font-extrabold text-white backdrop-blur-sm transition hover:bg-white/20">Já sou aluno</WolfieLink>
+                <WolfieLink href="/entrar" className="inline-flex min-h-14 items-center justify-center rounded-full border border-white/30 bg-white/10 px-7 py-4 font-extrabold text-white backdrop-blur-xs transition hover:bg-white/20">Já sou aluno</WolfieLink>
               </div>
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-bold text-white/80">
                 <span className="inline-flex items-center gap-2"><Check size={16} /> Voz e texto</span>
@@ -390,10 +390,10 @@ export function LandingPage() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => setSelectedGoal(goal)}
-                    className={`premium-scene-card group relative min-h-[360px] overflow-hidden rounded-[32px] bg-[#17191f] text-left shadow-[0_18px_45px_rgba(34,35,40,.1)] outline-none md:h-[430px] md:min-h-0 ${selected ? "is-selected md:h-[500px]" : ""}`}
+                    className={`premium-scene-card group relative min-h-[360px] overflow-hidden rounded-[32px] bg-[#17191f] text-left shadow-[0_18px_45px_rgba(34,35,40,.1)] outline-hidden md:h-[430px] md:min-h-0 ${selected ? "is-selected md:h-[500px]" : ""}`}
                   >
                     <img src={image} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105 group-focus:scale-105" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
+                    <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/25 to-transparent" />
                     <div className="absolute inset-x-0 bottom-0 p-5">
                       <div className="flex items-center justify-between gap-3">
                         <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/20 bg-white/15 text-white backdrop-blur-md"><Icon size={18} /></span>
@@ -460,7 +460,7 @@ export function LandingPage() {
                 <article className="h-full rounded-[34px] bg-[#f3f0ff] p-7 sm:p-9">
                   <div className="flex items-center justify-between">
                     <div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#6151a6]">Intensidade do apoio</p><h3 className="mt-3 font-display text-3xl font-extrabold text-[#292531]">No ponto certo.</h3></div>
-                    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-[#7259d6] shadow-sm"><Zap size={20} /></span>
+                    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-[#7259d6] shadow-xs"><Zap size={20} /></span>
                   </div>
                   <div className="mt-8 grid grid-cols-3 gap-3 text-center text-xs font-extrabold">
                     <div className="rounded-2xl bg-white p-4 text-[#55a876]"><span className="mx-auto block h-10 w-10 rounded-full bg-[#67d38e]" /><p className="mt-3">Leve</p></div>
@@ -500,7 +500,7 @@ export function LandingPage() {
               {outcomeCards.map(([title, description], index) => (
                 <div key={title} className="h-full">
                   <Reveal className="h-full" delay={index * 0.06}>
-                    <article className="h-full rounded-[28px] border border-black/[.06] bg-white p-6 shadow-[0_12px_40px_rgba(38,39,44,.05)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_55px_rgba(38,39,44,.09)]">
+                    <article className="h-full rounded-[28px] border border-black/6 bg-white p-6 shadow-[0_12px_40px_rgba(38,39,44,.05)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_55px_rgba(38,39,44,.09)]">
                       <div className="flex items-start justify-between gap-4"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0ec] text-[#e72d3d]"><Check size={18} strokeWidth={2.7} /></span><span className="text-xs font-extrabold text-[#b4b7bd]">0{index + 1}</span></div>
                       <h3 className="mt-5 font-display text-xl font-extrabold text-[#24252a]">{title}</h3>
                       <p className="mt-3 text-sm leading-6 text-[#777b84]">{description}</p>
@@ -530,7 +530,7 @@ export function LandingPage() {
                 </article>
               </Reveal>
               <Reveal direction="right" delay={0.08}>
-                <article className="h-full rounded-[34px] border border-black/[.08] bg-white p-8">
+                <article className="h-full rounded-[34px] border border-black/8 bg-white p-8">
                   <p className="text-xs font-extrabold uppercase tracking-[.17em] text-[#9a9da4]">Sem um treino contextual</p>
                   <h3 className="mt-3 font-display text-4xl font-extrabold text-[#2b2c31]">Muito conteúdo. Pouca preparação para a conversa.</h3>
                   <ul className="mt-8 space-y-4 text-sm font-bold text-[#70747d]">
@@ -545,7 +545,7 @@ export function LandingPage() {
         <section className="bg-[#fff7f3] px-5 py-24 sm:py-32">
           <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[.9fr_1.1fr]">
             <Reveal direction="left">
-              <ParallaxVisual className="relative mx-auto aspect-[4/3] w-full max-w-xl rounded-[36px] bg-white shadow-[0_26px_70px_rgba(86,51,48,.11)]" distance={12}>
+              <ParallaxVisual className="relative mx-auto aspect-4/3 w-full max-w-xl rounded-[36px] bg-white shadow-[0_26px_70px_rgba(86,51,48,.11)]" distance={12}>
                 <img src="/assets/wolfie/standalone/hero-light-phone-v2.webp" alt="Wolfie em uma experiência de conversa por voz" width="971" height="1619" loading="lazy" decoding="async" className="h-full w-full object-cover object-[center_36%]" />
               </ParallaxVisual>
             </Reveal>
@@ -561,7 +561,7 @@ export function LandingPage() {
 
         <section className="px-5 py-24 sm:py-32">
           <Reveal className="mx-auto max-w-4xl text-center" direction="scale">
-            <span className="mx-auto grid h-20 w-20 place-items-center rounded-[25px] bg-gradient-to-br from-[#ffb45f] via-[#ff785f] to-[#e72d3d] text-[#1f1513] shadow-[0_18px_45px_rgba(231,45,61,.2)]"><Sparkles size={34} /></span>
+            <span className="mx-auto grid h-20 w-20 place-items-center rounded-[25px] bg-linear-to-br from-[#ffb45f] via-[#ff785f] to-[#e72d3d] text-[#1f1513] shadow-[0_18px_45px_rgba(231,45,61,.2)]"><Sparkles size={34} /></span>
             <h2 className="mx-auto mt-8 max-w-3xl font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">Pratique antes da conversa. Chegue diferente nela.</h2>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#727680]">Faça o diagnóstico, veja a recomendação antes de informar seus dados e escolha seu próximo treino.</p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

@@ -84,7 +84,7 @@ const ClassLogReward: React.FC<Props> = ({ result, xp, onClose }) => {
 
     return (
         <div
-            className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-300"
+            className="fixed inset-0 z-9998 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-300"
             onClick={onClose}
             role="dialog"
             aria-live="polite"
@@ -92,7 +92,7 @@ const ClassLogReward: React.FC<Props> = ({ result, xp, onClose }) => {
         >
             <div
                 onClick={e => e.stopPropagation()}
-                className="relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-emerald-400/20 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 p-7 text-white shadow-2xl shadow-emerald-900/40 animate-in zoom-in-95 slide-in-from-bottom-4 duration-500 max-h-[90dvh] overflow-y-auto"
+                className="relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-emerald-400/20 bg-linear-to-br from-emerald-600 via-teal-600 to-emerald-700 p-7 text-white shadow-2xl shadow-emerald-900/40 animate-in zoom-in-95 slide-in-from-bottom-4 duration-500 max-h-[90dvh] overflow-y-auto"
             >
                 <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
 

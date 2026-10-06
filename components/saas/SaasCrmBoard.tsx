@@ -119,7 +119,7 @@ const SaasCrmBoard: React.FC = () => {
 
                             <div className="space-y-3 overflow-y-auto flex-1 pr-2">
                                 {leads.filter(l => l.status === col.id).map(lead => (
-                                    <div key={lead.id} className="bg-brand-surface dark:bg-brand-surface-2 p-4 rounded-xl shadow-sm border border-brand-border dark:border-brand-border hover:shadow-md transition-all group">
+                                    <div key={lead.id} className="bg-brand-surface dark:bg-brand-surface-2 p-4 rounded-xl shadow-xs border border-brand-border dark:border-brand-border hover:shadow-md transition-all group">
                                         <div className="flex justify-between items-start mb-2">
                                             <span className="font-bold text-brand-text block">{lead.school_name}</span>
                                             <button className="text-slate-300 hover:text-brand-muted"><MoreHorizontal size={14} /></button>

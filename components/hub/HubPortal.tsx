@@ -113,7 +113,7 @@ const UsageCard: React.FC<{
 }> = ({ label, used = 0, limit, icon: Icon }) => {
   const percentage = limit == null ? 10 : limit === 0 ? 100 : Math.min(100, Math.round((used / limit) * 100));
   return (
-    <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm">
+    <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs">
       <div className="flex items-center justify-between">
         <div className="grid size-10 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><Icon size={19} /></div>
         <span className="text-xs font-black text-brand-muted">{usageLabel(used, limit)}</span>
@@ -140,7 +140,7 @@ const HubOverview: React.FC<{
   const displayName = bootstrap.memberProfile?.display_name || bootstrap.account.name;
   return (
     <div className="space-y-7">
-      <section className="rounded-[2.25rem] border border-brand-border bg-brand-surface p-7 shadow-sm sm:p-10">
+      <section className="rounded-[2.25rem] border border-brand-border bg-brand-surface p-7 shadow-xs sm:p-10">
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full bg-tenant-primary/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary">
             <Zap size={12} /> {hasCurrentAccess ? 'Plano' : 'Última experiência'} {bootstrap.plan?.name || 'Wise Wolf Hub'}
@@ -194,7 +194,7 @@ const HubOverview: React.FC<{
           { tab: 'educator' as HubTab, title: 'Prepare uma aula', text: 'Transforme um objetivo em uma sequência prática.', icon: Sparkles },
           { tab: 'wolfie' as HubTab, title: 'Viva uma situação real', text: 'Entre no universo recomendado para seu objetivo, profissão e nível.', icon: Bot },
         ].filter(({ tab }) => tab !== 'educator' || canUseEducator).map(({ tab, title, text, icon: Icon }) => (
-          <button key={tab} onClick={() => onNavigate(tab)} className="rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+          <button key={tab} onClick={() => onNavigate(tab)} className="rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-xs transition hover:-translate-y-0.5 hover:shadow-lg">
             <Icon className="text-tenant-primary" />
             <h2 className="mt-5 text-xl font-black text-brand-text">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-brand-muted">{text}</p>
@@ -419,7 +419,7 @@ const HubPlans: React.FC<{
           );
           const checkoutUnavailable = (!catalogReady && !salesAssisted) || (isCurrentPlan && !alternativeCycleAvailable);
           return (
-            <article key={plan.id} className={`rounded-[2rem] border bg-brand-surface p-6 text-brand-text ${isCurrentPlan ? 'border-emerald-500 ring-4 ring-emerald-500/10' : plan.metadata?.popular === true ? 'border-tenant-primary shadow-xl shadow-tenant-primary/10' : 'border-brand-border'}`}>
+            <article key={plan.id} className={`rounded-4xl border bg-brand-surface p-6 text-brand-text ${isCurrentPlan ? 'border-emerald-500 ring-4 ring-emerald-500/10' : plan.metadata?.popular === true ? 'border-tenant-primary shadow-xl shadow-tenant-primary/10' : 'border-brand-border'}`}>
               <div className="flex items-center justify-between">
                 <p className="font-black text-tenant-primary">{plan.name}</p>
                 {isCurrentPlan && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">ATUAL</span>}
@@ -508,7 +508,7 @@ const HubSubscriptionCancellation: React.FC<{
   };
 
   return (
-    <section className="mt-8 rounded-[2rem] border border-brand-border bg-brand-surface p-6 text-brand-text shadow-sm sm:p-8" aria-labelledby="hub-subscription-management-title">
+    <section className="mt-8 rounded-4xl border border-brand-border bg-brand-surface p-6 text-brand-text shadow-xs sm:p-8" aria-labelledby="hub-subscription-management-title">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-4">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><ShieldCheck size={20} /></div>
@@ -522,15 +522,15 @@ const HubSubscriptionCancellation: React.FC<{
       </div>
       {error && <p role="alert" className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100">{error}</p>}
       {confirming && (
-        <div role="dialog" aria-modal="true" aria-labelledby="hub-cancellation-title" className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
+        <div role="dialog" aria-modal="true" aria-labelledby="hub-cancellation-title" className="fixed inset-0 z-100 grid place-items-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-4xl border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
             <div className="flex items-start justify-between gap-4">
               <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-600">Confirmação final</p><h2 id="hub-cancellation-title" className="mt-2 text-2xl font-black text-brand-text">Cancelar somente a renovação?</h2></div>
               <button type="button" onClick={() => { setConfirming(false); setConfirmation(''); }} className="grid size-10 place-items-center rounded-xl bg-brand-surface-2 text-brand-muted" aria-label="Fechar confirmação"><X size={18} /></button>
             </div>
             <p className="mt-4 text-sm leading-6 text-brand-muted">A recorrência no Asaas será encerrada primeiro. Seu acesso continuará até <strong className="text-brand-text">{formattedEnd}</strong>, sem apagar histórico ou materiais.</p>
             <label htmlFor="hub-cancellation-confirmation" className="mt-6 block text-sm font-black text-brand-text">Digite CANCELAR para confirmar</label>
-            <input id="hub-cancellation-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" className="mt-2 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 font-bold uppercase text-brand-text outline-none focus:border-tenant-primary" />
+            <input id="hub-cancellation-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" className="mt-2 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 font-bold uppercase text-brand-text outline-hidden focus:border-tenant-primary" />
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => { setConfirming(false); setConfirmation(''); }} className="rounded-2xl border border-brand-border px-5 py-3 text-sm font-black text-brand-text">Manter assinatura</button>
               <button type="button" onClick={() => void submitCancellation()} disabled={confirmation.trim().toUpperCase() !== 'CANCELAR' || submitting} className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{submitting ? 'Cancelando com segurança...' : 'Confirmar cancelamento'}</button>
@@ -543,7 +543,7 @@ const HubSubscriptionCancellation: React.FC<{
 };
 
 const HubAccessRequired: React.FC<{ onChoosePlan: () => void }> = ({ onChoosePlan }) => (
-  <section className="mx-auto max-w-2xl rounded-[2rem] border border-rose-200 bg-brand-surface p-8 text-center shadow-sm sm:p-12 dark:border-rose-900">
+  <section className="mx-auto max-w-2xl rounded-4xl border border-rose-200 bg-brand-surface p-8 text-center shadow-xs sm:p-12 dark:border-rose-900">
     <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-rose-100 text-rose-700"><Clock3 size={24} /></div>
     <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-rose-600">Acesso pausado</p>
     <h1 className="mt-3 text-3xl font-black tracking-tight text-brand-text">Escolha um plano para continuar</h1>
@@ -722,7 +722,7 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
           contextLabel={bootstrap.plan?.name || 'Conta Hub'}
           mobilePrimaryNavigation
         />
-        <main ref={mainScrollRef} tabIndex={-1} aria-label="Conteúdo principal" className="app-main-scroll flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-clip outline-none">
+        <main ref={mainScrollRef} tabIndex={-1} aria-label="Conteúdo principal" className="app-main-scroll flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-clip outline-hidden">
           <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md dark:border-gray-800 dark:bg-slate-900/80">
             <div className="flex h-16 items-center justify-between px-3 sm:px-6">
           <div className="flex items-center gap-3">

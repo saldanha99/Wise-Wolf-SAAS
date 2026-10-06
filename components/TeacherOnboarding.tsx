@@ -389,7 +389,7 @@ const TeacherOnboarding: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 py-12 px-4 font-sans">
+        <div className="min-h-screen bg-linear-to-br from-slate-50 to-indigo-50 py-12 px-4 font-sans">
             <div className="max-w-4xl mx-auto flex flex-col md:flex-row bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
 
                 {/* Left Side: Offer Details */}
@@ -454,7 +454,7 @@ const TeacherOnboarding: React.FC = () => {
                                     placeholder="URL da foto (opcional)"
                                     value={avatarUrl}
                                     onChange={e => setAvatarUrl(e.target.value)}
-                                    className="text-xs w-full bg-brand-surface-2 border-none rounded-lg px-3 py-2 text-brand-muted outline-none focus:ring-1 focus:ring-tenant-primary"
+                                    className="text-xs w-full bg-brand-surface-2 border-none rounded-lg px-3 py-2 text-brand-muted outline-hidden focus:ring-1 focus:ring-tenant-primary"
                                 />
                             </div>
                         </div>
@@ -584,7 +584,7 @@ const Input = ({ label, value, onChange, icon, type = "text", required = false }
                 required={required}
                 value={value}
                 onChange={onChange}
-                className="w-full pl-11 pr-4 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary transition-all placeholder:text-brand-muted"
+                className="w-full pl-11 pr-4 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary transition-all placeholder:text-brand-muted"
             />
         </div>
     </div>

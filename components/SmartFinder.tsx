@@ -167,7 +167,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             {/* Floating Trigger Button */}
             <button
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
+                className="fixed bottom-6 right-6 z-50 bg-linear-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
                 title="Lançar Vaga"
             >
                 <Zap size={28} fill="currentColor" className="group-hover:animate-pulse" />
@@ -175,7 +175,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
 
             {/* Modal Drawer */}
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
                     <div className="w-full max-w-md bg-brand-surface h-full shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
 
                         {/* Header */}
@@ -194,7 +194,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setKind('TRIAL')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRIAL'
-                                            ? 'bg-indigo-600 text-white shadow'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
                                     >
@@ -204,7 +204,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setKind('TRAINING')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRAINING'
-                                            ? 'bg-indigo-600 text-white shadow'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
                                     >
@@ -267,7 +267,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                             type="time"
                                             value={targetTime}
                                             onChange={(e) => setTargetTime(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-800/30 rounded-2xl font-black text-xl text-orange-600 dark:text-orange-400 focus:outline-none focus:border-orange-500 text-center shadow-inner"
+                                            className="w-full pl-10 pr-4 py-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-800/30 rounded-2xl font-black text-xl text-orange-600 dark:text-orange-400 focus:outline-hidden focus:border-orange-500 text-center shadow-inner"
                                         />
                                         <Clock className="absolute left-3 top-5 text-orange-300" size={20} />
                                     </div>
@@ -334,7 +334,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setDispatchMode('individual')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'individual'
-                                            ? 'bg-orange-500 text-white shadow'
+                                            ? 'bg-orange-500 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
                                     >
@@ -344,7 +344,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setDispatchMode('group')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'group'
-                                            ? 'bg-orange-500 text-white shadow'
+                                            ? 'bg-orange-500 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-40'
                                             }`}
                                     >
@@ -389,7 +389,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                             <button
                                 onClick={handleBroadcast}
                                 disabled={loading}
-                                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-200 dark:shadow-none hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-70 disabled:grayscale"
+                                className="w-full bg-linear-to-r from-orange-500 to-red-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-200 dark:shadow-none hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-70 disabled:grayscale"
                             >
                                 {loading ? (
                                     <div className="animate-spin rounded-full h-6 w-6 border-4 border-white border-t-transparent" />

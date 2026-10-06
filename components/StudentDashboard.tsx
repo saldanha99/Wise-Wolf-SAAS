@@ -267,7 +267,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               <Sparkles size={12} className="text-white" />
               <span>Portal Premium</span>
             </div>
-            <h1 className="text-3xl md:text-5xl lg:text-6xl font-[family-name:var(--font-display)] font-extrabold tracking-tighter mb-3 text-white">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-(family-name:--font-display) font-extrabold tracking-tighter mb-3 text-white">
               Olá, {user.name.split(' ')[0]}! 👋
             </h1>
             <p className="text-white/80 font-medium text-lg max-w-md">Vamos evoluir 1% hoje? Sua jornada rumo à fluência continua agora.</p>
@@ -334,10 +334,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
       {/* 2. STATS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-orange-400/20 to-transparent rounded-full blur-3xl group-hover:from-orange-400/30 transition-colors"></div>
+        <div className="bg-brand-surface p-6 rounded-4xl border border-brand-border shadow-xs hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-linear-to-b from-orange-400/20 to-transparent rounded-full blur-3xl group-hover:from-orange-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-orange-400/10 text-orange-500 rounded-2xl shadow-sm border border-orange-400/20">
+            <div className="p-3 bg-orange-400/10 text-orange-500 rounded-2xl shadow-xs border border-orange-400/20">
               <Zap size={24} className="fill-current" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Ofensiva</span>
@@ -350,10 +350,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-purple-400/20 to-transparent rounded-full blur-3xl group-hover:from-purple-400/30 transition-colors"></div>
+        <div className="bg-brand-surface p-6 rounded-4xl border border-brand-border shadow-xs hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-linear-to-b from-purple-400/20 to-transparent rounded-full blur-3xl group-hover:from-purple-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-purple-400/10 text-purple-500 rounded-2xl shadow-sm border border-purple-400/20">
+            <div className="p-3 bg-purple-400/10 text-purple-500 rounded-2xl shadow-xs border border-purple-400/20">
               <Star size={24} className="fill-current" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Milestones</span>
@@ -363,15 +363,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               {gamification.xp || 0} <span className="text-sm font-bold text-brand-muted tracking-normal">xp</span>
             </h3>
             <div className="w-full h-2 bg-brand-surface-2 rounded-full overflow-hidden shadow-inner border border-brand-border">
-              <div className="h-full bg-gradient-to-r from-purple-400 to-brand-accent rounded-full" style={{ width: `${Math.min(gamification.nextLevelProgress || 0, 100)}%` }}></div>
+              <div className="h-full bg-linear-to-r from-purple-400 to-brand-accent rounded-full" style={{ width: `${Math.min(gamification.nextLevelProgress || 0, 100)}%` }}></div>
             </div>
           </div>
         </div>
 
-        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-blue-400/20 to-transparent rounded-full blur-3xl group-hover:from-blue-400/30 transition-colors"></div>
+        <div className="bg-brand-surface p-6 rounded-4xl border border-brand-border shadow-xs hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-linear-to-b from-blue-400/20 to-transparent rounded-full blur-3xl group-hover:from-blue-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-blue-400/10 text-blue-500 rounded-2xl shadow-sm border border-blue-400/20">
+            <div className="p-3 bg-blue-400/10 text-blue-500 rounded-2xl shadow-xs border border-blue-400/20">
               <Award size={24} className="fill-current" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Evolução</span>
@@ -394,7 +394,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
               <div className="relative">
-                <div className="w-24 h-24 bg-brand-surface/10 backdrop-blur-md rounded-[2rem] flex items-center justify-center border border-white/20 shadow-inner">
+                <div className="w-24 h-24 bg-brand-surface/10 backdrop-blur-md rounded-4xl flex items-center justify-center border border-white/20 shadow-inner">
                   <div className="w-16 h-16 bg-brand-surface shrink-0 rounded-2xl flex items-center justify-center animate-pulse shadow-lg text-brand-accent">
                     <Video size={36} className="fill-brand-accent/20" />
                   </div>
@@ -405,7 +405,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
               </div>
               <div className="pt-2">
                 <p className="text-white/80 font-bold uppercase tracking-[0.2em] text-[10px] md:text-xs mb-2">Preparado para Falar?</p>
-                <h2 className="text-3xl md:text-5xl font-[family-name:var(--font-display)] font-extrabold tracking-tighter mb-2 text-white drop-shadow-sm leading-tight">Sua aula vai começar!</h2>
+                <h2 className="text-3xl md:text-5xl font-(family-name:--font-display) font-extrabold tracking-tighter mb-2 text-white drop-shadow-xs leading-tight">Sua aula vai começar!</h2>
                 <p className="text-white/90 font-medium text-sm md:text-lg">Professor(a) <b>{nextClass.teacher}</b> te espera na sala.</p>
               </div>
             </div>
@@ -430,8 +430,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       ) : (
         /* Regular Next Class Card */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-brand-surface p-8 rounded-[3rem] border border-brand-border shadow-sm flex flex-col justify-center relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-1/2 h-full bg-gradient-to-l from-brand-accent/10 to-transparent opacity-50 transition-opacity"></div>
+          <div className="lg:col-span-2 bg-brand-surface p-8 rounded-[3rem] border border-brand-border shadow-xs flex flex-col justify-center relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-1/2 h-full bg-linear-to-l from-brand-accent/10 to-transparent opacity-50 transition-opacity"></div>
 
             <h3 className="font-bold text-brand-text text-sm uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
               <Clock size={16} className="text-brand-accent" /> Próximo Encontro
@@ -440,7 +440,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             {nextClass ? (
               <div className="flex flex-col md:flex-row items-center gap-8 relative z-10 w-full justify-between pr-4">
                 <div className="text-center md:text-left flex-1">
-                  <h2 className="text-5xl font-extrabold text-brand-text tracking-tighter drop-shadow-sm">{nextClass.time}</h2>
+                  <h2 className="text-5xl font-extrabold text-brand-text tracking-tighter drop-shadow-xs">{nextClass.time}</h2>
                   <p className="text-brand-muted font-medium mt-2 text-lg">com Professor(a) <span className="font-bold text-brand-text">{nextClass.teacher}</span></p>
                 </div>
                 <div className="h-16 w-px bg-brand-border hidden md:block"></div>
@@ -468,9 +468,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           </div>
 
           {/* Support Card */}
-          <div className="bg-brand-surface p-8 rounded-[3rem] border border-brand-border flex flex-col justify-between items-center text-center shadow-sm relative overflow-hidden">
+          <div className="bg-brand-surface p-8 rounded-[3rem] border border-brand-border flex flex-col justify-between items-center text-center shadow-xs relative overflow-hidden">
             <div className="absolute -top-10 -left-10 w-32 h-32 bg-emerald-400/10 rounded-full blur-2xl"></div>
-            <div className="p-4 bg-emerald-400/10 text-emerald-500 border border-emerald-400/20 rounded-[2rem] mb-4 shadow-sm relative z-10 rotate-[-5deg]">
+            <div className="p-4 bg-emerald-400/10 text-emerald-500 border border-emerald-400/20 rounded-4xl mb-4 shadow-xs relative z-10 rotate-[-5deg]">
               <MessageSquareText size={32} />
             </div>
             <div className="relative z-10 mb-6">
@@ -491,7 +491,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
 
       {/* 4. CONTENT & HISTORY */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm">
+        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-xs">
           <div className="flex justify-between items-center gap-4 mb-6">
             <h3 className="font-bold text-brand-text text-sm uppercase tracking-widest">Histórico Recente</h3>
             {recentLogs.length > 3 && (
@@ -540,7 +540,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
             </div>
             <p className="text-lg font-bold text-brand-text italic mb-6">"{suggestion}"</p>
 
-            <div className="p-4 bg-brand-surface-2 rounded-2xl flex items-center gap-4 shadow-sm border border-brand-border">
+            <div className="p-4 bg-brand-surface-2 rounded-2xl flex items-center gap-4 shadow-xs border border-brand-border">
               <div className="w-10 h-10 rounded-full bg-brand-surface border border-brand-border flex items-center justify-center text-brand-muted">
                 <Target size={18} />
               </div>
@@ -562,10 +562,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
       {/* Trilhas e Atividades movidas para a aba "Praticar" no sidebar */}
 
       {showContract && profile && createPortal(
-        <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-250 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in">
           {/* Overlay clicável para fechar */}
           <div aria-hidden="true" className="absolute inset-0" onClick={() => setShowContract(false)} />
-          <div id="student-contract-dialog" ref={contractDialogRef} role="dialog" aria-modal="true" aria-labelledby="student-contract-title" tabIndex={-1} className="relative flex h-dvh w-full flex-col bg-brand-surface shadow-2xl animate-in slide-in-from-bottom duration-300 sm:h-auto sm:max-h-[92dvh] sm:max-w-4xl sm:rounded-[2rem] sm:slide-in-from-bottom-0 sm:zoom-in-95">
+          <div id="student-contract-dialog" ref={contractDialogRef} role="dialog" aria-modal="true" aria-labelledby="student-contract-title" tabIndex={-1} className="relative flex h-dvh w-full flex-col bg-brand-surface shadow-2xl animate-in slide-in-from-bottom duration-300 sm:h-auto sm:max-h-[92dvh] sm:max-w-4xl sm:rounded-4xl sm:slide-in-from-bottom-0 sm:zoom-in-95">
             {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 sm:hidden shrink-0">
               <div className="w-10 h-1 bg-brand-border rounded-full" />
@@ -582,7 +582,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                     type="button"
                     onClick={() => void handleContractDownload()}
                     disabled={downloadingContract}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-sm disabled:cursor-wait disabled:opacity-70"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-xs disabled:cursor-wait disabled:opacity-70"
                   >
                     {downloadingContract ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
                     {downloadingContract ? 'Preparando...' : 'Baixar PDF'}

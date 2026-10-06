@@ -196,8 +196,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   const permanent = scope === 'PERMANENT';
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-2xl">
+    <div className="fixed inset-0 z-120 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-xl overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-brand-border bg-brand-surface-2/60 p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-500">
@@ -253,7 +253,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
                   value={booking.day_of_week}
                   onChange={event => updateDraft(booking.id, { day_of_week: event.target.value })}
                   disabled={applying || savingId === booking.id || !permanent}
-                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
+                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
                 >
                   {DAYS.map(day => <option key={day} value={day}>{day}</option>)}
                 </select>
@@ -264,7 +264,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
                   value={booking.time_slot}
                   onChange={event => updateDraft(booking.id, { time_slot: event.target.value })}
                   disabled={applying || savingId === booking.id}
-                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none [color-scheme:dark] focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
+                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-hidden scheme-dark focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
                 />
                 {!permanent && (
                   <button

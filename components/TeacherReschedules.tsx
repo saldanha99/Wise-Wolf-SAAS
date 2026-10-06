@@ -176,12 +176,12 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight flex items-center gap-3">
+                <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-tight flex items-center gap-3">
                     Reposições
                 </h2>
             </div>
 
-            <div className="bg-brand-surface rounded-[2rem] border border-brand-border shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden">
+            <div className="bg-brand-surface rounded-4xl border border-brand-border shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden">
                 {/* Tabs */}
                 <div className="border-b border-brand-border bg-brand-surface-2/50 px-6 pt-4 flex gap-6 overflow-x-auto custom-scrollbar">
                     {tabs.map((tab) => (
@@ -213,7 +213,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                         placeholder="Buscar..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2.5 bg-brand-bg border border-brand-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent text-brand-text placeholder:text-brand-muted transition-all"
+                                        className="w-full pl-9 pr-4 py-2.5 bg-brand-bg border border-brand-border rounded-xl text-xs outline-hidden focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent text-brand-text placeholder:text-brand-muted transition-all"
                                     />
                                 </div>
                             </div>
@@ -380,14 +380,14 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
 
                         <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6 overflow-y-auto">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-2 ml-1">
                                     <User size={12} className="text-brand-accent" /> Aluno Selecionado
                                 </label>
                                 {/* Aluno e origem são imutáveis: apenas data/hora podem mudar. */}
                                 <select
                                     required
                                     value={formData.studentId}
-                                    className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-hidden transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled
                                 >
                                     <option value="">Selecione um aluno...</option>
@@ -401,7 +401,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-2 ml-1">
                                         <Calendar size={12} className="text-brand-accent" /> Data
                                     </label>
                                     <input
@@ -409,11 +409,11 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                         required
                                         value={formData.date}
                                         onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                        className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all [color-scheme:dark]"
+                                        className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-hidden transition-all scheme-dark"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-2 ml-1">
                                         <Clock size={12} className="text-brand-accent" /> Horário
                                     </label>
                                     <input
@@ -421,14 +421,14 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                         required
                                         value={formData.time}
                                         onChange={e => setFormData({ ...formData, time: e.target.value })}
-                                        className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all [color-scheme:dark]"
+                                        className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-hidden transition-all scheme-dark"
                                     />
                                 </div>
                             </div>
 
                             {/* Remarcação pede motivo: é o que a direção não tinha. A coordenação e a família recebem o aviso. */}
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-2 ml-1">
                                     <Repeat size={12} className="text-brand-accent" /> Motivo {editingNeedsReason ? '(obrigatório ao remarcar)' : '(opcional)'}
                                 </label>
                                 <input
@@ -438,7 +438,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                     value={formData.reason}
                                     onChange={e => setFormData({ ...formData, reason: e.target.value })}
                                     placeholder={editingHadSlot ? 'Ex.: aluno pediu para segunda' : 'Ex.: combinado com a família pelo WhatsApp'}
-                                    className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all placeholder:font-medium placeholder:text-brand-muted"
+                                    className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-hidden transition-all placeholder:font-medium placeholder:text-brand-muted"
                                 />
                                 {editingSoon && (
                                     <p className="flex items-center gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400">
@@ -450,7 +450,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
 
                             <button
                                 type="submit"
-                                className="w-full bg-brand-accent text-white py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] hover:bg-brand-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center justify-center gap-3 mt-4"
+                                className="w-full bg-brand-accent text-white py-5 rounded-3xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-brand-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center justify-center gap-3 mt-4"
                             >
                                 <Save size={18} /> Salvar Alterações
                             </button>
@@ -462,7 +462,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
             {/* Histórico da reposição: cada marcação/remarcação/desmarcação, com origem e motivo. */}
             {historyOf && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setHistoryOf(null)}>
-                    <div className="bg-brand-surface w-full max-w-lg rounded-[2rem] border border-brand-border shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="bg-brand-surface w-full max-w-lg rounded-4xl border border-brand-border shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                             <h3 className="text-sm font-black text-brand-text uppercase tracking-tight flex items-center gap-2"><History size={16} className="text-brand-accent" /> Histórico da reposição</h3>
                             <button onClick={() => setHistoryOf(null)} className="p-2 hover:bg-brand-bg rounded-xl"><X size={16} className="text-brand-muted" /></button>

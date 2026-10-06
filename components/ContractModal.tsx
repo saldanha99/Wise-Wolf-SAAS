@@ -169,7 +169,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
     const currentProgressIndex = progressSteps.findIndex(item => item.key === contractProps.processingStage);
 
     return createPortal(
-        <div className="enrollment-contract-overlay fixed inset-0 z-[250] flex items-center justify-center backdrop-blur-md p-0 animate-in fade-in duration-300 sm:p-4">
+        <div className="enrollment-contract-overlay fixed inset-0 z-250 flex items-center justify-center backdrop-blur-md p-0 animate-in fade-in duration-300 sm:p-4">
             <div
                 ref={dialogRef}
                 role="dialog"
@@ -333,7 +333,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     value={typedName}
                                     onChange={(e) => setTypedName(e.target.value)}
                                     placeholder={contractProps.studentName}
-                                    className={`w-full p-4 border rounded-xl font-bold bg-brand-surface-2 outline-none transition-all text-brand-text placeholder:text-brand-muted ${isValidSignature
+                                    className={`w-full p-4 border rounded-xl font-bold bg-brand-surface-2 outline-hidden transition-all text-brand-text placeholder:text-brand-muted ${isValidSignature
                                         ? 'border-emerald-500 ring-2 ring-emerald-100'
                                         : 'border-brand-border focus:border-blue-500'
                                         }`}
@@ -435,7 +435,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
             {/* Floating Action Button for Mobile */}
             {!isSignatureVisible && (
-                <div className="lg:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-[260] animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
+                <div className="lg:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-260 animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
                     <button
                         onClick={scrollToSignature}
                                 disabled={loading || !schoolIdentity.isReady}

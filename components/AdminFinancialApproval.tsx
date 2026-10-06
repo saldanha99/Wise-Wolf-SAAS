@@ -106,7 +106,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
           </h2>
           <p className="text-gray-500 dark:text-brand-muted text-sm">Valide os fechamentos mensais enviados pelos professores.</p>
         </div>
-        <div className="bg-brand-surface px-6 py-4 rounded-3xl border border-gray-100 dark:border-brand-border flex items-center gap-4 shadow-sm w-full md:w-auto overflow-hidden">
+        <div className="bg-brand-surface px-6 py-4 rounded-3xl border border-gray-100 dark:border-brand-border flex items-center gap-4 shadow-xs w-full md:w-auto overflow-hidden">
           <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-2xl">
             <DollarSign size={24} />
           </div>
@@ -119,7 +119,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
         </div>
       </header>
 
-      <div className="bg-brand-surface rounded-[2.5rem] border border-gray-100 dark:border-brand-border overflow-hidden shadow-sm">
+      <div className="bg-brand-surface rounded-[2.5rem] border border-gray-100 dark:border-brand-border overflow-hidden shadow-xs">
         <div className="p-6 border-b dark:border-brand-border flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex gap-4">
             <button
@@ -138,7 +138,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
               placeholder="Buscar professor ou mês..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-xs outline-none transition-all uppercase font-black"
+              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-xs outline-hidden transition-all uppercase font-black"
             />
           </div>
         </div>
@@ -170,7 +170,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
                     <p className="text-[9px] text-brand-muted font-bold">{req.total_lessons} aulas computadas</p>
                   </td>
                   <td className="px-8 py-6">
-                    <span className={`text-[9px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest border shadow-sm ${req.status === 'PAGO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                    <span className={`text-[9px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest border shadow-xs ${req.status === 'PAGO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                         req.status === 'CONTESTADO' ? 'bg-orange-50 text-orange-600 border-orange-100' :
                           'bg-blue-50 text-blue-600 border-blue-100'
                       }`}>
@@ -211,7 +211,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
           </table>
           {filteredRequests.length === 0 && !loading && (
             <div className="py-24 text-center">
-              <div className="w-20 h-20 bg-gray-50 dark:bg-brand-surface-2 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
+              <div className="w-20 h-20 bg-gray-50 dark:bg-brand-surface-2 rounded-4xl flex items-center justify-center mx-auto mb-6 text-gray-200">
                 <FileText size={40} />
               </div>
               <p className="text-gray-400 dark:text-brand-muted font-bold uppercase tracking-widest text-[10px]">Sem solicitações neste período</p>

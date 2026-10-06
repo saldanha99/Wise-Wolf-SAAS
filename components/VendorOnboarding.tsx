@@ -52,9 +52,9 @@ const DISPLAY = "'Manrope', 'DM Sans', system-ui, sans-serif";
 const BODY = "'DM Sans', 'Inter', system-ui, sans-serif";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const card = 'rounded-[28px] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06),0_28px_56px_-32px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/[0.06] dark:bg-[#0F1626] dark:shadow-none dark:ring-white/10';
+const card = 'rounded-[28px] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06),0_28px_56px_-32px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/6 dark:bg-[#0F1626] dark:shadow-none dark:ring-white/10';
 const eyebrow = 'text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400';
-const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-[#60A5FA] dark:focus-visible:ring-offset-[#0F1626]';
+const focusRing = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-[#60A5FA] dark:focus-visible:ring-offset-[#0F1626]';
 /**
  * Botão na cor da escola. O hover ESCURECE por cima da cor (camada preta no
  * background-image): clarear com opacidade derrubaria o contraste do texto
@@ -349,7 +349,7 @@ const VendorOnboarding: React.FC = () => {
                     faixa e, quando cabe inteiro na janela, acompanha a rolagem à direita. */}
                 <section
                     aria-labelledby="aff-form-title"
-                    className={`${card} p-5 sm:p-8 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1 lg:-mt-[224px] lg:self-start lg:p-7 ${STICKY_FORM}`}
+                    className={`${card} p-5 sm:p-8 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1 lg:mt-[-224px] lg:self-start lg:p-7 ${STICKY_FORM}`}
                 >
                     <h2 id="aff-form-title" className="text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl" style={{ fontFamily: DISPLAY }}>
                         {offer.linkedStudentId ? 'Vincule sua conta de aluno' : 'Crie seu acesso'}
@@ -403,7 +403,7 @@ const VendorOnboarding: React.FC = () => {
                         <div>
                             <label
                                 htmlFor="aff-terms"
-                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm leading-relaxed text-slate-700 has-[:checked]:border-[rgb(var(--aff-rgb))] has-[:checked]:bg-[rgb(var(--aff-rgb)_/_0.04)] dark:text-slate-300 dark:has-[:checked]:border-[#60A5FA] dark:has-[:checked]:bg-white/5 ${fieldInvalid('terms') ? 'border-rose-600 bg-rose-50/60 dark:border-rose-400 dark:bg-rose-500/10' : 'border-slate-300 dark:border-white/20'}`}
+                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm leading-relaxed text-slate-700 has-checked:border-[rgb(var(--aff-rgb))] has-checked:bg-[rgb(var(--aff-rgb)/0.04)] dark:text-slate-300 dark:has-checked:border-[#60A5FA] dark:has-checked:bg-white/5 ${fieldInvalid('terms') ? 'border-rose-600 bg-rose-50/60 dark:border-rose-400 dark:bg-rose-500/10' : 'border-slate-300 dark:border-white/20'}`}
                             >
                                 <input
                                     id="aff-terms"
@@ -445,7 +445,7 @@ const VendorOnboarding: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-bold shadow-sm disabled:cursor-wait ${brandButton}`}
+                            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-bold shadow-xs disabled:cursor-wait ${brandButton}`}
                             style={{ fontFamily: DISPLAY }}
                         >
                             {loading ? (
@@ -508,7 +508,7 @@ const VendorOnboarding: React.FC = () => {
                                             ))}
                                             {stage.showsSettlement && (
                                                 <>
-                                                    <dl className="divide-y divide-slate-200 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-900/[0.06] dark:divide-white/10 dark:bg-white/5 dark:ring-white/10">
+                                                    <dl className="divide-y divide-slate-200 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-900/6 dark:divide-white/10 dark:bg-white/5 dark:ring-white/10">
                                                         {SETTLEMENT_RULES.map(rule => (
                                                             <div key={rule.method} className="flex gap-3 px-4 py-3">
                                                                 <dt className="w-28 shrink-0 font-semibold text-slate-900 dark:text-white">{rule.method}</dt>
@@ -531,7 +531,7 @@ const VendorOnboarding: React.FC = () => {
                         id="regras-do-programa"
                         tabIndex={-1}
                         aria-labelledby="aff-rules-title"
-                        className="scroll-mt-6 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] dark:focus-visible:ring-[#60A5FA]"
+                        className="scroll-mt-6 rounded-2xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[#2563EB] dark:focus-visible:ring-[#60A5FA]"
                     >
                         <h2 id="aff-rules-title" className="flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl" style={{ fontFamily: DISPLAY }}>
                             <ShieldCheck size={22} className="text-[rgb(var(--aff-rgb))] dark:text-[#93C5FD]" aria-hidden="true" />
@@ -574,7 +574,7 @@ const PageShell: React.FC<{
                 <BadgePercent
                     aria-hidden="true"
                     strokeWidth={1.25}
-                    className="pointer-events-none absolute -right-10 -top-8 h-56 w-56 text-black/[0.12] sm:h-72 sm:w-72 lg:hidden"
+                    className="pointer-events-none absolute -right-10 -top-8 h-56 w-56 text-black/12 sm:h-72 sm:w-72 lg:hidden"
                 />
                 <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-7 sm:px-6 sm:pt-10 lg:pb-32 lg:pt-14">
                     <div className="flex items-center gap-3">
@@ -682,7 +682,7 @@ const CouponTicket: React.FC<{ code: string | null; mode: 'reserved' | 'active' 
                             id="aff-coupon-code"
                             ref={codeRef}
                             data-size={size}
-                            className={`block font-mono font-bold leading-tight tracking-[0.08em] ${COUPON_CODE_CLASS[size]} ${code.trim().length > COUPON_CODE_NOWRAP_MAX ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'} ${canCopy ? 'select-all' : ''}`}
+                            className={`block font-mono font-bold leading-tight tracking-[0.08em] ${COUPON_CODE_CLASS[size]} ${code.trim().length > COUPON_CODE_NOWRAP_MAX ? 'wrap-anywhere' : 'whitespace-nowrap'} ${canCopy ? 'select-all' : ''}`}
                         >
                             {code}
                         </span>
@@ -697,13 +697,13 @@ const CouponTicket: React.FC<{ code: string | null; mode: 'reserved' | 'active' 
                     <span className={`${bite} -right-2.5`} />
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 pb-4 pt-3.5 sm:px-6">
-                    <p className="min-w-[12rem] flex-1 text-[13px] leading-snug text-white">{note}</p>
+                    <p className="min-w-48 flex-1 text-[13px] leading-snug text-white">{note}</p>
                     {canCopy && (
                         <button
                             type="button"
                             onClick={() => { void handleCopy(); }}
                             aria-describedby="aff-coupon-code"
-                            className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-4 text-sm font-bold text-[rgb(var(--aff-rgb))] shadow-sm hover:shadow-[0_0_0_3px_rgba(255,255,255,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--aff-rgb))] dark:text-slate-900"
+                            className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-4 text-sm font-bold text-[rgb(var(--aff-rgb))] shadow-xs hover:shadow-[0_0_0_3px_rgba(255,255,255,0.45)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--aff-rgb))] dark:text-slate-900"
                         >
                             {state === 'copied' ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
                             {state === 'copied' ? 'Copiado' : 'Copiar'}
@@ -723,7 +723,7 @@ const CouponTicket: React.FC<{ code: string | null; mode: 'reserved' | 'active' 
 
 const Fact: React.FC<{ icon: LucideIcon; children: React.ReactNode }> = ({ icon: Icon, children }) => (
     <li className="flex items-start gap-2.5">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[rgb(var(--aff-rgb)_/_0.08)] text-[rgb(var(--aff-rgb))] dark:bg-white/10 dark:text-[#93C5FD]">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[rgb(var(--aff-rgb)/0.08)] text-[rgb(var(--aff-rgb))] dark:bg-white/10 dark:text-[#93C5FD]">
             <Icon size={16} aria-hidden="true" />
         </span>
         <span className="pt-1 leading-snug">{children}</span>
@@ -768,7 +768,7 @@ const Field: React.FC<{
                     autoComplete={autoComplete}
                     aria-invalid={invalid || undefined}
                     aria-describedby={describedBy}
-                    className={`h-12 w-full rounded-xl border bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-500 focus:border-[rgb(var(--aff-rgb))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--aff-rgb)_/_0.25)] lg:h-11 dark:bg-[#0A1020] dark:text-white dark:placeholder:text-slate-400 dark:focus:border-[#60A5FA] dark:focus:ring-[#60A5FA]/30 border-[#8792A5] dark:border-white/35 aria-[invalid=true]:border-rose-600 aria-[invalid=true]:focus:border-rose-600 aria-[invalid=true]:focus:ring-rose-600/25 dark:aria-[invalid=true]:border-rose-400 dark:aria-[invalid=true]:focus:border-rose-400 dark:aria-[invalid=true]:focus:ring-rose-400/30 ${trailing ? 'pr-12' : 'pr-3'}`}
+                    className={`h-12 w-full rounded-xl border bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-500 focus:border-[rgb(var(--aff-rgb))] focus:outline-hidden focus:ring-2 focus:ring-[rgb(var(--aff-rgb)/0.25)] lg:h-11 dark:bg-[#0A1020] dark:text-white dark:placeholder:text-slate-400 dark:focus:border-[#60A5FA] dark:focus:ring-[#60A5FA]/30 border-[#8792A5] dark:border-white/35 aria-invalid:border-rose-600 aria-invalid:focus:border-rose-600 aria-invalid:focus:ring-rose-600/25 dark:aria-invalid:border-rose-400 dark:aria-invalid:focus:border-rose-400 dark:aria-invalid:focus:ring-rose-400/30 ${trailing ? 'pr-12' : 'pr-3'}`}
                 />
                 {trailing}
             </div>

@@ -1009,7 +1009,7 @@ ${parsed.details}` : ''));
 
       {/* Sidebar: Teacher Filter (Admins Only) */}
       {showSidebar && (
-        <div className="w-full xl:w-72 max-h-[22rem] xl:max-h-none min-h-0 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
+        <div className="w-full xl:w-72 max-h-88 xl:max-h-none min-h-0 bg-brand-surface border border-brand-border rounded-4xl flex flex-col shadow-xs shrink-0">
           <div className="p-5 border-b border-brand-border">
             <h3 className="font-black text-brand-text dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
               <Users size={14} className="text-tenant-primary" /> Filtrar por Professor
@@ -1059,13 +1059,13 @@ ${parsed.details}` : ''));
       {/* Main Content */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-6 overflow-visible xl:overflow-hidden">
         {/* Header Search */}
-        <div className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap justify-between items-stretch md:items-center gap-3 md:gap-4 bg-brand-surface p-4 rounded-[2rem] border border-brand-border shrink-0">
+        <div className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap justify-between items-stretch md:items-center gap-3 md:gap-4 bg-brand-surface p-4 rounded-4xl border border-brand-border shrink-0">
           <div className="flex items-center gap-4 w-full md:min-w-[18rem] md:flex-1">
             <div className="p-3 bg-brand-surface-2 rounded-full">
               <Search size={20} className="text-brand-muted" />
             </div>
             <input
-              className="flex-1 bg-transparent outline-none text-sm font-bold text-brand-text dark:text-slate-200 placeholder:text-brand-muted"
+              className="flex-1 bg-transparent outline-hidden text-sm font-bold text-brand-text dark:text-slate-200 placeholder:text-brand-muted"
               placeholder="Buscar aluno por nome, profissão..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -1078,19 +1078,19 @@ ${parsed.details}` : ''));
 
           {/* Filtros avançados */}
           <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
             <option value="ALL">Todos os níveis</option>
             {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
           <select value={financialFilter} onChange={e => setFinancialFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
             <option value="ALL">Situação: todas</option>
             <option value="RISK">⚠ Em risco</option>
             <option value="OVERDUE">Inadimplentes</option>
             <option value="ORPHAN">Sem matrícula (testes)</option>
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
             <option value="ALL">Status: todos</option>
             <option value="ACTIVE">Ativos</option>
             <option value="INACTIVE">Inativos</option>
@@ -1154,7 +1154,7 @@ ${parsed.details}` : ''));
               const isSuspended = lifecycleStatus === 'suspended';
               const isOffboarded = lifecycleStatus === 'offboarded';
               return (
-              <div key={i} className={`group bg-brand-surface rounded-[2rem] border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit ${inactive ? 'border-slate-300 dark:border-slate-700' : 'border-brand-border'}`}>
+              <div key={i} className={`group bg-brand-surface rounded-4xl border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit ${inactive ? 'border-slate-300 dark:border-slate-700' : 'border-brand-border'}`}>
 
                 {/* Header: Name & Edit */}
                 <div className="flex justify-between items-start mb-4">
@@ -1180,7 +1180,7 @@ ${parsed.details}` : ''));
                     {canEdit && (
                       <button
                         onClick={() => void openStudentEditor(student)}
-                        className="min-w-11 min-h-11 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-sm"
+                        className="min-w-11 min-h-11 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-xs"
                         title="Editar Perfil"
                         aria-label={`Editar perfil de ${student.name}`}
                       >
@@ -1220,7 +1220,7 @@ ${parsed.details}` : ''));
                     </div>
                     {/* Fake Progress Bar - Visual Only for now */}
                     <div className="w-full h-1.5 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 w-[45%]" />
+                      <div className="h-full bg-linear-to-r from-blue-500 to-purple-500 w-[45%]" />
                     </div>
                   </div>
 
@@ -1385,7 +1385,7 @@ ${parsed.details}` : ''));
 
       {/* Edit Modal */}
       {editingStudent && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={editingStudent}
             onSubmit={handleUpdateStudent}
@@ -1440,7 +1440,7 @@ ${parsed.details}` : ''));
 
       {offboardingStudent && (
         <div
-          className="fixed inset-0 z-[115] flex items-center justify-center px-3 py-[max(0.75rem,env(safe-area-inset-top))] sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-115 flex items-center justify-center px-3 py-[max(0.75rem,env(safe-area-inset-top))] sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
         >
           <div
             ref={offboardingDialogRef}
@@ -1450,9 +1450,9 @@ ${parsed.details}` : ''));
             aria-describedby="offboarding-dialog-description"
             tabIndex={-1}
             style={{ maxHeight: 'calc(100dvh - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}
-            className="w-full max-w-2xl overflow-y-auto rounded-[1.5rem] sm:rounded-[2rem] border border-white/10 bg-brand-surface shadow-2xl outline-none"
+            className="w-full max-w-2xl overflow-y-auto rounded-3xl sm:rounded-4xl border border-white/10 bg-brand-surface shadow-2xl outline-hidden"
           >
-            <div className="p-6 sm:p-8 border-b border-brand-border bg-gradient-to-br from-slate-950 to-[#08245f] text-white">
+            <div className="p-6 sm:p-8 border-b border-brand-border bg-linear-to-br from-slate-950 to-[#08245f] text-white">
               <div className="flex items-start gap-4">
                 <div className="shrink-0 w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center">
                   <AlertTriangle size={23} className="text-amber-300" />
@@ -1479,7 +1479,7 @@ ${parsed.details}` : ''));
                       setOffboardingEffectiveDate(event.target.value);
                       setOffboardingPolicy(null);
                     }}
-                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                   />
                 </label>
                 <label className="space-y-2">
@@ -1490,7 +1490,7 @@ ${parsed.details}` : ''));
                     maxLength={500}
                     required
                     placeholder="Ex.: encerramento solicitado pelo aluno"
-                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                   />
                 </label>
               </div>
@@ -1615,7 +1615,7 @@ ${parsed.details}` : ''));
 
       {/* Exclusão permanente existe apenas para fixtures E2E marcadas. */}
       {studentToDelete && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-110 flex items-center justify-center p-6 bg-black/80 backdrop-blur-xs animate-in fade-in duration-300">
           <div className="bg-brand-surface rounded-3xl w-full max-w-md p-8 shadow-2xl border border-red-100 dark:border-red-900/30">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mb-6 mx-auto">
               <AlertCircle size={32} />

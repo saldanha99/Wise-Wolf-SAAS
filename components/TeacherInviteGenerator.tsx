@@ -69,7 +69,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
     };
 
     return (
-        <div className="bg-brand-surface p-6 rounded-2xl border border-gray-100 dark:border-brand-border shadow-sm">
+        <div className="bg-brand-surface p-6 rounded-2xl border border-gray-100 dark:border-brand-border shadow-xs">
             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2 mb-4">
                 <Link size={18} className="text-tenant-primary" />
                 Convidar Novo Professor
@@ -93,7 +93,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                                 step="0.01"
                                 value={hourlyRate}
                                 onChange={e => setHourlyRate(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-hidden focus:ring-2 focus:ring-tenant-primary"
                             />
                         </div>
                         <p className="text-[10px] text-tenant-primary font-bold mt-1 ml-1 animate-pulse">
@@ -110,7 +110,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                                 placeholder="Ex: Inglês, Espanhol..."
                                 value={subject}
                                 onChange={e => setSubject(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-hidden focus:ring-2 focus:ring-tenant-primary"
                             />
                         </div>
                     </div>
@@ -137,11 +137,11 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                             <input
                                 readOnly
                                 value={generatedLink}
-                                className="flex-1 bg-transparent text-xs font-mono text-gray-600 dark:text-slate-300 outline-none"
+                                className="flex-1 bg-transparent text-xs font-mono text-gray-600 dark:text-slate-300 outline-hidden"
                             />
                             <button
                                 onClick={handleCopy}
-                                className={`p-2 rounded-lg transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-brand-surface shadow-sm text-gray-500 hover:text-tenant-primary'}`}
+                                className={`p-2 rounded-lg transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-brand-surface shadow-xs text-gray-500 hover:text-tenant-primary'}`}
                             >
                                 {copied ? <Check size={16} /> : <Copy size={16} />}
                             </button>

@@ -216,7 +216,7 @@ export default function CourseRenewalSign() {
               <label htmlFor="renewal-signature" className={eyebrow}>Assine digitando seu nome completo</label>
               <input
                 id="renewal-signature"
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-lg text-slate-900 outline-none transition focus:border-transparent focus:bg-white focus:ring-2"
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-lg text-slate-900 outline-hidden transition focus:border-transparent focus:bg-white focus:ring-2"
                 style={{ fontFamily: DISPLAY, ['--tw-ring-color' as string]: primary }}
                 value={signature}
                 onChange={e => setSignature(e.target.value)}
@@ -229,7 +229,7 @@ export default function CourseRenewalSign() {
               type="button"
               onClick={sign}
               disabled={signing || !accepted || signature.trim().length < 3}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold uppercase tracking-[0.12em] text-white shadow-[0_16px_34px_-16px_rgba(6,20,45,0.8)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold uppercase tracking-[0.12em] text-white shadow-[0_16px_34px_-16px_rgba(6,20,45,0.8)] transition hover:brightness-110 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
               style={{ background: primary, outlineColor: primary, fontFamily: DISPLAY }}
             >
               {signing && <Loader2 size={16} className="animate-spin" />}Assinar renovação

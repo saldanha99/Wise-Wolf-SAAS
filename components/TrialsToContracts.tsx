@@ -888,7 +888,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         id="trial-teacher-filter"
                         value={teacherFilter}
                         onChange={(e) => setTeacherFilter(e.target.value)}
-                        className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500/30 sm:flex-none"
+                        className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500/30 sm:flex-none"
                     >
                         <option value="all">Todos os professores ({opportunities.length})</option>
                         {teachers
@@ -1010,7 +1010,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 <>
                                                     <button
                                                         onClick={() => markTrialRealized(opp)}
-                                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:shadow-emerald-300 active:scale-95"
+                                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:shadow-emerald-300 active:scale-95"
                                                     >
                                                         <Check size={16} />
                                                         Aula Realizada
@@ -1050,7 +1050,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 <button
                                                     onClick={() => openWizard(opp)}
                                                     title={feedbackPending ? 'Feedback pendente — a matrícula continua liberada' : undefined}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95"
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95"
                                                 >
                                                     <LinkIcon size={16} />
                                                     {enrollmentLinks[opp.id]
@@ -1064,7 +1064,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             {opp.trial_status !== 'DONE' && (
                                                 <button
                                                     onClick={() => openReschedule(opp)}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:shadow-amber-300 active:scale-95"
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:shadow-amber-300 active:scale-95"
                                                 >
                                                     <RefreshCw size={16} />
                                                     Reagendar Experimental
@@ -1091,10 +1091,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* ENROLLMENT LINK WIZARD MODAL */}
             {/* ============================================= */}
             {wizardOpp && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
                     <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                         {/* Header */}
-                        <div className="bg-gradient-to-r from-[#002366] to-blue-900 rounded-t-3xl p-6 text-white relative overflow-hidden">
+                        <div className="bg-linear-to-r from-[#002366] to-blue-900 rounded-t-3xl p-6 text-white relative overflow-hidden">
                             <button onClick={() => setWizardOpp(null)} className="absolute top-4 right-4 p-2 rounded-xl bg-brand-surface/10 hover:bg-brand-surface/20 transition-colors">
                                 <X size={18} />
                             </button>
@@ -1154,7 +1154,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                     }`}
                                             >
                                                 {duration === plan.val && (
-                                                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-sm">
+                                                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-xs">
                                                         <Check size={10} strokeWidth={4} />
                                                     </div>
                                                 )}
@@ -1174,7 +1174,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 <select
                                                     value={frequency}
                                                     onChange={(e) => setFrequency(Number(e.target.value))}
-                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                                 >
                                                     {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
                                                 </select>
@@ -1184,7 +1184,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 <select
                                                     value={dueDay}
                                                     onChange={(e) => setDueDay(Number(e.target.value))}
-                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                                 >
                                                     {[5, 10, 15, 20, 25, 30].map(d => <option key={d} value={d}>Dia {d}</option>)}
                                                 </select>
@@ -1197,7 +1197,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             <select
                                                 value={studentLevel}
                                                 onChange={(e) => setStudentLevel(e.target.value)}
-                                                className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                             >
                                                 <option value="A1">A1 - Iniciante (A1-1)</option>
                                                 <option value="A2">A2 - Elementar (A2-1)</option>
@@ -1236,7 +1236,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             type="number"
                                             value={monthlyFee}
                                             onChange={(e) => setMonthlyFee(Number(e.target.value))}
-                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 border border-blue-200 rounded-xl font-black text-blue-700 outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 border border-blue-200 rounded-xl font-black text-blue-700 outline-hidden focus:ring-2 focus:ring-blue-500"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -1255,7 +1255,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             <select
                                                 value={slot.weekday}
                                                 onChange={(e) => updateScheduleSlot(idx, 'weekday', e.target.value)}
-                                                className="flex-1 px-3 py-2.5 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text appearance-none outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                                                className="flex-1 px-3 py-2.5 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text appearance-none outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                                             >
                                                 {WEEKDAY_OPTIONS.map(d => (
                                                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -1265,7 +1265,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 type="time"
                                                 value={slot.time}
                                                 onChange={(e) => updateScheduleSlot(idx, 'time', e.target.value)}
-                                                className="w-28 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-xl font-bold text-sm text-blue-700 text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                                                className="w-28 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-xl font-bold text-sm text-blue-700 text-center outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                                             />
                                         </div>
                                     ))}
@@ -1290,7 +1290,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             setShowProfessorList(true);
                                         }}
                                         onFocus={() => { setProfessorSearch(''); setShowProfessorList(true); }}
-                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text outline-hidden focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-xs cursor-pointer"
                                     />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
 
@@ -1343,7 +1343,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             value={enrollmentStartDate}
                                             min={dateInSaoPaulo()}
                                             onChange={(e) => setEnrollmentStartDate(e.target.value)}
-                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500"
                                         />
                                         <p className="text-[9px] text-slate-400 mt-1">Essa data define o início da agenda fixa e a vigência do contrato.</p>
                                     </div>
@@ -1354,7 +1354,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             value={billingStartMonth}
                                             min={dateInSaoPaulo().slice(0, 7)}
                                             onChange={(e) => setBillingStartMonth(e.target.value)}
-                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500"
                                         />
                                         <p className="text-[9px] text-slate-400 mt-1">Deixe como próximo mês para iniciar normalmente, ou escolha um mês futuro para diferir a cobrança.</p>
                                     </div>
@@ -1397,7 +1397,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 className="sr-only"
                                             />
                                             <div className={`w-10 h-6 rounded-full transition-colors ${chargeEnrollmentFee ? 'bg-blue-600' : 'bg-slate-200'}`} />
-                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${chargeEnrollmentFee ? 'translate-x-4' : ''}`} />
+                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${chargeEnrollmentFee ? 'translate-x-4' : ''}`} />
                                         </div>
                                         <span className="text-sm font-bold text-slate-700">Cobrar Taxa de Matrícula</span>
                                     </label>
@@ -1411,7 +1411,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 min="0.01"
                                                 step="0.01"
                                                 inputMode="decimal"
-                                                className="w-14 bg-transparent border-none p-0 text-sm font-black text-blue-700 outline-none focus:ring-0"
+                                                className="w-14 bg-transparent border-none p-0 text-sm font-black text-blue-700 outline-hidden focus:ring-0"
                                             />
                                         </div>
                                     )}
@@ -1429,7 +1429,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                     <button
                                         onClick={handleGenerateLink}
                                         disabled={monthlyFee <= 0 || wizardSaving}
-                                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                                        className="w-full py-4 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                                     >
                                         {wizardSaving ? (
                                             <><Loader2 className="animate-spin" size={18} /> Gerando...</>
@@ -1485,7 +1485,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* RESCHEDULE MODAL (experimental com falta) */}
             {/* ============================================= */}
             {reschedOpp && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
                     <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-md w-full p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center">
@@ -1501,12 +1501,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             <div>
                                 <label className="text-[10px] font-bold uppercase text-brand-muted block mb-1">Nova data</label>
                                 <input type="date" value={reschedDate} onChange={e => setReschedDate(e.target.value)}
-                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-amber-500" />
+                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-amber-500" />
                             </div>
                             <div>
                                 <label className="text-[10px] font-bold uppercase text-brand-muted block mb-1">Horário</label>
                                 <input type="time" value={reschedTime} onChange={e => setReschedTime(e.target.value)}
-                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-amber-500" />
+                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-amber-500" />
                             </div>
                         </div>
 
@@ -1514,7 +1514,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             <button
                                 onClick={reschedToGroup}
                                 disabled={reschedSaving}
-                                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                                className="w-full py-3 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {reschedSaving ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
                                 Reenviar ao grupo (link mágico)
@@ -1542,7 +1542,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* LOST MODAL */}
             {/* ============================================= */}
             {lostOpp && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
                     <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-md w-full p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">

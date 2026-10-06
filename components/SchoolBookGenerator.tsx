@@ -163,7 +163,7 @@ const SchoolBookGenerator: React.FC<SchoolBookGeneratorProps> = ({ user, tenantI
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto pb-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
-      <form onSubmit={createBook} className="h-fit rounded-[2.5rem] border border-brand-border bg-brand-surface p-6 shadow-sm sm:p-8">
+      <form onSubmit={createBook} className="h-fit rounded-[2.5rem] border border-brand-border bg-brand-surface p-6 shadow-xs sm:p-8">
         <div className="mb-6 flex items-start gap-4">
           <div className="rounded-2xl bg-tenant-primary/10 p-3 text-tenant-primary"><Sparkles size={24} /></div>
           <div>
@@ -176,7 +176,7 @@ const SchoolBookGenerator: React.FC<SchoolBookGeneratorProps> = ({ user, tenantI
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-brand-muted">Título</span>
-            <input aria-label="Título do livro" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm font-bold outline-none" required />
+            <input aria-label="Título do livro" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm font-bold outline-hidden" required />
           </label>
           <label>
             <span className="text-[10px] font-black uppercase tracking-wider text-brand-muted">Nível CEFR</span>
@@ -204,15 +204,15 @@ const SchoolBookGenerator: React.FC<SchoolBookGeneratorProps> = ({ user, tenantI
           </label>
           <label className="sm:col-span-2">
             <span className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-brand-muted"><span>Páginas</span><strong className="text-tenant-primary">{pageCount}</strong></span>
-            <input aria-label="Quantidade de páginas" type="range" min={12} max={60} step={1} value={pageCount} onChange={(event) => setPageCount(Number(event.target.value))} className="mt-2 w-full accent-[var(--tenant-primary)]" />
+            <input aria-label="Quantidade de páginas" type="range" min={12} max={60} step={1} value={pageCount} onChange={(event) => setPageCount(Number(event.target.value))} className="mt-2 w-full accent-(--tenant-primary)" />
           </label>
           <label className="sm:col-span-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-brand-muted">Objetivo do aluno</span>
-            <textarea aria-label="Objetivo do livro" value={objective} maxLength={1200} rows={3} onChange={(event) => setObjective(event.target.value)} className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm outline-none" required />
+            <textarea aria-label="Objetivo do livro" value={objective} maxLength={1200} rows={3} onChange={(event) => setObjective(event.target.value)} className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm outline-hidden" required />
           </label>
           <label className="sm:col-span-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-brand-muted">Temas das unidades · opcional</span>
-            <textarea aria-label="Temas do livro" value={topics} maxLength={2400} rows={3} onChange={(event) => setTopics(event.target.value)} placeholder="Um por linha. Se ficar vazio, o gerador usa a progressão recomendada para o nível." className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm outline-none" />
+            <textarea aria-label="Temas do livro" value={topics} maxLength={2400} rows={3} onChange={(event) => setTopics(event.target.value)} placeholder="Um por linha. Se ficar vazio, o gerador usa a progressão recomendada para o nível." className="mt-1 w-full rounded-xl bg-brand-surface-2 p-3 text-sm outline-hidden" />
           </label>
         </div>
 
@@ -224,7 +224,7 @@ const SchoolBookGenerator: React.FC<SchoolBookGeneratorProps> = ({ user, tenantI
         </button>
       </form>
 
-      <section className="h-fit rounded-[2.5rem] border border-brand-border bg-brand-surface p-6 shadow-sm sm:p-8">
+      <section className="h-fit rounded-[2.5rem] border border-brand-border bg-brand-surface p-6 shadow-xs sm:p-8">
         <div className="flex items-center justify-between gap-3">
           <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-muted">Acompanhamento</p><h3 className="mt-1 text-xl font-black text-brand-text">Livros recentes</h3></div>
           <button type="button" onClick={() => void refreshActiveJobs()} className="rounded-xl border border-brand-border p-2 text-brand-muted hover:text-tenant-primary" title="Atualizar"><RefreshCw size={17} /></button>

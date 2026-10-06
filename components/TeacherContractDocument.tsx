@@ -168,7 +168,7 @@ export function TeacherContractDocument({
             <div
                 ref={documentRef}
                 className={isResponsive
-                    ? 'teacher-contract-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    ? 'teacher-contract-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-xs sm:p-8 lg:p-[18mm] lg:text-[11px]'
                     : 'w-[210mm] min-h-[297mm] bg-white p-[25mm] shadow-2xl text-[11px] leading-relaxed text-gray-800'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >

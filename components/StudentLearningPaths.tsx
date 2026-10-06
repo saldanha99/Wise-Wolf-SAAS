@@ -323,10 +323,10 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
         let globalNodeIdx = 0; // para o zigzag contínuo
 
         return (
-            <div className="bg-gradient-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
+            <div className="bg-linear-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <StreakModal userId={userId} streak={gami.streak} practicedToday={gami.practicedToday} />
                 {/* Barra de status estilo Duolingo: ofensiva · XP · vidas */}
-                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-6 px-3 sm:px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-6 px-3 sm:px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xs">
                     {/* Ofensiva */}
                     <div className="flex items-center gap-1.5" title="Ofensiva (dias seguidos)">
                         <Flame size={20} className={gami.streak > 0 ? 'text-orange-500' : 'text-slate-300'} fill={gami.streak > 0 ? '#f97316' : 'none'} />
@@ -368,11 +368,11 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 </div>
 
                 {/* Header sticky com progresso */}
-                <div className={`bg-gradient-to-br ${meta.color} p-4 sm:p-6 text-white relative overflow-hidden`}>
+                <div className={`bg-linear-to-br ${meta.color} p-4 sm:p-6 text-white relative overflow-hidden`}>
                     <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
                     <button
                         onClick={() => setSelectedPath(null)}
-                        className="absolute top-4 right-4 text-xs font-bold px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all flex items-center gap-1.5 z-10 shadow-sm"
+                        className="absolute top-4 right-4 text-xs font-bold px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-xs transition-all flex items-center gap-1.5 z-10 shadow-xs"
                         title="Ver todas as trilhas disponíveis"
                     >
                         <span>←</span>
@@ -434,7 +434,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         return (
                             <div key={unit.id} className="mb-4">
                                 {/* Banner da unidade (seção) */}
-                                <div className={`rounded-2xl px-5 py-3.5 mb-2 flex items-center gap-3 shadow-sm ${
+                                <div className={`rounded-2xl px-5 py-3.5 mb-2 flex items-center gap-3 shadow-xs ${
                                     unitCompleted ? 'bg-emerald-500' : ''
                                 }`} style={!unitCompleted ? { background: meta.solid } : {}}>
                                     <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
@@ -679,7 +679,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                         : 'border-slate-100 dark:border-slate-800 hover:border-violet-200 dark:hover:border-violet-700'
                                 } disabled:cursor-wait disabled:opacity-60`}
                             >
-                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${meta.color} text-white flex items-center justify-center mb-3`} style={{ boxShadow: `0 4px 0 ${meta.solid}99` }}>
+                                <div className={`w-12 h-12 rounded-2xl bg-linear-to-br ${meta.color} text-white flex items-center justify-center mb-3`} style={{ boxShadow: `0 4px 0 ${meta.solid}99` }}>
                                     <Icon size={20} />
                                 </div>
                                 <div className="flex items-center gap-2 mb-2 flex-wrap">

@@ -101,7 +101,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted block mb-1">Cadência do briefing</label>
               <select value={cfg.schedule} onChange={e => setCfg({ ...cfg, schedule: e.target.value as any })}
-                className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none">
+                className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden">
                 <option value="daily">Diário (manhã)</option>
                 <option value="weekly">Semanal</option>
                 <option value="off">Só sob demanda</option>
@@ -111,7 +111,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
               <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted block mb-1 flex items-center gap-1"><MessageCircle size={11} /> WhatsApp do diretor (opcional)</label>
               <input value={cfg.ownerWhatsapp} onChange={e => setCfg({ ...cfg, ownerWhatsapp: e.target.value })}
                 placeholder="Vazio = usa o WhatsApp do admin da escola"
-                className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none" />
+                className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden" />
             </div>
           </div>
         </div>
@@ -126,7 +126,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
               <div key={role} className="bg-brand-surface border border-brand-border rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <input value={cfg.agents[role].name} onChange={e => setAgent(role, { name: e.target.value })}
-                    className="font-black text-brand-text bg-transparent outline-none border-b border-transparent focus:border-brand-border w-32" />
+                    className="font-black text-brand-text bg-transparent outline-hidden border-b border-transparent focus:border-brand-border w-32" />
                   <label className="flex items-center gap-1.5 text-[10px] font-bold text-brand-muted">
                     <input type="checkbox" checked={cfg.agents[role].enabled} onChange={e => setAgent(role, { enabled: e.target.checked })} className="accent-tenant-primary w-4 h-4" />
                     Ativo
@@ -134,7 +134,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
                 </div>
                 <p className="text-[10px] uppercase tracking-widest text-brand-muted font-bold">{ROLE_LABEL[role]}</p>
                 <textarea value={cfg.agents[role].training} onChange={e => setAgent(role, { training: e.target.value })} rows={4}
-                  className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-xs text-brand-text outline-none resize-none"
+                  className="w-full p-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-xs text-brand-text outline-hidden resize-none"
                   placeholder="O que este funcionário deve vigiar / como deve escrever..." />
               </div>
             ))}

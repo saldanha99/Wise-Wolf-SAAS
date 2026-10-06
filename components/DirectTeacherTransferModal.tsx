@@ -76,7 +76,7 @@ const DirectTeacherTransferModal: React.FC<DirectTeacherTransferModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-120 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs" onClick={onClose}>
       <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-brand-border bg-brand-surface shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-brand-border bg-brand-surface-2/50 px-6 py-5">
           <div className="flex items-center gap-2">

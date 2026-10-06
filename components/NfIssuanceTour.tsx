@@ -122,7 +122,7 @@ const DataRow: React.FC<{
         >
             <div className="min-w-0">
                 <p className="text-[9px] font-black uppercase tracking-widest text-brand-muted">{label}</p>
-                <p className={`mt-0.5 break-words text-brand-text ${
+                <p className={`mt-0.5 wrap-break-word text-brand-text ${
                     highlight ? 'text-lg font-black tracking-tight' : 'text-sm font-bold'
                 } ${mono ? 'font-mono' : ''}`}>
                     {value}
@@ -243,7 +243,7 @@ const NfIssuanceTour: React.FC<NfIssuanceTourProps> = ({ onDone, manual = false,
     if (!manual && !pending) return null;
 
     return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-120 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
             {/* Sem onClick de fechar no overlay: o tour é obrigatório. */}
             <div className="bg-brand-surface rounded-3xl w-full max-w-xl border border-brand-border shadow-2xl max-h-[92dvh] flex flex-col">
 

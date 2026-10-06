@@ -191,7 +191,7 @@ export default function SaasLandingPage() {
             <source src={BRAND_VIDEO} type="video/mp4" />
           </video>
           <div className="absolute inset-0 bg-[linear-gradient(100deg,#070d1a_4%,rgba(7,13,26,.97)_44%,rgba(7,13,26,.5)_100%)]" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070d1a] via-transparent to-[#070d1a]/30" />
+          <div className="absolute inset-0 bg-linear-to-t from-[#070d1a] via-transparent to-[#070d1a]/30" />
           <PremiumGrid />
           <div className="absolute -left-40 top-28 size-[520px] rounded-full bg-blue-600/15 blur-[120px]" />
 
@@ -202,14 +202,14 @@ export default function SaasLandingPage() {
                 Gestão escolar em uma nova categoria
               </div>
               <h1 className="mt-7 font-[Montserrat] text-[3.2rem] font-extrabold leading-[0.98] tracking-[-0.055em] sm:text-7xl lg:text-[5.25rem]">
-                Sua escola no <span className="bg-gradient-to-r from-blue-400 via-blue-500 to-white bg-clip-text text-transparent">piloto automático.</span>
+                Sua escola no <span className="bg-linear-to-r from-blue-400 via-blue-500 to-white bg-clip-text text-transparent">piloto automático.</span>
               </h1>
               <p className="mt-7 max-w-2xl text-base font-light leading-8 text-slate-300 sm:text-xl sm:leading-9">
                 CRM, matrículas, agenda, financeiro, professores, alunos, contratos, WhatsApp e inteligência pedagógica operando como um único sistema.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <button onClick={() => handleOpenModal('hero_demo')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-7 py-4 text-sm font-extrabold text-white shadow-[0_20px_50px_-18px_rgba(37,99,235,.95)] transition hover:-translate-y-0.5 hover:bg-blue-500">Quero ver na minha escola <ArrowRight size={18} /></button>
-                <a href="#plataforma" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-7 py-4 text-sm font-bold text-white backdrop-blur-xl transition hover:bg-white/10"><Play size={17} /> Explorar a plataforma</a>
+                <a href="#plataforma" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/6 px-7 py-4 text-sm font-bold text-white backdrop-blur-xl transition hover:bg-white/10"><Play size={17} /> Explorar a plataforma</a>
               </div>
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold text-slate-400">
                 <span className="flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Demonstração personalizada</span>
@@ -220,7 +220,7 @@ export default function SaasLandingPage() {
 
             <div className="relative hidden lg:block">
               <div className="absolute -inset-10 rounded-full bg-blue-600/20 blur-[90px]" />
-              <div className="relative rotate-[1.5deg] overflow-hidden rounded-[2rem] border border-white/15 bg-[#0b1426]/95 shadow-[0_45px_120px_-35px_rgba(0,0,0,.95)] backdrop-blur-2xl">
+              <div className="relative rotate-[1.5deg] overflow-hidden rounded-4xl border border-white/15 bg-[#0b1426]/95 shadow-[0_45px_120px_-35px_rgba(0,0,0,.95)] backdrop-blur-2xl">
                 <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
                   <span className="size-2.5 rounded-full bg-red-400" /><span className="size-2.5 rounded-full bg-amber-400" /><span className="size-2.5 rounded-full bg-emerald-400" />
                   <span className="ml-auto text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">Wise Wolf · Command center</span>
@@ -236,8 +236,8 @@ export default function SaasLandingPage() {
                       {[{ label: 'Matrículas', value: 'CRM', color: 'text-blue-400' }, { label: 'Financeiro', value: 'Asaas', color: 'text-emerald-400' }, { label: 'Pedagógico', value: 'IA', color: 'text-red-400' }].map((item) => <div key={item.label} className="rounded-xl border border-white/[0.07] bg-white/[0.035] p-3"><p className={`font-[Montserrat] text-lg font-extrabold ${item.color}`}>{item.value}</p><p className="mt-1 text-[8px] uppercase tracking-wider text-slate-500">{item.label}</p></div>)}
                     </div>
                     <div className="mt-4 grid grid-cols-[1.2fr_.8fr] gap-3">
-                      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4"><div className="flex items-center justify-between"><p className="text-xs font-bold">Fluxo da operação</p><TrendingUp size={15} className="text-blue-400" /></div><div className="mt-5 flex h-24 items-end gap-2">{[42, 58, 51, 74, 68, 88, 82, 94].map((height, index) => <div key={index} className="flex-1 rounded-t-sm bg-gradient-to-t from-blue-700 to-blue-400" style={{ height: `${height}%` }} />)}</div></div>
-                      <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 p-4"><Bot size={19} /><p className="mt-4 text-sm font-extrabold">IA integrada</p><p className="mt-1 text-[10px] leading-4 text-blue-100">Decisões e experiências mais inteligentes.</p><div className="mt-4 h-1.5 rounded-full bg-white/20"><div className="h-full w-4/5 rounded-full bg-white" /></div></div>
+                      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4"><div className="flex items-center justify-between"><p className="text-xs font-bold">Fluxo da operação</p><TrendingUp size={15} className="text-blue-400" /></div><div className="mt-5 flex h-24 items-end gap-2">{[42, 58, 51, 74, 68, 88, 82, 94].map((height, index) => <div key={index} className="flex-1 rounded-t-sm bg-linear-to-t from-blue-700 to-blue-400" style={{ height: `${height}%` }} />)}</div></div>
+                      <div className="rounded-2xl bg-linear-to-br from-blue-600 to-blue-800 p-4"><Bot size={19} /><p className="mt-4 text-sm font-extrabold">IA integrada</p><p className="mt-1 text-[10px] leading-4 text-blue-100">Decisões e experiências mais inteligentes.</p><div className="mt-4 h-1.5 rounded-full bg-white/20"><div className="h-full w-4/5 rounded-full bg-white" /></div></div>
                     </div>
                   </div>
                 </div>
@@ -246,7 +246,7 @@ export default function SaasLandingPage() {
           </div>
         </section>
 
-        <section className="border-y border-white/[0.07] bg-white/[0.025]">
+        <section className="border-y border-white/[0.07] bg-white/2.5">
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-y divide-white/[0.07] px-5 sm:px-8 lg:grid-cols-4 lg:divide-y-0">
             {[
               { icon: UserRoundCheck, title: 'CRM + Matrículas', text: 'Do interesse ao contrato' },
@@ -258,7 +258,7 @@ export default function SaasLandingPage() {
         </section>
 
         <section id="plataforma" className="relative py-24 sm:py-32">
-          <div className="absolute right-0 top-1/3 size-[560px] rounded-full bg-blue-600/[0.08] blur-[140px]" />
+          <div className="absolute right-0 top-1/3 size-[560px] rounded-full bg-blue-600/8 blur-[140px]" />
           <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
             <div className="max-w-4xl">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Uma plataforma, toda a operação</p>
@@ -274,12 +274,12 @@ export default function SaasLandingPage() {
                 { icon: Sparkles, eyebrow: 'Inteligência', title: 'IA conectada ao contexto pedagógico.', text: 'Planejamento, atividades, insights e prática com o Wolfie.', className: 'lg:col-span-4', accent: 'red' },
                 { icon: LayoutDashboard, eyebrow: 'Direção', title: 'Uma visão executiva para decidir melhor.', text: 'Indicadores importantes reunidos em um painel de operação.', className: 'lg:col-span-4', accent: 'emerald' },
               ].map(({ icon: Icon, eyebrow, title, text, className, accent }) => (
-                <article key={title} className={`${className} group relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.035] p-7 transition duration-500 hover:-translate-y-1 hover:border-blue-400/30 lg:p-8`}>
+                <article key={title} className={`${className} group relative overflow-hidden rounded-4xl border border-white/8 bg-white/[0.035] p-7 transition duration-500 hover:-translate-y-1 hover:border-blue-400/30 lg:p-8`}>
                   <div className={`grid size-13 place-items-center rounded-2xl ${accent === 'emerald' ? 'bg-emerald-500/15 text-emerald-400' : accent === 'red' ? 'bg-red-500/15 text-red-400' : 'bg-blue-500/15 text-blue-400'}`}><Icon size={23} /></div>
                   <p className="mt-10 text-[9px] font-extrabold uppercase tracking-[0.2em] text-blue-400">{eyebrow}</p>
                   <h3 className="mt-3 font-[Montserrat] text-2xl font-extrabold leading-tight">{title}</h3>
                   <p className="mt-4 leading-7 text-slate-400">{text}</p>
-                  <div className="absolute -bottom-20 -right-20 size-48 rounded-full bg-blue-600/[0.08] blur-3xl transition group-hover:bg-blue-600/[0.16]" />
+                  <div className="absolute -bottom-20 -right-20 size-48 rounded-full bg-blue-600/8 blur-3xl transition group-hover:bg-blue-600/16" />
                 </article>
               ))}
             </div>
@@ -296,7 +296,7 @@ export default function SaasLandingPage() {
               <button onClick={() => handleOpenModal('workflow_demo')} className="mt-8 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-4 text-sm font-extrabold shadow-[0_18px_45px_-18px_rgba(37,99,235,.9)] transition hover:-translate-y-0.5 hover:bg-blue-500">Ver aplicado à minha operação <ArrowRight size={17} /></button>
             </div>
             <div className="relative">
-              <div className="absolute left-6 top-10 h-[calc(100%-5rem)] w-px bg-gradient-to-b from-blue-500 via-blue-500/40 to-transparent sm:left-8" />
+              <div className="absolute left-6 top-10 h-[calc(100%-5rem)] w-px bg-linear-to-b from-blue-500 via-blue-500/40 to-transparent sm:left-8" />
               <div className="space-y-4">
                 {[
                   { number: '01', title: 'Atrair e organizar oportunidades', text: 'CRM e formulários capturam o interesse com origem e contexto.', icon: Users },
@@ -304,7 +304,7 @@ export default function SaasLandingPage() {
                   { number: '03', title: 'Operar aulas e relacionamento', text: 'Agenda, equipe, materiais e comunicação permanecem conectados.', icon: Workflow },
                   { number: '04', title: 'Acompanhar, reter e crescer', text: 'A direção enxerga a operação e age antes que o problema apareça.', icon: TrendingUp },
                 ].map(({ number, title, text, icon: Icon }) => (
-                  <div key={number} className="relative flex gap-5 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-5 backdrop-blur-xl sm:gap-6 sm:p-6">
+                  <div key={number} className="relative flex gap-5 rounded-2xl border border-white/8 bg-white/[0.035] p-5 backdrop-blur-xl sm:gap-6 sm:p-6">
                     <div className="relative z-10 grid size-12 shrink-0 place-items-center rounded-xl bg-blue-600 font-[Montserrat] text-xs font-extrabold shadow-xl shadow-blue-950 sm:size-16"><Icon size={20} /><span className="sr-only">Passo {number}</span></div>
                     <div><p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-blue-400">Passo {number}</p><h3 className="mt-2 font-[Montserrat] text-xl font-extrabold">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{text}</p></div>
                   </div>
@@ -318,10 +318,10 @@ export default function SaasLandingPage() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <div className="grid gap-12 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
               <div className="relative">
-                <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-blue-600/25 to-red-500/10 blur-2xl" />
-                <div className="relative aspect-video overflow-hidden rounded-[2rem] border border-white/15 bg-[#0b1426] shadow-[0_35px_100px_-30px_rgba(0,0,0,.9)]">
+                <div className="absolute -inset-5 rounded-[2.5rem] bg-linear-to-br from-blue-600/25 to-red-500/10 blur-2xl" />
+                <div className="relative aspect-video overflow-hidden rounded-4xl border border-white/15 bg-[#0b1426] shadow-[0_35px_100px_-30px_rgba(0,0,0,.9)]">
                   <video autoPlay loop muted playsInline preload="metadata" className="absolute inset-0 h-full w-full object-cover opacity-35"><source src={BRAND_VIDEO} type="video/mp4" /></video>
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#070d1a] via-[#070d1a]/55 to-transparent" />
+                  <div className="absolute inset-0 bg-linear-to-t from-[#070d1a] via-[#070d1a]/55 to-transparent" />
                   <div className="absolute inset-x-0 bottom-0 p-7 sm:p-9"><div className="grid size-14 place-items-center rounded-full border border-white/20 bg-white/10 backdrop-blur-xl"><Play size={20} fill="currentColor" /></div><p className="mt-5 font-[Montserrat] text-2xl font-extrabold">Tecnologia com operação real por trás.</p><p className="mt-2 text-sm text-slate-400">Criada para o cotidiano de uma escola de idiomas.</p></div>
                 </div>
               </div>
@@ -329,14 +329,14 @@ export default function SaasLandingPage() {
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Experiência Wise Wolf</p>
                 <h2 className="mt-5 font-[Montserrat] text-4xl font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-6xl">Software sofisticado. <span className="text-slate-500">Uso simples.</span></h2>
                 <p className="mt-6 text-base leading-8 text-slate-400 sm:text-lg">Cada perfil encontra apenas o que precisa: direção, coordenação, professores, comercial e alunos operam no mesmo ecossistema sem enfrentar a mesma complexidade.</p>
-                <div className="mt-8 grid gap-3 sm:grid-cols-2">{['Implantação guiada', 'Permissões por função', 'Ambiente responsivo', 'Evolução contínua'].map((item) => <div key={item} className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-4 text-sm font-bold text-slate-300"><span className="grid size-6 place-items-center rounded-full bg-emerald-400/10 text-emerald-400"><Check size={13} /></span>{item}</div>)}</div>
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">{['Implantação guiada', 'Permissões por função', 'Ambiente responsivo', 'Evolução contínua'].map((item) => <div key={item} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.035] p-4 text-sm font-bold text-slate-300"><span className="grid size-6 place-items-center rounded-full bg-emerald-400/10 text-emerald-400"><Check size={13} /></span>{item}</div>)}</div>
               </div>
             </div>
           </div>
         </section>
 
         <section id="planos" className="relative overflow-hidden border-y border-white/[0.07] bg-[#0a1222] py-24 sm:py-32">
-          <div className="absolute left-1/2 top-1/2 size-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/[0.08] blur-[140px]" />
+          <div className="absolute left-1/2 top-1/2 size-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/8 blur-[140px]" />
           <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
             <div className="text-center"><p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Investimento claro</p><h2 className="mx-auto mt-5 max-w-4xl font-[Montserrat] text-4xl font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-6xl">Um plano para cada fase da sua escola.</h2><p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-400">Comece com a estrutura necessária agora e evolua conforme a operação pedir.</p>
               <div className="mx-auto mt-8 inline-flex rounded-2xl border border-white/10 bg-black/20 p-1.5" role="group" aria-label="Ciclo de cobrança">
@@ -346,7 +346,7 @@ export default function SaasLandingPage() {
             </div>
             <div className="mt-14 grid gap-5 lg:grid-cols-3">
               {plansLoading && [0, 1, 2].map((slot) => (
-                <div key={slot} className="h-[510px] animate-pulse rounded-[2rem] border border-white/[0.08] bg-white/[0.035]" />
+                <div key={slot} className="h-[510px] animate-pulse rounded-4xl border border-white/8 bg-white/[0.035]" />
               ))}
               {!plansLoading && availablePlans.map((plan) => {
                 const presentation: {
@@ -366,21 +366,21 @@ export default function SaasLandingPage() {
                   ? Math.round(yearlyPrice / 12)
                   : monthlyPrice;
                 return (
-                  <article key={plan.id} className={`relative flex flex-col overflow-hidden rounded-[2rem] border p-7 ${presentation.popular ? 'border-blue-400/50 bg-gradient-to-b from-blue-600/25 to-white/[0.04] shadow-[0_25px_80px_-30px_rgba(37,99,235,.8)]' : 'border-white/[0.08] bg-white/[0.035]'}`}>
+                  <article key={plan.id} className={`relative flex flex-col overflow-hidden rounded-4xl border p-7 ${presentation.popular ? 'border-blue-400/50 bg-linear-to-b from-blue-600/25 to-white/4 shadow-[0_25px_80px_-30px_rgba(37,99,235,.8)]' : 'border-white/8 bg-white/[0.035]'}`}>
                     {presentation.popular && <span className="absolute right-5 top-5 rounded-full bg-blue-600 px-3 py-1 text-[9px] font-extrabold uppercase tracking-[0.16em]">Mais escolhido</span>}
                     <p className="text-sm font-extrabold text-blue-300">{plan.name}</p>
                     <div className="mt-7 flex items-end gap-1"><span className="font-[Montserrat] text-5xl font-extrabold">R$ {displayPrice.toLocaleString('pt-BR')}</span><span className="pb-1.5 text-sm text-slate-500">/mês</span></div>
                     <p className="mt-2 text-xs font-bold text-emerald-400">{yearlyBilling ? `R$ ${yearlyPrice.toLocaleString('pt-BR')} cobrados por ano` : 'Cobrança mensal · cancele quando precisar'}</p>
                     <p className="mt-5 min-h-14 text-sm leading-6 text-slate-400">{plan.description || presentation.description}</p>
-                    <div className="my-6 h-px bg-white/[0.08]" />
+                    <div className="my-6 h-px bg-white/8" />
                     <ul className="flex-1 space-y-3 text-sm text-slate-300">{presentation.features.map((feature) => <li key={feature} className="flex gap-3"><span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-emerald-400/10 text-emerald-400"><Check size={12} /></span>{feature}</li>)}</ul>
-                    <button onClick={() => setCheckoutPlan(plan)} className={`mt-8 w-full rounded-xl px-5 py-4 text-sm font-extrabold transition hover:-translate-y-0.5 ${presentation.popular ? 'bg-blue-600 hover:bg-blue-500' : 'border border-white/15 bg-white/[0.06] hover:bg-white/10'}`}>Começar agora</button>
+                    <button onClick={() => setCheckoutPlan(plan)} className={`mt-8 w-full rounded-xl px-5 py-4 text-sm font-extrabold transition hover:-translate-y-0.5 ${presentation.popular ? 'bg-blue-600 hover:bg-blue-500' : 'border border-white/15 bg-white/6 hover:bg-white/10'}`}>Começar agora</button>
                     <button onClick={() => handleOpenModal(`pricing_${plan.name.toLowerCase()}_demo`)} className="mt-3 text-xs font-bold text-slate-500 transition hover:text-white">Prefiro ver uma demonstração</button>
                   </article>
                 );
               })}
               {!plansLoading && availablePlans.length === 0 && (
-                <div className="col-span-full rounded-[2rem] border border-white/10 bg-white/[0.035] p-10 text-center">
+                <div className="col-span-full rounded-4xl border border-white/10 bg-white/[0.035] p-10 text-center">
                   <p className="font-[Montserrat] text-2xl font-extrabold">Planos em atualização</p>
                   <p className="mt-3 text-sm text-slate-400">Fale com nossa equipe para receber a condição ideal para sua escola.</p>
                   <button onClick={() => handleOpenModal('pricing_fallback')} className="mt-6 rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-extrabold hover:bg-blue-500">Solicitar demonstração</button>
@@ -393,12 +393,12 @@ export default function SaasLandingPage() {
         <section id="faq" className="py-24 sm:py-32">
           <div className="mx-auto grid max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-[.75fr_1.25fr]">
             <div><p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Perguntas frequentes</p><h2 className="mt-5 font-[Montserrat] text-4xl font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-5xl">O que você precisa saber antes de avançar.</h2><p className="mt-5 leading-7 text-slate-400">Ainda ficou alguma dúvida? Solicite uma demonstração e fale com nossa equipe.</p></div>
-            <div className="space-y-3">{faqs.map((faq) => <details key={faq.question} className="group rounded-2xl border border-white/[0.08] bg-white/[0.035] p-5 open:border-blue-400/25 open:bg-white/[0.055]"><summary className="flex cursor-pointer list-none items-center justify-between gap-5 font-[Montserrat] font-extrabold"><span>{faq.question}</span><span className="grid size-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-blue-400 transition group-open:rotate-90"><ChevronRight size={16} /></span></summary><p className="mt-4 max-w-2xl pr-10 text-sm leading-7 text-slate-400">{faq.answer}</p></details>)}</div>
+            <div className="space-y-3">{faqs.map((faq) => <details key={faq.question} className="group rounded-2xl border border-white/8 bg-white/[0.035] p-5 open:border-blue-400/25 open:bg-white/5.5"><summary className="flex cursor-pointer list-none items-center justify-between gap-5 font-[Montserrat] font-extrabold"><span>{faq.question}</span><span className="grid size-8 shrink-0 place-items-center rounded-full bg-white/6 text-blue-400 transition group-open:rotate-90"><ChevronRight size={16} /></span></summary><p className="mt-4 max-w-2xl pr-10 text-sm leading-7 text-slate-400">{faq.answer}</p></details>)}</div>
           </div>
         </section>
 
         <section className="px-5 pb-24 sm:px-8 sm:pb-32">
-          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] border border-blue-400/20 bg-gradient-to-br from-blue-700 via-blue-600 to-[#122653] px-7 py-14 text-center shadow-[0_35px_100px_-35px_rgba(37,99,235,.85)] sm:px-14 sm:py-20">
+          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] border border-blue-400/20 bg-linear-to-br from-blue-700 via-blue-600 to-[#122653] px-7 py-14 text-center shadow-[0_35px_100px_-35px_rgba(37,99,235,.85)] sm:px-14 sm:py-20">
             <PremiumGrid opacity="opacity-[0.08]" />
             <div className="absolute -right-16 -top-20 size-72 rounded-full bg-red-500/20 blur-3xl" />
             <div className="relative mx-auto max-w-4xl"><Zap className="mx-auto" size={30} /><h2 className="mt-6 font-[Montserrat] text-4xl font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-6xl">Sua escola não precisa crescer no improviso.</h2><p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-blue-100 sm:text-lg">Veja como a Wise Wolf pode assumir o trabalho operacional e devolver à sua equipe tempo para ensinar, vender e liderar.</p><button onClick={() => handleOpenModal('final_demo')} className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-4 text-sm font-extrabold text-blue-800 shadow-xl transition hover:-translate-y-0.5">Solicitar minha demonstração <ArrowRight size={17} /></button></div>
@@ -411,18 +411,18 @@ export default function SaasLandingPage() {
       </footer>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="saas-lead-title">
-          <div className="max-h-[96dvh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-[2rem] sm:p-8">
+        <div className="fixed inset-0 z-100 flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="saas-lead-title">
+          <div className="max-h-[96dvh] w-full max-w-lg overflow-y-auto rounded-t-4xl border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-4xl sm:p-8">
             <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400">Wise Wolf SaaS · Demonstração</p><h2 id="saas-lead-title" className="mt-2 font-[Montserrat] text-3xl font-extrabold tracking-tight">{submitted ? 'Recebemos sua solicitação' : 'Vamos entender sua escola'}</h2></div><button onClick={() => setIsModalOpen(false)} className="grid size-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Fechar"><X size={18} /></button></div>
             {submitted ? (
               <div className="py-10 text-center"><div className="mx-auto grid size-20 place-items-center rounded-full border border-emerald-400/20 bg-emerald-400/10"><CheckCircle size={36} className="text-emerald-400" /></div><p className="mx-auto mt-6 max-w-sm leading-7 text-slate-300">Nossa equipe recebeu seus dados e entrará em contato para apresentar a plataforma aplicada à realidade da sua operação.</p><button onClick={() => setIsModalOpen(false)} className="mt-7 rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-extrabold shadow-lg shadow-blue-950">Entendi</button></div>
             ) : (
               <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-                <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">Nome da escola</span><input value={formData.school_name} onChange={(event) => setFormData({ ...formData, school_name: event.target.value })} required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Nome da sua escola ou operação" /></label>
-                <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">Seu nome</span><input value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" /></label>
+                <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">Nome da escola</span><input value={formData.school_name} onChange={(event) => setFormData({ ...formData, school_name: event.target.value })} required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Nome da sua escola ou operação" /></label>
+                <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">Seu nome</span><input value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" /></label>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">E-mail</span><input type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@escola.com" /></label>
-                  <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">WhatsApp</span><input type="tel" value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} autoComplete="tel" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="(00) 90000-0000" /></label>
+                  <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">E-mail</span><input type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@escola.com" /></label>
+                  <label className="block"><span className="mb-2 block text-xs font-black text-slate-300">WhatsApp</span><input type="tel" value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} autoComplete="tel" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="(00) 90000-0000" /></label>
                 </div>
                 <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 text-sm font-extrabold text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,.9)] hover:bg-blue-500 disabled:opacity-60">{loading ? <Loader2 className="animate-spin" size={18} /> : <ArrowRight size={18} />}{loading ? 'Enviando...' : 'Solicitar demonstração'}</button>
                 <p className="text-center text-[10px] leading-5 text-slate-500">Usaremos seus dados apenas para atender esta solicitação comercial.</p>

@@ -137,7 +137,7 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-col items-stretch justify-between gap-4 rounded-[2rem] border border-brand-border bg-brand-surface p-4 shadow-sm sm:flex-row sm:items-center sm:p-6">
+            <div className="flex flex-col items-stretch justify-between gap-4 rounded-4xl border border-brand-border bg-brand-surface p-4 shadow-xs sm:flex-row sm:items-center sm:p-6">
                 <div className="min-w-0">
                     <h2 className="text-2xl font-black tracking-tight text-brand-text">Custo e Margem</h2>
                     <p className="text-sm font-medium text-brand-muted">Quanto cada aluno rende e quanto custa de professor.</p>
@@ -158,7 +158,7 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
                             aria-label="Mês do relatório de custo e margem"
                             value={month}
                             onChange={(e) => setMonth(e.target.value)}
-                            className="min-w-0 flex-1 rounded-xl border-none bg-brand-surface-2 px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary sm:flex-none"
+                            className="min-w-0 flex-1 rounded-xl border-none bg-brand-surface-2 px-4 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary sm:flex-none"
                         />
                     </div>
                 </div>
@@ -172,7 +172,7 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
             )}
 
             {divergences.length > 0 && (
-                <section className="overflow-hidden rounded-[2rem] border border-amber-300 bg-amber-50 shadow-sm">
+                <section className="overflow-hidden rounded-4xl border border-amber-300 bg-amber-50 shadow-xs">
                     <button
                         type="button"
                         onClick={() => setDivOpen(!divOpen)}
@@ -245,12 +245,12 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
             )}
 
             {loading ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-[2rem] border border-brand-border bg-brand-surface py-20 text-brand-muted">
+                <div className="flex flex-col items-center justify-center gap-3 rounded-4xl border border-brand-border bg-brand-surface py-20 text-brand-muted">
                     <Loader2 className="animate-spin" size={26} />
                     <p className="text-xs font-bold uppercase tracking-widest">Somando o mês…</p>
                 </div>
             ) : byTeacher.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-[2rem] border border-brand-border bg-brand-surface py-20 text-center text-brand-muted">
+                <div className="flex flex-col items-center gap-3 rounded-4xl border border-brand-border bg-brand-surface py-20 text-center text-brand-muted">
                     <Users size={44} className="opacity-20" />
                     <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula paga neste mês.</p>
                 </div>
@@ -259,7 +259,7 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
                     {byTeacher.map(([teacherId, t]) => {
                         const isOpen = openTeachers.has(teacherId);
                         return (
-                            <section key={teacherId} className="overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-sm">
+                            <section key={teacherId} className="overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-xs">
                                 <button
                                     type="button"
                                     onClick={() => toggle(teacherId)}

@@ -292,7 +292,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
         && (signatureMode === 'typed' ? isValidSignature : hasSignature);
 
     return createPortal(
-        <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center p-0 sm:p-6 animate-in fade-in">
+        <div className="fixed inset-0 z-250 bg-black/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-6 animate-in fade-in">
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="teacher-contract-title" tabIndex={-1} className="flex h-dvh max-h-dvh w-full max-w-3xl flex-col overflow-hidden bg-brand-surface shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-brand-border">
                 {/* Header sticky */}
                 <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-brand-border bg-brand-surface-2">
@@ -431,7 +431,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                         onChange={(e) => syncSignature(e.target.value)}
                                         placeholder={profile?.full_name || 'Seu nome completo'}
                                         autoComplete="name"
-                                        className={`w-full px-4 py-3 rounded-xl border bg-brand-surface-2 text-brand-text text-sm outline-none transition-all ${isValidSignature
+                                        className={`w-full px-4 py-3 rounded-xl border bg-brand-surface-2 text-brand-text text-sm outline-hidden transition-all ${isValidSignature
                                             ? 'border-emerald-500 ring-2 ring-emerald-100'
                                             : 'border-brand-border focus:border-blue-500'
                                         }`}

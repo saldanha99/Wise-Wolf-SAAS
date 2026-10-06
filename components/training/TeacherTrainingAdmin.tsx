@@ -163,7 +163,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
     if (activeTab === 'view') {
         return (
             <div className="space-y-6 animate-in fade-in">
-                 <div className="flex justify-between items-center bg-brand-surface p-4 rounded-2xl border border-brand-border shadow-sm">
+                 <div className="flex justify-between items-center bg-brand-surface p-4 rounded-2xl border border-brand-border shadow-xs">
                     <div>
                         <h2 className="text-xl font-black text-brand-text">Meus Treinamentos</h2>
                         <p className="text-sm text-brand-muted">Área do aluno para assistir aos treinamentos obrigatórios.</p>
@@ -212,7 +212,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
             {/* List */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {modules.map(module => (
-                    <div key={module.id} className="bg-brand-surface border border-brand-border rounded-2xl overflow-hidden shadow-sm group hover:shadow-md transition-all">
+                    <div key={module.id} className="bg-brand-surface border border-brand-border rounded-2xl overflow-hidden shadow-xs group hover:shadow-md transition-all">
                         <div className="aspect-video bg-brand-surface-2 dark:bg-brand-surface-2 relative group-hover:bg-slate-200 transition-colors flex items-center justify-center">
                             {module.resource_type === 'pdf' || module.pdf_url ? (
                                 <div className="flex flex-col items-center gap-2">
@@ -234,13 +234,13 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             )}
                             {!(module.resource_type === 'pdf' || module.pdf_url || module.resource_type === 'meet') && (
                                 <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-12 h-12 bg-brand-surface/30 backdrop-blur-sm rounded-full flex items-center justify-center">
+                                    <div className="w-12 h-12 bg-brand-surface/30 backdrop-blur-xs rounded-full flex items-center justify-center">
                                         <Play fill="white" className="text-white ml-1" size={20} />
                                     </div>
                                 </div>
                             )}
                             {module.is_mandatory && (
-                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-xs">
                                     Obrigatório
                                 </span>
                             )}
@@ -300,14 +300,14 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
 
             {/* Add Module Modal */}
             {isAdding && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
                     <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full shadow-2xl relative">
                         <h3 className="text-xl font-black mb-6 dark:text-white">Novo Treinamento</h3>
                         <form onSubmit={handleAddModule} className="space-y-4">
                             <div>
                                 <label className="text-xs font-bold uppercase text-brand-muted">Título</label>
                                 <input
-                                    className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-none font-bold text-brand-text focus:ring-2 focus:ring-purple-500"
+                                    className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-hidden font-bold text-brand-text focus:ring-2 focus:ring-purple-500"
                                     value={newModule.title}
                                     onChange={e => setNewModule({ ...newModule, title: e.target.value })}
                                     required
@@ -352,7 +352,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                 <div>
                                     <label className="text-xs font-bold uppercase text-brand-muted">Video URL (YouTube)</label>
                                     <input
-                                        className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-none text-sm text-brand-muted focus:ring-2 focus:ring-purple-500"
+                                        className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-hidden text-sm text-brand-muted focus:ring-2 focus:ring-purple-500"
                                         value={newModule.video_url}
                                         onChange={e => setNewModule({ ...newModule, video_url: e.target.value })}
                                         required
@@ -364,7 +364,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                     <label className="text-xs font-bold uppercase text-brand-muted">Link da Reunião (Zoom/Meet)</label>
                                     <input
                                         type="url"
-                                        className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-none text-sm text-brand-muted focus:ring-2 focus:ring-emerald-500"
+                                        className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-hidden text-sm text-brand-muted focus:ring-2 focus:ring-emerald-500"
                                         value={newModule.video_url}
                                         onChange={e => setNewModule({ ...newModule, video_url: e.target.value })}
                                         required
@@ -397,7 +397,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             <div>
                                 <label className="text-xs font-bold uppercase text-brand-muted">Descrição</label>
                                 <textarea
-                                    className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-none text-sm text-brand-muted focus:ring-2 focus:ring-purple-500 resize-none h-24"
+                                    className="w-full p-3 bg-brand-surface-2 rounded-xl border-none outline-hidden text-sm text-brand-muted focus:ring-2 focus:ring-purple-500 resize-none h-24"
                                     value={newModule.description}
                                     onChange={e => setNewModule({ ...newModule, description: e.target.value })}
                                     placeholder="Resumo do conteúdo..."
@@ -406,7 +406,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             <div className="flex justify-between items-center">
                                 <label className="text-xs font-bold uppercase text-brand-muted">Categoria</label>
                                 <select
-                                    className="bg-brand-surface-2 p-2 rounded-lg text-xs font-bold outline-none"
+                                    className="bg-brand-surface-2 p-2 rounded-lg text-xs font-bold outline-hidden"
                                     value={newModule.category}
                                     onChange={e => setNewModule({ ...newModule, category: e.target.value })}
                                 >
@@ -436,7 +436,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
 
             {/* Assign to Teacher Modal */}
             {assignModalModule && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
                     <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full shadow-2xl">
                         <h3 className="text-xl font-black mb-2 dark:text-white flex items-center gap-2">
                             <Users className="text-purple-600" size={20} />

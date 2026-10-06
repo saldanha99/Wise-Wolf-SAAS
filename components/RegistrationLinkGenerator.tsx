@@ -437,7 +437,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         <div className="bg-brand-surface rounded-[2.5rem] shadow-xl border border-brand-border overflow-hidden font-sans">
 
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#002366] to-blue-900 p-8 text-white relative overflow-hidden">
+            <div className="bg-linear-to-r from-[#002366] to-blue-900 p-8 text-white relative overflow-hidden">
                 <div className="relative z-10 flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -491,7 +491,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         }`}
                                 >
                                     {duration === plan.val && (
-                                        <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-sm">
+                                        <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-xs">
                                             <Check size={12} strokeWidth={4} />
                                         </div>
                                     )}
@@ -514,7 +514,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={frequency}
                                             onChange={(e) => setFrequency(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
                                         </select>
@@ -527,7 +527,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={dueDay}
                                             onChange={(e) => setDueDay(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                                                 <option key={d} value={d}>Dia {d}</option>
@@ -548,7 +548,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             value={startDate}
                                             min={dateInSaoPaulo()}
                                             onChange={(e) => setStartDate(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         />
                                         <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                     </div>
@@ -561,7 +561,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={studentLevel}
                                             onChange={(e) => setStudentLevel(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             <option value="A1">A1 - Iniciante (A1-1)</option>
                                             <option value="A2">A2 - Elementar (A2-1)</option>
@@ -594,7 +594,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             type="number"
                                             value={monthlyFee}
                                             onChange={(e) => setMonthlyFee(Number(e.target.value))}
-                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl font-black text-blue-700 dark:text-blue-300 outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl font-black text-blue-700 dark:text-blue-300 outline-hidden focus:ring-2 focus:ring-blue-500"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -627,7 +627,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                 type="number"
                                                 value={enrollmentFee}
                                                 onChange={(e) => setEnrollmentFee(Number(e.target.value))}
-                                                className="w-12 bg-transparent border-none p-0 text-sm font-black text-blue-700 dark:text-blue-300 outline-none focus:ring-0"
+                                                className="w-12 bg-transparent border-none p-0 text-sm font-black text-blue-700 dark:text-blue-300 outline-hidden focus:ring-0"
                                             />
                                         </div>
                                     )}
@@ -671,7 +671,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                     onChange={event => setAffiliateQuery(event.target.value)}
                                                     placeholder="Cupom (ex.: AFILIADA10) ou nome de quem indicou"
                                                     autoComplete="off"
-                                                    className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2 pl-9 pr-3 text-sm text-brand-text outline-none focus:ring-2 focus:ring-blue-500"
+                                                    className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2 pl-9 pr-3 text-sm text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500"
                                                 />
                                                 {affiliateLookup === 'searching' && (
                                                     <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-brand-muted" size={14} aria-hidden="true" />
@@ -726,7 +726,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                 value={billingStartMonth}
                                 min={dateInSaoPaulo().slice(0, 7)}
                                 onChange={(e) => setBillingStartMonth(e.target.value)}
-                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-amber-500"
                             />
                             <p className="text-[9px] text-slate-400 mt-1">Escolha um mês futuro para diferir o início da cobrança recorrente.</p>
                         </div>
@@ -765,7 +765,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                 {/* SECTION 2: ALOCAÇÃO ACADÊMICA */}
                 <div className="bg-brand-surface-2/50 rounded-2xl p-6 border border-brand-border/50">
                     <div className="flex items-center gap-2 mb-6">
-                        <div className="p-2 bg-brand-surface dark:bg-slate-700 rounded-lg shadow-sm">
+                        <div className="p-2 bg-brand-surface dark:bg-slate-700 rounded-lg shadow-xs">
                             <GraduationCap size={18} className="text-purple-600 dark:text-purple-400" />
                         </div>
                         <h3 className="text-sm font-black text-brand-text dark:text-slate-200 uppercase tracking-wide">
@@ -804,7 +804,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch('');
                                             setShowProfessorList(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-xs cursor-pointer"
                                     />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
@@ -878,7 +878,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch2('');
                                             setShowProfessorList2(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-dashed border-brand-border dark:border-slate-600 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-dashed border-brand-border dark:border-slate-600 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-xs cursor-pointer"
                                     />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
@@ -931,7 +931,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {scheduleSlots.map((slot, index) => (
-                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-brand-surface p-3 rounded-xl border border-brand-border shadow-sm group hover:border-purple-300 transition-colors">
+                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-brand-surface p-3 rounded-xl border border-brand-border shadow-xs group hover:border-purple-300 transition-colors">
                                         <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-xs shrink-0">
                                             {index + 1}
                                         </div>
@@ -940,7 +940,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                 aria-label={`Professor do horário ${index + 1}`}
                                                 value={slot.teacherId || selectedProfessor}
                                                 onChange={event => updateSlot(index, 'teacherId', event.target.value)}
-                                                className="min-w-36 flex-1 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
+                                                className="min-w-36 flex-1 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-hidden"
                                             >
                                                 <option value={selectedProfessor}>{professors.find(p => p.id === selectedProfessor)?.name || 'Professor principal'}</option>
                                                 <option value={selectedProfessor2}>{professors.find(p => p.id === selectedProfessor2)?.name || 'Professor secundário'}</option>
@@ -950,7 +950,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             aria-label={`Dia do horário ${index + 1}`}
                                             value={slot.day}
                                             onChange={e => updateSlot(index, 'day', e.target.value)}
-                                            className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
+                                            className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-hidden"
                                         >
                                             <option value="">Dia</option>
                                             <option value="Monday">Segunda</option>
@@ -960,13 +960,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             <option value="Friday">Sexta</option>
                                             <option value="Saturday">Sábado</option>
                                         </select>
-                                        <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700" />
+                                        <div className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
                                         <select
                                             aria-label={`Hora do horário ${index + 1}`}
                                             value={slot.time}
                                             onChange={e => updateSlot(index, 'time', e.target.value)}
                                             disabled={!slot.day || availabilityLoading}
-                                            className="min-w-24 flex-1 bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-none disabled:opacity-50"
+                                            className="min-w-24 flex-1 bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-hidden disabled:opacity-50"
                                         >
                                             <option value="">Horário livre</option>
                                             {availableTimes(slot.teacherId || selectedProfessor, slot.day).map(time => (
@@ -1013,7 +1013,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     value={studentPhone}
                                     onChange={e => setStudentPhone(e.target.value)}
                                     placeholder="DDD + número de quem assiste a aula"
-                                    className="w-full px-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm font-mono"
+                                    className="w-full px-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-xs font-mono"
                                 />
                                 <p className="text-[10px] text-brand-muted mt-1">A confirmação de presença vai para este número (o aluno que assiste). A cobrança continua no responsável.</p>
                             </div>
@@ -1027,7 +1027,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     onChange={e => { setGuardianSearch(e.target.value); setSelectedGuardianId(''); setShowGuardianList(true); }}
                                     onFocus={() => { setGuardianSearch(''); setShowGuardianList(true); }}
                                     onClick={() => { setGuardianSearch(''); setShowGuardianList(true); }}
-                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm cursor-pointer"
+                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-xs cursor-pointer"
                                 />
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                             </div>
@@ -1077,7 +1077,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                     <button
                         onClick={generateLink}
                         disabled={!isFormValid}
-                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
+                        className="w-full py-4 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
                     >
                         {generating
                             ? <Loader2 size={18} className="animate-spin" />

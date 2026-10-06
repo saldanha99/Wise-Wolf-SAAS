@@ -91,7 +91,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
         : '';
 
     return (
-        <div className="bg-brand-surface p-6 rounded-2xl border border-gray-100 dark:border-brand-border shadow-sm">
+        <div className="bg-brand-surface p-6 rounded-2xl border border-gray-100 dark:border-brand-border shadow-xs">
             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2 mb-4">
                 <Briefcase size={18} className="text-tenant-primary" />
                 Convidar novo afiliado
@@ -132,7 +132,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
                                 placeholder="Ex.: Gabriela Souza"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary text-brand-text"
+                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-hidden focus:ring-2 focus:ring-tenant-primary text-brand-text"
                             />
                         </div>
                     </div>}
@@ -150,7 +150,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
                                 value={couponCode}
                                 onChange={e => setCouponCode(e.target.value.toUpperCase())}
                                 aria-invalid={codeInvalid}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-tenant-primary text-brand-text"
+                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-black uppercase tracking-wider outline-hidden focus:ring-2 focus:ring-tenant-primary text-brand-text"
                             />
                         </div>
                         <p className={`text-[10px] font-bold mt-1 ml-1 ${codeInvalid ? 'text-red-600' : 'text-gray-400'}`}>
@@ -173,7 +173,7 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
                                 step="0.01"
                                 value={commissionReais}
                                 onChange={e => setCommissionReais(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary text-brand-text"
+                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-hidden focus:ring-2 focus:ring-tenant-primary text-brand-text"
                             />
                         </div>
                         <p className="text-[10px] text-tenant-primary font-bold mt-1 ml-1">
@@ -201,12 +201,12 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
                                 readOnly
                                 value={generatedLink}
                                 aria-label="Link de convite do afiliado"
-                                className="flex-1 bg-transparent text-xs font-mono text-gray-600 dark:text-slate-300 outline-none"
+                                className="flex-1 bg-transparent text-xs font-mono text-gray-600 dark:text-slate-300 outline-hidden"
                             />
                             <button
                                 onClick={handleCopy}
                                 aria-label="Copiar link"
-                                className={`p-2 rounded-lg transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-brand-surface shadow-sm text-gray-500 hover:text-tenant-primary'}`}
+                                className={`p-2 rounded-lg transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-brand-surface shadow-xs text-gray-500 hover:text-tenant-primary'}`}
                             >
                                 {copied ? <Check size={16} /> : <Copy size={16} />}
                             </button>

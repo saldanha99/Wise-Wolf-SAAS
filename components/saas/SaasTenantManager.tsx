@@ -70,7 +70,7 @@ const SaasTenantManager: React.FC = () => {
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={16} />
                     <input
-                        className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border dark:border-brand-border rounded-xl outline-none focus:ring-2 focus:ring-blue-100"
+                        className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border dark:border-brand-border rounded-xl outline-hidden focus:ring-2 focus:ring-blue-100"
                         placeholder="Buscar escola..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -78,7 +78,7 @@ const SaasTenantManager: React.FC = () => {
                 </div>
             </div>
 
-            <div className="bg-brand-surface rounded-2xl shadow-sm border border-brand-border overflow-hidden">
+            <div className="bg-brand-surface rounded-2xl shadow-xs border border-brand-border overflow-hidden">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-brand-surface-2/50 border-b border-brand-border text-brand-muted font-medium">
                         <tr>

@@ -278,21 +278,21 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
             {/* Stats Overview */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
+                <div className="bg-brand-surface p-6 rounded-4xl border border-gray-100 dark:border-brand-border shadow-xs flex items-center gap-4">
                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl"><Users size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Total Professores</p>
                         <p className="text-2xl font-black text-gray-800 dark:text-white">{teachers.length}</p>
                     </div>
                 </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
+                <div className="bg-brand-surface p-6 rounded-4xl border border-gray-100 dark:border-brand-border shadow-xs flex items-center gap-4">
                     <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-xl"><CheckCircle size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Ativos</p>
                         <p className="text-2xl font-black text-gray-800 dark:text-white">{activeTeachersCount}</p>
                     </div>
                 </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
+                <div className="bg-brand-surface p-6 rounded-4xl border border-gray-100 dark:border-brand-border shadow-xs flex items-center gap-4">
                     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl"><Zap size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Modo Turbo (30d+)</p>
@@ -304,7 +304,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         </p>
                     </div>
                 </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
+                <div className="bg-brand-surface p-6 rounded-4xl border border-gray-100 dark:border-brand-border shadow-xs flex items-center gap-4">
                     <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-xl"><Briefcase size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Custo Hora Médio</p>
@@ -320,7 +320,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             <TeacherTurboOverview tenantId={currentTenantId} />
 
             {/* Main List */}
-            <div className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2.5rem] shadow-sm overflow-hidden">
+            <div className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2.5rem] shadow-xs overflow-hidden">
                 <div className="p-6 border-b dark:border-brand-border flex flex-col sm:flex-row justify-between items-center gap-4">
                     <h3 className="font-black text-gray-800 dark:text-slate-200 text-xs uppercase tracking-widest">Lista de Professores</h3>
                     <div className="relative w-full sm:w-72">
@@ -330,7 +330,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                             placeholder="Buscar por nome ou email..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-sm outline-none transition-all"
+                            className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-sm outline-hidden transition-all"
                         />
                     </div>
                 </div>
@@ -374,7 +374,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         return (
                             <article key={teacher.id} className="p-4 sm:p-5 space-y-4">
                                 <div className="flex items-start gap-3 min-w-0">
-                                    <img src={teacher.avatar} alt="" className="w-12 h-12 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border shrink-0" />
+                                    <img src={teacher.avatar} alt="" className="w-12 h-12 rounded-xl object-cover shadow-xs border border-gray-100 dark:border-brand-border shrink-0" />
                                     <div className="min-w-0 flex-1">
                                         <p className="font-bold text-sm text-gray-800 dark:text-slate-200 truncate">{teacher.name}</p>
                                         <p className="text-xs text-gray-400 dark:text-brand-muted truncate">{teacher.email}</p>
@@ -497,7 +497,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                 <tr key={teacher.id} className="hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-colors group">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
-                                            <img src={teacher.avatar} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border" />
+                                            <img src={teacher.avatar} alt="" className="w-10 h-10 rounded-xl object-cover shadow-xs border border-gray-100 dark:border-brand-border" />
                                             <div>
                                                 <p className="font-bold text-sm text-gray-800 dark:text-slate-200">{teacher.name}</p>
                                                 <p className="text-xs text-gray-400 dark:text-brand-muted">{teacher.email}</p>
@@ -720,8 +720,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
             {/* Add Teacher Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-brand-surface w-full max-w-2xl rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-brand-surface w-full max-w-2xl rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/50 dark:bg-brand-surface-2/50">
                             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2">
                                 <UserPlusIcon /> {editingTeacherId ? 'Editar Professor' : 'Novo Professor'}
@@ -762,7 +762,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 <select
                                                     value={(formData as any).status}
                                                     onChange={e => setFormData({ ...formData, status: e.target.value } as any)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-none transition-all"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-hidden transition-all"
                                                 >
                                                     <option value="Ativo">Ativo</option>
                                                     <option value="Férias">Férias</option>
@@ -830,8 +830,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             )}
 
             {isInviteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-brand-surface w-full max-w-md rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden relative">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-brand-surface w-full max-w-md rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden relative">
                         <button
                             onClick={() => setIsInviteModalOpen(false)}
                             className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-brand-surface-2 rounded-full transition-colors z-10"
@@ -844,8 +844,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             )}
 
             {viewingFinancialsId && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-brand-surface w-full max-w-5xl rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
+                    <div className="bg-brand-surface w-full max-w-5xl rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/50 dark:bg-brand-surface-2/50 shrink-0">
                             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2">
                                 <DollarSign className="text-emerald-500" />
@@ -895,7 +895,7 @@ const Input = ({ label, placeholder, value, onChange, icon }: any) => (
                 value={value}
                 onChange={onChange}
                 placeholder={placeholder}
-                className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-none transition-all"
+                className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-hidden transition-all"
             />
         </div>
     </div>

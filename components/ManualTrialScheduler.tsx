@@ -91,7 +91,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
             <div className="bg-brand-surface rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative max-h-[90dvh] overflow-y-auto">
                 <button
                     onClick={onClose}
@@ -126,7 +126,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                             readOnly
                             value={confirmationUrl}
                             onFocus={(event) => event.currentTarget.select()}
-                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-xs text-brand-text outline-none"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-xs text-brand-text outline-hidden"
                             aria-label="Link seguro para aceite do professor"
                         />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -164,7 +164,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                             value={leadName}
                             onChange={e => setLeadName(e.target.value)}
                             placeholder="Nome completo"
-                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
@@ -175,7 +175,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                             value={leadPhone}
                             onChange={e => setLeadPhone(e.target.value)}
                             placeholder="(XX) XXXXX-XXXX"
-                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
@@ -186,7 +186,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                             required
                             value={selectedTeacher}
                             onChange={e => setSelectedTeacher(e.target.value)}
-                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-purple-500"
                         >
                             <option value="">Selecione o professor</option>
                             {teachers.map(t => (
@@ -204,7 +204,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                                 required
                                 value={date}
                                 onChange={e => setDate(e.target.value)}
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-purple-500"
                             />
                         </div>
                         <div>
@@ -213,7 +213,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                                 required
                                 value={time}
                                 onChange={e => setTime(e.target.value)}
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-purple-500"
                             >
                                 <option value="">Selecione</option>
                                 {timeSlots.map(slot => (
@@ -235,7 +235,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, o
                         <button
                             type="submit"
                             disabled={loading}
-                            className="flex-[2] py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-colors shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-2 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-colors shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

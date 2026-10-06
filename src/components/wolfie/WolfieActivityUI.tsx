@@ -14,16 +14,16 @@ import type {
 import { getSubjectOption } from './catalog';
 
 export const focusRing =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-bg';
+  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-bg';
 
 export const primaryButton =
-  `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-brand-accent-hover disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
+  `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-3 text-sm font-bold text-white shadow-xs transition hover:bg-brand-accent-hover disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 
 export const secondaryButton =
   `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-5 py-3 text-sm font-bold text-brand-text transition hover:border-brand-accent hover:text-brand-accent disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 
 export const inputClass =
-  `w-full rounded-2xl border border-brand-border bg-brand-bg px-4 py-3 text-base text-brand-text placeholder:text-brand-muted/70 shadow-inner outline-none transition focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 ${focusRing}`;
+  `w-full rounded-2xl border border-brand-border bg-brand-bg px-4 py-3 text-base text-brand-text placeholder:text-brand-muted/70 shadow-inner outline-hidden transition focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 ${focusRing}`;
 
 export function InlineError({
   message,

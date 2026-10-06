@@ -76,7 +76,7 @@ const VendorProfileView: React.FC<Props> = ({ vendorId, onClose, onChanged }) =>
   const totalConfirmed = comms.filter((c: any) => c.status === 'CONFIRMED').reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-brand-surface w-full max-w-2xl rounded-3xl border border-brand-border shadow-2xl my-6" onClick={e => e.stopPropagation()}>
         {loading ? <div className="p-16 flex justify-center"><Loader2 className="animate-spin text-brand-accent" size={32} /></div>
         : d?.error ? <div className="p-12 text-center text-brand-text font-bold">{d.error === 'sem_permissao' ? 'Sem acesso.' : 'Erro ao carregar.'}</div>

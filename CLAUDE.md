@@ -3791,3 +3791,16 @@ sem fixtures remanescentes; 21 testes de UI/tours e typecheck.
 Ainda NÃO publicado: auditoria de dependências continua reprovando, incluindo
 `braces`/Tailwind 3. A migração de dependências segue dependendo da autorização
 da direção indicada acima; não aplicar esta migration manualmente em produção.
+
+### 06/10/2026 — Dependências autorizadas para liberar o release
+
+A direção autorizou a publicação e a migração necessária de dependências.
+Tailwind 4.3.3 com @tailwindcss/postcss, templates convertidos pela ferramenta
+oficial (sombras, gradientes, outlines e utilitários renomeados), ambos os
+lockfiles atualizados. O plugin de cores não cria variáveis autorreferentes:
+os tokens brand/tenant e shadcn continuam definidos pelo tema. O login mantém
+o fundo branco dos campos. Descoberta de classes limitada ao content declarado
+no config (source(none)), evitando varrer dumps SQL e artefatos do repositório.
+Validado: npm ci, npm audit sem vulnerabilidades, typecheck, build de produção
+com vídeos públicos do Hub e comparação visual desktop/mobile (sem overflow).
+Release oficial ainda em execução; não afirmar publicação antes de sua conclusão.

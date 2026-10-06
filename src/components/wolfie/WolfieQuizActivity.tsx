@@ -427,7 +427,7 @@ export function WolfieQuizActivity({
             </section>
           ) : null}
 
-          <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+          <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7">
             <div className="h-2 overflow-hidden rounded-full bg-brand-surface-2">
               <div
                 className="h-full rounded-full bg-brand-accent transition-[width]"
@@ -441,7 +441,7 @@ export function WolfieQuizActivity({
             <h2
               ref={questionHeadingRef}
               tabIndex={-1}
-              className="mt-6 text-xl font-black leading-8 text-brand-text outline-none sm:text-2xl"
+              className="mt-6 text-xl font-black leading-8 text-brand-text outline-hidden sm:text-2xl"
             >
               {question.prompt}
             </h2>

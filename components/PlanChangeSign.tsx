@@ -116,7 +116,7 @@ const PlanChangeSign: React.FC = () => {
                     <p className="text-slate-500 text-xs font-medium mt-1">{data?.school_name || 'Wise Wolf'}</p>
                 </div>
 
-                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-5">
+                <div className="bg-white rounded-3xl shadow-xs border border-slate-200 p-6 space-y-5">
                     <p className="text-sm text-slate-600">
                         Olá, <b className="text-slate-800">{data?.student_name?.trim()}</b>. Confirme abaixo a mudança
                         combinada com a escola. Ao assinar, este passa a ser o seu plano.
@@ -158,7 +158,7 @@ const PlanChangeSign: React.FC = () => {
                                     onChange={e => setSignature(e.target.value)}
                                     placeholder={data?.student_name?.trim()}
                                     autoComplete="off"
-                                    className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-base text-slate-800 outline-none focus:ring-2 focus:ring-[#002366]/30 focus:border-[#002366]"
+                                    className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-base text-slate-800 outline-hidden focus:ring-2 focus:ring-[#002366]/30 focus:border-[#002366]"
                                     style={{ fontFamily: 'cursive' }}
                                 />
                             </div>

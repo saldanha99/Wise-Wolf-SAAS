@@ -32,7 +32,7 @@ const EnrollmentProRataSwitch: React.FC<EnrollmentProRataSwitchProps> = ({
         />
         <span
             aria-hidden="true"
-            className="absolute left-1.5 top-3.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"
+            className="absolute left-1.5 top-3.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4"
         />
     </label>
 );

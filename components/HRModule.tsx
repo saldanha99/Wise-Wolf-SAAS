@@ -190,7 +190,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 flex items-center gap-2">
+                    <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 flex items-center gap-2">
                         <Briefcase className="w-8 h-8 text-blue-500" />
                         Recursos Humanos
                     </h2>
@@ -201,7 +201,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                 </div>
             </div>
 
-            <div className="bg-brand-surface/80 dark:bg-brand-surface/80 backdrop-blur-xl border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm overflow-hidden relative">
+            <div className="bg-brand-surface/80 dark:bg-brand-surface/80 backdrop-blur-xl border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-xs overflow-hidden relative">
                 <div className="flex flex-col md:flex-row justify-between mb-6 gap-4 relative z-10">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -210,7 +210,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                             placeholder="Buscar candidato por nome ou whatsapp..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2/80 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-gray-200 shadow-sm"
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2/80 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden transition-all dark:text-gray-200 shadow-xs"
                         />
                     </div>
                 </div>
@@ -245,7 +245,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                             <tbody>
                                 {filteredApps.map((app) => (
                                     <React.Fragment key={app.id}>
-                                        <tr className="bg-gray-50 dark:bg-brand-surface-2/40 hover:bg-gray-100 dark:hover:bg-brand-surface-2/80 transition-colors group shadow-sm rounded-xl">
+                                        <tr className="bg-gray-50 dark:bg-brand-surface-2/40 hover:bg-gray-100 dark:hover:bg-brand-surface-2/80 transition-colors group shadow-xs rounded-xl">
                                             <td className="px-4 py-4 rounded-l-xl">
                                                 <div className="font-bold text-gray-900 dark:text-gray-100">{app.name}</div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-2 mt-0.5">
@@ -307,7 +307,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                                                     <select
                                                         value={app.status}
                                                         onChange={(e) => updateStatus(app.id, e.target.value as JobStatus)}
-                                                        className="text-xs bg-brand-surface border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-pointer"
+                                                        className="text-xs bg-brand-surface border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-hidden focus:ring-2 focus:ring-blue-500 shadow-xs transition-all cursor-pointer"
                                                     >
                                                         <option value="Novo">Novo</option>
                                                         <option value="Em Análise">Em Análise</option>

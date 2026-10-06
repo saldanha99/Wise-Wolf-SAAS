@@ -72,7 +72,7 @@ const CoveragePanel: React.FC<Props> = ({ tenantId }) => {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="rounded-[2rem] border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-6">
+            <div className="rounded-4xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-6">
                 <div className="flex items-start gap-3">
                     <div className="shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-600">
                         <CalendarOff size={22} />
@@ -96,7 +96,7 @@ const CoveragePanel: React.FC<Props> = ({ tenantId }) => {
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-sm">
+            <div className="overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-xs">
                 <div className="flex flex-col gap-3 border-b border-brand-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
                     <h3 className="text-xs font-black uppercase tracking-widest text-brand-text">
                         Escolha quem vai faltar
@@ -109,7 +109,7 @@ const CoveragePanel: React.FC<Props> = ({ tenantId }) => {
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Buscar professor..."
                             aria-label="Buscar professor"
-                            className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2.5 pl-9 pr-4 text-xs font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                            className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2.5 pl-9 pr-4 text-xs font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                         />
                     </div>
                 </div>

@@ -61,7 +61,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
 
                 <div className={`max-w-6xl mx-auto relative z-10 grid gap-12 items-center ${isMobile ? 'grid-cols-1' : 'lg:grid-cols-2'}`}>
                     <div className="space-y-6 text-center lg:text-left">
-                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 px-4 py-1.5 rounded-full backdrop-blur-sm border border-white/20">
+                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 px-4 py-1.5 rounded-full backdrop-blur-xs border border-white/20">
                             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                             <span className="text-[11px] font-bold uppercase tracking-widest text-white/90">Oferta por Tempo Limitado</span>
                         </div>
@@ -106,7 +106,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     </div>
 
                     {/* High Conversion Form */}
-                    <div className="bg-brand-surface text-brand-text p-6 md:p-8 rounded-[2rem] shadow-2xl relative">
+                    <div className="bg-brand-surface text-brand-text p-6 md:p-8 rounded-4xl shadow-2xl relative">
                         <div className="absolute -top-6 -right-6 bg-red-600 text-white w-20 h-20 rounded-full flex flex-col items-center justify-center font-black transform rotate-12 shadow-lg z-20 border-4 border-[#0052cc]">
                             <span className="text-xs uppercase">Grátis</span>
                             <span className="text-xl">1ª</span>
@@ -123,7 +123,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 <input
                                     type="text"
                                     placeholder="Seu Nome Completo"
-                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm transition-all"
+                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-hidden font-bold text-sm transition-all"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
@@ -132,7 +132,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 <input
                                     type="email"
                                     placeholder="Seu Melhor E-mail"
-                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm transition-all"
+                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-hidden font-bold text-sm transition-all"
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                                 />
@@ -141,7 +141,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 <input
                                     type="tel"
                                     placeholder="Seu WhatsApp (com DDD)"
-                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm transition-all"
+                                    className="w-full h-12 px-4 rounded-xl bg-brand-surface-2 border border-brand-border focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-hidden font-bold text-sm transition-all"
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                 />
@@ -177,7 +177,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     {stats && stats.length > 0 ? (
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
                             {stats.map((stat, i) => (
-                                <div key={i} className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
+                                <div key={i} className="bg-brand-surface p-6 rounded-2xl shadow-xs border border-brand-border">
                                     <p className="text-4xl font-black text-blue-600 mb-1">{stat.value}</p>
                                     <p className="text-xs font-bold uppercase tracking-widest text-brand-muted">{stat.label}</p>
                                 </div>
@@ -209,8 +209,8 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     {benefits && benefits.length > 0 ? (
                         <div className="grid md:grid-cols-3 gap-8">
                             {benefits.map((item, i) => (
-                                <div key={i} className="bg-brand-surface-2 p-8 rounded-[2rem] border border-brand-border hover:border-blue-200 transition-colors group">
-                                    <div className="w-12 h-12 bg-brand-surface rounded-2xl shadow-sm flex items-center justify-center text-blue-600 mb-6 group-hover:scale-110 transition-transform">
+                                <div key={i} className="bg-brand-surface-2 p-8 rounded-4xl border border-brand-border hover:border-blue-200 transition-colors group">
+                                    <div className="w-12 h-12 bg-brand-surface rounded-2xl shadow-xs flex items-center justify-center text-blue-600 mb-6 group-hover:scale-110 transition-transform">
                                         <Check strokeWidth={3} />
                                     </div>
                                     <h3 className="text-xl font-black text-brand-text mb-3">{item.title}</h3>
@@ -221,7 +221,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     ) : (
                         <div className="grid md:grid-cols-2 gap-8 relative z-10">
                             {/* Traditional School */}
-                            <div className="bg-brand-surface border-2 border-brand-border rounded-[2rem] p-8 opacity-80 hover:opacity-100 transition-opacity">
+                            <div className="bg-brand-surface border-2 border-brand-border rounded-4xl p-8 opacity-80 hover:opacity-100 transition-opacity">
                                 <h3 className="text-xl font-black text-brand-muted mb-8 flex items-center gap-3">
                                     <span className="w-3 h-3 rounded-full bg-slate-300" />
                                     Escola Tradicional
@@ -255,7 +255,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                             </div>
 
                             {/* Wise Wolf / King */}
-                            <div className="bg-brand-surface border-2 border-blue-600 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden transform md:-translate-y-4">
+                            <div className="bg-brand-surface border-2 border-blue-600 rounded-4xl p-8 shadow-2xl relative overflow-hidden transform md:-translate-y-4">
                                 <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-xl">
                                     Recomendado
                                 </div>
@@ -265,25 +265,25 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 </h3>
                                 <ul className="space-y-6">
                                     <li className="flex items-start gap-4 text-brand-text font-bold text-lg">
-                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
                                             <Check size={14} strokeWidth={4} />
                                         </div>
                                         Aulas particulares ou duplas
                                     </li>
                                     <li className="flex items-start gap-4 text-brand-text font-bold text-lg">
-                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
                                             <Check size={14} strokeWidth={4} />
                                         </div>
                                         100% focado em conversação
                                     </li>
                                     <li className="flex items-start gap-4 text-brand-text font-bold text-lg">
-                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
                                             <Check size={14} strokeWidth={4} />
                                         </div>
                                         Sem multa de fidelidade
                                     </li>
                                     <li className="flex items-start gap-4 text-brand-text font-bold text-lg">
-                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
                                             <Check size={14} strokeWidth={4} />
                                         </div>
                                         Horários flexíveis (7h às 22h)
@@ -397,7 +397,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                         <h2 className="text-3xl md:text-4xl font-black text-brand-text">Como você vai aprender?</h2>
                     </div>
 
-                    <div className="space-y-12 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                    <div className="space-y-12 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-linear-to-b before:from-transparent before:via-slate-300 before:to-transparent">
                         {[
                             { title: 'Nivelamento', desc: 'Identificamos exatamente onde você está para não perder tempo.', icon: '01' },
                             { title: 'Plano Personalizado', desc: 'Criamos uma rota de estudos baseada nos SEUS objetivos (viagem, trabalho, etc).', icon: '02' },
@@ -408,7 +408,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-blue-600 text-white font-black text-xs shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-lg z-10">
                                     {step.icon}
                                 </div>
-                                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-brand-surface p-6 rounded-3xl shadow-sm border border-brand-border md:group-odd:mr-auto md:group-even:ml-auto hover:border-blue-200 transition-colors">
+                                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-brand-surface p-6 rounded-3xl shadow-xs border border-brand-border md:group-odd:mr-auto md:group-even:ml-auto hover:border-blue-200 transition-colors">
                                     <h3 className="text-lg font-black text-brand-text mb-2">{step.title}</h3>
                                     <p className="text-sm text-brand-muted font-medium leading-relaxed">{step.desc}</p>
                                 </div>
@@ -433,7 +433,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
 
             {/* 5. TESTIMONIALS */}
             <section className="bg-brand-surface text-white py-24 px-6 relative overflow-hidden">
-                <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none" />
+                <div className="absolute top-0 inset-x-0 h-24 bg-linear-to-b from-slate-50 to-transparent pointer-events-none" />
 
                 <div className="max-w-6xl mx-auto relative z-10">
                     <div className="text-center mb-16">
@@ -461,13 +461,13 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                                 </div>
                             ) : (
                                 // Default Videos
-                                <div key={i} className="group relative aspect-[9/16] md:aspect-video rounded-3xl bg-brand-surface-2 border border-brand-border overflow-hidden cursor-pointer shadow-2xl">
+                                <div key={i} className="group relative aspect-9/16 md:aspect-video rounded-3xl bg-brand-surface-2 border border-brand-border overflow-hidden cursor-pointer shadow-2xl">
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/20 transition-all">
-                                        <div className="w-16 h-16 rounded-full bg-brand-surface/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                                        <div className="w-16 h-16 rounded-full bg-brand-surface/20 backdrop-blur-xs flex items-center justify-center group-hover:scale-110 transition-transform">
                                             <Play fill="white" className="text-white ml-1" />
                                         </div>
                                     </div>
-                                    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent">
+                                    <div className="absolute bottom-0 inset-x-0 p-6 bg-linear-to-t from-black/90 to-transparent">
                                         <p className="font-bold text-white">Aluno {i + 1}</p>
                                         <p className="text-xs text-slate-300">Fluente em 12 meses</p>
                                     </div>
@@ -478,7 +478,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     </div>
 
                     {/* 5.5 GUARANTEE + CTA #5 */}
-                    <div className="mt-20 bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2rem] p-8 md:p-12 border border-brand-border flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
+                    <div className="mt-20 bg-linear-to-br from-slate-800 to-slate-900 rounded-4xl p-8 md:p-12 border border-brand-border flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-10 pointer-events-none" />
 
                         <div className="shrink-0 w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center border-2 border-emerald-500/50">
@@ -522,7 +522,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                             <details key={i} className="group bg-brand-surface-2 border-l-4 border-brand-border open:border-emerald-500 rounded-lg open:bg-brand-surface-2/80 transition-all duration-300">
                                 <summary className="flex cursor-pointer items-center justify-between p-6 list-none">
                                     <h3 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{item.question}</h3>
-                                    <span className="ml-4 flex-shrink-0 text-brand-muted group-open:rotate-180 group-open:text-emerald-500 transition-transform duration-300">
+                                    <span className="ml-4 shrink-0 text-brand-muted group-open:rotate-180 group-open:text-emerald-500 transition-transform duration-300">
                                         <ChevronRight />
                                     </span>
                                 </summary>

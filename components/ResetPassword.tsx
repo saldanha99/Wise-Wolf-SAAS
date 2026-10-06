@@ -72,11 +72,11 @@ const ResetPassword: React.FC = () => {
           <form className="mt-8 space-y-4" onSubmit={submit}>
             <label className="block text-sm font-bold text-slate-200">
               Nova senha
-              <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!ready || saving} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none ring-teal-300 transition focus:ring-2" />
+              <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!ready || saving} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-hidden ring-teal-300 transition focus:ring-2" />
             </label>
             <label className="block text-sm font-bold text-slate-200">
               Confirmar senha
-              <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={!ready || saving} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none ring-teal-300 transition focus:ring-2" />
+              <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={!ready || saving} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-hidden ring-teal-300 transition focus:ring-2" />
             </label>
             {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}
             <button type="submit" disabled={!ready || saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-300 px-5 py-3.5 font-black text-slate-950 transition hover:bg-teal-200 disabled:cursor-not-allowed disabled:opacity-50">

@@ -66,7 +66,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
         <div className="w-full h-full relative overflow-y-auto bg-brand-surface font-sans text-brand-text scrollbar-hide">
 
             {/* HERO SECTION */}
-            <section className="relative min-h-[600px] lg:min-h-[700px] bg-gradient-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
+            <section className="relative min-h-[600px] lg:min-h-[700px] bg-linear-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
                 {/* Background Accents - Consistent with FreeLesson */}
                 <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
                     <div className="absolute -top-20 -left-20 w-[600px] h-[600px] bg-blue-500/20 rounded-full blur-[100px]" />
@@ -84,7 +84,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                         transition={{ duration: 0.8 }}
                         className="text-white space-y-8"
                     >
-                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
+                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-xs px-4 py-1.5 rounded-full border border-white/20">
                             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                             <span className="text-xs font-bold tracking-wider uppercase">Matrículas Abertas</span>
                         </div>
@@ -93,7 +93,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             {mainHeadline}
                         </h1>
 
-                        <p className="text-lg sm:text-xl text-blue-100/90 leading-relaxed max-w-lg shadow-black drop-shadow-sm">
+                        <p className="text-lg sm:text-xl text-blue-100/90 leading-relaxed max-w-lg shadow-black drop-shadow-xs">
                             {mainSubheadline}
                         </p>
 
@@ -107,7 +107,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             </button>
                             <button
                                 onClick={() => handleOpenModal('Falar com Consultor (Hero)')}
-                                className="bg-brand-surface/10 hover:bg-brand-surface/20 text-white font-bold py-4 px-8 rounded-xl backdrop-blur-sm border border-white/20 transition-all flex items-center justify-center text-lg"
+                                className="bg-brand-surface/10 hover:bg-brand-surface/20 text-white font-bold py-4 px-8 rounded-xl backdrop-blur-xs border border-white/20 transition-all flex items-center justify-center text-lg"
                             >
                                 Falar com Consultor
                             </button>
@@ -132,7 +132,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                         transition={{ duration: 0.8, delay: 0.2 }}
                         className="relative"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-[2.5rem] rotate-3 opacity-20 blur-lg"></div>
+                        <div className="absolute inset-0 bg-linear-to-tr from-blue-600 to-purple-600 rounded-[2.5rem] rotate-3 opacity-20 blur-lg"></div>
                         <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/20 shadow-2xl">
                             <img src={bgImage} alt="Hero" className="w-full h-[500px] object-cover hover:scale-105 transition-transform duration-700" />
 
@@ -171,7 +171,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-                        <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-xs border border-gray-100 opacity-70">
                             <h3 className="text-xl font-bold text-gray-500 mb-6 flex items-center gap-2">
                                 <XCircle className="text-red-300" /> Cursos Tradicionais
                             </h3>
@@ -303,7 +303,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             { q: 'Posso cancelar quando quiser?', a: 'Sim, não temos contratos de fidelidade abusivos. Você estuda enquanto estiver satisfeito.' },
                             { q: 'As aulas são gravadas?', a: 'Temos uma plataforma de exercícios gravados, mas o foco do plano são as aulas ao vivo com professores.' }
                         ].map((faq, i) => (
-                            <details key={i} className="group bg-gray-50 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <details key={i} className="group bg-gray-50 rounded-xl shadow-xs border border-gray-100 overflow-hidden">
                                 <summary className="flex justify-between items-center p-6 cursor-pointer font-bold text-gray-800 hover:text-[#002366]">
                                     {faq.q}
                                     <span className="transition-transform group-open:rotate-180 text-blue-500">
@@ -336,7 +336,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
             {/* LEAD MODAL */}
             {
                 isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
                         <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full shadow-2xl relative">
                             <button
                                 onClick={() => setIsModalOpen(false)}
@@ -357,7 +357,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                     required
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-hidden"
                                 />
                                 <input
                                     type="email"
@@ -365,7 +365,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                     required
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-hidden"
                                 />
                                 <input
                                     type="tel"
@@ -373,7 +373,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                     required
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-hidden"
                                 />
                                 <button
                                     type="submit"

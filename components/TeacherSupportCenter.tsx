@@ -115,7 +115,7 @@ const TeacherSupportCenter: React.FC<Props> = ({ onNavigate }) => {
                 data-tour="teacher-support"
                 aria-label="Ajuda do professor"
                 aria-expanded={open}
-                className="fixed right-4 z-[70] bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-6 lg:right-6 h-12 px-4 rounded-full shadow-lg border border-brand-border bg-brand-surface text-brand-text hover:border-brand-accent/50 hover:shadow-xl transition-all flex items-center gap-2 text-sm font-bold"
+                className="fixed right-4 z-70 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-6 lg:right-6 h-12 px-4 rounded-full shadow-lg border border-brand-border bg-brand-surface text-brand-text hover:border-brand-accent/50 hover:shadow-xl transition-all flex items-center gap-2 text-sm font-bold"
             >
                 <LifeBuoy size={18} className="text-brand-accent" />
                 <span>Ajuda</span>
@@ -123,7 +123,7 @@ const TeacherSupportCenter: React.FC<Props> = ({ onNavigate }) => {
 
             {open && (
                 <div
-                    className="fixed inset-0 z-[75] bg-black/30 lg:bg-transparent"
+                    className="fixed inset-0 z-75 bg-black/30 lg:bg-transparent"
                     onClick={() => setOpen(false)}
                     aria-hidden="true"
                 />
@@ -133,7 +133,7 @@ const TeacherSupportCenter: React.FC<Props> = ({ onNavigate }) => {
                 <section
                     role="dialog"
                     aria-label="Central de Ajuda do professor"
-                    className="fixed z-[76] inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl lg:inset-x-auto lg:right-6 lg:bottom-20 lg:w-[440px] lg:max-h-[78vh] lg:rounded-2xl bg-brand-surface border border-brand-border shadow-2xl flex flex-col overflow-hidden"
+                    className="fixed z-76 inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl lg:inset-x-auto lg:right-6 lg:bottom-20 lg:w-[440px] lg:max-h-[78vh] lg:rounded-2xl bg-brand-surface border border-brand-border shadow-2xl flex flex-col overflow-hidden"
                 >
                     <header className="p-4 border-b border-brand-border flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-brand-accent/10 text-brand-accent flex items-center justify-center shrink-0">
@@ -201,7 +201,7 @@ const TeacherSupportCenter: React.FC<Props> = ({ onNavigate }) => {
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                                 placeholder="Buscar: falta, experimental, pix, QR…"
-                                className="flex-1 bg-transparent outline-none text-sm text-brand-text placeholder:text-brand-muted"
+                                className="flex-1 bg-transparent outline-hidden text-sm text-brand-text placeholder:text-brand-muted"
                             />
                         </label>
 

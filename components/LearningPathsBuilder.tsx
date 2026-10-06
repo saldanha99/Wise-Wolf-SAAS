@@ -191,7 +191,7 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
                                 </div>
                             </div>
                             <p className="text-sm font-black text-slate-800 dark:text-white">{p.name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 min-h-[2rem]">{p.description}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 min-h-8">{p.description}</p>
                             <div className="flex items-center justify-between mt-3">
                                 <button
                                     onClick={() => onOpen(p.id)}
@@ -727,7 +727,7 @@ const NewActivityWizard: React.FC<{ unit: any; path: any; onCancel: () => void; 
                     <button
                         onClick={handleAIGenerate}
                         disabled={generating}
-                        className="text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r from-violet-600 to-pink-600 px-3 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-1"
+                        className="text-xs font-black uppercase tracking-widest text-white bg-linear-to-r from-violet-600 to-pink-600 px-3 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-1"
                     >
                         {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                         {generating ? 'Gerando...' : 'Gerar com IA'}
@@ -737,7 +737,7 @@ const NewActivityWizard: React.FC<{ unit: any; path: any; onCancel: () => void; 
                     value={contentJson}
                     onChange={e => setContentJson(e.target.value)}
                     rows={10}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
                     placeholder="Use 'Gerar com IA' ou cole JSON manualmente."
                 />
                 <p className="text-[10px] text-slate-400 mt-1">Schema varia por tipo. Use "Gerar com IA" para preencher automaticamente.</p>
@@ -880,7 +880,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
                     <button
                         onClick={regenerate}
                         disabled={generating || frozen}
-                        className="text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r from-violet-600 to-pink-600 px-3 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-1"
+                        className="text-xs font-black uppercase tracking-widest text-white bg-linear-to-r from-violet-600 to-pink-600 px-3 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-1"
                     >
                         {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                         {generating ? 'Gerando...' : 'Regerar com IA'}
@@ -891,7 +891,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
                     onChange={e => setContentJson(e.target.value)}
                     readOnly={frozen}
                     rows={16}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 read-only:cursor-default read-only:opacity-75"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500 read-only:cursor-default read-only:opacity-75"
                 />
             </div>
 
@@ -925,7 +925,7 @@ const Input: React.FC<{ label: string; value: string; onChange: (v: string) => v
                 placeholder={placeholder}
                 disabled={disabled}
                 rows={2}
-                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
+                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
             />
         ) : (
             <input
@@ -934,7 +934,7 @@ const Input: React.FC<{ label: string; value: string; onChange: (v: string) => v
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
                 disabled={disabled}
-                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
+                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
             />
         )}
     </div>
@@ -946,7 +946,7 @@ const Select: React.FC<{ label: string; value: string; onChange: (v: string) => 
         <select
             value={value}
             onChange={e => onChange(e.target.value)}
-            className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
         >
             {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
         </select>

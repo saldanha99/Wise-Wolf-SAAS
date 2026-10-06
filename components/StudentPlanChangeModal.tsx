@@ -136,7 +136,7 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
     )}`;
 
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={onClose}>
             <div className="bg-brand-surface rounded-3xl w-full max-w-lg border border-brand-border shadow-2xl max-h-[90dvh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="px-6 py-5 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                     <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-2 block">Nova mensalidade (R$)</label>
                                 <input value={fee} onChange={e => setFee(e.target.value)} inputMode="decimal" placeholder="0,00"
-                                    className="w-full px-4 py-3 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-emerald-500" />
+                                    className="w-full px-4 py-3 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-emerald-500" />
                                 {feeNum > 0 && feeAtual > 0 && (
                                     <p className={`text-[11px] font-bold mt-1.5 ${delta >= 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
                                         {delta >= 0 ? '+' : ''}{brl(delta)} por mês em relação ao plano atual.

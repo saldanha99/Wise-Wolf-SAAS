@@ -79,7 +79,7 @@ const editableLeadPayload = (data: Partial<Lead>) => ({
 // Componente Modal reutilizável
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={onClose} />
         <div className="relative bg-brand-surface border border-brand-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-brand-border shrink-0">
                 <h3 className="font-extrabold text-brand-text text-lg">{title}</h3>
@@ -151,7 +151,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                     value={form.name || ''}
                     onChange={e => set('name', e.target.value)}
                     placeholder="Nome completo"
-                    className={`w-full px-4 py-2.5 bg-brand-surface-2 border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors ${errors.name ? 'border-red-500' : 'border-brand-border'}`}
+                    className={`w-full px-4 py-2.5 bg-brand-surface-2 border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors ${errors.name ? 'border-red-500' : 'border-brand-border'}`}
                 />
                 {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
             </div>
@@ -165,7 +165,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                         onChange={e => set('email', e.target.value)}
                         placeholder="email@exemplo.com"
                         type="email"
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors"
+                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors"
                     />
                 </div>
                 <div>
@@ -174,7 +174,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                         value={form.phone || ''}
                         onChange={e => set('phone', e.target.value)}
                         placeholder="(11) 99999-9999"
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors"
+                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors"
                     />
                 </div>
             </div>
@@ -186,7 +186,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                     <select
                         value={form.source || ''}
                         onChange={e => set('source', e.target.value)}
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-none focus:border-brand-accent transition-colors"
+                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-hidden focus:border-brand-accent transition-colors"
                     >
                         <option value="">Selecionar</option>
                         {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -197,7 +197,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                     <select
                         value={form.level || ''}
                         onChange={e => set('level', e.target.value)}
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-none focus:border-brand-accent transition-colors"
+                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-hidden focus:border-brand-accent transition-colors"
                     >
                         <option value="">Selecionar</option>
                         {LEVEL_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -215,7 +215,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                         placeholder="0"
                         type="number"
                         min="0"
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors"
+                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors"
                     />
                 </div>
                 <div>
@@ -234,7 +234,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                             aria-label="Etapa"
                             value={form.status === 'WON' ? 'NEW' : (form.status || 'NEW')}
                             onChange={e => set('status', e.target.value as ManualStatusType)}
-                            className={`w-full px-4 py-2.5 bg-brand-surface-2 border rounded-xl text-sm text-brand-text outline-none focus:border-brand-accent transition-colors ${errors.status ? 'border-red-500' : 'border-brand-border'}`}
+                            className={`w-full px-4 py-2.5 bg-brand-surface-2 border rounded-xl text-sm text-brand-text outline-hidden focus:border-brand-accent transition-colors ${errors.status ? 'border-red-500' : 'border-brand-border'}`}
                         >
                             {MANUAL_ACTIVE_STATUSES.map(s => <option key={s} value={s}>{COLUMN_CONFIG[s].label}</option>)}
                             <option value="LOST">Perdidos</option>
@@ -268,7 +268,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                         onChange={e => setTagInput(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(tagInput); }}}
                         placeholder="Adicionar tag..."
-                        className="flex-1 px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-xs text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors"
+                        className="flex-1 px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-xs text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors"
                     />
                     <button onClick={() => addTag(tagInput)} className="px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-xs text-brand-muted hover:text-brand-text transition-colors">
                         +
@@ -290,7 +290,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                     value={form.goal || ''}
                     onChange={e => set('goal', e.target.value)}
                     placeholder="Ex: Viagem, trabalho, provas..."
-                    className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors"
+                    className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors"
                 />
             </div>
 
@@ -302,7 +302,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                     onChange={e => set('notes', e.target.value)}
                     placeholder="Anotações sobre o lead..."
                     rows={3}
-                    className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none focus:border-brand-accent transition-colors resize-none"
+                    className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden focus:border-brand-accent transition-colors resize-none"
                 />
             </div>
 
@@ -348,7 +348,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
                 <select
                     value={local.source}
                     onChange={e => set('source', e.target.value)}
-                    className="w-full px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-none"
+                    className="w-full px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-hidden"
                 >
                     <option value="">Todas</option>
                     {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -360,7 +360,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
                     value={local.tags}
                     onChange={e => set('tags', e.target.value)}
                     placeholder="Filtrar por tag..."
-                    className="w-full px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-none"
+                    className="w-full px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted outline-hidden"
                 />
             </div>
             <div>
@@ -371,7 +371,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
                         onChange={e => set('minDays', Number(e.target.value))}
                         type="number"
                         min="0"
-                        className="w-20 px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-none"
+                        className="w-20 px-3 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-hidden"
                     />
                     <span className="text-sm text-brand-muted">dias</span>
                 </div>
@@ -658,7 +658,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     return (
         <div className="flex flex-col h-full min-h-0 bg-brand-bg font-sans">
             {/* ── TOP BAR ── */}
-            <header className="shrink-0 bg-brand-surface border-b border-brand-border px-6 py-4 flex items-center justify-between z-10 shadow-sm">
+            <header className="shrink-0 bg-brand-surface border-b border-brand-border px-6 py-4 flex items-center justify-between z-10 shadow-xs">
                 {/* Título + KPIs */}
                 <div className="flex items-center gap-6 flex-wrap">
                     <h1 className="text-lg font-extrabold text-brand-text flex items-center gap-2 whitespace-nowrap">
@@ -699,13 +699,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                             placeholder="Buscar leads..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-9 pr-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm outline-none focus:border-brand-accent w-52 transition-colors text-brand-text placeholder-brand-muted"
+                            className="pl-9 pr-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm outline-hidden focus:border-brand-accent w-52 transition-colors text-brand-text placeholder-brand-muted"
                         />
                     </div>
 
                     <button
                         onClick={() => { setActionError(''); setShowNewModal(true); }}
-                        className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap"
+                        className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-xs transition-colors whitespace-nowrap"
                     >
                         <Plus size={15} /> Nova Oportunidade
                     </button>
@@ -764,7 +764,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                     </div>
                 ) : loadError ? (
                     <div role="alert" className="flex h-full items-center justify-center">
-                        <div className="max-w-md rounded-2xl border border-red-400/40 bg-brand-surface p-6 text-center shadow-sm">
+                        <div className="max-w-md rounded-2xl border border-red-400/40 bg-brand-surface p-6 text-center shadow-xs">
                             <AlertCircle size={28} className="mx-auto text-red-500" />
                             <h2 className="mt-3 text-sm font-black text-brand-text">Pipeline indisponível</h2>
                             <p className="mt-1 text-xs leading-relaxed text-brand-muted">{loadError}</p>
@@ -795,10 +795,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                     className={`flex flex-col flex-1 min-w-[220px] rounded-2xl border transition-all duration-150 ${isDragTarget ? 'border-brand-accent bg-brand-accent/5 scale-[1.01]' : 'border-brand-border bg-brand-surface'}`}
                                 >
                                     {/* Cabeçalho da coluna */}
-                                    <div className={`shrink-0 p-4 rounded-t-2xl border-b border-brand-border bg-gradient-to-b ${cfg.color} to-transparent`}>
+                                    <div className={`shrink-0 p-4 rounded-t-2xl border-b border-brand-border bg-linear-to-b ${cfg.color} to-transparent`}>
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full shadow-sm ${cfg.dot}`} />
+                                                <span className={`w-2 h-2 rounded-full shadow-xs ${cfg.dot}`} />
                                                 <span className={`text-xs font-extrabold uppercase tracking-widest ${cfg.text}`}>
                                                     {cfg.label}
                                                 </span>

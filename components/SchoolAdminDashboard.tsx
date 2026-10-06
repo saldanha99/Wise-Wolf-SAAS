@@ -206,7 +206,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {/* Header Section */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-brand-border pb-6 mb-6">
         <div>
-          <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text uppercase tracking-wide">
+          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text uppercase tracking-wide">
             {activeTab === 'analytics' ? 'Analytics da Unidade' : 'Academia de Professores'}
           </h2>
           <p className="text-brand-muted text-sm mt-0.5">
@@ -217,32 +217,32 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
           <div className="flex overflow-x-auto max-w-full bg-brand-surface border border-brand-border p-1 rounded-2xl">
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Analytics
             </button>
             <button
               onClick={() => setActiveTab('training')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Treinamento
             </button>
             <button
               data-tour="enrollment-link-tab"
               onClick={() => setActiveTab('registration')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Link Matrícula
             </button>
             <button
               onClick={() => setActiveTab('recruiting')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Recrutamento (Link)
             </button>
             <button
               onClick={() => setActiveTab('ai_team')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ai_team' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ai_team' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
             >
               🤖 Equipe de IA
             </button>
@@ -266,7 +266,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               <button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="bg-brand-surface border border-brand-border px-4 py-2 rounded-xl text-xs font-semibold text-brand-text hover:bg-brand-surface-2 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                className="bg-brand-surface border border-brand-border px-4 py-2 rounded-xl text-xs font-semibold text-brand-text hover:bg-brand-surface-2 transition-all shadow-xs flex items-center gap-2 disabled:opacity-50"
               >
                 {isExporting ? <RefreshCw className="animate-spin" size={14} /> : <FileDown size={14} />}
                 {isExporting ? 'Exportando...' : 'Exportar Dados'}
@@ -544,7 +544,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                   {teachers.slice(0, 3).map((t, i) => (
                     <div key={i} className="group flex items-center justify-between p-3 rounded-xl bg-brand-surface-2 border border-brand-border hover:-translate-y-0.5 transition-all duration-200">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-brand-surface border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent shadow-sm">
+                        <div className="w-8 h-8 rounded-lg bg-brand-surface border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent shadow-xs">
                           {i + 1}
                         </div>
                         <div>

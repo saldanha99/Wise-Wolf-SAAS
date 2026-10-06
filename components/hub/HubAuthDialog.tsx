@@ -149,8 +149,8 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
   };
 
   return (
-    <div className="hub-auth-overlay fixed inset-0 z-[100] flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" data-hub-theme={theme} role="dialog" aria-modal="true" aria-labelledby="hub-auth-title">
-      <div ref={dialogRef} className="hub-auth-panel max-h-[96dvh] w-full max-w-xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-[2rem] sm:p-8">
+    <div className="hub-auth-overlay fixed inset-0 z-100 flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" data-hub-theme={theme} role="dialog" aria-modal="true" aria-labelledby="hub-auth-title">
+      <div ref={dialogRef} className="hub-auth-panel max-h-[96dvh] w-full max-w-xl overflow-y-auto rounded-t-4xl border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-4xl sm:p-8">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400">Wise Wolf Hub · acesso protegido</p>
@@ -191,18 +191,18 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
                 <>
                   <label className="block">
                     <span className="mb-2 block text-xs font-black text-slate-300">Seu nome</span>
-                    <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" />
+                    <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" />
                   </label>
                 </>
               )}
               <label className="block">
                 <span className="mb-2 block text-xs font-black text-slate-300">E-mail</span>
-                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@email.com" />
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@email.com" />
               </label>
               <label className="block">
                 <span className="mb-2 block text-xs font-black text-slate-300">Senha</span>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 pr-12 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Mínimo de 8 caracteres" />
+                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 pr-12 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Mínimo de 8 caracteres" />
                   <button type="button" onClick={() => setShowPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
                 </div>
               </label>

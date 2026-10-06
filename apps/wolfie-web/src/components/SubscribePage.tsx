@@ -348,7 +348,7 @@ export function SubscribePage() {
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-[#202126]">
-      <header className="border-b border-black/[.06] bg-white px-5 py-4 sm:px-8">
+      <header className="border-b border-black/6 bg-white px-5 py-4 sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <WolfieBrand />
           <WolfieLink href="/planos" className="inline-flex items-center gap-2 text-sm font-extrabold text-[#686d77] hover:text-[#202126]">
@@ -384,7 +384,7 @@ export function SubscribePage() {
               {["Conta", "Dados", "Pagamento"].map((label, index) => (
                 <div key={label}>
                   <div className={`h-1.5 rounded-full ${index <= activeStep ? "bg-[#e72d3d]" : "bg-[#ececef]"}`} />
-                  <p className={`mt-2 text-[9px] font-extrabold uppercase tracking-[.1em] ${index <= activeStep ? "text-[#b92333]" : "text-[#a2a5ac]"}`}>{label}</p>
+                  <p className={`mt-2 text-[9px] font-extrabold uppercase tracking-widest ${index <= activeStep ? "text-[#b92333]" : "text-[#a2a5ac]"}`}>{label}</p>
                 </div>
               ))}
             </div>
@@ -429,21 +429,21 @@ export function SubscribePage() {
               ) : (
                 <div className="mt-8">
                   <div className="grid grid-cols-2 gap-1 rounded-full bg-[#f1f1f3] p-1.5">
-                    <button type="button" onClick={() => { setAuthMode("signup"); setError(""); }} className={`rounded-full px-4 py-3 text-sm font-extrabold transition ${authMode === "signup" ? "bg-white text-[#202126] shadow-sm" : "text-[#777b84]"}`}>Criar conta</button>
-                    <button type="button" onClick={() => { setAuthMode("login"); setError(""); }} className={`rounded-full px-4 py-3 text-sm font-extrabold transition ${authMode === "login" ? "bg-white text-[#202126] shadow-sm" : "text-[#777b84]"}`}>Já tenho conta</button>
+                    <button type="button" onClick={() => { setAuthMode("signup"); setError(""); }} className={`rounded-full px-4 py-3 text-sm font-extrabold transition ${authMode === "signup" ? "bg-white text-[#202126] shadow-xs" : "text-[#777b84]"}`}>Criar conta</button>
+                    <button type="button" onClick={() => { setAuthMode("login"); setError(""); }} className={`rounded-full px-4 py-3 text-sm font-extrabold transition ${authMode === "login" ? "bg-white text-[#202126] shadow-xs" : "text-[#777b84]"}`}>Já tenho conta</button>
                   </div>
                   <form onSubmit={submitAuth} className="mt-7 grid gap-5">
                     {authMode === "signup" ? (
                       <label className="text-sm font-bold text-[#4a4e56]">Nome completo
-                        <input required autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={120} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="Como devemos chamar você?" />
+                        <input required autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={120} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="Como devemos chamar você?" />
                       </label>
                     ) : null}
                     <label className="text-sm font-bold text-[#4a4e56]">E-mail
-                      <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="voce@exemplo.com" />
+                      <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="voce@exemplo.com" />
                     </label>
                     <label className="text-sm font-bold text-[#4a4e56]">Senha
                       <span className="relative mt-2 block">
-                        <input required type={showPassword ? "text" : "password"} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 pr-12 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="Mínimo de 8 caracteres" />
+                        <input required type={showPassword ? "text" : "password"} autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 pr-12 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="Mínimo de 8 caracteres" />
                         <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-1 grid w-11 place-items-center text-[#858992]" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
                       </span>
                     </label>
@@ -461,7 +461,7 @@ export function SubscribePage() {
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-emerald-600"><Check size={20} /></span>
                   </div>
                 </div>
-                <dl className="mt-5 divide-y divide-black/[.06] rounded-[26px] border border-black/[.07] px-5">
+                <dl className="mt-5 divide-y divide-black/6 rounded-[26px] border border-black/[.07] px-5">
                   <div className="py-4"><dt className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#92959c]">Assinante</dt><dd className="mt-1 font-bold">{fullName}</dd></div>
                   <div className="py-4"><dt className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#92959c]">Conta</dt><dd className="mt-1 break-all font-bold">{session.user.email}</dd></div>
                   <div className="py-4"><dt className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#92959c]">Pagamento</dt><dd className="mt-1 font-bold">{paymentLabel(billingType)} · recorrência mensal</dd></div>
@@ -479,14 +479,14 @@ export function SubscribePage() {
                   <button type="button" onClick={() => void switchAccount()} className="inline-flex shrink-0 items-center gap-1.5 font-extrabold text-[#b92333]"><LogOut size={15} /> Trocar</button>
                 </div>
                 <label className="text-sm font-bold text-[#4a4e56]">Nome completo
-                  <input required autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={120} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" />
+                  <input required autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={120} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" />
                 </label>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="text-sm font-bold text-[#4a4e56]">CPF
-                    <input required inputMode="numeric" autoComplete="off" value={cpfCnpj} onChange={(event) => setCpfCnpj(formatCpf(event.target.value))} maxLength={14} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="000.000.000-00" />
+                    <input required inputMode="numeric" autoComplete="off" value={cpfCnpj} onChange={(event) => setCpfCnpj(formatCpf(event.target.value))} maxLength={14} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="000.000.000-00" />
                   </label>
                   <label className="text-sm font-bold text-[#4a4e56]">Telefone com DDD
-                    <input required inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-none focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="(11) 99999-9999" />
+                    <input required inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 outline-hidden focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="(11) 99999-9999" />
                   </label>
                 </div>
                 <fieldset>
@@ -510,7 +510,7 @@ export function SubscribePage() {
           <aside className="overflow-hidden rounded-[34px] border border-black/[.07] bg-white shadow-[0_24px_75px_rgba(35,36,41,.08)] lg:sticky lg:top-7">
             <div className="relative h-64 overflow-hidden sm:h-80">
               <img src={plan.image} alt={plan.imageAlt} width={960} height={640} className="h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#15161b]/90 via-[#15161b]/15 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-[#15161b]/90 via-[#15161b]/15 to-transparent" />
               <div className="absolute inset-x-6 bottom-6 text-white">
                 <p className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[.16em] text-white/70"><Sparkles size={14} /> Sua escolha</p>
                 <h2 className="mt-2 font-display text-4xl font-extrabold">Plano {plan.name}</h2>

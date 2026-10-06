@@ -14,7 +14,7 @@ const GamificationHeader: React.FC<GamificationHeaderProps> = ({ xp, level, stre
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             {/* Level Card */}
-            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-sm flex items-center gap-4 group hover:border-tenant-primary transition-all">
+            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-xs flex items-center gap-4 group hover:border-tenant-primary transition-all">
                 <div className="w-12 h-12 bg-tenant-primary/10 rounded-2xl flex items-center justify-center text-tenant-primary group-hover:scale-110 transition-transform">
                     <Trophy size={24} />
                 </div>
@@ -33,7 +33,7 @@ const GamificationHeader: React.FC<GamificationHeaderProps> = ({ xp, level, stre
             </div>
 
             {/* XP Card */}
-            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-sm flex items-center gap-4 group hover:border-amber-500 transition-all">
+            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-xs flex items-center gap-4 group hover:border-amber-500 transition-all">
                 <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
                     <Zap size={24} />
                 </div>
@@ -47,7 +47,7 @@ const GamificationHeader: React.FC<GamificationHeaderProps> = ({ xp, level, stre
             </div>
 
             {/* Streak Card */}
-            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-sm flex items-center gap-4 group hover:border-orange-600 transition-all">
+            <div className="bg-brand-surface p-4 rounded-3xl border border-brand-border shadow-xs flex items-center gap-4 group hover:border-orange-600 transition-all">
                 <div className="w-12 h-12 bg-orange-600/10 rounded-2xl flex items-center justify-center text-orange-600 group-hover:animate-bounce transition-transform">
                     <Flame size={24} />
                 </div>

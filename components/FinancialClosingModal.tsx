@@ -114,7 +114,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
 
     if (loadError) {
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-surface/80 p-6 backdrop-blur-sm">
+            <div className="fixed inset-0 z-100 flex items-center justify-center bg-brand-surface/80 p-6 backdrop-blur-xs">
                 <div className="w-full max-w-lg rounded-[2.5rem] border border-red-200 bg-brand-surface p-8 text-center shadow-2xl dark:border-red-900/40" role="alert">
                     <AlertCircle className="mx-auto text-red-500" size={34} />
                     <h3 className="mt-4 text-xl font-black text-brand-text">Fechamento indisponível</h3>
@@ -141,7 +141,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
     }
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-brand-surface/80 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-brand-surface/80 backdrop-blur-xs animate-in fade-in duration-300">
             <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-lg border border-brand-border dark:border-brand-border shadow-2xl relative max-h-[90dvh] overflow-y-auto">
 
                 {/* Background blobs */}
@@ -160,7 +160,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
                                 </div>
                             </div>
 
-                            <div className="bg-brand-surface-2/50 p-6 rounded-[2rem] border border-brand-border mb-8">
+                            <div className="bg-brand-surface-2/50 p-6 rounded-4xl border border-brand-border mb-8">
                                 <div className="flex justify-between items-center mb-4">
                                     <p className="text-xs font-black text-brand-muted uppercase tracking-widest">Total Acumulado</p>
                                     <div className="flex items-center gap-1 text-emerald-500 text-xs font-black uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-lg">
@@ -207,7 +207,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
                             <textarea
                                 value={contestReason}
                                 onChange={(e) => setContestReason(e.target.value)}
-                                className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-red-500 mb-6"
+                                className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-hidden focus:ring-2 focus:ring-red-500 mb-6"
                                 placeholder="Descreva o erro encontrado..."
                             />
 

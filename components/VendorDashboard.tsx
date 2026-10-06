@@ -211,7 +211,7 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, onNavigate }) =
             ) : null}
 
             {/* Cupom */}
-            <section className="rounded-2xl bg-gradient-to-br from-slate-950 to-slate-800 p-6 text-white shadow-sm" data-tour="affiliate-coupon-card">
+            <section className="rounded-2xl bg-linear-to-br from-slate-950 to-slate-800 p-6 text-white shadow-xs" data-tour="affiliate-coupon-card">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Seu cupom de afiliado</p>
                 <div className="mt-3 flex items-center gap-3">
                     <BadgePercent size={22} className="shrink-0 text-emerald-400" aria-hidden="true" />

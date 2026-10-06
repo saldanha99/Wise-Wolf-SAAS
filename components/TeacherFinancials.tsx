@@ -423,7 +423,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
     if (reportError || !report) {
         return (
-            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[2rem] border border-red-200 bg-red-50/70 p-8 text-center dark:border-red-900/40 dark:bg-red-950/20" role="alert">
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-4xl border border-red-200 bg-red-50/70 p-8 text-center dark:border-red-900/40 dark:bg-red-950/20" role="alert">
                 <AlertCircle className="text-red-600" size={32} />
                 <div>
                     <h2 className="text-xl font-black text-brand-text">Fechamento indisponível</h2>
@@ -453,7 +453,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 com valor e competência. Confira também o fechamento e a nota fiscal nesta tela.
             </p>
             {/* Month Selector code ... */}
-            <div className="flex flex-col items-stretch justify-between gap-4 bg-brand-surface p-4 sm:p-6 rounded-[2rem] border border-brand-border shadow-sm sm:flex-row sm:items-center">
+            <div className="flex flex-col items-stretch justify-between gap-4 bg-brand-surface p-4 sm:p-6 rounded-4xl border border-brand-border shadow-xs sm:flex-row sm:items-center">
                 <div className="min-w-0">
                     <h2 className="text-2xl font-black text-brand-text tracking-tight">Financeiro</h2>
                     <p className="text-brand-muted text-sm font-medium">Gerencie seus ganhos e fechamentos.</p>
@@ -469,7 +469,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             aria-label="Mês do fechamento"
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="min-w-0 flex-1 rounded-xl border-none bg-brand-surface-2 px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary dark:text-slate-300 sm:flex-none"
+                            className="min-w-0 flex-1 rounded-xl border-none bg-brand-surface-2 px-4 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary dark:text-slate-300 sm:flex-none"
                         />
                     </div>
                 </div>
@@ -478,7 +478,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {showPayroll && <TeacherPayrollReportModal teacherId={user.id} month={selectedMonth} onClose={() => setShowPayroll(false)} />}
 
             {/* Forecast Card */}
-            <div className="relative overflow-hidden rounded-[2.5rem] bg-indigo-700 bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/20 sm:p-8">
+            <div className="relative overflow-hidden rounded-[2.5rem] bg-indigo-700 bg-linear-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/20 sm:p-8">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
                 <div className="relative z-10">
@@ -592,7 +592,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {/* Contest Modal */}
             {
                 isContesting && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm">
+                    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs">
                         <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl max-h-[90dvh] overflow-y-auto">
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="p-2 bg-orange-100 dark:bg-orange-900/20 text-orange-600 rounded-xl">
@@ -605,7 +605,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             <textarea
                                 value={contestReason}
                                 onChange={(e) => setContestReason(e.target.value)}
-                                className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 mb-6"
+                                className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-hidden focus:ring-2 focus:ring-orange-500 mb-6"
                                 placeholder="Descreva aqui quais aulas estão faltando ou qual valor está incorreto..."
                             />
 
@@ -630,7 +630,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
             {/* Resumo por aluno — substitui o extrato aula-a-aula, que ficava com
                 mais de 100 linhas e ninguém conseguia conferir. */}
-            <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm">
+            <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-xs">
                 <div className="flex items-center justify-between border-b border-slate-50 p-5 dark:border-brand-border sm:p-8">
                     <div className="min-w-0">
                         <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Resumo por aluno</h3>
@@ -784,7 +784,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                                             value={draftDuration}
                                                             onChange={(e) => setDraftDuration(e.target.value)}
                                                             aria-label={`Duração da aula de ${row.student} em minutos`}
-                                                            className="w-16 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                            className="w-16 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
                                                         />
                                                         <span className="text-xs">min</span>
                                                     </span>
@@ -805,7 +805,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                                             onChange={(e) => setDraftRate(e.target.value)}
                                                             onKeyDown={(e) => { if (e.key === 'Enter') saveRow(row); if (e.key === 'Escape') setEditingRow(null); }}
                                                             aria-label={`Valor base da aula de ${row.student}`}
-                                                            className="w-20 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                            className="w-20 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
                                                         />
                                                     </span>
                                                 ) : (
@@ -922,7 +922,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
             {/* Ajustes do fechamento — o que não é aula */}
             {(directorMode || adjustments.length > 0) && (
-                <div className="overflow-hidden rounded-[2.5rem] border border-brand-border bg-brand-surface shadow-sm">
+                <div className="overflow-hidden rounded-[2.5rem] border border-brand-border bg-brand-surface shadow-xs">
                     <div className="flex flex-col gap-3 border-b border-brand-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-8">
                         <div className="min-w-0">
                             <h3 className="text-xs font-black uppercase tracking-widest text-brand-text">Ajustes do fechamento</h3>
@@ -950,7 +950,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     onChange={(e) => setAdjDesc(e.target.value)}
                                     list="ajuste-sugestoes"
                                     placeholder="Ex: Reserva de agenda — aluno começa depois"
-                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-medium text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                 />
                                 <datalist id="ajuste-sugestoes">
                                     <option value="Reserva de agenda" />
@@ -966,7 +966,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     onChange={(e) => setAdjAmount(e.target.value)}
                                     inputMode="decimal"
                                     placeholder="30,00"
-                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30 sm:w-32"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30 sm:w-32"
                                 />
                             </label>
                             <div className="flex gap-2">
@@ -1019,8 +1019,8 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
             {/* Cobertura: mover a aula (e o pagamento) para quem realmente deu */}
             {transferLog && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                    <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
+                <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+                    <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-4xl border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
                         <h3 className="text-lg font-black uppercase tracking-tight text-brand-text">Quem deu esta aula?</h3>
                         <p className="mt-1 text-sm font-medium text-brand-muted">
                             {transferLog.student} · {new Date(`${transferLog.date}T12:00:00`).toLocaleDateString('pt-BR')}
@@ -1034,7 +1034,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             <select
                                 value={transferTo}
                                 onChange={(e) => setTransferTo(e.target.value)}
-                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                             >
                                 <option value="">Selecione…</option>
                                 {transferTargets.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
@@ -1047,7 +1047,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                 value={transferReason}
                                 onChange={(e) => setTransferReason(e.target.value)}
                                 placeholder="Ex: professor passou mal, cobertura de última hora"
-                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                             />
                         </label>
 

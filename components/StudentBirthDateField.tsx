@@ -131,7 +131,7 @@ export default function StudentBirthDateField({
           min="1900-01-01"
           onChange={event => setValue(event.target.value)}
           aria-label="Data de nascimento"
-          className="rounded-xl border border-brand-border bg-brand-surface-2 px-3 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary dark:bg-slate-950 dark:text-slate-200"
+          className="rounded-xl border border-brand-border bg-brand-surface-2 px-3 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary dark:bg-slate-950 dark:text-slate-200"
         />
         <input
           value={reason}
@@ -139,7 +139,7 @@ export default function StudentBirthDateField({
           maxLength={500}
           placeholder="Como a escola conferiu (opcional)"
           aria-label="Como a escola conferiu a data"
-          className="min-w-[12rem] flex-1 rounded-xl border border-brand-border bg-brand-surface-2 px-3 py-2 text-sm text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary dark:bg-slate-950 dark:text-slate-200"
+          className="min-w-48 flex-1 rounded-xl border border-brand-border bg-brand-surface-2 px-3 py-2 text-sm text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary dark:bg-slate-950 dark:text-slate-200"
         />
         <button type="button" disabled={busy} onClick={() => void save()}
           className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">

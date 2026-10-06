@@ -272,7 +272,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
     };
 
     return (
-        <div className="bg-brand-surface rounded-[2rem] shadow-2xl w-full max-w-2xl border border-brand-border overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="bg-brand-surface rounded-4xl shadow-2xl w-full max-w-2xl border border-brand-border overflow-hidden animate-in zoom-in-95 duration-200">
 
             {/* Header */}
             <div className="px-8 py-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/20">
@@ -350,7 +350,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={!isDirector || contractSigned}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || contractSigned) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${(!isDirector || contractSigned) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="Ex: Ana Silva"
                                 />
                             </div>
@@ -365,7 +365,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                         disabled={!isDirector || !!initialData?.id} // Only editable on creation logic ideally, or let them edit but warn it doesn't change auth? Let's disable if ID exists.
                                         value={formData.email}
                                         onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                        className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || !!initialData?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${(!isDirector || !!initialData?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         placeholder="exemplo@email.com"
                                     />
                                 </div>
@@ -379,7 +379,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <select
                                     value={formData.status || 'Ativo'}
                                     onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none"
                                 >
                                     <option value="Ativo">Ativo (Em curso)</option>
                                     <option value="Inativo">Pausado / Inativo</option>
@@ -395,7 +395,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <select
                                     value={formData.levelBadge}
                                     onChange={e => setFormData({ ...formData, levelBadge: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none"
                                 >
                                     <option>A1</option>
                                     <option>A2</option>
@@ -416,7 +416,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                         disabled={!isDirector}
                                         value={formData.professor_id || ''}
                                         onChange={e => setFormData({ ...formData, professor_id: e.target.value })}
-                                        className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
                                         <option value="">-- Sem Professor --</option>
                                         {teachers?.map(t => (
@@ -439,7 +439,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={contractSigned}
                                             value={formData.cpf}
                                             onChange={e => setFormData({ ...formData, cpf: e.target.value })}
-                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="000.000.000-00"
                                         />
                                     </div>
@@ -451,7 +451,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={contractSigned}
                                             value={formData.postalCode}
                                             onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
-                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="00000-000"
                                         />
                                     </div>
@@ -466,7 +466,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={contractSigned}
                                             value={formData.address}
                                             onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="Rua, Av..."
                                         />
                                     </div>
@@ -478,7 +478,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={contractSigned}
                                             value={formData.addressNumber}
                                             onChange={e => setFormData({ ...formData, addressNumber: e.target.value })}
-                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="123"
                                         />
                                     </div>
@@ -517,7 +517,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     value={newInterest}
                                     onChange={e => setNewInterest(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddInterest()}
-                                    className="flex-1 px-4 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-none uppercase"
+                                    className="flex-1 px-4 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-hidden uppercase"
                                     placeholder="Adicionar interesse..."
                                 />
                                 <button
@@ -547,7 +547,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <input
                                     value={formData.occupation}
                                     onChange={e => setFormData({ ...formData, occupation: e.target.value.toUpperCase() })}
-                                    className="w-full px-4 py-3 bg-brand-surface border border-pink-200 dark:border-pink-900 rounded-xl text-xs font-black text-pink-500 dark:text-pink-400 focus:ring-2 focus:ring-pink-500 outline-none uppercase"
+                                    className="w-full px-4 py-3 bg-brand-surface border border-pink-200 dark:border-pink-900 rounded-xl text-xs font-black text-pink-500 dark:text-pink-400 focus:ring-2 focus:ring-pink-500 outline-hidden uppercase"
                                     placeholder="Ex: ARQUITETA"
                                 />
                             </div>
@@ -563,7 +563,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={!isDirector}
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden font-mono"
                                     placeholder="5511999999999"
                                 />
                             </div>
@@ -576,7 +576,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={!isDirector}
                                     value={formData.attendance_phone}
                                     onChange={e => setFormData({ ...formData, attendance_phone: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden font-mono"
                                     placeholder="Só se diferente do contato acima"
                                 />
                                 <p className="text-[10px] text-brand-muted leading-snug">Contato legado de presença. Solicite abaixo a confirmação de um contato independente de qualidade pela escola.</p>
@@ -590,7 +590,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={!isDirector}
                                     value={formData.meeting_link}
                                     onChange={e => setFormData({ ...formData, meeting_link: e.target.value })}
-                                    className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-bold text-blue-700 dark:text-blue-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-bold text-blue-700 dark:text-blue-300 focus:ring-2 focus:ring-blue-500 outline-hidden"
                                     placeholder="https://meet.google.com/abc-defg-hij"
                                 />
                             </div>
@@ -628,7 +628,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={!isDirector}
                                             value={formData.guardian_name}
                                             onChange={e => setFormData({ ...formData, guardian_name: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-none"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-hidden"
                                             placeholder="Maria Silva"
                                         />
                                     </div>
@@ -640,7 +640,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             disabled={!isDirector}
                                             value={formData.guardian_phone}
                                             onChange={e => setFormData({ ...formData, guardian_phone: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-none font-mono"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-hidden font-mono"
                                             placeholder="5511999999999"
                                         />
                                     </div>
@@ -698,7 +698,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                                     disabled={!isDirector}
                                                     value={guardianQuery}
                                                     onChange={e => setGuardianQuery(e.target.value)}
-                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
                                                     placeholder="Buscar por nome ou CPF..."
                                                 />
                                                 {loadingGuardians && <p className="text-[11px] text-brand-muted">Carregando cadastrados...</p>}
@@ -734,7 +734,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                                     disabled={!isDirector}
                                                     value={formData.guardian_name}
                                                     onChange={e => setFormData({ ...formData, guardian_name: e.target.value })}
-                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
                                                     placeholder="João da Silva"
                                                 />
                                             </div>
@@ -746,7 +746,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                                     disabled={!isDirector}
                                                     value={formData.guardian_cpf}
                                                     onChange={e => setFormData({ ...formData, guardian_cpf: e.target.value })}
-                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-hidden font-mono"
                                                     placeholder="000.000.000-00"
                                                 />
                                             </div>
@@ -758,7 +758,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                                     disabled={!isDirector}
                                                     value={formData.guardian_email}
                                                     onChange={e => setFormData({ ...formData, guardian_email: e.target.value })}
-                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
                                                     placeholder="responsavel@email.com"
                                                 />
                                             </div>
@@ -770,7 +770,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                                     disabled={!isDirector}
                                                     value={formData.guardian_phone}
                                                     onChange={e => setFormData({ ...formData, guardian_phone: e.target.value })}
-                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-hidden font-mono"
                                                     placeholder="5511999999999"
                                                 />
                                             </div>
@@ -789,7 +789,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <input
                                     value={formData.fixed_schedule}
                                     onChange={e => setFormData({ ...formData, fixed_schedule: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden"
                                     placeholder="Ex: Seg e Qua às 14h"
                                 />
                             </div>
@@ -801,7 +801,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <textarea
                                     value={formData.private_notes}
                                     onChange={e => setFormData({ ...formData, private_notes: e.target.value })}
-                                    className="w-full h-32 px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none resize-none"
+                                    className="w-full h-32 px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden resize-none"
                                     placeholder="Observações sobre o aprendizado, dificuldades ou metas do aluno (visível apenas para professores)..."
                                 />
                             </div>
@@ -857,7 +857,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={contractSigned}
                                     value={formData.monthly_fee}
                                     onChange={e => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
-                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xl font-black text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xl font-black text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="0.00"
                                 />
                             </div>
@@ -870,7 +870,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={contractSigned}
                                     value={formData.due_day}
                                     onChange={e => setFormData({ ...formData, due_day: Number(e.target.value) })}
-                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     {[5, 10, 15, 20, 25].map(day => (
                                         <option key={day} value={day}>Dia {day}</option>
@@ -886,7 +886,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     disabled={contractSigned}
                                     value={formData.planDuration}
                                     onChange={e => setFormData({ ...formData, planDuration: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     <option value="RECURRENT">Mensal (Sem Fidelidade)</option>
                                     <option value="SEMESTER">Semestral (6 Meses)</option>
@@ -901,7 +901,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <select
                                     value={formData.billingType}
                                     onChange={e => setFormData({ ...formData, billingType: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden appearance-none"
                                 >
                                     <option value="PIX">PIX</option>
                                     <option value="BOLETO">BOLETO</option>

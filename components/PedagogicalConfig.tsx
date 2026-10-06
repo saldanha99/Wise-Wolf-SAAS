@@ -488,16 +488,16 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
           <p className="text-brand-muted text-sm">Biblioteca Master e Currículo.</p>
         </div>
         <div className="flex overflow-x-auto gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
-          <button onClick={() => setActiveTab('allocation')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
-          <button onClick={() => setActiveTab('materials')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
-          {canGenerateBook && <button onClick={() => setActiveTab('book-generator')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'book-generator' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Gerar livro</button>}
+          <button onClick={() => setActiveTab('allocation')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
+          <button onClick={() => setActiveTab('materials')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
+          {canGenerateBook && <button onClick={() => setActiveTab('book-generator')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'book-generator' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Gerar livro</button>}
         </div>
       </div>
 
       {activeTab === 'allocation' && (
         <div className="flex-1 flex gap-6 overflow-hidden">
           {/* Allocation Table */}
-          <div className="flex-1 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col overflow-hidden shadow-sm p-4">
+          <div className="flex-1 bg-brand-surface border border-brand-border rounded-4xl flex flex-col overflow-hidden shadow-xs p-4">
             <div className="mb-4 flex gap-4">
               <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar aluno..." className="p-2 border rounded-lg flex-1 bg-transparent" />
             </div>
@@ -543,7 +543,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
               <h3 className="text-xl font-black mb-2 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
               {isTeacher && <p className="text-[11px] text-amber-600 mb-4">📋 Seu material fica privado e passa pela aprovação pedagógica do diretor.</p>}
               <div className="space-y-4">
-                <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none" placeholder="Título" />
+                <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-hidden" placeholder="Título" />
                 <div className="flex gap-2">
                   <select value={newMaterial.type} onChange={e => setNewMaterial({ ...newMaterial, type: e.target.value as any, publishToHub: e.target.value === 'PDF' ? newMaterial.publishToHub : false })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     <option value="PDF">PDF</option>
@@ -685,7 +685,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
       {/* Modal de edição de material (diretor) */}
       {editingMaterial && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeMaterialEdit}>
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={closeMaterialEdit}>
           <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-black text-brand-text">Editar material</h3>
             <div>
@@ -810,7 +810,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
       {/* Modal de edição de livro (diretor) */}
       {editingCollection && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setEditingCollection(null)}>
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={() => setEditingCollection(null)}>
           <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-black text-brand-text">Editar livro</h3>
             <div>

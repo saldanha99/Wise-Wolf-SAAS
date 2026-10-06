@@ -181,7 +181,7 @@ export function WolfieSessionHUD({
               <div
                 role="group"
                 aria-label={controlsLabel}
-                className="pointer-events-auto mt-2 flex min-h-11 flex-nowrap items-center gap-2 overflow-x-auto border-t border-white/10 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible"
+                className="pointer-events-auto mt-2 flex min-h-11 flex-nowrap items-center gap-2 overflow-x-auto border-t border-white/10 pt-2 scrollbar-none [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible"
                 data-hud-slot="controls"
               >
                 {controls}
@@ -196,7 +196,7 @@ export function WolfieSessionHUD({
               type="button"
               onClick={onClose}
               aria-label={closeLabel}
-              className="pointer-events-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/12 bg-slate-950/68 text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="pointer-events-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/12 bg-slate-950/68 text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white"
             >
               <X size={19} aria-hidden="true" />
             </button>

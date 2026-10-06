@@ -41,11 +41,11 @@ const TeacherApplyLanding: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-950 text-white font-sans flex items-center justify-center p-4">
+        <div className="min-h-screen bg-linear-to-b from-slate-950 via-indigo-950 to-slate-950 text-white font-sans flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 {!done ? (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur">
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-500/30">
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-sm">
+                        <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-500/30">
                             <GraduationCap size={28} />
                         </div>
                         <p className="text-[10px] font-black uppercase tracking-[0.25em] text-violet-300 mb-2">Wise Wolf · Banco de Talentos</p>
@@ -60,23 +60,23 @@ const TeacherApplyLanding: React.FC = () => {
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-white/50 mb-1.5">Seu nome completo</label>
                                 <input value={name} onChange={e => setName(e.target.value)} required
                                     placeholder="Nome e sobrenome"
-                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-none focus:border-violet-400" />
+                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-hidden focus:border-violet-400" />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-white/50 mb-1.5">WhatsApp (com DDD)</label>
                                 <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required inputMode="tel"
                                     placeholder="(12) 99999-9999"
-                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-none focus:border-violet-400" />
+                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-hidden focus:border-violet-400" />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-white/50 mb-1.5">Sua experiência com inglês (resumo)</label>
                                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
                                     placeholder="Ex.: 3 anos dando aula particular, morei fora, nível C1, tenho MEI..."
-                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-none focus:border-violet-400 resize-none" />
+                                    className="w-full px-4 py-3.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder:text-white/30 outline-hidden focus:border-violet-400 resize-none" />
                             </div>
                             {error && <p className="text-sm font-bold text-rose-300">{error}</p>}
                             <button type="submit" disabled={sending}
-                                className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-500 font-black uppercase tracking-widest text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-violet-500/25">
+                                className="w-full py-4 rounded-2xl bg-linear-to-r from-violet-500 to-indigo-500 font-black uppercase tracking-widest text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-violet-500/25">
                                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={16} />} Entrar no banco de talentos
                             </button>
                             <p className="text-[10px] text-white/35 text-center leading-relaxed">
@@ -85,7 +85,7 @@ const TeacherApplyLanding: React.FC = () => {
                         </form>
                     </div>
                 ) : (
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur text-center">
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-sm text-center">
                         <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mx-auto mb-4">
                             <CheckCircle size={32} className="text-emerald-400" />
                         </div>

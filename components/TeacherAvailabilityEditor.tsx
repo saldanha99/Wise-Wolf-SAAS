@@ -392,9 +392,9 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 font-sans">
 
       {/* Header & Stats */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 bg-brand-surface border border-brand-border p-6 rounded-3xl shadow-sm">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 bg-brand-surface border border-brand-border p-6 rounded-3xl shadow-xs">
         <div>
-          <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Gestão de Horários</h2>
+          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text">Gestão de Horários</h2>
           <p className="text-brand-muted text-sm mt-1 font-medium">
             Defina sua disponibilidade semanal para receber novos alunos.
           </p>
@@ -461,7 +461,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         {/* Scrollable Table Area */}
         <div className="flex-1 overflow-auto custom-scrollbar relative">
           <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-40 bg-brand-surface/95 backdrop-blur-md border-b border-brand-border shadow-sm">
+            <thead className="sticky top-0 z-40 bg-brand-surface/95 backdrop-blur-md border-b border-brand-border shadow-xs">
               <tr>
                 <th className="p-4 w-20 text-center border-r border-brand-border">
                   <Clock size={16} className="text-brand-muted mx-auto" />
@@ -498,7 +498,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                           <div
                             onClick={() => { if (!booking.readOnly) setEditingProfile(booking); }}
                             title={booking.caption || undefined}
-                            className={`w-full h-full rounded-lg px-2 flex items-center justify-between ${booking.readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-[1.02]'} transition-transform shadow-sm relative overflow-hidden group/card ${booking.isExperimental
+                            className={`w-full h-full rounded-lg px-2 flex items-center justify-between ${booking.readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-[1.02]'} transition-transform shadow-xs relative overflow-hidden group/card ${booking.isExperimental
                               ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
                               : booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA'
                                 ? 'bg-amber-400/20 text-amber-500 border border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
@@ -506,9 +506,9 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                               }`}
                           >
                             {/* Glass highlight effect */}
-                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
+                            <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
                             <div className="flex items-center gap-1.5 overflow-hidden relative z-10">
-                              <div className={`w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
+                              <div className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
                                 }`}>
                                 {booking.student[0]}
                               </div>
@@ -562,7 +562,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       </div>
 
       {editingProfile && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={{
               ...editingProfile.fullProfile,

@@ -362,7 +362,7 @@ export function QuizPage() {
   return (
     <LazyMotion features={domAnimation}>
       <div className="min-h-screen bg-[#fffdfb] text-[#1d1e22]">
-        <header className="sticky top-0 z-50 border-b border-black/[.06] bg-white/95 shadow-[0_8px_30px_rgba(24,25,30,.04)] backdrop-blur-xl">
+        <header className="sticky top-0 z-50 border-b border-black/6 bg-white/95 shadow-[0_8px_30px_rgba(24,25,30,.04)] backdrop-blur-xl">
           <div className="mx-auto flex min-h-16 max-w-[1600px] items-center justify-between px-5 sm:min-h-[72px] sm:px-8">
             <WolfieBrand />
             <div className="text-right">
@@ -419,7 +419,7 @@ export function QuizPage() {
             <section className="mx-auto grid min-h-[calc(100vh-180px)] max-w-6xl overflow-hidden rounded-[34px] border border-black/[.07] bg-white shadow-[0_30px_100px_rgba(38,39,45,.10)] lg:grid-cols-[.9fr_1.1fr]">
               <div className="relative min-h-[210px] overflow-hidden lg:order-2 lg:min-h-full">
                 <img src={art.image} alt={`Cenário de ${art.label}`} className="absolute inset-0 h-full w-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#17181c]/80 via-transparent to-white/10" />
+                <div className="absolute inset-0 bg-linear-to-t from-[#17181c]/80 via-transparent to-white/10" />
                 <div className="quiz-calculating-aura absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/30 bg-white/10 shadow-[0_0_80px_rgba(255,255,255,.30)] backdrop-blur-[2px]" />
                 <div className="absolute inset-x-5 bottom-5 flex flex-wrap gap-2 lg:inset-x-8 lg:bottom-8">
                   {answeredChoices.slice(0, 4).map((choice) => (
@@ -435,7 +435,7 @@ export function QuizPage() {
                   <p className="inline-flex items-center gap-2 rounded-full bg-[#fff0ec] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#bd2735]">
                     <Sparkles size={14} aria-hidden="true" /> Diagnóstico em construção
                   </p>
-                  <h1 ref={calculationHeadingRef} tabIndex={-1} className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.05em] outline-none focus-visible:outline-none sm:text-5xl">
+                  <h1 ref={calculationHeadingRef} tabIndex={-1} className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-tighter outline-hidden focus-visible:outline-hidden sm:text-5xl">
                     Calculando seu diagnóstico
                   </h1>
                   <p role="status" aria-live="polite" aria-atomic="true" className="mt-4 max-w-lg text-base leading-7 text-[#71757e]">
@@ -451,7 +451,7 @@ export function QuizPage() {
                     <div className="min-w-0 flex-1">
                       <div className="h-2 overflow-hidden rounded-full bg-[#eadfdb]" aria-hidden="true">
                         <m.div
-                          className="h-full rounded-full bg-gradient-to-r from-[#e72d3d] via-[#ff7658] to-[#ffad77]"
+                          className="h-full rounded-full bg-linear-to-r from-[#e72d3d] via-[#ff7658] to-[#ffad77]"
                           animate={{ width: `${calculationProgress}%` }}
                           transition={{ duration: reducedMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
                         />
@@ -468,7 +468,7 @@ export function QuizPage() {
                       const complete = calculationStage > index || calculationStage === 3;
                       const active = calculationStage === index && calculationStage < 3;
                       return (
-                        <div key={label} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${complete ? "border-emerald-200 bg-emerald-50/70" : active ? "border-[#f2b7ae] bg-[#fff8f5]" : "border-black/[.06] bg-[#fafafa]"}`}>
+                        <div key={label} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${complete ? "border-emerald-200 bg-emerald-50/70" : active ? "border-[#f2b7ae] bg-[#fff8f5]" : "border-black/6 bg-[#fafafa]"}`}>
                           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${complete ? "bg-emerald-600 text-white" : active ? "bg-[#e72d3d] text-white" : "bg-[#e9e9eb] text-[#9c9fa6]"}`}>
                             {complete ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : active ? <Loader2 size={14} className="quiz-calculating-spinner animate-spin" aria-hidden="true" /> : <span className="text-[10px] font-extrabold">{index + 1}</span>}
                           </span>
@@ -504,12 +504,12 @@ export function QuizPage() {
                     </span>
                     <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{step.eyebrow}</p>
                   </div>
-                  <h1 ref={questionHeadingRef} tabIndex={-1} className="mt-4 font-display text-[2.25rem] font-extrabold leading-[1.02] tracking-[-0.045em] outline-none focus-visible:outline-none sm:text-5xl">{step.title}</h1>
+                  <h1 ref={questionHeadingRef} tabIndex={-1} className="mt-4 font-display text-[2.25rem] font-extrabold leading-[1.02] tracking-[-0.045em] outline-hidden focus-visible:outline-hidden sm:text-5xl">{step.title}</h1>
                   <p className="mt-4 text-base leading-7 text-[#737781]">{step.supportingText}</p>
 
                   <div className="relative mt-6 min-h-[148px] overflow-hidden rounded-[26px] bg-[#27282d] shadow-[0_18px_45px_rgba(38,39,44,.14)] lg:hidden">
                     <img src={art.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
+                    <div className="absolute inset-0 bg-linear-to-r from-black/75 via-black/25 to-transparent" />
                     <div className="absolute inset-0 flex flex-col justify-between p-4 text-white">
                       <div className="flex items-center justify-between gap-3">
                         <span className="rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#b92333] backdrop-blur-md">
@@ -547,15 +547,15 @@ export function QuizPage() {
                           disabled={pendingValue !== null}
                           onClick={() => selectOption(option.value)}
                           whileTap={reducedMotion ? undefined : { scale: 0.985 }}
-                          className={`quiz-option-card group relative flex min-h-[72px] items-center gap-3 overflow-hidden rounded-[20px] border text-left transition duration-200 disabled:cursor-wait ${compact ? "px-3 py-3 sm:px-4" : "px-4 py-4 sm:px-5"} ${isMinutes ? "sm:flex-col sm:justify-center sm:text-center" : ""} ${selected ? "border-[#e72d3d] bg-[#fff1ed] shadow-[0_13px_36px_rgba(231,45,61,.11)]" : "border-black/[.08] bg-white shadow-[0_4px_14px_rgba(32,33,38,.025)] hover:-translate-y-0.5 hover:border-[#e72d3d]/40 hover:shadow-[0_12px_30px_rgba(32,33,38,.08)]"}`}
+                          className={`quiz-option-card group relative flex min-h-[72px] items-center gap-3 overflow-hidden rounded-[20px] border text-left transition duration-200 disabled:cursor-wait ${compact ? "px-3 py-3 sm:px-4" : "px-4 py-4 sm:px-5"} ${isMinutes ? "sm:flex-col sm:justify-center sm:text-center" : ""} ${selected ? "border-[#e72d3d] bg-[#fff1ed] shadow-[0_13px_36px_rgba(231,45,61,.11)]" : "border-black/8 bg-white shadow-[0_4px_14px_rgba(32,33,38,.025)] hover:-translate-y-0.5 hover:border-[#e72d3d]/40 hover:shadow-[0_12px_30px_rgba(32,33,38,.08)]"}`}
                         >
                           <span className={`grid shrink-0 place-items-center rounded-xl transition ${compact ? "h-9 w-9" : "h-11 w-11"} ${selected ? "bg-[#e72d3d] text-white" : "bg-[#f5f5f6] text-[#555860] group-hover:bg-[#fff0ec] group-hover:text-[#e72d3d]"}`}>
                             {selected ? <Check size={compact ? 17 : 19} strokeWidth={3} aria-hidden="true" /> : <OptionIcon size={compact ? 17 : 19} aria-hidden="true" />}
                           </span>
-                          <span className={`min-w-0 flex-1 font-bold text-[#303238] ${compact ? "text-xs leading-[1.25] sm:text-sm" : "text-sm leading-5 sm:text-base"}`}>
+                          <span className={`min-w-0 flex-1 font-bold text-[#303238] ${compact ? "text-xs leading-tight sm:text-sm" : "text-sm leading-5 sm:text-base"}`}>
                             {isMinutes ? <><strong className="block text-2xl leading-none sm:text-3xl">{option.value}</strong><span className="mt-1 block text-xs font-bold text-[#777b84]">minutos</span></> : option.label}
                           </span>
-                          {selected ? <span className="hidden text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#b92333] sm:block">Escolhido</span> : !compact && !isMinutes ? <ChevronRight size={17} className="shrink-0 text-[#b3b5ba] transition group-hover:translate-x-0.5 group-hover:text-[#e72d3d]" aria-hidden="true" /> : null}
+                          {selected ? <span className="hidden text-[10px] font-extrabold uppercase tracking-widest text-[#b92333] sm:block">Escolhido</span> : !compact && !isMinutes ? <ChevronRight size={17} className="shrink-0 text-[#b3b5ba] transition group-hover:translate-x-0.5 group-hover:text-[#e72d3d]" aria-hidden="true" /> : null}
                         </m.button>
                       );
                     })}
@@ -568,7 +568,7 @@ export function QuizPage() {
             <aside className="hidden p-5 pl-0 lg:block">
               <div className="sticky top-[138px] min-h-[620px] overflow-hidden rounded-[34px] bg-[#f4f4f5] shadow-[0_24px_80px_rgba(34,35,40,.12)]" style={{ height: "calc(100vh - 158px)" }}>
                 <m.img key={art.image} src={art.image} alt={`Cenário de ${answers.goal ? art.label : "prática com o Wolfie"}`} className="absolute inset-0 h-full w-full object-cover" initial={reducedMotion ? false : { opacity: 0.6, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reducedMotion ? 0 : 0.55 }} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-white/10" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/75 via-black/5 to-white/10" />
 
                 <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-7">
                   <p className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/90 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#b92333] shadow-lg backdrop-blur-md"><Target size={15} aria-hidden="true" /> {answers.goal ? art.label : "Seu cenário"}</p>
@@ -578,7 +578,7 @@ export function QuizPage() {
                 </div>
 
                 <div className="absolute inset-x-0 bottom-0 p-7 xl:p-9">
-                  <div className="rounded-[28px] border border-white/30 bg-white/[.92] p-6 text-[#202126] shadow-[0_18px_60px_rgba(0,0,0,.18)] backdrop-blur-xl xl:p-7">
+                  <div className="rounded-[28px] border border-white/30 bg-white/92 p-6 text-[#202126] shadow-[0_18px_60px_rgba(0,0,0,.18)] backdrop-blur-xl xl:p-7">
                     <div className="flex items-center justify-between gap-4">
                       <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#e72d3d]">Seu treino está tomando forma</p>
                       <Sparkles size={17} className="text-[#e72d3d]" aria-hidden="true" />
@@ -594,9 +594,9 @@ export function QuizPage() {
                           {choice.label}
                         </m.span>
                       ))}
-                      {Array.from({ length: Math.max(0, 3 - answeredChoices.length) }).map((_, index) => <span key={`placeholder-${index}`} className="h-8 w-24 rounded-full border border-dashed border-black/15 bg-black/[.025]" aria-hidden="true" />)}
+                      {Array.from({ length: Math.max(0, 3 - answeredChoices.length) }).map((_, index) => <span key={`placeholder-${index}`} className="h-8 w-24 rounded-full border border-dashed border-black/15 bg-black/2.5" aria-hidden="true" />)}
                     </div>
-                    <p className="mt-4 border-t border-black/[.06] pt-4 text-xs leading-5 text-[#777b84]">A recomendação usa somente as respostas visíveis deste quiz — sem análise secreta.</p>
+                    <p className="mt-4 border-t border-black/6 pt-4 text-xs leading-5 text-[#777b84]">A recomendação usa somente as respostas visíveis deste quiz — sem análise secreta.</p>
                   </div>
                 </div>
               </div>
@@ -661,13 +661,13 @@ export function QuizResultPage() {
 
   return (
     <div className="min-h-screen bg-[#fbfbfc] text-[#202126]">
-      <header className="flex min-h-20 items-center justify-between border-b border-black/[.06] bg-white px-5 sm:px-8"><WolfieBrand /><WolfieLink href="/quiz?novo=1" className="inline-flex items-center gap-2 text-sm font-bold text-[#747881] hover:text-[#202126]"><RotateCcw size={16} /> Refazer</WolfieLink></header>
+      <header className="flex min-h-20 items-center justify-between border-b border-black/6 bg-white px-5 sm:px-8"><WolfieBrand /><WolfieLink href="/quiz?novo=1" className="inline-flex items-center gap-2 text-sm font-bold text-[#747881] hover:text-[#202126]"><RotateCcw size={16} /> Refazer</WolfieLink></header>
       <main className="px-5 pb-20 pt-8 sm:pt-12">
         <div className="mx-auto max-w-6xl">
           <div className="grid overflow-hidden rounded-[36px] border border-black/[.07] bg-white shadow-[0_28px_90px_rgba(37,38,44,.09)] lg:grid-cols-[1.04fr_.96fr]">
             <section className="p-7 sm:p-10 lg:p-12">
               <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]"><BadgeCheck size={17} /> Recomendação pronta</p>
-              <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.05em] sm:text-6xl">{recommendation.title}</h1>
+              <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-tighter sm:text-6xl">{recommendation.title}</h1>
               <p className="mt-5 text-lg leading-8 text-[#6d727c]">{recommendation.summary}</p>
               <div className="mt-8 rounded-[26px] border border-[#e72d3d]/10 bg-[#fff0ec] p-6 text-[#202126]">
                 <div className="flex items-start gap-4">
@@ -680,11 +680,11 @@ export function QuizResultPage() {
                 </div>
               </div>
               <div className="mt-7 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><CalendarClock size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.minutesPerSession} min</p><p className="text-xs text-[#858992]">por prática</p></div>
-                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><Target size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.sessionsPerWeek}×</p><p className="text-xs text-[#858992]">por semana</p></div>
-                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><Mic2 size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{answers.modality === "voice" ? "Voz" : answers.modality === "text" ? "Texto" : "Misto"}</p><p className="text-xs text-[#858992]">formato inicial</p></div>
+                <div className="rounded-2xl border border-black/6 bg-[#fafafa] p-4"><CalendarClock size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.minutesPerSession} min</p><p className="text-xs text-[#858992]">por prática</p></div>
+                <div className="rounded-2xl border border-black/6 bg-[#fafafa] p-4"><Target size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.sessionsPerWeek}×</p><p className="text-xs text-[#858992]">por semana</p></div>
+                <div className="rounded-2xl border border-black/6 bg-[#fafafa] p-4"><Mic2 size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{answers.modality === "voice" ? "Voz" : answers.modality === "text" ? "Texto" : "Misto"}</p><p className="text-xs text-[#858992]">formato inicial</p></div>
               </div>
-              <div className="mt-7 rounded-2xl border border-black/[.06] bg-[#fafafa] p-5">
+              <div className="mt-7 rounded-2xl border border-black/6 bg-[#fafafa] p-5">
                 <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#8b8f98]">Foco sugerido</p>
                 <p className="mt-2 font-bold text-[#383a40]">{recommendation.practicePlan.focus}</p>
               </div>
@@ -693,10 +693,10 @@ export function QuizResultPage() {
             </section>
             <aside className="relative min-h-[360px] lg:min-h-full">
               <img src={image} alt="Cenário da experiência recomendada" className="absolute inset-0 h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent lg:bg-gradient-to-r lg:from-white/20 lg:via-transparent" />
-              <div className="absolute inset-x-6 bottom-6 rounded-[24px] border border-white/[.14] bg-[#07111f]/[.82] p-5 backdrop-blur-xl">
+              <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/15 to-transparent lg:bg-linear-to-r lg:from-white/20 lg:via-transparent" />
+              <div className="absolute inset-x-6 bottom-6 rounded-[24px] border border-white/[.14] bg-[#07111f]/82 p-5 backdrop-blur-xl">
                 <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#ffb9ad]">Outras rotas possíveis</p>
-                <div className="mt-3 grid gap-2">{recommendation.alternatives.map((item) => <div key={item.experienceId} className="flex items-center justify-between gap-4 rounded-xl bg-white/[.06] px-4 py-3"><span className="text-sm font-bold">{item.title}</span><span className="text-xs font-bold text-slate-400">{item.matchScore}%</span></div>)}</div>
+                <div className="mt-3 grid gap-2">{recommendation.alternatives.map((item) => <div key={item.experienceId} className="flex items-center justify-between gap-4 rounded-xl bg-white/6 px-4 py-3"><span className="text-sm font-bold">{item.title}</span><span className="text-xs font-bold text-slate-400">{item.matchScore}%</span></div>)}</div>
               </div>
             </aside>
           </div>
@@ -704,7 +704,7 @@ export function QuizResultPage() {
           <section className="mt-10 rounded-[36px] border border-black/[.07] bg-[linear-gradient(180deg,#fff,#f7f7f8)] p-6 shadow-[0_25px_80px_rgba(37,38,44,.07)] sm:p-9 lg:p-12">
             <div className="mx-auto max-w-3xl text-center">
               <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]"><Sparkles size={17} /> Plano calculado para seu ritmo</p>
-              <h2 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-.05em] sm:text-5xl">Continue com o Wolfie, sem precisar estar matriculado na escola.</h2>
+              <h2 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-tighter sm:text-5xl">Continue com o Wolfie, sem precisar estar matriculado na escola.</h2>
               <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#6d727c]">Pelas suas escolhas de formato e frequência, o plano <strong className="text-[#202126]">{recommendedPlan.name}</strong> oferece o ponto de partida mais equilibrado. Você ainda pode escolher qualquer um dos três.</p>
             </div>
             <div className="mt-11">
@@ -725,9 +725,9 @@ export function QuizResultPage() {
                 <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight">Peça para a equipe conversar com você.</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">Se preferir, você pode sair agora: seu resultado já apareceu e nenhum contato é obrigatório.</p>
                 <div className="mt-7 grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm font-bold text-slate-700">Nome<input required value={lead.name} onChange={(event) => setLead({ ...lead, name: event.target.value })} autoComplete="name" maxLength={120} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-none focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
-                  <label className="text-sm font-bold text-slate-700">E-mail<input required type="email" value={lead.email} onChange={(event) => setLead({ ...lead, email: event.target.value })} autoComplete="email" maxLength={254} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-none focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
-                  <label className="text-sm font-bold text-slate-700 sm:col-span-2">WhatsApp <span className="font-normal text-slate-500">(opcional)</span><input value={lead.phone} onChange={(event) => setLead({ ...lead, phone: event.target.value })} autoComplete="tel" inputMode="tel" maxLength={32} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-none focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
+                  <label className="text-sm font-bold text-slate-700">Nome<input required value={lead.name} onChange={(event) => setLead({ ...lead, name: event.target.value })} autoComplete="name" maxLength={120} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-hidden focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
+                  <label className="text-sm font-bold text-slate-700">E-mail<input required type="email" value={lead.email} onChange={(event) => setLead({ ...lead, email: event.target.value })} autoComplete="email" maxLength={254} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-hidden focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
+                  <label className="text-sm font-bold text-slate-700 sm:col-span-2">WhatsApp <span className="font-normal text-slate-500">(opcional)</span><input value={lead.phone} onChange={(event) => setLead({ ...lead, phone: event.target.value })} autoComplete="tel" inputMode="tel" maxLength={32} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-medium outline-hidden focus:border-[#8c4d12] focus:ring-2 focus:ring-[#ffbf69]/40" /></label>
                 </div>
                 <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-slate-600">
                   <input id="wolfie-lead-consent" type="checkbox" checked={lead.consent} onChange={(event) => setLead({ ...lead, consent: event.target.checked })} aria-describedby="wolfie-consent-details" className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-[#111827]" />

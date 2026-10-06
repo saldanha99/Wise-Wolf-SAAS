@@ -86,7 +86,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
     };
 
     return (
-        <div className="bg-brand-surface rounded-[2rem] border border-brand-border shadow-sm p-8">
+        <div className="bg-brand-surface rounded-4xl border border-brand-border shadow-xs p-8">
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-teal-50 dark:bg-teal-900/20 rounded-xl">
                     <CreditCard className="text-teal-600 dark:text-teal-400" size={24} />
@@ -109,7 +109,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                             <select
                                 value={pixKeyType}
                                 onChange={(e) => setPixKeyType(e.target.value)}
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500/20"
                             >
                                 {PIX_TYPES.map(t => (
                                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -123,7 +123,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                                 value={pixKey}
                                 onChange={(e) => setPixKey(e.target.value)}
                                 placeholder="Digite sua chave pix..."
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                                 required
                             />
                         </div>
@@ -134,7 +134,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                                 value={cnpj}
                                 onChange={(e) => setCnpj(e.target.value)}
                                 placeholder="00.000.000/0001-00"
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                             />
                             <p className="text-[10px] text-brand-muted mt-1">Usado para conferir suas notas fiscais (NFS-e) dos fechamentos.</p>
                         </div>
@@ -145,7 +145,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                                 value={companyName}
                                 onChange={(e) => setCompanyName(e.target.value)}
                                 placeholder="Como consta no seu CNPJ"
-                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                             />
                         </div>
                     </div>

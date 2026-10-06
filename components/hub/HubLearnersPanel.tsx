@@ -196,11 +196,11 @@ const HubLearnersPanel: React.FC<HubLearnersPanelProps> = ({ bootstrap }) => {
       {loading ? (
         <div role="status" className="flex min-h-40 items-center justify-center gap-3 text-sm font-bold text-brand-muted"><RefreshCw className="animate-spin text-tenant-primary" size={18} /> Carregando alunos...</div>
       ) : seats.length === 0 ? (
-        <p className="rounded-[2rem] border border-brand-border bg-brand-surface p-6 text-sm text-brand-muted">Crie o primeiro perfil de aluno. Depois, gere o convite e mande pelo WhatsApp.</p>
+        <p className="rounded-4xl border border-brand-border bg-brand-surface p-6 text-sm text-brand-muted">Crie o primeiro perfil de aluno. Depois, gere o convite e mande pelo WhatsApp.</p>
       ) : (
         <ul className="space-y-3">
           {seats.map((learner) => (
-            <li key={learner.id} className="rounded-[2rem] border border-brand-border bg-brand-surface p-5">
+            <li key={learner.id} className="rounded-4xl border border-brand-border bg-brand-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-black text-brand-text">{learner.display_name} {learner.level_tag && <span className="ml-1 rounded-full bg-brand-surface-2 px-2 py-0.5 text-[10px] font-black text-brand-muted">{learner.level_tag}</span>}</p>
@@ -246,8 +246,8 @@ const HubLearnersPanel: React.FC<HubLearnersPanelProps> = ({ bootstrap }) => {
       )}
 
       {assigning && (
-        <div className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="hub-assign-title">
-          <div className="w-full max-w-lg rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl">
+        <div className="fixed inset-0 z-150 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="hub-assign-title">
+          <div className="w-full max-w-lg rounded-4xl border border-brand-border bg-brand-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <h2 id="hub-assign-title" className="text-xl font-black text-brand-text">Enviar material</h2>
               <button type="button" onClick={() => setAssigning(null)} className="grid size-10 place-items-center rounded-xl bg-brand-surface-2 text-brand-muted" aria-label="Fechar"><X size={18} /></button>
@@ -257,12 +257,12 @@ const HubLearnersPanel: React.FC<HubLearnersPanelProps> = ({ bootstrap }) => {
             ) : (
               <>
                 <label className="mt-4 block"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Material</span>
-                  <select value={assigning.materialId} onChange={(event) => setAssigning({ ...assigning, materialId: event.target.value })} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">
+                  <select value={assigning.materialId} onChange={(event) => setAssigning({ ...assigning, materialId: event.target.value })} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">
                     {materials.map((material) => <option key={material.id} value={material.id}>{material.title} · {material.level_tag}</option>)}
                   </select>
                 </label>
                 <label className="mt-3 block"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Recado (opcional)</span>
-                  <input value={assigning.note} onChange={(event) => setAssigning({ ...assigning, note: event.target.value })} maxLength={600} placeholder="Ex.: faça até quinta e traga as dúvidas" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" />
+                  <input value={assigning.note} onChange={(event) => setAssigning({ ...assigning, note: event.target.value })} maxLength={600} placeholder="Ex.: faça até quinta e traga as dúvidas" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" />
                 </label>
                 <button type="button" disabled={busy || !assigning.materialId} onClick={() => void assign()} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-3.5 text-sm font-black text-white disabled:opacity-60"><Send size={16} />{busy ? 'Enviando...' : 'Enviar para o aluno'}</button>
               </>
@@ -272,21 +272,21 @@ const HubLearnersPanel: React.FC<HubLearnersPanelProps> = ({ bootstrap }) => {
       )}
 
       {creating && (
-        <div className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="hub-new-learner-title">
-          <form onSubmit={createLearner} className="w-full max-w-lg rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl">
+        <div className="fixed inset-0 z-150 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="hub-new-learner-title">
+          <form onSubmit={createLearner} className="w-full max-w-lg rounded-4xl border border-brand-border bg-brand-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <h2 id="hub-new-learner-title" className="text-xl font-black text-brand-text"><UserPlus className="mr-2 inline" size={20} />Novo aluno</h2>
               <button type="button" onClick={() => setCreating(false)} className="grid size-10 place-items-center rounded-xl bg-brand-surface-2 text-brand-muted" aria-label="Fechar"><X size={18} /></button>
             </div>
             <label className="mt-4 block"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nome</span>
-              <input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={120} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none" autoFocus />
+              <input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={120} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden" autoFocus />
             </label>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nível</span>
-                <select value={newLevel} onChange={(event) => setNewLevel(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <option key={level}>{level}</option>)}</select>
+                <select value={newLevel} onChange={(event) => setNewLevel(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <option key={level}>{level}</option>)}</select>
               </label>
               <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Objetivo</span>
-                <input value={newObjective} onChange={(event) => setNewObjective(event.target.value)} maxLength={800} placeholder="Ex.: entrevista em inglês em 3 meses" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" />
+                <input value={newObjective} onChange={(event) => setNewObjective(event.target.value)} maxLength={800} placeholder="Ex.: entrevista em inglês em 3 meses" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" />
               </label>
             </div>
             <button disabled={busy} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-3.5 text-sm font-black text-white disabled:opacity-60"><UserPlus size={16} />{busy ? 'Criando...' : 'Criar perfil do aluno'}</button>

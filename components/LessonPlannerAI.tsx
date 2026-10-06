@@ -680,7 +680,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                 </label>
                                 <select
                                     data-tour="planner-student-select"
-                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-4 focus:ring-tenant-primary/10 transition-all"
                                     value={selectedStudent}
                                     onChange={(event) => handleStudentChange(event.target.value)}
                                     disabled={loading}
@@ -707,7 +707,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     Tipo de planejamento
                                 </label>
                                 <select
-                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-hidden focus:ring-4 focus:ring-tenant-primary/10 transition-all"
                                     value={taskMode}
                                     onChange={(event) => setTaskMode(event.target.value as PlannerTaskMode)}
                                 >
@@ -747,7 +747,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                                 const value = Number(event.target.value);
                                                 setDurationMinutes(Number.isFinite(value) ? Math.min(120, Math.max(10, value)) : 30);
                                             }}
-                                            className="w-14 bg-transparent text-xs font-bold text-brand-text dark:text-slate-200 outline-none"
+                                            className="w-14 bg-transparent text-xs font-bold text-brand-text dark:text-slate-200 outline-hidden"
                                         />
                                         <span className="text-[10px] text-brand-muted">min</span>
                                     </span>
@@ -836,7 +836,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                 </label>
                                 <textarea
                                     placeholder="Ex.: prepare uma apresentação profissional sobre logística e trabalhe transições..."
-                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-xs font-medium text-brand-muted outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all min-h-[110px]"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-xs font-medium text-brand-muted outline-hidden focus:ring-4 focus:ring-tenant-primary/10 transition-all min-h-[110px]"
                                     value={customPrompt}
                                     maxLength={2500}
                                     onChange={(event) => setCustomPrompt(event.target.value)}
@@ -856,7 +856,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                         </div>
                     </div>
 
-                    <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm overflow-hidden">
+                    <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-xs overflow-hidden">
                         <h3 className="text-xs font-black uppercase tracking-widest text-brand-muted mb-6 flex items-center gap-2">
                             <History size={14} /> Planos recentes
                         </h3>
@@ -1170,7 +1170,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     </section>
                                 )}
 
-                                <section className="p-6 bg-slate-950 rounded-[2rem] text-white">
+                                <section className="p-6 bg-slate-950 rounded-4xl text-white">
                                     <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-tenant-primary mb-4">
                                         <Brain size={16} /> {hasPedagogicalMemory ? 'Memória proposta' : 'Continuidade sugerida'}
                                     </h4>
@@ -1234,11 +1234,11 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                             </p>
 
                             <div className="mt-10 grid grid-cols-2 gap-3 max-w-sm w-full relative z-10">
-                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm">
+                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-xs">
                                     <p className="text-[10px] font-black text-tenant-primary uppercase">Memória isolada</p>
                                     <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Um aluno por vez</p>
                                 </div>
-                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm">
+                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-xs">
                                     <p className="text-[10px] font-black text-blue-500 uppercase">Base Wise Wolf</p>
                                     <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Fontes verificáveis</p>
                                 </div>
@@ -1248,7 +1248,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                                     // depois de gerar. Mesmo alvo, mesmo assunto.
                                     <div
                                         data-tour="planner-lesson-basis"
-                                        className="col-span-2 p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm text-left"
+                                        className="col-span-2 p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-xs text-left"
                                     >
                                         <p className="flex items-center gap-2 text-[10px] font-black text-tenant-primary uppercase">
                                             <History size={12} /> Base do plano

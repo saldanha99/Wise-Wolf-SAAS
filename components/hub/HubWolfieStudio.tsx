@@ -83,7 +83,7 @@ const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
 
   if (!entitlement || !accountContextValid) {
     return (
-      <section className="rounded-3xl border border-brand-border bg-brand-surface p-6 text-center shadow-sm sm:p-8">
+      <section className="rounded-3xl border border-brand-border bg-brand-surface p-6 text-center shadow-xs sm:p-8">
         <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent">
           <Sparkles size={24} aria-hidden="true" />
         </span>
@@ -140,7 +140,7 @@ const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
   }
 
   return (
-    <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-sm">
+    <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-xs">
       <WolfiePracticeHeader
         isSubjectView
         actionLabel="Meu acesso"

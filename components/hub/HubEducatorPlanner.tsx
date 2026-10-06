@@ -212,7 +212,7 @@ const HubEducatorPlanner: React.FC<HubEducatorPlannerProps> = ({
 
   if (!entitlement) {
     return (
-      <section className="mx-auto max-w-2xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-8 text-center shadow-sm sm:p-12">
+      <section className="mx-auto max-w-2xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-8 text-center shadow-xs sm:p-12">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><AlertCircle size={24} /></div>
         <h1 className="mt-5 text-3xl font-black tracking-tight text-brand-text">Educador IA não incluído neste plano</h1>
         <p className="mx-auto mt-3 max-w-lg leading-7 text-brand-muted">Escolha uma assinatura para professores ou escolas antes de criar perfis e planejamentos.</p>
@@ -246,8 +246,8 @@ const HubEducatorPlanner: React.FC<HubEducatorPlannerProps> = ({
       <LessonPlannerAI user={plannerUser} adapter={adapter} />
 
       {creatingLearner && (
-        <div className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="hub-learner-title">
-          <form onSubmit={createLearner} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
+        <div className="fixed inset-0 z-150 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="hub-learner-title">
+          <form onSubmit={createLearner} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-4xl border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="grid size-11 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><UserPlus size={20} /></div>
@@ -258,11 +258,11 @@ const HubEducatorPlanner: React.FC<HubEducatorPlannerProps> = ({
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nome do aluno</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" autoFocus /></label>
-              <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nível</span><select value={levelTag} onChange={(event) => setLevelTag(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <option key={level}>{level}</option>)}</select></label>
-              <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Interesses</span><input value={interests} onChange={(event) => setInterests(event.target.value)} maxLength={400} placeholder="viagens, negócios, tecnologia" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" /></label>
-              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Objetivo</span><textarea value={objective} onChange={(event) => setObjective(event.target.value)} maxLength={800} className="min-h-24 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" /></label>
-              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Notas pedagógicas</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1200} className="min-h-24 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nome do aluno</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-4 focus:ring-tenant-primary/10" autoFocus /></label>
+              <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nível</span><select value={levelTag} onChange={(event) => setLevelTag(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">{['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((level) => <option key={level}>{level}</option>)}</select></label>
+              <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Interesses</span><input value={interests} onChange={(event) => setInterests(event.target.value)} maxLength={400} placeholder="viagens, negócios, tecnologia" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Objetivo</span><textarea value={objective} onChange={(event) => setObjective(event.target.value)} maxLength={800} className="min-h-24 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Notas pedagógicas</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1200} className="min-h-24 w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" /></label>
             </div>
             {learnerError && <div role="alert" className="mt-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="mt-0.5 shrink-0" size={17} />{learnerError}</div>}
             <button disabled={savingLearner} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-4 text-xs font-black uppercase tracking-widest text-white disabled:opacity-60">

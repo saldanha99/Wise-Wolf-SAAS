@@ -112,7 +112,7 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
     return (
         <div className="space-y-6">
             {/* Progress Header */}
-            <div className="bg-brand-surface rounded-2xl p-6 border border-brand-border shadow-sm">
+            <div className="bg-brand-surface rounded-2xl p-6 border border-brand-border shadow-xs">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
@@ -127,7 +127,7 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                 </div>
                 <div className="w-full bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full h-3 overflow-hidden">
                     <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-1000"
+                        className="h-full bg-linear-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-1000"
                         style={{ width: `${progressPercent}%` }}
                     />
                 </div>
@@ -158,7 +158,7 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                     return (
                         <div
                             key={module.id}
-                            className={`bg-brand-surface border rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md ${isCompleted
+                            className={`bg-brand-surface border rounded-2xl overflow-hidden shadow-xs transition-all hover:shadow-md ${isCompleted
                                     ? 'border-emerald-200 dark:border-emerald-800'
                                     : assignment?.status === 'PENDING'
                                         ? 'border-amber-300 dark:border-amber-700 ring-2 ring-amber-300/50'
@@ -195,13 +195,13 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                                 )}
 
                                 {assignment?.status === 'PENDING' && !isCompleted && (
-                                    <span className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
+                                    <span className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-xs flex items-center gap-1">
                                         <DollarSign size={10} /> Atribuído
                                     </span>
                                 )}
 
                                 {module.is_mandatory && (
-                                    <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                                    <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-xs">
                                         Obrigatório
                                     </span>
                                 )}

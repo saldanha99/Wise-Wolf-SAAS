@@ -205,7 +205,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             <select
                                 value={newSlot.day}
                                 onChange={e => setNewSlot({ ...newSlot, day: e.target.value })}
-                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-none"
+                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-hidden"
                             >
                                 {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
@@ -217,7 +217,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                                 step={1800}
                                 value={newSlot.time}
                                 onChange={e => setNewSlot({ ...newSlot, time: e.target.value })}
-                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-none [color-scheme:dark]"
+                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-hidden scheme-dark"
                             />
                         </div>
                         <div>
@@ -225,7 +225,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             <select
                                 value={newSlot.teacherId}
                                 onChange={e => setNewSlot({ ...newSlot, teacherId: e.target.value })}
-                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-none"
+                                className="w-full p-2 rounded-lg bg-brand-surface border border-brand-border text-brand-text text-xs font-bold focus:ring-1 focus:ring-brand-accent focus:border-brand-accent outline-hidden"
                             >
                                 <option value="">Selecione...</option>
                                 {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -234,7 +234,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                     </div>
                     <div className="flex justify-end gap-2">
                         <button onClick={() => setIsAdding(false)} className="px-3 py-1.5 text-xs font-bold text-brand-muted hover:text-brand-text transition-colors">Cancelar</button>
-                        <button onClick={handleAddSlot} className="px-3 py-1.5 bg-brand-accent text-white rounded-lg text-xs font-bold uppercase shadow-sm hover:bg-brand-accent-hover transition-colors">Confirmar</button>
+                        <button onClick={handleAddSlot} className="px-3 py-1.5 bg-brand-accent text-white rounded-lg text-xs font-bold uppercase shadow-xs hover:bg-brand-accent-hover transition-colors">Confirmar</button>
                     </div>
                 </div>
             )}
@@ -260,7 +260,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                                     [booking.id]: { ...draft, day: e.target.value },
                                 }))}
                                 disabled={processingId === booking.id}
-                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text uppercase w-24 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-colors"
+                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text uppercase w-24 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-hidden transition-colors"
                             >
                                 {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
@@ -274,7 +274,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                                     [booking.id]: { ...draft, time: e.target.value },
                                 }))}
                                 disabled={processingId === booking.id}
-                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text w-20 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-colors [color-scheme:dark]"
+                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text w-20 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-hidden transition-colors scheme-dark"
                             />
                             <button
                                 type="button"

@@ -158,7 +158,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
       <div className="space-y-4 font-sans">
         {/* INSIGHTS PEDAGÓGICOS */}
         {insights && (
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 border border-purple-200 dark:border-purple-900/30 rounded-2xl p-4">
+          <div className="bg-linear-to-br from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 border border-purple-200 dark:border-purple-900/30 rounded-2xl p-4">
             <button onClick={() => setShowInsights(s => !s)} className="w-full flex items-center justify-between">
               <h3 className="text-sm font-bold text-brand-text flex items-center gap-2"><Brain size={16} className="text-purple-600" /> Inteligência do Tutor</h3>
               <span className="text-xs text-brand-muted">{showInsights ? 'ocultar ▲' : 'mostrar ▼'}</span>
@@ -203,9 +203,9 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
           </div>
         )}
 
-        <div className="flex min-h-[32rem] flex-col gap-4 xl:h-[calc(100dvh-8rem)] xl:flex-row xl:gap-6">
+        <div className="flex min-h-128 flex-col gap-4 xl:h-[calc(100dvh-8rem)] xl:flex-row xl:gap-6">
             {/* LEFT PANEL: LIST */}
-            <div className="flex max-h-[32rem] w-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-sm dark:border-brand-border xl:max-h-none xl:w-1/3">
+            <div className="flex max-h-128 w-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-xs dark:border-brand-border xl:max-h-none xl:w-1/3">
                 <div className="p-4 border-b border-gray-100 dark:border-brand-border">
                     <h2 className="text-lg font-bold text-brand-text flex items-center gap-2">
                         <Brain className="text-purple-600" /> Wolfie Lab
@@ -252,7 +252,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                         >
                             <div className="flex justify-between items-start mb-1">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-400 to-purple-400 flex items-center justify-center text-[10px] text-white font-bold">
+                                    <div className="w-6 h-6 rounded-full bg-linear-to-tr from-blue-400 to-purple-400 flex items-center justify-center text-[10px] text-white font-bold">
                                         {session.student?.full_name?.charAt(0) || 'A'}
                                     </div>
                                     <span className="text-sm font-semibold text-brand-text dark:text-gray-200">
@@ -287,7 +287,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
             </div>
 
             {/* RIGHT PANEL: DETAILS */}
-            <div className="flex min-h-[30rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-sm dark:border-brand-border">
+            <div className="flex min-h-120 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-xs dark:border-brand-border">
                 {selectedSessionId ? (
                     <>
                         {/* Header */}
@@ -304,7 +304,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
 
                             {/* Score Card */}
                             {sessions.find(s => s.id === selectedSessionId)?.wolfie_evaluations?.[0] && (
-                                <div className="bg-brand-surface dark:bg-brand-surface-2 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-brand-border">
+                                <div className="bg-brand-surface dark:bg-brand-surface-2 p-3 rounded-xl shadow-xs border border-gray-100 dark:border-brand-border">
                                     <div className="text-xs text-gray-400 uppercase font-bold mb-1">Nota da IA</div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-2xl font-black text-purple-600">
@@ -321,7 +321,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
 
                         <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
                             {/* Chat Transcript */}
-                            <div className="min-h-[18rem] flex-1 space-y-6 overflow-y-auto bg-brand-surface-2 p-4 dark:bg-slate-950/50 sm:p-6">
+                            <div className="min-h-72 flex-1 space-y-6 overflow-y-auto bg-brand-surface-2 p-4 dark:bg-slate-950/50 sm:p-6">
                                 {detailLoading ? (
                                     <p className="text-center text-gray-400">Carregando conversa...</p>
                                 ) : detailError ? (
@@ -339,7 +339,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                     <p className="text-center text-sm text-gray-400">Esta sessão não possui transcrição.</p>
                                 ) : turns.map(turn => (
                                     <div key={turn.id} className={`flex ${turn.speaker === 'student' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[70%] p-4 rounded-2xl shadow-sm ${turn.speaker === 'student'
+                                        <div className={`max-w-[70%] p-4 rounded-2xl shadow-xs ${turn.speaker === 'student'
                                                 ? 'bg-blue-600 text-white rounded-tr-none'
                                                 : 'bg-brand-surface dark:bg-brand-surface-2 text-brand-text dark:text-gray-200 rounded-tl-none border border-gray-100 dark:border-brand-border'
                                             }`}>
@@ -350,7 +350,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                             </div>
 
                             {/* Sidebar: Corrections & Feedback */}
-                            <div className="flex max-h-[24rem] w-full flex-col border-t border-gray-100 bg-brand-surface dark:border-brand-border lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
+                            <div className="flex max-h-96 w-full flex-col border-t border-gray-100 bg-brand-surface dark:border-brand-border lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
                                 <div className="p-4 border-b border-gray-100 dark:border-brand-border font-bold text-brand-text dark:text-white flex items-center gap-2">
                                     <CheckCircle size={16} className="text-green-500" />
                                     Correções ({corrections.length})

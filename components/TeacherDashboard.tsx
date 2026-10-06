@@ -541,7 +541,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       {/* Header Section */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-wide">
+          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-wide">
             Olá, {user.name?.split(' ')[0] || 'Prof.'} 👋
           </h2>
           <p className="text-brand-muted text-sm mt-1">
@@ -626,7 +626,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             </div>
 
             {stat.isFinancial && complianceLocked.isLocked && (
-              <div className="absolute inset-0 flex items-center justify-center bg-brand-surface/50 backdrop-blur-sm z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-brand-surface/50 backdrop-blur-xs z-10">
                 <div className="flex flex-col items-center gap-1">
                   <Lock size={20} className="text-brand-muted" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Bloqueado</span>
@@ -734,14 +734,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                     ? 'border-amber-400/50 bg-amber-400/5'
                     : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
                   <div className="relative shrink-0">
-                    <img src={aula.img} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt={aula.name} />
+                    <img src={aula.img} className="w-12 h-12 rounded-xl object-cover shadow-xs" alt={aula.name} />
                     <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-brand-surface rounded-full ${aula.type === 'TRIAL' ? 'bg-brand-accent' : aula.type === 'COBERTURA' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-brand-text truncate">{aula.name}</p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-brand-muted">
-                      <span className="flex items-center gap-1 font-medium bg-brand-surface border border-brand-border px-2 py-0.5 rounded-md shadow-sm">
+                      <span className="flex items-center gap-1 font-medium bg-brand-surface border border-brand-border px-2 py-0.5 rounded-md shadow-xs">
                         <Clock size={10} className={aula.type === 'TRIAL' ? 'text-brand-accent' : 'text-brand-muted'} /> {aula.time}
                       </span>
                       {aula.type === 'TRIAL' ? (
@@ -767,7 +767,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                       aula.source_type !== 'COVERAGE' && aula.type !== 'ORAL_TEST' && <button
                         onClick={() => handleDispatch(aula, dispatchKey)}
                         disabled={dispatchState === 'sending' || dispatchState === 'sent'}
-                        className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm border text-xs font-bold ${
+                        className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs border text-xs font-bold ${
                           dispatchState === 'sent'
                             ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
                             : dispatchState === 'error'
@@ -808,7 +808,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                           });
                           onNavigate?.('lesson-planner-ai');
                         }}
-                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-sm border border-brand-border"
+                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-xs border border-brand-border"
                         title="Planejar esta aula com a IA"
                       >
                         <Sparkles size={18} />
@@ -820,7 +820,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         target="_blank"
                         rel="noopener noreferrer"
                         data-tour="teacher-official-meet-link"
-                        className="min-h-10 rounded-xl bg-brand-accent px-3 text-white flex items-center justify-center gap-2 transition-all shadow-sm"
+                        className="min-h-10 rounded-xl bg-brand-accent px-3 text-white flex items-center justify-center gap-2 transition-all shadow-xs"
                         title={aula.officialRoom ? "Link oficial desta aula. Entre com sua conta Google confirmada." : "Sala combinada para esta aula"}
                       >
                         <Video size={18} /><span className="text-xs font-bold">{aula.officialRoom ? 'Sala oficial' : 'Entrar na sala'}</span>

@@ -214,8 +214,8 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
     );
 
     return (
-        <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm animate-in fade-in duration-300 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="pedagogical-management-title" className="flex max-h-[96dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-brand-surface shadow-2xl sm:max-h-[90vh] sm:rounded-[2rem]">
+        <div className="fixed inset-0 z-150 flex items-end justify-center bg-black/60 p-0 backdrop-blur-xs animate-in fade-in duration-300 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="pedagogical-management-title" className="flex max-h-[96dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-4xl bg-brand-surface shadow-2xl sm:max-h-[90vh] sm:rounded-4xl">
 
                 {/* Header */}
                 <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 gap-4">
@@ -229,7 +229,7 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                     disabled={savingAcademic}
                                     value={currentModule}
                                     onChange={e => handleModuleChange(e.target.value)}
-                                    className="text-xs font-black px-2 py-0.5 rounded-lg bg-brand-surface dark:bg-slate-900 border border-brand-border text-tenant-primary focus:ring-2 focus:ring-tenant-primary outline-none"
+                                    className="text-xs font-black px-2 py-0.5 rounded-lg bg-brand-surface dark:bg-slate-900 border border-brand-border text-tenant-primary focus:ring-2 focus:ring-tenant-primary outline-hidden"
                                 >
                                     <option value="A1">A1</option>
                                     <option value="A2">A2</option>
@@ -256,13 +256,13 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                 <div className="flex p-2 bg-brand-surface-2 dark:bg-slate-950 mx-6 mt-6 rounded-xl shrink-0">
                     <button
                         onClick={() => setActiveTab('materials')}
-                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-sm text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-xs text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
                     >
                         Atribuir Materiais
                     </button>
                     <button
                         onClick={() => setActiveTab('evaluation')}
-                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'evaluation' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-sm text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'evaluation' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-xs text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
                     >
                         Avaliações
                     </button>
@@ -280,7 +280,7 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
                                     placeholder="Buscar material na biblioteca..."
-                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-hidden focus:ring-2 focus:ring-indigo-500 transition-all"
                                 />
                             </div>
 

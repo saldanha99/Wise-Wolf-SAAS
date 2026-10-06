@@ -130,7 +130,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
   const t = data?.teacher; const tot = data?.totals || {};
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-brand-surface w-full max-w-2xl rounded-3xl border border-brand-border shadow-2xl my-6" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-brand-border flex items-center gap-3 flex-wrap">
           <div>

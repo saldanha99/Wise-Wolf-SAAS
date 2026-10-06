@@ -159,7 +159,7 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
     const s = slides[step];
 
     return createPortal(
-        <div className="fixed inset-0 z-[400] overflow-y-auto bg-slate-900/80 p-3 backdrop-blur-sm sm:p-4">
+        <div className="fixed inset-0 z-400 overflow-y-auto bg-slate-900/80 p-3 backdrop-blur-xs sm:p-4">
             <div className="flex min-h-full items-center justify-center">
                 <motion.div
                     ref={dialogRef}
@@ -189,7 +189,7 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
                                 id="student-onboarding-title"
                                 ref={titleRef}
                                 tabIndex={-1}
-                                className="mb-2 text-xl font-black text-slate-800 outline-none dark:text-white sm:mb-3 sm:text-2xl"
+                                className="mb-2 text-xl font-black text-slate-800 outline-hidden dark:text-white sm:mb-3 sm:text-2xl"
                             >
                                 {s.titulo}
                             </h2>

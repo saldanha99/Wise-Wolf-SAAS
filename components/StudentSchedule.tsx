@@ -122,7 +122,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
     return (
         <div className="space-y-12 animate-in fade-in duration-700 pb-20">
             <header>
-                <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight">Minha Agenda</h2>
+                <h2 className="text-3xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-tight">Minha Agenda</h2>
                 <p className="text-brand-muted mt-1 font-medium">Confira os próximos 14 dias, incluindo alterações aprovadas e antecipações.</p>
             </header>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
@@ -140,12 +140,12 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                     <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg border border-blue-500/20">
                         <Calendar size={20} />
                     </div>
-                    <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Próximas aulas</h3>
+                    <h3 className="text-xl font-(family-name:--font-display) font-extrabold text-brand-text">Próximas aulas</h3>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {regularLessons.length > 0 ? regularLessons.map((lesson, i) => (
-                        <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all relative overflow-hidden group">
+                        <div key={i} className="bg-brand-surface p-6 rounded-4xl border border-brand-border shadow-xs hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all relative overflow-hidden group">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-blue-500/20 transition-colors" />
 
                             <div className="flex flex-col gap-4 relative z-10">
@@ -153,7 +153,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     <span className="px-3 py-1 bg-brand-surface-2 text-brand-text rounded-lg text-[10px] font-black uppercase tracking-widest border border-brand-border">
                                         {lesson.day}
                                     </span>
-                                    <div className="flex items-center gap-1.5 text-blue-500 bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20 shadow-sm">
+                                    <div className="flex items-center gap-1.5 text-blue-500 bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20 shadow-xs">
                                         <Clock size={12} />
                                         <span className="text-xs font-bold">{lesson.time}</span>
                                     </div>
@@ -161,7 +161,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                 <p className="text-xs text-brand-muted">{lesson.title}</p>
 
                                 <div className="flex items-center gap-3 mt-2">
-                                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-brand-surface-2 shrink-0 border border-brand-border shadow-sm">
+                                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-brand-surface-2 shrink-0 border border-brand-border shadow-xs">
                                         <img src={lesson.teacherAvatar || `https://ui-avatars.com/api/?name=${lesson.teacher}`} alt={lesson.teacher} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="min-w-0">
@@ -174,7 +174,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     <a
                                         href={lesson.meetLink}
                                         target="_blank"
-                                        className="mt-2 w-full py-3 bg-brand-surface-2 text-brand-text hover:bg-brand-accent hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-brand-border hover:border-brand-accent shadow-sm"
+                                        className="mt-2 w-full py-3 bg-brand-surface-2 text-brand-text hover:bg-brand-accent hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-brand-border hover:border-brand-accent shadow-xs"
                                     >
                                         <Video size={14} /> {lesson.officialRoom ? 'Sala oficial' : 'Entrar'}
                                     </a>
@@ -196,15 +196,15 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                         <div className="p-2 bg-purple-500/10 text-purple-500 rounded-lg border border-purple-500/20">
                             <RefreshCw size={20} />
                         </div>
-                        <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Reposições e Extras</h3>
+                        <h3 className="text-xl font-(family-name:--font-display) font-extrabold text-brand-text">Reposições e Extras</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {reschedules.map((lesson, i) => (
-                            <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border-2 border-dashed border-purple-500/30 shadow-none hover:border-purple-500/60 transition-all relative group hover:bg-brand-surface-2">
+                            <div key={i} className="bg-brand-surface p-6 rounded-4xl border-2 border-dashed border-purple-500/30 shadow-none hover:border-purple-500/60 transition-all relative group hover:bg-brand-surface-2">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex flex-col">
-                                        <span className="text-lg font-[family-name:var(--font-display)] font-extrabold text-brand-text capitalize">
+                                        <span className="text-lg font-(family-name:--font-display) font-extrabold text-brand-text capitalize">
                                             {lesson.dateFormatted}
                                         </span>
                                         <span className="text-xs font-bold text-brand-muted flex items-center gap-1 mt-1">
@@ -243,12 +243,12 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
             {/* Política de faltas e reposições — a regra da casa, sempre visível.
                 Direção (17/09/2026): 4 reposições por direito no mês; da 5ª em
                 diante é combinação com o professor, sem obrigação. */}
-            <section data-tour="student-reposicoes" className="bg-brand-surface p-6 md:p-8 rounded-[2rem] border border-brand-border">
+            <section data-tour="student-reposicoes" className="bg-brand-surface p-6 md:p-8 rounded-4xl border border-brand-border">
                 <div className="flex items-center gap-3 mb-4">
                     <div className="p-2 bg-brand-accent/10 text-brand-accent rounded-lg border border-brand-accent/20">
                         <LifeBuoy size={20} />
                     </div>
-                    <h3 className="text-lg font-[family-name:var(--font-display)] font-extrabold text-brand-text">Faltas e reposições: como funciona</h3>
+                    <h3 className="text-lg font-(family-name:--font-display) font-extrabold text-brand-text">Faltas e reposições: como funciona</h3>
                 </div>
                 <ul className="space-y-2 text-sm text-brand-text">
                     <li className="flex gap-2"><span className="text-brand-accent font-black">4</span><span><strong>Você tem direito a 4 reposições por mês</strong> quando a falta é sua. A partir da 5ª, a reposição é combinada com o professor — sem obrigação, mas vale pedir.</span></li>

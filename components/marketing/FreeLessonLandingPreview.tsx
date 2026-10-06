@@ -63,7 +63,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
         <div className="w-full h-full relative overflow-y-auto bg-brand-surface font-sans text-brand-text scrollbar-hide">
 
             {/* HERO SECTION */}
-            <section className="relative min-h-[600px] lg:min-h-[700px] bg-gradient-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
+            <section className="relative min-h-[600px] lg:min-h-[700px] bg-linear-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
                 {/* Background Accents */}
                 <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
                     <div className="absolute -top-20 -left-20 w-[600px] h-[600px] bg-blue-500/20 rounded-full blur-[100px]" />
@@ -82,7 +82,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                         transition={{ duration: 0.8 }}
                         className="text-white space-y-6"
                     >
-                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
+                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-xs px-4 py-1.5 rounded-full border border-white/20">
                             <span className="w-2 h-2 rounded-full bg-[#D32F2F] animate-pulse" />
                             <span className="text-xs font-bold tracking-wider uppercase">Vagas Limitadas para este mês</span>
                         </div>
@@ -123,7 +123,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                         transition={{ duration: 0.8, delay: 0.2 }}
                         className="bg-brand-surface rounded-3xl p-8 shadow-2xl relative overflow-hidden"
                     >
-                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#002366] to-[#D32F2F]" />
+                        <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-[#002366] to-[#D32F2F]" />
 
                         {!submitted ? (
                             <>
@@ -142,7 +142,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                                 required
                                                 value={formData.name}
                                                 onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-none text-sm font-medium"
+                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-hidden text-sm font-medium"
                                                 placeholder="Seu nome aqui"
                                             />
                                         </div>
@@ -157,7 +157,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                                 required
                                                 value={formData.email}
                                                 onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-none text-sm font-medium"
+                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-hidden text-sm font-medium"
                                                 placeholder="seu@email.com"
                                             />
                                         </div>
@@ -172,7 +172,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                                 required
                                                 value={formData.phone}
                                                 onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-none text-sm font-medium"
+                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] focus:border-[#002366] transition-all outline-hidden text-sm font-medium"
                                                 placeholder="(00) 00000-0000"
                                             />
                                         </div>
@@ -184,7 +184,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                             <select
                                                 value={formData.level}
                                                 onChange={e => setFormData({ ...formData, level: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none text-sm font-medium appearance-none"
+                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-hidden text-sm font-medium appearance-none"
                                             >
                                                 <option value="Iniciante">Iniciante</option>
                                                 <option value="Básico">Básico</option>
@@ -197,7 +197,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                             <select
                                                 value={formData.goal}
                                                 onChange={e => setFormData({ ...formData, goal: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none text-sm font-medium appearance-none"
+                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-hidden text-sm font-medium appearance-none"
                                             >
                                                 <option value="Fluência">Fluência Geral</option>
                                                 <option value="Viagem">Viagem</option>
@@ -273,7 +273,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-                        <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70 scale-95">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-xs border border-gray-100 opacity-70 scale-95">
                             <h3 className="text-xl font-bold text-gray-500 mb-6 flex items-center gap-2">
                                 <XCircle className="text-red-300" /> Escola Tradicional
                             </h3>
@@ -319,7 +319,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                     { title: 'Feedback Constante', text: 'Correção ativa e relatórios de evolução mensais.' }
                                 ].map((step, i) => (
                                     <div key={i} className="flex gap-6">
-                                        <div className="flex-shrink-0 w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#002366] font-black text-xl">
+                                        <div className="shrink-0 w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#002366] font-black text-xl">
                                             {i + 1}
                                         </div>
                                         <div>
@@ -381,7 +381,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                             { q: 'Preciso ter conhecimento prévio?', a: 'Não, atendemos desde o nível básico até o avançado.' },
                             { q: 'Como são as aulas?', a: 'As aulas são online e ao vivo, com foco total em conversação.' }
                         ].map((faq, i) => (
-                            <details key={i} className="group bg-brand-surface rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <details key={i} className="group bg-brand-surface rounded-xl shadow-xs border border-gray-100 overflow-hidden">
                                 <summary className="flex justify-between items-center p-6 cursor-pointer font-bold text-gray-800">
                                     {faq.q}
                                     <span className="transition-transform group-open:rotate-180 text-blue-500">

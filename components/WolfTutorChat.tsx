@@ -229,7 +229,7 @@ const WolfTutorChat: React.FC = () => {
                     >
                         <div className={`max-w-[80%] flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
 
-                            <div className={`p-4 rounded-2xl relative shadow-sm ${msg.role === 'user'
+                            <div className={`p-4 rounded-2xl relative shadow-xs ${msg.role === 'user'
                                     ? 'bg-emerald-500 text-white rounded-tr-none'
                                     : 'bg-brand-surface dark:bg-brand-surface-2 text-brand-text dark:text-slate-200 rounded-tl-none border border-brand-border dark:border-brand-border'
                                 }`}>
@@ -286,7 +286,7 @@ const WolfTutorChat: React.FC = () => {
                             onChange={(e) => setInputText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleTextSend()}
                             placeholder="Type a message to Wolfie..."
-                            className="flex-1 bg-brand-surface-2 dark:bg-brand-surface border-none rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-brand-text"
+                            className="flex-1 bg-brand-surface-2 dark:bg-brand-surface border-none rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-hidden text-brand-text"
                             autoFocus
                         />
                         <button
@@ -333,7 +333,7 @@ const WolfTutorChat: React.FC = () => {
                                     relative w-20 h-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300
                                     ${isRecording
                                         ? 'bg-red-500 shadow-red-500/40 scale-110'
-                                        : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-500/40 hover:scale-105 active:scale-95'
+                                        : 'bg-linear-to-br from-indigo-500 to-purple-600 shadow-indigo-500/40 hover:scale-105 active:scale-95'
                                     }
                                     ${isLoading ? 'opacity-50 cursor-not-allowed grayscale' : ''}
                                 `}

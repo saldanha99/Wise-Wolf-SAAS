@@ -269,7 +269,7 @@ export function WolfieWritingActivity({
 
           {firstEvaluation ? (
             <section
-              className="rounded-3xl border border-brand-accent bg-brand-surface p-5 shadow-sm sm:p-7"
+              className="rounded-3xl border border-brand-accent bg-brand-surface p-5 shadow-xs sm:p-7"
               aria-labelledby="writing-feedback-title"
             >
               <div className="flex items-start gap-3">
@@ -382,7 +382,7 @@ export function WolfieWritingActivity({
             </section>
           ) : null}
 
-          <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+          <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7">
             <label
               htmlFor="wolfie-writing-response"
               className="text-sm font-black text-brand-text"

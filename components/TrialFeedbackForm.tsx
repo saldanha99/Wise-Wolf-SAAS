@@ -138,7 +138,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     // Saved success
     if (saved) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="trial-feedback-saved-title">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="trial-feedback-saved-title">
                 <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full text-center animate-in zoom-in-95">
                     <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Check size={40} className="text-emerald-600" />
@@ -158,20 +158,20 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="trial-feedback-title">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="trial-feedback-title">
             <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
                 {/* Header */}
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-t-3xl p-6 text-white relative">
+                <div className="bg-linear-to-br from-indigo-600 to-purple-700 rounded-t-3xl p-6 text-white relative">
                     <button type="button" onClick={onClose} aria-label="Fechar feedback" className="absolute top-4 right-4 p-2 rounded-xl bg-brand-surface/10 hover:bg-brand-surface/20 transition-colors">
                         <X size={18} />
                     </button>
                     <div className="flex min-w-0 items-center gap-3 pr-8 mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-brand-surface/20 flex items-center justify-center backdrop-blur-sm">
+                        <div className="w-12 h-12 rounded-2xl bg-brand-surface/20 flex items-center justify-center backdrop-blur-xs">
                             <BookOpen size={24} />
                         </div>
                         <div className="min-w-0">
                             <p className="text-[10px] tracking-wider font-bold opacity-70 uppercase">Feedback da Experimental</p>
-                            <h2 id="trial-feedback-title" className="break-words text-lg font-black sm:text-xl">{studentName}</h2>
+                            <h2 id="trial-feedback-title" className="wrap-break-word text-lg font-black sm:text-xl">{studentName}</h2>
                         </div>
                     </div>
                 </div>
@@ -309,7 +309,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                             type="button"
                             onClick={handleSave}
                             disabled={saving}
-                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:shadow-indigo-300 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                            className="w-full py-4 bg-linear-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:shadow-indigo-300 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70"
                         >
                             {saving ? (
                                 <>

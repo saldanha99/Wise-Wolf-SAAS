@@ -174,7 +174,7 @@ export function PremiumImmersionHero({
               className="mt-6 max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.055em] text-white sm:text-6xl lg:text-[4.25rem]"
             >
               Viva o inglês.
-              <span className="mt-1 block bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
+              <span className="mt-1 block bg-linear-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
                 Não apenas estude.
               </span>
             </h1>
@@ -188,7 +188,7 @@ export function PremiumImmersionHero({
               <button
                 type="button"
                 onClick={onStart}
-                className={`group inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 px-5 py-3 text-sm font-black text-white shadow-[0_14px_35px_rgba(59,130,246,.35)] transition hover:-translate-y-0.5 hover:from-blue-400 hover:to-indigo-400 ${focusRing}`}
+                className={`group inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-blue-500 to-indigo-500 px-5 py-3 text-sm font-black text-white shadow-[0_14px_35px_rgba(59,130,246,.35)] transition hover:-translate-y-0.5 hover:from-blue-400 hover:to-indigo-400 ${focusRing}`}
               >
                 <Mic2 size={18} aria-hidden="true" />
                 Iniciar minha imersão
@@ -217,7 +217,7 @@ export function PremiumImmersionHero({
                     initial={reduceMotion ? false : { opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.12 + index * 0.07 }}
-                    className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl"
+                    className="rounded-2xl border border-white/10 bg-white/4.5 p-3 backdrop-blur-xl"
                   >
                     <Icon size={16} className="text-cyan-300" aria-hidden="true" />
                     <p className="mt-2 text-xs font-black text-white">
@@ -271,7 +271,7 @@ export function PremiumImmersionHero({
             </motion.div>
 
             <motion.div
-              className="absolute left-1/2 top-1/2 grid h-40 w-40 place-items-center rounded-[2.75rem] border border-cyan-200/25 bg-gradient-to-br from-blue-500/80 via-indigo-600/80 to-violet-700/80 shadow-[0_0_90px_rgba(59,130,246,.42),inset_0_1px_0_rgba(255,255,255,.35)] backdrop-blur-2xl"
+              className="absolute left-1/2 top-1/2 grid h-40 w-40 place-items-center rounded-[2.75rem] border border-cyan-200/25 bg-linear-to-br from-blue-500/80 via-indigo-600/80 to-violet-700/80 shadow-[0_0_90px_rgba(59,130,246,.42),inset_0_1px_0_rgba(255,255,255,.35)] backdrop-blur-2xl"
               animate={
                 reduceMotion
                   ? { z: 70 }
@@ -317,7 +317,7 @@ export function PremiumImmersionHero({
               }
               animate={{ opacity: 1, y: 0, scale: 1, z: 115, rotateY: 8 }}
               transition={{ delay: 0.15, duration: 0.5 }}
-              className="absolute left-0 top-[12%] w-44 rounded-3xl border border-white/15 bg-white/[0.085] p-4 shadow-2xl backdrop-blur-2xl sm:left-[2%]"
+              className="absolute left-0 top-[12%] w-44 rounded-3xl border border-white/15 bg-white/8.5 p-4 shadow-2xl backdrop-blur-2xl sm:left-[2%]"
               style={{ transformStyle: 'preserve-3d' }}
             >
               <div className="flex items-center justify-between">
@@ -346,7 +346,7 @@ export function PremiumImmersionHero({
               }
               animate={{ opacity: 1, y: 0, scale: 1, z: 92, rotateY: -9 }}
               transition={{ delay: 0.28, duration: 0.5 }}
-              className="absolute right-0 top-[18%] w-44 rounded-3xl border border-white/15 bg-white/[0.085] p-4 shadow-2xl backdrop-blur-2xl sm:right-[1%]"
+              className="absolute right-0 top-[18%] w-44 rounded-3xl border border-white/15 bg-white/8.5 p-4 shadow-2xl backdrop-blur-2xl sm:right-[1%]"
               style={{ transformStyle: 'preserve-3d' }}
             >
               <span className="grid h-9 w-9 place-items-center rounded-2xl bg-violet-300/15 text-violet-200">
@@ -372,7 +372,7 @@ export function PremiumImmersionHero({
               }
               animate={{ opacity: 1, y: 0, scale: 1, z: 135, rotateX: 4 }}
               transition={{ delay: 0.4, duration: 0.5 }}
-              className="absolute bottom-[8%] left-[12%] w-48 rounded-3xl border border-amber-200/20 bg-gradient-to-br from-amber-300/15 to-fuchsia-400/10 p-4 shadow-2xl backdrop-blur-2xl"
+              className="absolute bottom-[8%] left-[12%] w-48 rounded-3xl border border-amber-200/20 bg-linear-to-br from-amber-300/15 to-fuchsia-400/10 p-4 shadow-2xl backdrop-blur-2xl"
               style={{ transformStyle: 'preserve-3d' }}
             >
               <div className="flex items-center gap-2">
@@ -421,7 +421,7 @@ export function PremiumImmersionHero({
           return (
             <div
               key={step.label}
-              className="flex gap-3 border-white/10 px-5 py-4 sm:[&:nth-child(odd)]:border-r lg:border-r lg:last:border-r-0"
+              className="flex gap-3 border-white/10 px-5 py-4 sm:odd:border-r lg:border-r lg:last:border-r-0"
             >
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/5 text-cyan-300">
                 <Icon size={16} aria-hidden="true" />
@@ -532,7 +532,7 @@ export function KidsAdventureZone({ onChoose }: KidsAdventureZoneProps) {
             className="mt-4 text-3xl font-black tracking-[-0.04em] text-slate-950 dark:text-white sm:text-5xl"
           >
             Inglês vira missão.
-            <span className="block bg-gradient-to-r from-fuchsia-600 via-violet-600 to-blue-600 bg-clip-text text-transparent dark:from-fuchsia-300 dark:via-violet-300 dark:to-cyan-300">
+            <span className="block bg-linear-to-r from-fuchsia-600 via-violet-600 to-blue-600 bg-clip-text text-transparent dark:from-fuchsia-300 dark:via-violet-300 dark:to-cyan-300">
               A criança vira protagonista.
             </span>
           </h2>
@@ -570,7 +570,7 @@ export function KidsAdventureZone({ onChoose }: KidsAdventureZoneProps) {
               viewport={{ once: true, amount: 0.3 }}
               transition={{ delay: index * 0.08, duration: 0.45 }}
               whileHover={reduceMotion ? undefined : { y: -7, rotateX: 2, rotateY: -2 }}
-              className={`group relative min-h-72 overflow-hidden rounded-[2rem] bg-gradient-to-br ${world.gradient} p-5 text-left text-white shadow-2xl ${focusRing}`}
+              className={`group relative min-h-72 overflow-hidden rounded-4xl bg-linear-to-br ${world.gradient} p-5 text-left text-white shadow-2xl ${focusRing}`}
               style={{ perspective: '900px', transformStyle: 'preserve-3d' }}
               aria-label={`${world.label}. ${world.tagline}`}
             >
@@ -618,7 +618,7 @@ export function KidsAdventureZone({ onChoose }: KidsAdventureZoneProps) {
         })}
       </div>
 
-      <div className="relative mt-5 grid gap-4 rounded-[1.75rem] border border-indigo-200/70 bg-white/75 p-4 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.045] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center sm:p-5">
+      <div className="relative mt-5 grid gap-4 rounded-[1.75rem] border border-indigo-200/70 bg-white/75 p-4 backdrop-blur-xl dark:border-white/10 dark:bg-white/4.5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center sm:p-5">
         <div>
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-indigo-700 dark:text-cyan-200">
             <WandSparkles size={16} aria-hidden="true" />
@@ -659,7 +659,7 @@ export function KidsAdventureZone({ onChoose }: KidsAdventureZoneProps) {
                 key={experience.id}
                 type="button"
                 onClick={() => onChoose(experience)}
-                className={`group grid min-h-24 min-w-24 place-items-center rounded-2xl border border-indigo-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-1 hover:border-indigo-300 hover:shadow-md dark:border-white/10 dark:bg-white/5 ${focusRing}`}
+                className={`group grid min-h-24 min-w-24 place-items-center rounded-2xl border border-indigo-100 bg-white p-3 text-center shadow-xs transition hover:-translate-y-1 hover:border-indigo-300 hover:shadow-md dark:border-white/10 dark:bg-white/5 ${focusRing}`}
               >
                 <Icon
                   size={18}

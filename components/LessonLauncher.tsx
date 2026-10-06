@@ -619,7 +619,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                   <button
                     type="button"
                     onClick={() => setFeedbackTarget(item)}
-                    className="w-full shrink-0 rounded-lg bg-amber-500 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-amber-600 sm:w-auto"
+                    className="w-full shrink-0 rounded-lg bg-amber-500 px-3 py-2 text-xs font-black text-white shadow-xs hover:bg-amber-600 sm:w-auto"
                   >
                     Preencher
                   </button>

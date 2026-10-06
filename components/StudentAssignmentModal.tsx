@@ -250,13 +250,13 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                 <div className="flex gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-2xl">
                     <button
                         onClick={() => setIsNewStudent(false)}
-                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-brand-muted'}`}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-xs' : 'text-brand-muted'}`}
                     >
                         Aluno Existente
                     </button>
                     <button
                         onClick={() => setIsNewStudent(true)}
-                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-brand-muted'}`}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-xs' : 'text-brand-muted'}`}
                     >
                         Novo Aluno
                     </button>
@@ -275,7 +275,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                 const std = students.find(s => s.id === stdId);
                                 if (std?.module) setModule(std.module);
                             }}
-                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-hidden"
                         >
                             <option value="">Escolha um aluno...</option>
                             {students.map(s => (
@@ -289,11 +289,11 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                         <div className="grid grid-cols-1 gap-4">
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Nome</label>
-                                <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Nome Completo" />
+                                <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-hidden" placeholder="Nome Completo" />
                             </div>
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Email (Login)</label>
-                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="email@exemplo.com" />
+                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-hidden" placeholder="email@exemplo.com" />
                             </div>
                         </div>
 
@@ -301,9 +301,9 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                         <details className="text-xs text-brand-muted cursor-pointer">
                             <summary className="font-bold hover:text-tenant-primary transition-colors">Mais Detalhes (CPF, Endereço...)</summary>
                             <div className="pt-3 space-y-3 pl-2 border-l-2 border-brand-border mt-2">
-                                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Telefone" />
-                                <input value={newCpf} onChange={e => setNewCpf(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="CPF" />
-                                <input value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Endereço" />
+                                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-hidden" placeholder="Telefone" />
+                                <input value={newCpf} onChange={e => setNewCpf(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-hidden" placeholder="CPF" />
+                                <input value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-hidden" placeholder="Endereço" />
                             </div>
                         </details>
 
@@ -321,11 +321,11 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-1 block">Nível</label>
-                        <input value={module} onChange={e => setModule(e.target.value.toUpperCase())} className="w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-black text-blue-700 dark:text-blue-300 outline-none uppercase text-center" />
+                        <input value={module} onChange={e => setModule(e.target.value.toUpperCase())} className="w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-black text-blue-700 dark:text-blue-300 outline-hidden uppercase text-center" />
                     </div>
                     <div>
                         <label className="text-[10px] font-black uppercase tracking-widest text-tenant-primary mb-1 block">Início</label>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-brand-surface dark:bg-slate-950 border border-tenant-primary/20 rounded-xl text-xs font-bold outline-none" />
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-brand-surface dark:bg-slate-950 border border-tenant-primary/20 rounded-xl text-xs font-bold outline-hidden" />
                     </div>
                 </div>
 
@@ -368,7 +368,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                         <select
                                             value={schedule[day]}
                                             onChange={(e) => updateTimeForDay(day, e.target.value)}
-                                            className="flex-1 text-[10px] font-bold bg-transparent outline-none text-brand-text dark:text-slate-200"
+                                            className="flex-1 text-[10px] font-bold bg-transparent outline-hidden text-brand-text dark:text-slate-200"
                                         >
                                             {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
@@ -411,7 +411,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                     <select
                                         value={fidelityMonths}
                                         onChange={(e) => setFidelityMonths(Number(e.target.value))}
-                                        className="w-full px-3 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300 outline-none"
+                                        className="w-full px-3 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300 outline-hidden"
                                         disabled={isManualPrice} // Disable duration logic if manual overrides price? Or allow duration selection but price is manual.
                                     >
                                         <option value={6}>6 Meses</option>
@@ -449,7 +449,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                             type="number"
                                             value={manualPriceValue}
                                             onChange={(e) => setManualPriceValue(Number(e.target.value))}
-                                            className="w-full pl-8 pr-4 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl font-black text-emerald-700 dark:text-emerald-300 outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                                            className="w-full pl-8 pr-4 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl font-black text-emerald-700 dark:text-emerald-300 outline-hidden focus:ring-2 focus:ring-emerald-500 text-sm"
                                             placeholder="0.00"
                                         />
                                     </div>

@@ -1414,7 +1414,7 @@ const PublicRegistration: React.FC = () => {
                                         navigator.clipboard.writeText(enrollmentPix.code);
                                         alert('Código copiado!');
                                     }}
-                                    className="enrollment-primary-button !min-h-[52px] !rounded-[13px]"
+                                    className="enrollment-primary-button min-h-[52px]! rounded-[13px]!"
                                     aria-label="Copiar código Pix"
                                 >
                                     <FileText size={19} aria-hidden="true" />
@@ -1643,7 +1643,7 @@ const PublicRegistration: React.FC = () => {
                             the fee waiver and the commission snapshot. */}
                         {Number(contractData?.planDuration ?? 1) !== 0 && (
                             <div className="enrollment-form-section space-y-3">
-                                <div className="enrollment-form-section__heading !mb-1">
+                                <div className="enrollment-form-section__heading mb-1!">
                                     <h3 className="enrollment-form-section__title">
                                         <span className="enrollment-form-section__icon"><BadgePercent size={16} aria-hidden="true" /></span>
                                         Cupom de afiliado
@@ -1676,7 +1676,7 @@ const PublicRegistration: React.FC = () => {
                                                 placeholder="Digite o cupom"
                                                 aria-label="Cupom de afiliado"
                                                 aria-invalid={Boolean(couponError)}
-                                                className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface-2 px-5 py-4 text-sm font-black uppercase tracking-wider text-brand-text outline-none transition-all placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-brand-muted focus:ring-2 focus:ring-[#002366] read-only:opacity-70"
+                                                className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface-2 px-5 py-4 text-sm font-black uppercase tracking-wider text-brand-text outline-hidden transition-all placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-brand-muted focus:ring-2 focus:ring-[#002366] read-only:opacity-70"
                                             />
                                             <button
                                                 type="button"
@@ -1730,7 +1730,7 @@ const PublicRegistration: React.FC = () => {
 
                             {billingType === 'BOLETO' ? (
                                 <div className="enrollment-selected-payment">
-                                    <span className="enrollment-selected-payment__icon !bg-amber-50 !text-amber-700"><Barcode size={21} aria-hidden="true" /></span>
+                                    <span className="enrollment-selected-payment__icon bg-amber-50! text-amber-700!"><Barcode size={21} aria-hidden="true" /></span>
                                     <div>
                                         <strong>Pagamento via boleto</strong>
                                         <p>O boleto será disponibilizado ao final da contratação.</p>
@@ -1741,7 +1741,7 @@ const PublicRegistration: React.FC = () => {
                             {billingType === 'CREDIT_CARD' ? (
                                 <div className="space-y-4 animate-in fade-in duration-300">
                                     <div className="enrollment-selected-payment">
-                                        <span className="enrollment-selected-payment__icon !bg-blue-50 !text-blue-700"><CreditCard size={21} aria-hidden="true" /></span>
+                                        <span className="enrollment-selected-payment__icon bg-blue-50! text-blue-700!"><CreditCard size={21} aria-hidden="true" /></span>
                                         <div>
                                             <strong>Pagamento via cartão</strong>
                                             <p>Os dados são enviados diretamente para o processamento seguro.</p>
@@ -1762,7 +1762,7 @@ const PublicRegistration: React.FC = () => {
                                                     setCcNumber(value.replace(/(\d{4})(?=\d)/g, '$1 '));
                                                 }}
                                                 aria-invalid={Boolean(fieldErrors.ccNumber)}
-                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                             <FieldError message={fieldErrors.ccNumber} />
                                         </div>
@@ -1775,7 +1775,7 @@ const PublicRegistration: React.FC = () => {
                                                 value={ccName}
                                                 onChange={e => setCcName(e.target.value)}
                                                 aria-invalid={Boolean(fieldErrors.ccName)}
-                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                             <FieldError message={fieldErrors.ccName} />
                                         </div>
@@ -1796,7 +1796,7 @@ const PublicRegistration: React.FC = () => {
                                                         setCcExpiry(v);
                                                     }}
                                                     aria-invalid={Boolean(fieldErrors.ccExpiry)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                                 />
                                                 <FieldError message={fieldErrors.ccExpiry} />
                                             </div>
@@ -1811,7 +1811,7 @@ const PublicRegistration: React.FC = () => {
                                                     onChange={e => setCcCcv(digitsOnly(e.target.value).slice(0, 4))}
                                                     maxLength={4}
                                                     aria-invalid={Boolean(fieldErrors.ccCcv)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                                 />
                                                 <FieldError message={fieldErrors.ccCcv} />
                                             </div>
@@ -1828,7 +1828,7 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 2. Personal Data */}
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><User size={16} aria-hidden="true" /></span>
                                     Dados pessoais
@@ -1843,7 +1843,7 @@ const PublicRegistration: React.FC = () => {
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.name)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                 />
                                 <FieldError message={fieldErrors.name} />
                             </div>
@@ -1867,7 +1867,7 @@ const PublicRegistration: React.FC = () => {
                                             value={cpf}
                                             onChange={e => setCpf(formatCpf(e.target.value))}
                                             aria-invalid={Boolean(fieldErrors.cpf)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.cpf} />
                                     </div>
@@ -1887,7 +1887,7 @@ const PublicRegistration: React.FC = () => {
                                                 setPhone(v);
                                             }}
                                             aria-invalid={Boolean(fieldErrors.phone)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.phone} />
                                     </div>
@@ -1898,7 +1898,7 @@ const PublicRegistration: React.FC = () => {
                         {/* 3. Address — oculto em matrícula vinculada (usa o endereço do responsável) */}
                         {!contractData?.isDependent && (
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><MapPin size={16} aria-hidden="true" /></span>
                                     Endereço
@@ -1918,7 +1918,7 @@ const PublicRegistration: React.FC = () => {
                                             setPostalCode(value.length > 5 ? `${value.slice(0, 5)}-${value.slice(5)}` : value);
                                         }}
                                         aria-invalid={Boolean(fieldErrors.postalCode)}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                     />
                                     <FieldError message={fieldErrors.postalCode} />
                                 </div>
@@ -1931,7 +1931,7 @@ const PublicRegistration: React.FC = () => {
                                         value={addressNumber}
                                         onChange={e => setAddressNumber(e.target.value)}
                                         aria-invalid={Boolean(fieldErrors.addressNumber)}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                     />
                                     <FieldError message={fieldErrors.addressNumber} />
                                 </div>
@@ -1945,7 +1945,7 @@ const PublicRegistration: React.FC = () => {
                                     value={address}
                                     onChange={e => setAddress(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.address)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                 />
                                 <FieldError message={fieldErrors.address} />
                             </div>
@@ -1954,7 +1954,7 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 4. Credentials */}
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><Lock size={16} aria-hidden="true" /></span>
                                     Acesso ao portal
@@ -1971,7 +1971,7 @@ const PublicRegistration: React.FC = () => {
                                     readOnly={resumeAuthenticated}
                                     onChange={e => setEmail(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.email)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted read-only:opacity-70"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted read-only:opacity-70"
                                 />
                                 <FieldError message={fieldErrors.email} />
                             </div>
@@ -1993,7 +1993,7 @@ const PublicRegistration: React.FC = () => {
                                                 value={password}
                                                 onChange={e => setPassword(e.target.value)}
                                                 aria-invalid={Boolean(fieldErrors.password)}
-                                                className="w-full px-5 py-4 pr-12 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                                className="w-full px-5 py-4 pr-12 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                             />
                                             <button
                                                 type="button"
@@ -2016,7 +2016,7 @@ const PublicRegistration: React.FC = () => {
                                             value={passwordConfirmation}
                                             onChange={e => setPasswordConfirmation(e.target.value)}
                                             aria-invalid={Boolean(fieldErrors.passwordConfirmation)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.passwordConfirmation} />
                                     </div>
@@ -2034,7 +2034,7 @@ const PublicRegistration: React.FC = () => {
                                 : <>Revisar meus dados <ArrowRight size={18} aria-hidden="true" /></>}
                         </button>
 
-                        <p className="enrollment-trust-note !mt-0">
+                        <p className="enrollment-trust-note mt-0!">
                             <ShieldCheck size={14} aria-hidden="true" />
                             Na próxima etapa, você revisa os dados e lê o contrato antes de assinar.
                         </p>

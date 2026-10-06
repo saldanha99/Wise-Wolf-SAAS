@@ -139,9 +139,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             aria-checked={automationEnabled}
                             aria-label={automationEnabled ? 'Desativar automação de lembretes' : 'Ativar automação de lembretes'}
                             onClick={() => setAutomationEnabled(!automationEnabled)}
-                            className={`relative h-6 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                            className={`relative h-6 w-12 shrink-0 rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
                         >
-                            <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${automationEnabled ? 'translate-x-6' : ''}`} />
+                            <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${automationEnabled ? 'translate-x-6' : ''}`} />
                         </button>
                     </div>
                 </div>
@@ -181,7 +181,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             onChange={e => setTemplate(e.target.value)}
                             rows={10}
                             placeholder={DEFAULT_REMINDER_TEMPLATE}
-                            className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 resize-y"
                         />
                         <p className="text-[10px] text-slate-400 mt-2">{template.length}/1000 caracteres</p>
                     </div>
@@ -193,7 +193,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
 
                         {/* Mock WhatsApp chat bubble */}
-                        <div className="bg-[#dcf8c6] dark:bg-emerald-900/30 rounded-xl rounded-tl-sm p-4 max-w-sm shadow-sm relative">
+                        <div className="bg-[#dcf8c6] dark:bg-emerald-900/30 rounded-xl rounded-tl-sm p-4 max-w-sm shadow-xs relative">
                             <p className="text-sm text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">{preview}</p>
                             <div className="text-[10px] text-slate-500 text-right mt-2">
                                 {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} ✓✓

@@ -216,7 +216,7 @@ const TrainingView: React.FC<Props> = ({ user }) => {
 
             {/* Player modal */}
             {active && createPortal(
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-200 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div
                         ref={dialogRef}
                         role="dialog"

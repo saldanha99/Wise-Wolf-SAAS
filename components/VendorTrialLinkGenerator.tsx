@@ -118,7 +118,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
     return (
         <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
             {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden">
+            <div className="bg-linear-to-r from-indigo-600 to-violet-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                 <div className="relative z-10">
                     <div className="flex items-center gap-3 mb-2">
@@ -129,7 +129,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-8 space-y-6 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 rounded-4xl border border-slate-100 dark:border-slate-800 p-8 space-y-6 shadow-xs">
 
                 {/* Prospect Info */}
                 <div>
@@ -144,7 +144,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                                 value={prospectName}
                                 onChange={e => setProspectName(e.target.value)}
                                 placeholder="Ex: João Silva"
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                         </div>
                         <div>
@@ -156,7 +156,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                                     value={prospectPhone}
                                     onChange={e => setProspectPhone(e.target.value)}
                                     placeholder="(11) 99999-9999"
-                                    className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                    className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
                             </div>
                         </div>
@@ -175,7 +175,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                         <select
                             value={specFilter}
                             onChange={e => { setSpecFilter(e.target.value); setSelectedTeacher(''); }}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         >
                             <option value="">Todas as especializações</option>
                             {TEACHER_SPECIALIZATIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -191,7 +191,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                             value={selectedTeacher ? '' : teacherSearch}
                             onChange={e => { setTeacherSearch(e.target.value); setSelectedTeacher(''); setShowTeacherList(true); }}
                             onFocus={() => setShowTeacherList(true)}
-                            className="w-full pl-9 pr-10 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            className="w-full pl-9 pr-10 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                         />
                         {selectedTeacherObj && (
                             <span className="absolute left-9 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-700 dark:text-slate-200 pointer-events-none">
@@ -245,7 +245,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                             <select
                                 value={selectedDay}
                                 onChange={e => setSelectedDay(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             >
                                 <option value="">Selecionar...</option>
                                 {WEEKDAY_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -259,7 +259,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                                     type="time"
                                     value={selectedTime}
                                     onChange={e => setSelectedTime(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 />
                             </div>
                         </div>
@@ -271,7 +271,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ ten
                     <button
                         onClick={handleGenerate}
                         disabled={saving || !prospectName.trim()}
-                        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                        className="w-full py-4 bg-linear-to-r from-indigo-600 to-violet-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                     >
                         {saving ? (
                             <><span className="animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> Gerando...</>

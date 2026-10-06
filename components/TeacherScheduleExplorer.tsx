@@ -710,7 +710,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   return (
     <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
-      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
+      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl flex flex-col shadow-xs shrink-0">
         <div className="p-5 border-b dark:border-brand-border">
           <h3 className="font-black text-gray-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
             <Users size={14} className="text-tenant-primary" /> Corpo Docente
@@ -720,7 +720,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             <input
               type="text"
               placeholder="Buscar por nome..."
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-none font-medium"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-hidden font-medium"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
@@ -728,7 +728,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           <select
             value={specFilter}
             onChange={e => setSpecFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-none"
+            className="w-full px-3 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-hidden"
           >
             <option value="">Todas as especialidades</option>
             {TEACHER_SPECIALIZATIONS.map(s => (
@@ -765,7 +765,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       </div>
 
       {/* Main Area: Detailed Schedule Explorer */}
-      <div className="flex-1 min-h-[70vh] xl:min-h-0 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm overflow-hidden">
+      <div className="flex-1 min-h-[70vh] xl:min-h-0 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl flex flex-col shadow-xs overflow-hidden">
         {selectedTeacher ? (
           <>
             {/* Detail Header - Compact */}
@@ -850,7 +850,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                   value={slotSearch}
                   onChange={e => setSlotSearch(e.target.value)}
                   placeholder="Localizar aluno na grade…"
-                  className="col-span-2 sm:col-span-3 lg:col-span-1 px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-none text-brand-text w-full lg:w-44 min-w-0"
+                  className="col-span-2 sm:col-span-3 lg:col-span-1 px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-hidden text-brand-text w-full lg:w-44 min-w-0"
                 />
                 {canManageAssignments && (
                   <button
@@ -978,7 +978,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                         const ymd = dateForDayIndex(weekStart, dIdx);
                         const isToday = ymd === localYMD(new Date());
                         return (
-                          <th key={day} className={`p-2 text-[9px] font-black uppercase tracking-[0.1em] ${isToday ? 'text-tenant-primary' : 'text-gray-400 dark:text-brand-muted'}`}>
+                          <th key={day} className={`p-2 text-[9px] font-black uppercase tracking-widest ${isToday ? 'text-tenant-primary' : 'text-gray-400 dark:text-brand-muted'}`}>
                             {day}
                             <span className="block text-[8px] font-bold opacity-70">{ymd.split('-').slice(1).reverse().join('/')}</span>
                           </th>
@@ -1016,7 +1016,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                             <td key={dIdx} className="h-8 relative">
                               {overlay && (
                                 <div
-                                  className={`absolute inset-x-0 top-0 z-20 m-0.5 flex items-center gap-1 rounded-t-md border border-dashed px-1 py-[1px] shadow-sm cursor-help ${overlay.tone === 'yellow'
+                                  className={`absolute inset-x-0 top-0 z-20 m-0.5 flex items-center gap-1 rounded-t-md border border-dashed px-1 py-px shadow-xs cursor-help ${overlay.tone === 'yellow'
                                     ? 'bg-yellow-100 border-yellow-500 dark:bg-yellow-900/70 dark:border-yellow-500'
                                     : 'bg-purple-100 border-purple-500 dark:bg-purple-900/70 dark:border-purple-500'}`}
                                   title={`${overlay.label} de ${overlay.name} — só em ${dateForDayIndex(weekStart, dIdx).split('-').reverse().join('/')}, não ocupa este horário nas outras semanas`}
@@ -1074,7 +1074,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       {/* Assignment Modal */}
       {isAssignmentModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in duration-300">
           <StudentAssignmentModal
             students={studentsList || []}
             availableSlots={availableSlots}
@@ -1087,7 +1087,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       {/* Edit Student Modal */}
       {editingBooking && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={{
               ...editingBooking.fullProfile,

@@ -30,7 +30,7 @@ const AvailabilityHeatmap: React.FC = () => {
   };
 
   return (
-    <div className="bg-brand-surface p-4 md:p-8 rounded-[2rem] md:rounded-3xl border border-gray-100 dark:border-brand-border shadow-sm overflow-hidden">
+    <div className="bg-brand-surface p-4 md:p-8 rounded-4xl md:rounded-3xl border border-gray-100 dark:border-brand-border shadow-xs overflow-hidden">
       <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div>
           <h3 className="font-bold text-gray-800 dark:text-slate-100 flex items-center gap-2 text-lg">
@@ -75,7 +75,7 @@ const AvailabilityHeatmap: React.FC = () => {
                 {gridData[rowIdx].map((val, colIdx) => (
                   <td key={colIdx} className="relative group">
                     <div 
-                      className={`h-10 w-full rounded-lg ${getColorClass(val)} transition-all duration-300 group-hover:scale-105 cursor-pointer shadow-sm`}
+                      className={`h-10 w-full rounded-lg ${getColorClass(val)} transition-all duration-300 group-hover:scale-105 cursor-pointer shadow-xs`}
                     />
                     {val > 3 && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">

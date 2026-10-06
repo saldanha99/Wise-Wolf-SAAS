@@ -344,7 +344,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-sm border border-brand-border">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-xs border border-brand-border">
                 <h3 className="text-lg font-bold text-brand-text flex items-center gap-2">
                     <FileText className="text-[#002366]" /> Auditoria de Matrículas
                 </h3>
@@ -355,14 +355,14 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                         placeholder="Buscar aluno..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-brand-border focus:outline-none focus:ring-2 focus:ring-[#002366] transition-all"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-brand-border focus:outline-hidden focus:ring-2 focus:ring-[#002366] transition-all"
                     />
                 </div>
             </div>
 
             <div
                 data-tour="contracts-recording-clause"
-                className="flex items-start gap-3 rounded-2xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted shadow-sm"
+                className="flex items-start gap-3 rounded-2xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted shadow-xs"
             >
                 <FileText size={18} className="mt-0.5 shrink-0 text-[#002366]" aria-hidden="true" />
                 <p>
@@ -418,7 +418,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             ? 'Foto da assinatura'
                             : 'Assinatura digital';
                     return (
-                        <article key={student.user_id} className="space-y-4 rounded-2xl border border-brand-border bg-brand-surface p-4 shadow-sm">
+                        <article key={student.user_id} className="space-y-4 rounded-2xl border border-brand-border bg-brand-surface p-4 shadow-xs">
                             <div className="min-w-0">
                                 <p className="font-bold text-brand-text">{student.student_name}</p>
                                 <p className="break-anywhere text-xs text-brand-muted">{student.student_email}</p>
@@ -527,8 +527,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
 
             {/* --- AUDIT MODAL --- */}
             {selectedStudent && selectedContractProps && createPortal(
-                <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 animate-in fade-in sm:p-4">
-                    <div ref={auditDialogRef} role="dialog" aria-modal="true" aria-labelledby="audit-contract-title" tabIndex={-1} className="flex h-dvh max-h-dvh w-full max-w-6xl flex-col overflow-hidden bg-brand-surface shadow-2xl outline-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl">
+                <div className="fixed inset-0 z-250 flex items-center justify-center bg-black/60 backdrop-blur-xs p-0 animate-in fade-in sm:p-4">
+                    <div ref={auditDialogRef} role="dialog" aria-modal="true" aria-labelledby="audit-contract-title" tabIndex={-1} className="flex h-dvh max-h-dvh w-full max-w-6xl flex-col overflow-hidden bg-brand-surface shadow-2xl outline-hidden sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl">
 
                         {/* Modal Header */}
                         <div className="flex flex-col justify-between gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:p-6">
@@ -557,7 +557,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             <div className="flex flex-col gap-4 lg:flex-row lg:gap-8">
 
                                 {/* Left: Contract Preview */}
-                                <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-brand-surface p-2 shadow-sm sm:p-4">
+                                <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-brand-surface p-2 shadow-xs sm:p-4">
                                     <h4 className="font-bold text-gray-400 mb-4 uppercase text-xs tracking-wider">Visualização do Contrato</h4>
                                     <div className="select-text">
                                         <ContractDocument {...selectedContractProps} displayMode="responsive" showPrintButton={false} />
@@ -568,7 +568,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                 <div className="w-full lg:w-96 flex flex-col gap-6">
 
                                     {/* Evidence Card */}
-                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-xs">
                                         <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                                             <Image size={18} className="text-blue-600" /> Evidências
                                         </h4>
@@ -598,7 +598,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                     </div>
 
                                     {/* Actions Card */}
-                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm mt-auto">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-xs mt-auto">
                                         {!isRejecting ? (
                                             <div className="space-y-3">
                                                 <button
@@ -631,7 +631,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                             <div className="animate-in fade-in slide-in-from-bottom-2">
                                                 <h5 className="font-bold text-red-700 mb-2">Motivo da Rejeição</h5>
                                                 <textarea
-                                                    className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none mb-3"
+                                                    className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-hidden mb-3"
                                                     rows={3}
                                                     placeholder="Ex: Assinatura ilegível..."
                                                     value={rejectReason}

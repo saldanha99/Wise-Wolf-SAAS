@@ -50,7 +50,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ name, roleLabel, avatarUrl, 
         aria-expanded={open}
         aria-label="Menu do usuário"
         data-tour="user-menu"
-        className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-[2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2"
+        className="w-9 h-9 rounded-full bg-linear-to-tr from-blue-500 to-purple-500 p-[2px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2"
       >
         {avatarUrl
           ? <img src={avatarUrl} className="w-full h-full rounded-full object-cover border-2 border-white dark:border-slate-900" alt="" />
@@ -78,7 +78,7 @@ const Item: React.FC<{ icon: React.ElementType; label: string; onClick: () => vo
     type="button"
     role="menuitem"
     onClick={onClick}
-    className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-accent ${
+    className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-accent ${
       danger ? 'text-red-500 hover:bg-red-500/10' : 'text-brand-text hover:bg-brand-surface-2'
     }`}
   >

@@ -316,7 +316,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
         </p>
 
         {displayPhone && !isTraining && (
-          <div className="bg-white border border-emerald-200 rounded-2xl p-4 mb-6 w-full max-w-xs mx-auto text-left shadow-sm">
+          <div className="bg-white border border-emerald-200 rounded-2xl p-4 mb-6 w-full max-w-xs mx-auto text-left shadow-xs">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contato do Aluno</p>
             <div className="flex items-center justify-between mt-1">
               <span className="font-mono text-sm font-bold text-slate-800">{displayPhone}</span>
@@ -375,7 +375,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
   return (
     <div className="min-h-screen bg-brand-surface-2 flex flex-col font-sans">
       <div className="bg-brand-surface text-white pt-12 pb-24 px-6 rounded-b-[3rem] shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-400 via-slate-900 to-slate-900" />
+        <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-indigo-400 via-slate-900 to-slate-900" />
         <div className="relative z-10 text-center">
           <span
             className={`inline-block py-1 px-3 rounded-full border text-[10px] font-black tracking-widest uppercase mb-4 backdrop-blur-md ${
@@ -393,11 +393,11 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
       </div>
 
       <div className="flex-1 px-6 -mt-16 pb-8 max-w-lg mx-auto w-full relative z-20">
-        <div className="bg-brand-surface rounded-3xl shadow-xl p-1 border-4 border-white/50 backdrop-blur-sm">
+        <div className="bg-brand-surface rounded-3xl shadow-xl p-1 border-4 border-white/50 backdrop-blur-xs">
           <div className="bg-brand-surface rounded-[1.3rem] p-6 border border-brand-border">
             <div className="grid gap-4 mb-8">
               <div className="flex items-center gap-4 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border">
-                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-sm flex items-center justify-center text-indigo-600 border border-indigo-50">
+                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-xs flex items-center justify-center text-indigo-600 border border-indigo-50">
                   <Calendar size={24} />
                 </div>
                 <div>
@@ -411,7 +411,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
               </div>
 
               <div className="flex items-center gap-4 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border">
-                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-sm flex items-center justify-center text-orange-600 border border-orange-50">
+                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-xs flex items-center justify-center text-orange-600 border border-orange-50">
                   <Clock size={24} />
                 </div>
                 <div>
@@ -453,7 +453,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
               </div>
             )}
 
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-100/50 mb-6">
+            <div className="bg-linear-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-100/50 mb-6">
               <p className="text-amber-800 text-xs font-semibold leading-relaxed text-center flex items-start justify-center gap-2">
                 <Clock size={14} className="mt-0.5 shrink-0" />
                 <span>

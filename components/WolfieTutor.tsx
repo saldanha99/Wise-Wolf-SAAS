@@ -4087,8 +4087,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // Sem esta tela, a saudação automática chega antes do unlock e fica muda.
   if (hasSelectedTopic && !audioGestureReady) {
     return (
-      <div className="fixed inset-0 z-[200] grid place-items-center overflow-hidden bg-slate-950 p-6 font-sans">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,_#1e3a8a_0%,_#020617_62%)]" />
+      <div className="fixed inset-0 z-200 grid place-items-center overflow-hidden bg-slate-950 p-6 font-sans">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,#1e3a8a_0%,#020617_62%)]" />
         {onClose && (
           <button
             type="button"
@@ -4132,9 +4132,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   if (!hasSelectedTopic) {
     return (
-      <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden font-sans">
+      <div className="fixed inset-0 z-200 bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden font-sans">
         {/* Background Atmosphere */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_#1e1b4b_0%,_#020617_60%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,#1e1b4b_0%,#020617_60%)] pointer-events-none" />
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[100px] animate-pulse delay-1000" />
@@ -4161,7 +4161,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 Wolfie AI · Wise Wolf
               </span>
             </div>
-            <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
+            <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-linear-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
               Olá, {(user?.full_name || user?.name)?.split(" ")[0] || "Aluno"}!
             </h1>
             <p className="text-slate-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
@@ -4181,7 +4181,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 onClick={() => handleModeSelection("voice")}
                 className="group relative p-4 sm:p-6 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all overflow-hidden flex flex-col items-center text-center"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-linear-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-indigo-500 transition-all">
                   <Mic
                     size={22}
@@ -4202,7 +4202,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 onClick={() => handleModeSelection("text")}
                 className="group relative p-4 sm:p-6 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all overflow-hidden flex flex-col items-center text-center"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-linear-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-emerald-500 transition-all">
                   <MessageSquare
                     size={22}
@@ -4226,7 +4226,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 </p>
                 <button
                   onClick={() => handleModeSelection("live")}
-                  className="group relative w-full p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-slate-900/80 to-slate-900/80 backdrop-blur-xl border border-amber-500/30 hover:border-amber-400/60 active:scale-[0.99] transition-all overflow-hidden flex items-center gap-4 text-left"
+                  className="group relative w-full p-5 sm:p-6 rounded-2xl bg-linear-to-br from-amber-500/10 via-slate-900/80 to-slate-900/80 backdrop-blur-xl border border-amber-500/30 hover:border-amber-400/60 active:scale-[0.99] transition-all overflow-hidden flex items-center gap-4 text-left"
                 >
                   <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-full bg-amber-500/20 flex items-center justify-center group-hover:bg-amber-500 transition-all">
                     <Radio
@@ -4279,7 +4279,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             aria-label={isRealtimeMode
               ? "Usar a voz clássica"
               : "Usar conversa contínua em tempo real"}
-            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
               isRealtimeMode
                 ? "border-emerald-300/35 bg-emerald-400/15 text-emerald-100"
                 : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
@@ -4301,7 +4301,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             onClick={realtime.toggleMuted}
             disabled={isRealtimePostTurnPending}
             aria-pressed={realtime.muted}
-            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
               realtime.muted
                 ? "border-amber-300/35 bg-amber-400/15 text-amber-100"
                 : "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
@@ -4318,7 +4318,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           onClick={() => setTranslationEnabled((current) => !current)}
           aria-pressed={translationEnabled}
           aria-label={translationEnabled ? "Desativar tradução" : "Ativar tradução"}
-          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 ${
             translationEnabled
               ? "border-sky-300/30 bg-sky-400/10 text-sky-100"
               : "border-white/10 bg-white/5 text-slate-300"
@@ -4337,7 +4337,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             aria-label={autoSpeakEnabled
               ? "Desativar reprodução automática"
               : "Ativar reprodução automática"}
-            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 ${
               autoSpeakEnabled
                 ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
                 : "border-white/10 bg-white/5 text-slate-300"
@@ -4353,7 +4353,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           onClick={() => setShowTextInput((current) => !current)}
           aria-pressed={showTextInput}
           aria-label={showTextInput ? "Ocultar teclado" : "Mostrar teclado"}
-          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 ${
             showTextInput
               ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
               : "border-white/10 bg-white/5 text-slate-300"
@@ -4367,7 +4367,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             onClick={slowReplay}
             disabled={!lastSpokenTextRef.current}
             aria-label="Repetir a última fala devagar"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-35"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-35"
           >
             <RotateCcw size={16} aria-hidden="true" />
           </button>
@@ -4377,7 +4377,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           onClick={() => setShowTranscript((current) => !current)}
           aria-expanded={showTranscript}
           aria-label={showTranscript ? "Ocultar histórico" : "Mostrar histórico"}
-          className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+          className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 ${
             showTranscript
               ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
               : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
@@ -4391,7 +4391,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           type="button"
           onClick={restartConversation}
           disabled={isRestarting || state === "THINKING" || state === "LISTENING"}
-          className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-400/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isRestarting ? "Reiniciando…" : "Nova conversa"}
         </button>
@@ -4400,7 +4400,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
     const visualInteraction = (
       <div
-        className={`group relative h-full min-h-[15rem] w-full touch-none select-none transition ${
+        className={`group relative h-full min-h-60 w-full touch-none select-none transition ${
           hubModeRequested ? "cursor-default" : "cursor-pointer"
         } ${
           pendingTranscriptReview || isRealtimePostTurnPending
@@ -4552,7 +4552,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   type="button"
                   onClick={() => void speak(translation, 1, translationLanguage)}
                   aria-label="Ouvir tradução"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sky-300"
                 >
                   <Volume2 size={16} aria-hidden="true" />
                 </button>}
@@ -4560,7 +4560,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   type="button"
                   onClick={() => setTranslation(null)}
                   aria-label="Fechar tradução"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sky-300"
                 >
                   <X size={16} aria-hidden="true" />
                 </button>
@@ -4615,7 +4615,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                     }));
                   }}
                   aria-label="Fechar feedback"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white"
                 >
                   <X size={16} aria-hidden="true" />
                 </button>
@@ -4724,7 +4724,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                     type="button"
                     onClick={() => void disputePendingCorrection()}
                     disabled={isDisputingCorrection}
-                    className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/25 bg-white/5 px-3 font-black transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 disabled:opacity-50"
+                    className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/25 bg-white/5 px-3 font-black transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-200 disabled:opacity-50"
                   >
                     {isDisputingCorrection
                       ? <Loader2 size={14} className="animate-spin motion-reduce:animate-none" />
@@ -4757,7 +4757,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 type="button"
                 onClick={() => setVocabulary(null)}
                 aria-label="Fechar vocabulário"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-indigo-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-indigo-100 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-300"
               >
                 <X size={16} aria-hidden="true" />
               </button>
@@ -4795,7 +4795,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             type="button"
             onClick={() => setShowTranscript((current) => !current)}
             aria-expanded={showTranscript}
-            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-2 text-left text-xs font-black uppercase tracking-wider text-slate-200 transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-2 text-left text-xs font-black uppercase tracking-wider text-slate-200 transition hover:bg-white/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white"
           >
             Histórico ({messages.length})
             {showTranscript
@@ -4866,7 +4866,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             void startRealtimeConversation();
           }}
           disabled={isRealtimePostTurnPending}
-          className={`inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-lg transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 ${
             realtime.connected && !realtime.muted
               ? "bg-rose-500 hover:bg-rose-400"
               : "bg-emerald-500 hover:bg-emerald-400"
@@ -4912,7 +4912,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               stopRecordingAndSend();
             }
           }}
-          className={`inline-flex min-h-12 shrink-0 touch-none items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`inline-flex min-h-12 shrink-0 touch-none items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-lg transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 ${
             state === "LISTENING"
               ? "scale-[1.02] bg-rose-500 shadow-rose-950/40"
               : "bg-indigo-500 hover:bg-indigo-400"
@@ -4938,7 +4938,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               disabled={state === "THINKING" ||
                 (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
-              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-none placeholder:text-slate-400 disabled:opacity-50"
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-hidden placeholder:text-slate-400 disabled:opacity-50"
               aria-label="Mensagem para o Wolfie"
             />
             <button
@@ -4948,7 +4948,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
               aria-label="Enviar mensagem"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white transition hover:bg-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-35"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white transition hover:bg-indigo-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-35"
             >
               {state === "THINKING"
                 ? <Loader2 size={17} className="animate-spin motion-reduce:animate-none" />
@@ -4961,7 +4961,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           <div
             role="group"
             aria-label="Controles da chamada"
-            className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
           >
             {visualControls}
           </div>
@@ -4982,7 +4982,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       ? (
         <>
           {pendingTranscriptReview && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-xs">
               <WolfieTranscriptReview
                 transcript={pendingTranscriptReview.transcript}
                 alternatives={pendingTranscriptReview.alternatives}
@@ -5025,7 +5025,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               open={meetingVisualState.showCoachSheet}
               onResume={resumeMeetingFromCoach}
             >
-              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/4.5 p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">
                   Resposta do Wolfie
                 </p>
@@ -5060,7 +5060,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       : null;
 
     return (
-      <div className="fixed inset-0 z-[200] overflow-hidden bg-slate-950 font-sans">
+      <div className="fixed inset-0 z-200 overflow-hidden bg-slate-950 font-sans">
         <WolfieScenarioStage
           profile={visualSceneProfile}
           presentation="ugc"
@@ -5123,17 +5123,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // RENDER — UNIFIED VOICE + TEXT EXPERIENCE
   // ============================================================
   return (
-    <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col items-center justify-center overflow-hidden font-sans">
+    <div className="fixed inset-0 z-200 bg-slate-950 flex flex-col items-center justify-center overflow-hidden font-sans">
       {/* BACKGROUND EFFECTS */}
       <div
         className={`absolute inset-0 transition-colors duration-1000 ${
           state === "LISTENING"
-            ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-900/30 via-slate-950 to-slate-950"
+            ? "bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-red-900/30 via-slate-950 to-slate-950"
             : state === "THINKING"
-            ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/30 via-slate-950 to-slate-950"
+            ? "bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-purple-900/30 via-slate-950 to-slate-950"
             : state === "SPEAKING" || state === "SYNTHESIZING"
-            ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-slate-950 to-slate-950"
-            : "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950"
+            ? "bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-cyan-900/30 via-slate-950 to-slate-950"
+            : "bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950"
         }`}
       >
       </div>
@@ -5384,7 +5384,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         <div className="absolute top-32 z-50 animate-in slide-in-from-top-4 fade-in duration-300">
           <div className="bg-red-950/80 backdrop-blur-2xl border border-red-500/50 text-red-200 px-6 py-3 rounded-2xl flex items-center gap-3 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs font-bold tracking-[0.1em] uppercase">
+            <span className="text-xs font-bold tracking-widest uppercase">
               {error}
             </span>
           </div>
@@ -5438,7 +5438,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             hubModeRequested ? "cursor-default" : "cursor-pointer"
           } ${
             pendingTranscriptReview || isRealtimePostTurnPending
-              ? "pointer-events-none opacity-25 blur-sm"
+              ? "pointer-events-none opacity-25 blur-xs"
               : ""
           }`}
           style={{
@@ -5572,7 +5572,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               disabled={state === "THINKING" ||
                 (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
-              className="flex-1 min-w-0 bg-transparent border-none text-slate-200 placeholder:text-slate-500 focus:ring-0 focus:outline-none text-sm font-medium"
+              className="flex-1 min-w-0 bg-transparent border-none text-slate-200 placeholder:text-slate-500 focus:ring-0 focus:outline-hidden text-sm font-medium"
             />
             <button
               onClick={() => sendMessage(inputText)}
@@ -5605,8 +5605,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             showTextInput ? "bottom-24" : "bottom-6"
           } left-4 right-4 md:right-auto md:left-8 md:w-[440px] z-40 max-h-[58vh] overflow-y-auto animate-in slide-in-from-bottom-10 fade-in duration-500`}
         >
-          <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/80 p-5 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-slate-800/95 transition-colors">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-80" />
+          <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/80 p-5 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-slate-800/95 transition-colors">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-80" />
             <div className="flex flex-col gap-3 relative z-10">
               <div className="flex items-center justify-between border-b border-white/5 pb-2">
                 <div className="flex items-center gap-2">

@@ -405,7 +405,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                         <textarea
                             value={config.headline}
                             onChange={(e) => setConfig({ ...config, headline: e.target.value })}
-                            className="w-full p-4 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-900 dark:text-white font-bold text-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            className="w-full p-4 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-900 dark:text-white font-bold text-lg focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
                             rows={2}
                             placeholder="Promessa principal do seu site..."
                         />
@@ -422,7 +422,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                         <textarea
                             value={config.subheadline}
                             onChange={(e) => setConfig({ ...config, subheadline: e.target.value })}
-                            className="w-full p-4 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            className="w-full p-4 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
                             rows={3}
                             placeholder="Explicação detalhada da oferta..."
                         />
@@ -436,7 +436,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                     type="text"
                                     value={config.ctaText}
                                     onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
-                                    className="w-full p-3 pl-10 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-900 dark:text-white font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    className="w-full p-3 pl-10 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-900 dark:text-white font-bold focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
                                 />
                                 <Sparkles size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-500" />
                             </div>
@@ -448,7 +448,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                 type="text"
                                 value={config.heroImage}
                                 onChange={(e) => setConfig({ ...config, heroImage: e.target.value })}
-                                className="w-full p-3 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className="w-full p-3 rounded-xl border border-gray-200 dark:border-brand-border bg-gray-50 dark:bg-brand-surface-2 text-gray-600 dark:text-gray-300 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden transition-all"
                                 placeholder="https://..."
                             />
                         </div>
@@ -477,7 +477,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                         <h4 className="font-bold text-gray-700 flex items-center gap-2"><Video size={16} /> Vídeo de Vendas (VSL)</h4>
                                         <label className="relative inline-flex items-center cursor-pointer">
                                             <input type="checkbox" checked={config.show_video} onChange={e => setConfig({ ...config, show_video: e.target.checked })} className="sr-only peer" />
-                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                         </label>
                                     </div>
                                     {config.show_video && (
@@ -500,12 +500,12 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                                     const newStats = [...(config.stats || [])];
                                                     newStats[i].value = e.target.value;
                                                     setConfig({ ...config, stats: newStats });
-                                                }} className="w-full font-black text-blue-600 mb-1 text-center bg-transparent outline-none" placeholder="10k+" />
+                                                }} className="w-full font-black text-blue-600 mb-1 text-center bg-transparent outline-hidden" placeholder="10k+" />
                                                 <input value={stat.label} onChange={e => {
                                                     const newStats = [...(config.stats || [])];
                                                     newStats[i].label = e.target.value;
                                                     setConfig({ ...config, stats: newStats });
-                                                }} className="w-full text-[10px] text-gray-400 text-center bg-transparent outline-none uppercase" placeholder="Alunos" />
+                                                }} className="w-full text-[10px] text-gray-400 text-center bg-transparent outline-hidden uppercase" placeholder="Alunos" />
                                             </div>
                                         ))}
                                     </div>
@@ -520,7 +520,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                         <h4 className="font-bold text-gray-700 flex items-center gap-2"><Users size={16} /> Depoimentos</h4>
                                         <label className="relative inline-flex items-center cursor-pointer">
                                             <input type="checkbox" checked={config.show_testimonials} onChange={e => setConfig({ ...config, show_testimonials: e.target.checked })} className="sr-only peer" />
-                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                         </label>
                                     </div>
                                     <p className="text-xs text-gray-400">Edição de depoimentos em breve. Exibindo placeholders.</p>
@@ -535,7 +535,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                         <h4 className="font-bold text-gray-700 flex items-center gap-2"><Target size={16} /> Público Alvo</h4>
                                         <label className="relative inline-flex items-center cursor-pointer">
                                             <input type="checkbox" checked={config.show_target_audience} onChange={e => setConfig({ ...config, show_target_audience: e.target.checked })} className="sr-only peer" />
-                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                         </label>
                                     </div>
                                     <div className="space-y-2">
@@ -545,12 +545,12 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                                     const newArr = [...(config.target_audience || [])];
                                                     newArr[i].title = e.target.value;
                                                     setConfig({ ...config, target_audience: newArr });
-                                                }} className="font-bold text-xs text-brand-text w-1/3 outline-none" />
+                                                }} className="font-bold text-xs text-brand-text w-1/3 outline-hidden" />
                                                 <input value={item.description} onChange={e => {
                                                     const newArr = [...(config.target_audience || [])];
                                                     newArr[i].description = e.target.value;
                                                     setConfig({ ...config, target_audience: newArr });
-                                                }} className="text-xs text-brand-muted w-full outline-none" />
+                                                }} className="text-xs text-brand-muted w-full outline-hidden" />
                                             </div>
                                         ))}
                                     </div>
@@ -585,21 +585,21 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                                             type="text"
                                             value={plan.name}
                                             onChange={(e) => updatePlan(index, 'name', e.target.value)}
-                                            className="font-bold text-gray-800 dark:text-white bg-transparent border-b border-gray-100 dark:border-brand-border outline-none pb-1"
+                                            className="font-bold text-gray-800 dark:text-white bg-transparent border-b border-gray-100 dark:border-brand-border outline-hidden pb-1"
                                             placeholder="Nome do Plano"
                                         />
                                         <input
                                             type="text"
                                             value={plan.price}
                                             onChange={(e) => updatePlan(index, 'price', e.target.value)}
-                                            className="font-bold text-gray-800 dark:text-white bg-transparent border-b border-gray-100 dark:border-brand-border outline-none pb-1 text-right"
+                                            className="font-bold text-gray-800 dark:text-white bg-transparent border-b border-gray-100 dark:border-brand-border outline-hidden pb-1 text-right"
                                             placeholder="R$ 00,00"
                                         />
                                     </div>
                                     <textarea
                                         value={plan.features.join('\n')}
                                         onChange={(e) => updatePlan(index, 'features', e.target.value.split('\n'))}
-                                        className="w-full text-xs text-gray-500 bg-gray-50 dark:bg-brand-surface-2 p-2 rounded outline-none resize-none"
+                                        className="w-full text-xs text-gray-500 bg-gray-50 dark:bg-brand-surface-2 p-2 rounded outline-hidden resize-none"
                                         rows={3}
                                         placeholder="Lista de benefícios (um por linha)"
                                     />
@@ -613,27 +613,27 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
             {/* Preview Panel with Advanced Features */}
             <div className={`
                 transition-all duration-300 bg-gray-100 dark:bg-black relative overflow-hidden flex flex-col items-center
-                ${isFullScreen ? 'fixed inset-0 z-[200]' : 'w-full lg:w-1/2 h-[50vh] lg:h-full'}
+                ${isFullScreen ? 'fixed inset-0 z-200' : 'w-full lg:w-1/2 h-[50vh] lg:h-full'}
             `}>
                 {/* Preview Toolbar */}
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-brand-surface/10 backdrop-blur-md p-1.5 rounded-full z-20 flex items-center gap-2 border border-white/20 shadow-xl">
                     <button
                         onClick={() => setPreviewDevice('mobile')}
-                        className={`p-2 rounded-full transition-all ${previewDevice === 'mobile' ? 'bg-brand-surface text-black shadow-sm' : 'text-white hover:bg-brand-surface/10'}`}
+                        className={`p-2 rounded-full transition-all ${previewDevice === 'mobile' ? 'bg-brand-surface text-black shadow-xs' : 'text-white hover:bg-brand-surface/10'}`}
                         title="Mobile Phone"
                     >
                         <div className="w-3 h-5 border-[1.5px] border-current rounded-sm" />
                     </button>
                     <button
                         onClick={() => setPreviewDevice('tablet')}
-                        className={`p-2 rounded-full transition-all ${previewDevice === 'tablet' ? 'bg-brand-surface text-black shadow-sm' : 'text-white hover:bg-brand-surface/10'}`}
+                        className={`p-2 rounded-full transition-all ${previewDevice === 'tablet' ? 'bg-brand-surface text-black shadow-xs' : 'text-white hover:bg-brand-surface/10'}`}
                         title="Tablet"
                     >
                         <div className="w-4 h-5 border-[1.5px] border-current rounded-sm" />
                     </button>
                     <button
                         onClick={() => setPreviewDevice('desktop')}
-                        className={`p-2 rounded-full transition-all ${previewDevice === 'desktop' ? 'bg-brand-surface text-black shadow-sm' : 'text-white hover:bg-brand-surface/10'}`}
+                        className={`p-2 rounded-full transition-all ${previewDevice === 'desktop' ? 'bg-brand-surface text-black shadow-xs' : 'text-white hover:bg-brand-surface/10'}`}
                         title="Desktop"
                     >
                         <div className="w-6 h-4 border-[1.5px] border-current rounded-sm" />
@@ -643,7 +643,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
 
                     <button
                         onClick={() => setIsFullScreen(!isFullScreen)}
-                        className={`p-2 rounded-full transition-all ${isFullScreen ? 'bg-brand-surface text-black shadow-sm' : 'text-white hover:bg-brand-surface/10'}`}
+                        className={`p-2 rounded-full transition-all ${isFullScreen ? 'bg-brand-surface text-black shadow-xs' : 'text-white hover:bg-brand-surface/10'}`}
                         title={isFullScreen ? "Exit Full Screen" : "Full Screen"}
                     >
                         {isFullScreen ? (
@@ -659,8 +659,8 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                 {/* Device Frame Wrapper */}
                 <div className={`
                     h-full transition-all duration-500 ease-in-out shadow-2xl overflow-hidden bg-brand-surface
-                    ${previewDevice === 'mobile' ? 'w-[375px] my-4 rounded-[40px] border-[8px] border-gray-900' : ''}
-                    ${previewDevice === 'tablet' ? 'w-[768px] my-4 rounded-[24px] border-[8px] border-gray-900' : ''}
+                    ${previewDevice === 'mobile' ? 'w-[375px] my-4 rounded-[40px] border-8 border-gray-900' : ''}
+                    ${previewDevice === 'tablet' ? 'w-[768px] my-4 rounded-[24px] border-8 border-gray-900' : ''}
                     ${previewDevice === 'desktop' ? 'w-full h-full' : ''}
                 `}>
                     {/* Component Rendering */}

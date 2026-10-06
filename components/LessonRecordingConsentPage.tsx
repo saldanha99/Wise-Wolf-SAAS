@@ -276,7 +276,7 @@ export default function LessonRecordingConsentPage() {
         <p className="mt-1 text-xs font-medium text-slate-500">{data.school_name || 'Wise Wolf'} · {schoolDefault ? 'aviso' : 'termo'} {data.term_version}</p>
       </div>
 
-      <div className="space-y-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="space-y-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-xs">
         {schoolDefault
           ? <p className="text-sm text-slate-600">
               As aulas de <b className="text-slate-800">{firstName}</b> são registradas pela escola (faz parte das aulas). Leia o aviso abaixo.
@@ -328,7 +328,7 @@ export default function LessonRecordingConsentPage() {
             value={name}
             onChange={event => setName(event.target.value)}
             autoComplete="name"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-800 outline-none focus:border-[#002366] focus:ring-2 focus:ring-[#002366]/30"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-800 outline-hidden focus:border-[#002366] focus:ring-2 focus:ring-[#002366]/30"
           />
         </label>
 
@@ -361,7 +361,7 @@ export default function LessonRecordingConsentPage() {
                 autoComplete="one-time-code"
                 maxLength={CODE_LENGTH}
                 aria-label="Código recebido"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-center font-mono text-2xl tracking-[0.5em] text-slate-800 outline-none focus:border-[#002366] focus:ring-2 focus:ring-[#002366]/30"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-center font-mono text-2xl tracking-[0.5em] text-slate-800 outline-hidden focus:border-[#002366] focus:ring-2 focus:ring-[#002366]/30"
               />
             </label>
           </>}

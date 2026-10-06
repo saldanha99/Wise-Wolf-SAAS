@@ -365,7 +365,7 @@ export function ContractDocument({
             <div
                 ref={a4Ref}
                 className={isResponsive
-                    ? 'contract-doc-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    ? 'contract-doc-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-xs sm:p-8 lg:p-[18mm] lg:text-[11px]'
                     : 'w-[210mm] min-h-[297mm] bg-white p-[22mm] shadow-2xl text-gray-800 text-[11px] leading-relaxed'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
@@ -707,7 +707,7 @@ export function ContractDocument({
                 {acceptedAt && (
                     <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded-xl relative overflow-hidden">
                         <div className="contract-authentication flex items-center gap-4 relative z-10">
-                            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full flex-shrink-0">
+                            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full shrink-0">
                                 <ShieldCheck size={36} />
                             </div>
                             <div className="flex-1">

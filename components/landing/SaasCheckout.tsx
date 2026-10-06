@@ -146,7 +146,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
 
     return (
         <div
-            className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+            className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-200 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="saas-checkout-title"
@@ -176,7 +176,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                     <div className="px-6 py-3 border-b border-white/5 flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold">
                         <span className={step === 'INFO' ? 'text-white' : 'text-emerald-400'}>① Dados</span>
                         <div className="flex-1 h-0.5 bg-white/10 rounded-full">
-                            <div className={`h-full bg-gradient-to-r from-violet-500 to-pink-500 rounded-full transition-all`} style={{ width: step === 'INFO' ? '50%' : '100%' }} />
+                            <div className={`h-full bg-linear-to-r from-violet-500 to-pink-500 rounded-full transition-all`} style={{ width: step === 'INFO' ? '50%' : '100%' }} />
                         </div>
                         <span className={step === 'PAYMENT' ? 'text-white' : 'text-slate-500'}>② Pagamento</span>
                     </div>
@@ -211,12 +211,12 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                         </div>
                         {step === 'INFO' ? (
                             <button onClick={() => setStep('PAYMENT')} disabled={!isInfoValid}
-                                className="px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+                                className="px-6 py-3 bg-linear-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                                 Continuar <ArrowRight size={14} />
                             </button>
                         ) : (
                             <button onClick={submit} disabled={loading || !acceptedLegal}
-                                className="px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+                                className="px-6 py-3 bg-linear-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
                                 Confirmar
                             </button>
@@ -350,7 +350,7 @@ const StepPayment: React.FC<any> = ({
                 )}
                 <div className="border-t border-white/10 pt-2 flex items-center justify-between">
                     <span className="text-sm font-bold text-white">Total {yearly ? 'anual' : 'hoje'}</span>
-                    <span className="text-xl font-black bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">R$ {price.toLocaleString('pt-BR')}</span>
+                    <span className="text-xl font-black bg-linear-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">R$ {price.toLocaleString('pt-BR')}</span>
                 </div>
             </div>
 
@@ -370,7 +370,7 @@ const StepSuccess: React.FC<{ result: any; plan: any }> = ({ result, plan }) => 
         <div className="text-center">
             <div className="relative w-20 h-20 mx-auto mb-6">
                 <div className="absolute inset-0 bg-emerald-500/30 rounded-full animate-ping" />
-                <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-2xl shadow-emerald-500/50">
+                <div className="relative w-20 h-20 rounded-full bg-linear-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-2xl shadow-emerald-500/50">
                     <Check size={36} className="text-white" />
                 </div>
             </div>
@@ -415,7 +415,7 @@ const StepSuccess: React.FC<{ result: any; plan: any }> = ({ result, plan }) => 
                 </ul>
             </div>
 
-            <a href="/" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110">
+            <a href="/" className="inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110">
                 <Sparkles size={14} /> Ir para o login
             </a>
         </div>
@@ -435,7 +435,7 @@ const Input: React.FC<{ icon?: any; label: string; value: string; onChange: (v: 
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
-                className={`w-full ${Icon ? 'pl-9' : 'pl-3'} pr-3 py-2.5 bg-white/5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent placeholder:text-slate-600`}
+                className={`w-full ${Icon ? 'pl-9' : 'pl-3'} pr-3 py-2.5 bg-white/5 rounded-xl text-sm text-white border border-white/10 focus:outline-hidden focus:ring-2 focus:ring-violet-500 focus:border-transparent placeholder:text-slate-600`}
             />
         </div>
     </div>

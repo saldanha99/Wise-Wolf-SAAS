@@ -10,7 +10,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
             type={type}
             data-slot="input"
             className={cn(
-                "file:text-foreground placeholder:text-muted-foreground selection:bg-blue-600 selection:text-white dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                "file:text-foreground placeholder:text-muted-foreground selection:bg-blue-600 selection:text-white dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-2xs transition-[color,box-shadow] outline-hidden file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
                 "focus-visible:border-blue-500 focus-visible:ring-blue-500/50 focus-visible:ring-[3px]",
                 "aria-invalid:ring-red-500/20 dark:aria-invalid:ring-red-500/40 aria-invalid:border-red-500",
                 className
@@ -64,7 +64,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
             </div>
 
             {/* Background gradient effect - Deep Blue Theme */}
-            <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 via-[#002366]/30 to-[#020617]" />
+            <div className="absolute inset-0 bg-linear-to-b from-blue-900/20 via-[#002366]/30 to-[#020617]" />
 
             {/* Noise texture */}
             <div className="absolute inset-0 opacity-[0.03] mix-blend-soft-light"
@@ -118,7 +118,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                     <div className="relative group">
                         {/* Card glow effect */}
                         <motion.div
-                            className="absolute -inset-[1px] rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"
+                            className="absolute -inset-px rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"
                             animate={{
                                 boxShadow: [
                                     "0 0 20px 2px rgba(59, 130, 246, 0.1)",
@@ -130,14 +130,14 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                         />
 
                         {/* Borders with traveling light */}
-                        <div className="absolute -inset-[1px] rounded-3xl overflow-hidden pointer-events-none">
+                        <div className="absolute -inset-px rounded-3xl overflow-hidden pointer-events-none">
                             <motion.div
-                                className="absolute top-0 left-0 h-[2px] w-[50%] bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-0 group-hover:opacity-70 transition-opacity"
+                                className="absolute top-0 left-0 h-[2px] w-[50%] bg-linear-to-r from-transparent via-blue-400 to-transparent opacity-0 group-hover:opacity-70 transition-opacity"
                                 animate={{ left: ["-50%", "100%"] }}
                                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                             />
                             <motion.div
-                                className="absolute bottom-0 right-0 h-[2px] w-[50%] bg-gradient-to-r from-transparent via-red-400 to-transparent opacity-0 group-hover:opacity-70 transition-opacity"
+                                className="absolute bottom-0 right-0 h-[2px] w-[50%] bg-linear-to-r from-transparent via-red-400 to-transparent opacity-0 group-hover:opacity-70 transition-opacity"
                                 animate={{ right: ["-50%", "100%"] }}
                                 transition={{ duration: 3, repeat: Infinity, ease: "linear", delay: 1.5 }}
                             />
@@ -151,13 +151,13 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                 <motion.div
                                     initial={{ scale: 0.5, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="mx-auto w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-900 border border-white/10 flex items-center justify-center shadow-lg shadow-blue-500/20"
+                                    className="mx-auto w-12 h-12 rounded-2xl bg-linear-to-br from-blue-600 to-blue-900 border border-white/10 flex items-center justify-center shadow-lg shadow-blue-500/20"
                                 >
                                     <ShieldCheck size={24} className="text-white" />
                                 </motion.div>
 
                                 <div>
-                                    <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60 tracking-tight">
+                                    <h1 className="text-2xl font-black bg-clip-text text-transparent bg-linear-to-b from-white to-white/60 tracking-tight">
                                         Acesso Restrito
                                     </h1>
                                     <p className="text-brand-muted text-xs font-medium mt-1">
@@ -188,7 +188,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                         whileHover={{ scale: 1.01 }}
                                         className="relative group/email"
                                     >
-                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/email:opacity-100 transition-opacity" />
+                                        <div className="absolute -inset-0.5 bg-linear-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/email:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
                                             <Mail className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'email' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
@@ -204,7 +204,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                                 onChange={(e) => setEmail(e.target.value)}
                                                 onFocus={() => setFocusedInput('email')}
                                                 onBlur={() => setFocusedInput(null)}
-                                                className="pl-11 h-12 bg-brand-surface/50 border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
+                                                className="pl-11 h-12 bg-white border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
                                             />
                                         </div>
                                     </motion.div>
@@ -214,7 +214,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                         whileHover={{ scale: 1.01 }}
                                         className="relative group/password"
                                     >
-                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/password:opacity-100 transition-opacity" />
+                                        <div className="absolute -inset-0.5 bg-linear-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/password:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
                                             <Lock className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'password' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
@@ -230,7 +230,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                                 onChange={(e) => setPassword(e.target.value)}
                                                 onFocus={() => setFocusedInput('password')}
                                                 onBlur={() => setFocusedInput(null)}
-                                                className="pl-11 pr-11 h-12 bg-brand-surface/50 border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
+                                                className="pl-11 pr-11 h-12 bg-white border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
                                             />
                                             <button
                                                 type="button"
@@ -268,7 +268,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     aria-disabled={isLoading}
                                     className="w-full relative group/btn h-12 rounded-xl overflow-hidden"
                                 >
-                                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-[#D32F2F] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
+                                    <div className="absolute inset-0 bg-linear-to-r from-blue-600 to-[#D32F2F] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
                                     <div className="absolute inset-0 opacity-[0.15]" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize:'200px 200px'}} />
 
                                     <div className="relative flex items-center justify-center gap-2 text-white font-bold text-sm tracking-wide uppercase">

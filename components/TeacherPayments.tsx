@@ -197,14 +197,14 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     <p className="text-brand-muted font-medium">Gestão de fechamentos, autorizações e pagamentos.</p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-brand-surface dark:bg-brand-surface-2 p-2 rounded-2xl shadow-sm border border-brand-border">
+                <div className="flex items-center gap-4 bg-brand-surface dark:bg-brand-surface-2 p-2 rounded-2xl shadow-xs border border-brand-border">
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
                         className="bg-transparent border-none text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-0 uppercase cursor-pointer"
                     />
-                    <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                     <div className="flex items-center gap-2 px-3">
                         <CheckCircle2 size={16} className="text-emerald-500" />
                         <span className="text-xs font-black text-brand-muted uppercase tracking-wider">{filteredInvoices.length} Professores</span>
@@ -220,14 +220,14 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 {/* ... Stats ... */}
-                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-sm relative overflow-hidden group">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-tenant-primary/5 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-tenant-primary/10" />
                     <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Total da Folha</p>
                     <h3 className="text-3xl font-black text-brand-text tracking-tight">
                         R$ {totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
-                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-sm relative overflow-hidden group">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-yellow-400/20" />
                     <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Pendente Pagamento</p>
                     <h3 className="text-3xl font-black text-yellow-600 dark:text-yellow-400 tracking-tight">
@@ -235,7 +235,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     </h3>
                 </div>
                 {!loading && filteredPreview.length > 0 && (
-                    <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-sm relative overflow-hidden group">
+                    <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-sky-400/10 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-sky-400/20" />
                         <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Prévia · sem fechamento ainda</p>
                         <h3 className="text-3xl font-black text-sky-700 dark:text-sky-300 tracking-tight">{money(previewTotal)}</h3>
@@ -252,10 +252,10 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                         placeholder="Buscar professor..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 bg-brand-surface dark:bg-brand-surface-2 border-none rounded-2xl shadow-sm text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 transition-all placeholder:text-brand-muted"
+                        className="w-full pl-12 pr-4 py-4 bg-brand-surface dark:bg-brand-surface-2 border-none rounded-2xl shadow-xs text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 transition-all placeholder:text-brand-muted"
                     />
                 </div>
-                <div className="flex gap-2 p-1.5 bg-brand-surface dark:bg-brand-surface-2 rounded-2xl shadow-sm overflow-x-auto">
+                <div className="flex gap-2 p-1.5 bg-brand-surface dark:bg-brand-surface-2 rounded-2xl shadow-xs overflow-x-auto">
                     {['ALL', 'PENDENTE', 'AGUARDANDO_NF', 'ANALISE', 'COMPLETED'].map((status) => (
                         <button
                             key={status}
@@ -279,7 +279,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     <p className="text-xs font-bold uppercase tracking-widest">Carregando dados...</p>
                 </div>
             ) : (
-                <div className="bg-brand-surface dark:bg-brand-surface-2 rounded-[2rem] shadow-sm border border-brand-border overflow-hidden">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 rounded-4xl shadow-xs border border-brand-border overflow-hidden">
                     {/* ... Header Row ... */}
                     <div className="grid grid-cols-12 gap-4 p-6 border-b border-brand-border dark:border-brand-border text-[10px] font-black text-brand-muted uppercase tracking-widest bg-brand-surface-2/50 dark:bg-brand-surface-2/50">
                         <div className="col-span-3">Professor</div>
@@ -311,7 +311,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     <img
                                         src={invoice.teacher?.avatar_url || `https://ui-avatars.com/api/?name=${invoice.teacher?.full_name}`}
                                         alt={invoice.teacher?.full_name}
-                                        className="w-10 h-10 rounded-xl object-cover shadow-sm bg-brand-surface"
+                                        className="w-10 h-10 rounded-xl object-cover shadow-xs bg-brand-surface"
                                     />
                                     <div className="min-w-0">
                                         <p className="font-bold text-brand-text text-sm truncate">{invoice.teacher?.full_name}</p>
@@ -392,7 +392,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handlePayViaPix(invoice); }}
                                                 disabled={updating === invoice.id}
-                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
+                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-xs shadow-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
                                                 title="Pagar via Pix (Asaas)"
                                             >
                                                 {updating === invoice.id ? <Loader2 size={12} className="animate-spin" /> : <DollarSign size={12} />}
@@ -405,7 +405,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     {(invoice.status === 'UNDER_REVIEW' || invoice.status === 'COMPLETED') && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); }}
-                                            className="px-3 py-1.5 bg-purple-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-colors shadow-sm shadow-purple-500/20 flex items-center gap-1"
+                                            className="px-3 py-1.5 bg-purple-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-colors shadow-xs shadow-purple-500/20 flex items-center gap-1"
                                         >
                                             <FileText size={12} />
                                             {invoice.status === 'COMPLETED' ? 'Ver Nota' : 'Revisar'}
@@ -445,7 +445,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                 Financeiro. Cobertura já está no dono certo: o lançamento é de quem deu
                 a aula. O fechamento oficial continua nascendo no dia 1º. */}
             {!loading && filteredPreview.length > 0 && (
-                <div data-tour="payroll-preview" className="mt-8 bg-brand-surface dark:bg-brand-surface-2 rounded-[2rem] shadow-sm border border-sky-200 dark:border-sky-900/60 overflow-hidden">
+                <div data-tour="payroll-preview" className="mt-8 bg-brand-surface dark:bg-brand-surface-2 rounded-4xl shadow-xs border border-sky-200 dark:border-sky-900/60 overflow-hidden">
                     <div className="p-6 border-b border-brand-border bg-sky-50/60 dark:bg-sky-900/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div>
                             <h2 className="text-sm font-black text-brand-text uppercase tracking-widest flex items-center gap-2">
@@ -481,7 +481,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                         <img
                                             src={`https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}`}
                                             alt={row.name}
-                                            className="w-10 h-10 rounded-xl object-cover shadow-sm bg-brand-surface"
+                                            className="w-10 h-10 rounded-xl object-cover shadow-xs bg-brand-surface"
                                         />
                                         <div className="min-w-0">
                                             <p className="font-bold text-brand-text text-sm truncate">{row.name}</p>

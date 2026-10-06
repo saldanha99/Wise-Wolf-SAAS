@@ -97,7 +97,7 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
 
   return (
     <div
-      className="fixed inset-0 z-[300] print:hidden"
+      className="fixed inset-0 z-300 print:hidden"
       role="dialog"
       aria-modal="true"
       aria-label={`Tour guiado: ${step.title}`}
@@ -122,7 +122,7 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
         ref={popRef}
         className={
           'absolute w-[370px] max-w-[calc(100vw-24px)] rounded-2xl bg-brand-surface border border-brand-border shadow-2xl shadow-black/30 ' +
-          'max-md:!left-3 max-md:!right-3 max-md:!top-auto max-md:bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] max-md:w-auto max-md:max-w-none'
+          'max-md:left-3! max-md:right-3! max-md:top-auto! max-md:bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] max-md:w-auto max-md:max-w-none'
         }
         style={isMobile ? undefined : pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden' }}
       >
@@ -162,7 +162,7 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
             )}
             <button
               onClick={onNext}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs"
             >
               {isLast ? <>Concluir <CheckCircle2 size={15} /></> : <>Próximo <ArrowRight size={15} /></>}
             </button>

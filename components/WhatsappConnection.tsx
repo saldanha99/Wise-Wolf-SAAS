@@ -98,7 +98,7 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
     }, [qrCode]); // Re-run poll if QR changes
 
     return (
-        <div className="bg-brand-surface p-6 rounded-[2rem] shadow-sm border border-brand-border flex flex-col items-center text-center">
+        <div className="bg-brand-surface p-6 rounded-4xl shadow-xs border border-brand-border flex flex-col items-center text-center">
 
             <div className={`p-4 rounded-full mb-4 ${status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-500' : 'bg-brand-surface-2 text-brand-muted'}`}>
                 <Smartphone size={32} />
@@ -135,7 +135,7 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
 
             {qrCode && status !== 'CONNECTED' && (
                 <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                    <div className="p-2 bg-brand-surface rounded-xl border border-brand-border shadow-sm mb-4">
+                    <div className="p-2 bg-brand-surface rounded-xl border border-brand-border shadow-xs mb-4">
                         <img src={qrCode} alt="QR Code WhatsApp" className="w-48 h-48" />
                     </div>
                     <p className="text-xs text-brand-muted mb-4 animate-pulse">Aguardando leitura...</p>

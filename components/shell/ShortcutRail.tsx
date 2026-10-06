@@ -79,7 +79,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
     <aside
       aria-label="Atalhos"
       data-tour="shortcut-rail"
-      className={`hidden lg:flex h-full w-16 shrink-0 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden border-r border-brand-border bg-brand-surface py-3 [scrollbar-width:none] ${
+      className={`hidden lg:flex h-full w-16 shrink-0 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden border-r border-brand-border bg-brand-surface py-3 scrollbar-none ${
         isOver ? 'ring-2 ring-inset ring-brand-accent' : ''
       }`}
       onDragOver={handleDragOver}
@@ -112,7 +112,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
                 title={item.label}
                 aria-label={typeof badge === 'number' && badge > 0 ? `${item.label}, ${badge} ${badge === 1 ? 'pendência' : 'pendências'}` : item.label}
                 aria-current={active ? 'page' : undefined}
-                className="flex w-14 flex-col items-center gap-1 rounded-xl py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+                className="flex w-14 flex-col items-center gap-1 rounded-xl py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent"
               >
                 <span className={`relative grid h-12 w-12 place-items-center rounded-xl border transition-colors motion-reduce:transition-none ${
                   active
@@ -123,7 +123,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
                   <NavBadge value={badge} className="absolute -right-1.5 -top-1.5" />
                 </span>
                 {/* Rótulo nunca sai dos 64 px do trilho: quebra em até 2 linhas e corta o excesso. */}
-                <span className={`w-full max-w-full break-words px-0.5 text-center text-[10px] font-bold leading-[1.1] line-clamp-2 ${active ? 'text-brand-accent' : 'text-brand-muted'}`}>
+                <span className={`w-full max-w-full wrap-break-word px-0.5 text-center text-[10px] font-bold leading-[1.1] line-clamp-2 ${active ? 'text-brand-accent' : 'text-brand-muted'}`}>
                   {shortLabel(item)}
                 </span>
               </button>
@@ -132,7 +132,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
                 tabIndex={-1}
                 aria-label={`Remover atalho ${item.label}`}
                 onClick={() => remove(item.id)}
-                className="absolute -left-0.5 -top-0.5 grid h-5 w-5 place-items-center rounded-full border border-brand-border bg-brand-surface text-brand-muted opacity-0 shadow-sm transition-opacity hover:text-red-500 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none"
+                className="absolute -left-0.5 -top-0.5 grid h-5 w-5 place-items-center rounded-full border border-brand-border bg-brand-surface text-brand-muted opacity-0 shadow-xs transition-opacity hover:text-red-500 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none"
               >
                 <X size={12} aria-hidden="true" />
               </button>
@@ -157,7 +157,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
           aria-haspopup="true"
           aria-label="Escolher atalhos"
           title="Escolher atalhos"
-          className="grid h-12 w-12 place-items-center rounded-xl border-2 border-dashed border-brand-border text-brand-muted hover:border-brand-accent hover:text-brand-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+          className="grid h-12 w-12 place-items-center rounded-xl border-2 border-dashed border-brand-border text-brand-muted hover:border-brand-accent hover:text-brand-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent"
         >
           <Plus size={20} aria-hidden="true" />
         </button>
@@ -165,7 +165,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
           <div
             role="group"
             aria-label="Atalhos do trilho"
-            className="fixed left-[4.5rem] top-16 z-50 max-h-[calc(100vh-5rem)] w-64 overflow-y-auto rounded-2xl border border-brand-border bg-brand-surface p-2 shadow-2xl"
+            className="fixed left-18 top-16 z-50 max-h-[calc(100vh-5rem)] w-64 overflow-y-auto rounded-2xl border border-brand-border bg-brand-surface p-2 shadow-2xl"
           >
             <p className="px-3 pb-1 pt-1 text-xs font-black text-brand-text">Atalhos do trilho</p>
             {isFull && <p className="px-3 pb-1 text-[11px] text-amber-600">Limite de {MAX_SHORTCUTS} atalhos atingido.</p>}
@@ -182,7 +182,7 @@ export const ShortcutRail: React.FC<ShortcutRailProps> = ({ userId, role, items,
                       aria-checked={checked}
                       disabled={!checked && isFull}
                       onClick={() => toggle(item.id)}
-                      className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-brand-text hover:bg-brand-surface-2 disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-accent"
+                      className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-brand-text hover:bg-brand-surface-2 disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-accent"
                     >
                       <item.icon size={17} aria-hidden="true" className="shrink-0 text-brand-muted" />
                       <span className="flex-1 truncate">{item.label}</span>

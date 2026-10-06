@@ -1535,7 +1535,7 @@ const App: React.FC = () => {
           tabIndex={-1}
           aria-label="Conteúdo principal"
           className={`
-          app-main-scroll flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-none transition-all duration-300 ease-in-out
+          app-main-scroll flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-hidden transition-all duration-300 ease-in-out
           ${isSidebarCollapsed ? 'lg:ml-0' : 'lg:ml-0'} 
         `}>
           {/* Top Header inside main */}
@@ -1673,7 +1673,7 @@ const App: React.FC = () => {
                       id="app-header-search-results"
                       role="listbox"
                       aria-label="Telas disponíveis"
-                      className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-[60]"
+                      className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-60"
                     >
                       {filteredSearchItems.length === 0 ? (
                         <p role="status" className="px-3 py-5 text-center text-sm text-gray-500 dark:text-slate-400">
@@ -1740,7 +1740,7 @@ const App: React.FC = () => {
                   <>
                     <button
                       type="button"
-                      className="fixed inset-0 z-[110] cursor-default bg-black/10 sm:bg-transparent"
+                      className="fixed inset-0 z-110 cursor-default bg-black/10 sm:bg-transparent"
                       aria-label="Fechar notificações"
                       tabIndex={-1}
                       onClick={() => closeNotifications()}
@@ -1758,7 +1758,7 @@ const App: React.FC = () => {
                         width: notifPosition.width,
                         maxHeight: `calc(100dvh - ${notifPosition.top + 12}px)`,
                       }}
-                      className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-slate-900"
+                      className="fixed z-120 flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl outline-hidden dark:border-slate-800 dark:bg-slate-900"
                     >
                       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-slate-800">
                         <div className="min-w-0">
@@ -1843,7 +1843,7 @@ const App: React.FC = () => {
                     : <Sun className="w-5 h-5" aria-hidden="true" />}
                 </button>
 
-                <div className="hidden sm:block h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
+                <div className="hidden sm:block h-8 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
                 <UserMenu
                   name={user.name}

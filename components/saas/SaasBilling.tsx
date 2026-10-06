@@ -57,7 +57,7 @@ const SaasBilling: React.FC = () => {
                 </div>
             </div>
 
-            <div className="bg-brand-surface rounded-2xl shadow-sm border border-brand-border overflow-hidden">
+            <div className="bg-brand-surface rounded-2xl shadow-xs border border-brand-border overflow-hidden">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-brand-surface-2/50 border-b border-brand-border text-brand-muted font-medium">
                         <tr>

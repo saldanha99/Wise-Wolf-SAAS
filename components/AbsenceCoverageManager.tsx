@@ -226,7 +226,7 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={onClose}>
       <div className="bg-brand-surface rounded-3xl w-full max-w-2xl border border-brand-border shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-brand-border">
           <div className="flex items-center gap-3">

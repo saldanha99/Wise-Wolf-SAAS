@@ -169,7 +169,7 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
     };
 
     return (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-250 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
             <div className="bg-brand-surface w-full max-w-lg rounded-3xl border border-brand-border shadow-2xl max-h-[90dvh] overflow-y-auto">
                 <div className="p-5 border-b border-brand-border flex items-center justify-between sticky top-0 bg-brand-surface z-10">
                     <h3 className="font-black text-brand-text flex items-center gap-2">

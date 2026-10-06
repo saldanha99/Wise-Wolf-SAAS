@@ -77,7 +77,7 @@ const SuspendedStudentShell = ({
 
     return (
         <div className="min-h-dvh bg-brand-surface-2 text-brand-text animate-in fade-in dark:bg-slate-950">
-            <header className="border-b border-brand-border bg-brand-surface/95 px-4 py-5 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:px-8">
+            <header className="border-b border-brand-border bg-brand-surface/95 px-4 py-5 shadow-xs backdrop-blur-sm dark:bg-slate-950/95 sm:px-8">
                 <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex min-w-0 items-start gap-4">
                         <div className={`rounded-2xl p-3 ${isActivationPending ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30' : 'bg-red-100 text-red-600 dark:bg-red-900/30'}`}>

@@ -174,7 +174,7 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
 
       {error && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
 
-      <section data-tour="historical-lesson-advances" className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm">
+      <section data-tour="historical-lesson-advances" className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs">
         <label className="mb-5 flex items-start gap-3 rounded-xl border border-brand-border p-3 text-sm text-brand-text">
           <input type="checkbox" checked={alreadyTaught} onChange={event => setAlreadyTaught(event.target.checked)} className="mt-1 h-4 w-4" />
           <span><strong>As aulas já foram realizadas e estão confirmadas pela direção</strong><br />Contabiliza pelas datas reais, sem inventar horário ou conteúdo, e bloqueia as aulas originais. Não use para aula ainda não realizada.</span>
@@ -216,7 +216,7 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
         )}
       </section>
 
-      <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm">
+      <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs">
         <h3 className="mb-4 text-lg font-black text-brand-text">Histórico recente</h3>
         {loading ? <Loader2 className="animate-spin text-tenant-primary" /> : existing.length === 0 ? <p className="text-sm text-brand-muted">Nenhuma antecipação registrada.</p> : (
           <div className="space-y-2">

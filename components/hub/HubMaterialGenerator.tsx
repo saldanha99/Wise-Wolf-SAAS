@@ -279,7 +279,7 @@ const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string; hideRigh
 export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, onGenerateWeek }) => {
   const m = record.material;
   return (
-    <article id="hub-material-print" className="rounded-[2rem] border border-brand-border bg-white p-6 text-slate-900 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-8">
+    <article id="hub-material-print" className="rounded-4xl border border-brand-border bg-white p-6 text-slate-900 shadow-xs print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-8">
       <header className="border-b border-brand-border pb-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tenant-primary print:text-black">{kindLabel(record.kind)} · {record.level_tag} · {nicheLabel(record.niche)}</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight">{record.title}</h2>
@@ -614,7 +614,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
 
   if (blocked) {
     return (
-      <section className="mx-auto max-w-2xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-8 text-center shadow-sm sm:p-12">
+      <section className="mx-auto max-w-2xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-8 text-center shadow-xs sm:p-12">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-tenant-primary/10 text-tenant-primary"><Sparkles size={24} /></div>
         <h1 className="mt-5 text-3xl font-black tracking-tight text-brand-text">Gerador de material não incluído neste plano</h1>
         <p className="mx-auto mt-3 max-w-lg leading-7 text-brand-muted">Worksheets, quizzes, cards, drills, leituras e roteiros por nicho e nível entram a partir do Professor Essencial (3 por mês) e do Professor Pro (40 por mês).</p>
@@ -627,7 +627,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
     <div className="space-y-5">
       <style>{`@media print { body * { visibility: hidden; } #hub-material-print, #hub-material-print * { visibility: visible; } #hub-material-print { position: absolute; left: 0; top: 0; width: 100%; } }`}</style>
 
-      <form id="hub-material-form" onSubmit={generate} className="rounded-[2rem] border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7 print:hidden">
+      <form id="hub-material-form" onSubmit={generate} className="rounded-4xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7 print:hidden">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-tenant-primary">Educador IA · Gerador de material</p>
@@ -657,37 +657,37 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
 
         <div className="mt-5 grid gap-4 sm:grid-cols-4">
           <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nicho</span>
-            <select value={niche} onChange={(event) => setNiche(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">
+            <select value={niche} onChange={(event) => setNiche(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">
               {HUB_MATERIAL_NICHE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
           <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Nível CEFR</span>
-            <select value={level} onChange={(event) => setLevel(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">
+            <select value={level} onChange={(event) => setLevel(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">
               {LEVELS.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
           <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">{kind === 'journey' ? 'Semanas' : 'Itens'}</span>
             {kind === 'journey'
-              ? <input value="12 (90 dias)" readOnly className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-muted outline-none" />
-              : <input type="number" min={4} max={15} value={count} onChange={(event) => setCount(Math.min(15, Math.max(4, Number(event.target.value) || 4)))} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none" />}
+              ? <input value="12 (90 dias)" readOnly className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-muted outline-hidden" />
+              : <input type="number" min={4} max={15} value={count} onChange={(event) => setCount(Math.min(15, Math.max(4, Number(event.target.value) || 4)))} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden" />}
           </label>
           <label className="flex items-end gap-3 pb-3">
             <input type="checkbox" checked={bilingual} onChange={(event) => setBilingual(event.target.checked)} className="size-5 rounded" />
             <span className="text-sm font-bold text-brand-text">Traduções em pt-BR</span>
           </label>
           <label className="sm:col-span-3"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Objetivo do aluno</span>
-            <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={200} placeholder="Ex.: logística numa multinacional, estudante de gastronomia, intercâmbio no Canadá, virar influencer, assistir filme sem legenda…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" />
+            <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={200} placeholder="Ex.: logística numa multinacional, estudante de gastronomia, intercâmbio no Canadá, virar influencer, assistir filme sem legenda…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden focus:ring-4 focus:ring-tenant-primary/10" />
           </label>
           <label><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Faixa etária</span>
-            <select value={audience} onChange={(event) => setAudience(event.target.value as HubMaterialAudience)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none">
+            <select value={audience} onChange={(event) => setAudience(event.target.value as HubMaterialAudience)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden">
               {HUB_MATERIAL_AUDIENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
           <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">{kind === 'journey' ? 'Ponto de partida / contexto da jornada' : 'Tema / situação do aluno'}</span>
-            <input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={200} placeholder="Ex.: check-in no hotel, reunião de status com o time, consulta de rotina, primeiro dia na escola…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none focus:ring-4 focus:ring-tenant-primary/10" />
+            <input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={200} placeholder="Ex.: check-in no hotel, reunião de status com o time, consulta de rotina, primeiro dia na escola…" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden focus:ring-4 focus:ring-tenant-primary/10" />
           </label>
           <label className="sm:col-span-4"><span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Instruções extras (opcional)</span>
-            <input value={extra} onChange={(event) => setExtra(event.target.value)} maxLength={600} placeholder="Ex.: focar em past simple; aluno adulto, engenheiro; evitar gírias" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none" />
+            <input value={extra} onChange={(event) => setExtra(event.target.value)} maxLength={600} placeholder="Ex.: focar em past simple; aluno adulto, engenheiro; evitar gírias" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden" />
           </label>
         </div>
 
@@ -719,7 +719,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
         </section>
       )}
 
-      <section className="rounded-[2rem] border border-brand-border bg-brand-surface p-5 print:hidden sm:p-6">
+      <section className="rounded-4xl border border-brand-border bg-brand-surface p-5 print:hidden sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-black text-brand-text">Seus materiais</h2>
           <button type="button" onClick={() => void loadHistory()} className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-muted"><RefreshCw size={13} />Atualizar</button>

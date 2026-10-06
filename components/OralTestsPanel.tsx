@@ -38,7 +38,7 @@ interface TeacherRow { id: string; full_name: string; can_oral_test: boolean; }
 
 const noticeLabel = (status?: string) => ({ queued: 'na fila', preparing: 'preparando', submitting: 'enviando', accepted: 'aceito pelo WhatsApp', sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou', uncertain: 'aguarda conferência', skipped: 'cancelado' }[status || ''] || 'indisponível — confira o cadastro');
 
-const brandCard = 'bg-brand-surface border border-brand-border rounded-2xl shadow-sm';
+const brandCard = 'bg-brand-surface border border-brand-border rounded-2xl shadow-xs';
 
 const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
   const isAdmin = user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
@@ -256,7 +256,7 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
       {scheduling && <ScheduleModal test={scheduling} aptTeachers={aptTeachers} onClose={() => setScheduling(null)} onSaved={() => { setScheduling(null); load(); flash('Teste agendado. Confira a reserva e os avisos abaixo.'); }} />}
       {finishing && <FinishModal test={finishing} onClose={() => setFinishing(null)} onSaved={() => { setFinishing(null); load(); flash('Resultado do teste oral registrado.'); }} />}
 
-      {toast && <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-xl bg-brand-text text-brand-surface text-sm font-bold shadow-lg">{toast}</div>}
+      {toast && <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-200 max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-xl bg-brand-text text-brand-surface text-sm font-bold shadow-lg">{toast}</div>}
     </div>
   );
 };
@@ -394,7 +394,7 @@ const ModalShell: React.FC<{ title: string; onClose: () => void; children: React
   }, []);
 
   return createPortal(
-    <div className="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4" onClick={() => onCloseRef.current()}>
+    <div className="fixed inset-0 z-150 bg-black/50 flex items-center justify-center p-4" onClick={() => onCloseRef.current()}>
       <div
         ref={dialogRef}
         role="dialog"

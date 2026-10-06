@@ -148,10 +148,10 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
     };
 
     return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
             <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl">
                 {/* Header */}
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-t-3xl p-6 text-white flex items-start justify-between">
+                <div className="bg-linear-to-br from-indigo-600 to-purple-700 rounded-t-3xl p-6 text-white flex items-start justify-between">
                     <div>
                         <p className="text-[10px] uppercase tracking-widest opacity-70 mb-1">
                             {step === 'form' ? 'Ativar Teacher Empreendedor' : 'Mini-Escola Criada!'}
@@ -170,7 +170,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                             <input
                                 value={form.schoolName}
                                 onChange={e => setForm({ ...form, schoolName: e.target.value, slug: generateSlug(e.target.value) })}
-                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             />
                         </FormField>
 
@@ -180,7 +180,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                                 <input
                                     value={form.slug}
                                     onChange={e => setForm({ ...form, slug: e.target.value })}
-                                    className="bg-transparent text-sm text-indigo-400 font-bold focus:outline-none flex-1 ml-1"
+                                    className="bg-transparent text-sm text-indigo-400 font-bold focus:outline-hidden flex-1 ml-1"
                                 />
                             </div>
                         </FormField>
@@ -189,7 +189,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                             <input
                                 value={form.adminEmail}
                                 onChange={e => setForm({ ...form, adminEmail: e.target.value })}
-                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             />
                         </FormField>
 
@@ -197,7 +197,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                             <select
                                 value={form.planId}
                                 onChange={e => setForm({ ...form, planId: e.target.value })}
-                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                             >
                                 {teacherPlans.length === 0 && <option value="">Nenhum plano de professor ativo</option>}
                                 {teacherPlans.map(p => (
@@ -230,7 +230,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                         <button
                             onClick={handleActivate}
                             disabled={loading || !form.schoolName || !form.adminEmail || !form.planId}
-                            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:from-indigo-500 hover:to-purple-500"
+                            className="w-full py-3.5 bg-linear-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:from-indigo-500 hover:to-purple-500"
                         >
                             {loading ? <><Loader2 className="animate-spin" size={16} /> Criando...</> : <><CheckCircle size={16} /> Ativar Mini-Escola</>}
                         </button>

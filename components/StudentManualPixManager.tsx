@@ -79,7 +79,7 @@ const StudentManualPixManager: React.FC<Props> = ({ studentId, onGenerated }) =>
           type="button"
           onClick={() => void generate()}
           disabled={loading}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-xs transition-colors hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400"
         >
           {loading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
           {loading ? 'Gerando e enviando...' : 'Gerar e enviar Pix'}
@@ -120,7 +120,7 @@ const StudentManualPixManager: React.FC<Props> = ({ studentId, onGenerated }) =>
               value={result.pixPayload}
               rows={4}
               onFocus={(event) => event.currentTarget.select()}
-              className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 font-mono text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 font-mono text-xs font-semibold text-slate-950 outline-hidden focus:ring-2 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
           </label>
           <button

@@ -96,7 +96,7 @@ const SuperAdminMetrics: React.FC = () => {
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Buscar tenant..."
-                            className="pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            className="pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
                         />
                     </div>
                 </div>

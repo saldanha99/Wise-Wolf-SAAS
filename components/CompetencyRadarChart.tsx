@@ -52,7 +52,7 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
     };
 
     return (
-        <div className="bg-brand-surface p-4 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col h-full min-w-0 overflow-hidden">
+        <div className="bg-brand-surface p-4 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-xs flex flex-col h-full min-w-0 overflow-hidden">
 
             <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-5 sm:mb-8 min-w-0">
                 <h3 className="text-xs font-black text-gray-800 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2 min-w-0">

@@ -144,7 +144,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
                         value={selectedGroup}
                         onChange={(e) => setSelectedGroup(e.target.value)}
                         disabled={loading}
-                        className="w-full bg-brand-surface border border-brand-border dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none truncate pr-8"
+                        className="w-full bg-brand-surface border border-brand-border dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-hidden truncate pr-8"
                     >
                         <option value="">{loading ? "Carregando..." : channel === 'financeiro' ? "Usar o grupo da Direção" : channel ? "Usar o grupo da Gestão" : "Selecione..."}</option>
                         {groups.map((g) => (

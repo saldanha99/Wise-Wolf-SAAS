@@ -128,7 +128,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         />
       )}
 
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm relative overflow-hidden">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
         <div className="relative z-10">
@@ -138,7 +138,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
             </div>
             <span className="text-xs font-black text-red-500 uppercase tracking-widest">Ação Necessária</span>
           </div>
-          <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight">Histórico Pendente</h2>
+          <h2 className="text-3xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-tight">Histórico Pendente</h2>
           <p className="text-brand-muted text-sm mt-1 max-w-lg font-medium">
             Regularize as aulas ocorridas há mais de 7 dias para liberar seu faturamento.
           </p>
@@ -148,7 +148,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
           <div className="bg-red-500/10 px-6 py-4 rounded-2xl border border-red-500/20 flex items-center gap-4">
             <div className="text-right">
               <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Pendências</p>
-              <p className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">{pending.length} Aulas</p>
+              <p className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text">{pending.length} Aulas</p>
             </div>
             <Zap size={24} className="text-red-500 animate-pulse fill-red-500" />
           </div>
@@ -172,11 +172,11 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {pending.map((lesson) => (
-            <div key={lesson.id} className="group bg-brand-surface p-6 rounded-[2rem] border border-brand-border hover:border-brand-accent hover:shadow-[0_10px_30px_rgba(var(--brand-accent),0.1)] transition-all flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+            <div key={lesson.id} className="group bg-brand-surface p-6 rounded-4xl border border-brand-border hover:border-brand-accent hover:shadow-[0_10px_30px_rgba(var(--brand-accent),0.1)] transition-all flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-accent scale-y-0 group-hover:scale-y-100 transition-transform duration-300 origin-bottom" />
 
               <div className="flex items-center gap-6 w-full md:w-auto">
-                <div className="w-16 h-16 bg-brand-surface-2 rounded-2xl flex items-center justify-center font-black text-brand-muted text-xl group-hover:bg-brand-accent group-hover:text-white transition-colors duration-300 shadow-sm border border-brand-border group-hover:border-transparent relative">
+                <div className="w-16 h-16 bg-brand-surface-2 rounded-2xl flex items-center justify-center font-black text-brand-muted text-xl group-hover:bg-brand-accent group-hover:text-white transition-colors duration-300 shadow-xs border border-brand-border group-hover:border-transparent relative">
                   {lesson.student.substring(0, 2).toUpperCase()}
                   <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-brand-bg rounded-full flex items-center justify-center">
                     <div className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
@@ -184,7 +184,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
                 </div>
 
                 <div className="overflow-hidden">
-                  <h4 className="font-[family-name:var(--font-display)] font-extrabold text-brand-text text-lg tracking-tight group-hover:text-brand-accent transition-colors">
+                  <h4 className="font-(family-name:--font-display) font-extrabold text-brand-text text-lg tracking-tight group-hover:text-brand-accent transition-colors">
                     {lesson.student}
                   </h4>
                   <p className="text-[10px] font-black text-brand-accent uppercase tracking-widest mb-2">
@@ -204,7 +204,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
               <button
                 onClick={() => handleRegister(lesson)}
-                className="w-full md:w-auto flex items-center justify-center gap-3 bg-brand-surface-2 text-brand-text border border-brand-border px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 hover:bg-brand-accent hover:border-brand-accent hover:text-white transition-all shadow-sm active:scale-95 group/btn"
+                className="w-full md:w-auto flex items-center justify-center gap-3 bg-brand-surface-2 text-brand-text border border-brand-border px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 hover:bg-brand-accent hover:border-brand-accent hover:text-white transition-all shadow-xs active:scale-95 group/btn"
               >
                 Regularizar <ChevronRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
@@ -216,7 +216,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                 <CheckSquare size={48} strokeWidth={1.5} />
               </div>
-              <h4 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text uppercase tracking-tight">Tudo em Dia!</h4>
+              <h4 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text uppercase tracking-tight">Tudo em Dia!</h4>
               <p className="text-sm text-brand-muted mt-2 font-medium max-w-xs mx-auto">
                 Nenhuma aula pendente nos últimos 7 dias.
               </p>
@@ -227,7 +227,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
       {/* Single Lesson Modal */}
       {selectedLesson && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="w-full max-w-full lg:max-w-7xl max-h-[92dvh] overflow-y-auto rounded-3xl">
             <ClassLogForm
               items={[{
@@ -252,7 +252,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
       {/* Bulk Regularize Modal */}
       {isBulkRegularizing && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="w-full max-w-full lg:max-w-7xl max-h-[92dvh] overflow-y-auto rounded-3xl">
             <ClassLogForm
               items={pending.map(p => ({
