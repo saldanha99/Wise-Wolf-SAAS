@@ -3803,4 +3803,12 @@ o fundo branco dos campos. Descoberta de classes limitada ao content declarado
 no config (source(none)), evitando varrer dumps SQL e artefatos do repositório.
 Validado: npm ci, npm audit sem vulnerabilidades, typecheck, build de produção
 com vídeos públicos do Hub e comparação visual desktop/mobile (sem overflow).
-Release oficial ainda em execução; não afirmar publicação antes de sua conclusão.
+Publicado pelo release oficial `20261006T203520Z-beeb10281418`, origem
+`63803252010b87e992c450492d3cc5c92339a3e7`. Primeira execução parou antes
+da ativação pelo workspace do deno.lock antigo; lock sincronizado, sem retirar
+--frozen dos gates. Release concluído: 1.233 testes Vitest, 1.468 testes Deno,
+checks de funções, migrations e suíte SQL transacional, smoke tests de produção.
+Confirmado após release: marker ativo, RPC de candidatos presente, criação usa
+booking_schedule_on_date e SHA-256 do bundle LessonAdvancesManager servido igual
+ao build. Backup reversível em `/opt/wisewolf/backups/release-20261006T203520Z-beeb10281418`.
+As notas anteriores de bloqueio/não publicação foram superadas por este release.
