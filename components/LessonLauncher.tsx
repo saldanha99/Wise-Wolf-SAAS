@@ -145,7 +145,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
       const { data: trialAppts } = await supabase
         .from('appointments')
-        .select('id, start_time, student_name, student_phone, type, status')
+        .select('id, start_time, student_name, student_phone, type, status, meeting_link')
         .eq('tenant_id', effectiveTenantId)
         .or(`teacher_id.eq.${user.id},professor_id.eq.${user.id}`)
         .in('type', ['experimental', 'training']);
@@ -421,7 +421,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               leadPhone: t.student_phone,
               time: timeStr, // horário HH:MM (para o botão "Avisar aluno")
               phone: t.student_phone || null,
-              meetLink: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, dateStr, teacherMeetLink),
+              meetLink: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, dateStr, t.meeting_link || teacherMeetLink),
               name: t.student_name || (isTraining ? 'Treinamento' : 'Aula Experimental'),
               date: i === 0 ? `Hoje às ${timeStr}` : `${checkDate.toLocaleDateString('pt-BR')} às ${timeStr}`,
               dateObj: dateStr,

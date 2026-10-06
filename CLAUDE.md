@@ -3738,3 +3738,31 @@ no worker e na cerca. O painel mostra estado real da fila. Sem contato/link não
 inventa entrega/sala; Diretoria sem examinador continua sem reserva individual.
 Migration `20261002193942`, teste transacional e tours registrados no release.
 Detalhes: [runbook](docs/runbooks/oral-test-scheduling.md).
+
+### 06/10/2026 — Pedido de acesso da experimental não é venda
+
+Incidente: lead com experimental aceita pediu o Meet; o SDR respondeu que a
+experimental era presencial na cidade do cadastro. O prompt genérico inventava
+modalidade, formato e público. Foi retirado; Wise Wolf tem regra explícita online,
+sem inferir local de aula da cidade. `trial-access.ts` reconhece acesso (inclusive
+"met"), antes do modelo/agendamento, relê aula, tenant, telefone, professor, estado
+e horário. Sala oficial existente usa `official_lesson_link`; barrada/não pronta
+nunca cai em sala pessoal. Sem sessão institucional, usa somente link HTTPS
+registrado da experimental ou do professor ativo; não gera códigos de sala.
+Sem acesso confirmado/falha de consulta: resposta factual, handoff e aviso à
+direção pela central auditável, com coalescência, cerca e revalidação do handoff.
+Veto de resposta presencial também cancela `schedule_trial` daquele turno.
+
+Experimentais de leads sem `student_id` não entram em `lesson_quality_sources`/
+documentação pedagógica: login Google confirmado do teacher NÃO cria sala para
+elas. Não inventar aluno/matrícula/consentimento para forçar essa fila. Link real
+deve ser combinado/cadastrado; agenda do professor avisa quando estiver ausente.
+Dashboard e lançamento passam a respeitar `appointments.meeting_link` antes do
+link do perfil, mantendo a prioridade/bloqueio da sala oficial. Não mudamos a
+política de gravação nem acrescentamos links pessoais aos lembretes automáticos.
+Não há mensagem retroativa para o incidente já concluído com atendimento humano.
+
+Testes: `whatsapp-inbound/trial-access.test.ts` (fixtures/fetch falso, sem contatos
+externos), `lib/trialAccessWiring.test.ts`, `lib/featureTours.test.ts`.
+Tours de novidade: `2026-10-06-acesso-experimental-atendimento` e
+`2026-10-06-acesso-experimental-professor`. Sem migration/dados reais alterados.

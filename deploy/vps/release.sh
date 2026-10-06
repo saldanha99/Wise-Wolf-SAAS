@@ -708,6 +708,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
+  supabase/functions/whatsapp-inbound/trial-access.ts \
+  supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
@@ -791,6 +793,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \

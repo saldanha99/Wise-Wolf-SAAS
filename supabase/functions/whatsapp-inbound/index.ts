@@ -168,6 +168,13 @@ import {
   trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 import { getHolidayBR, isHolidayBR } from "./holidays.ts";
+import {
+  asksLessonAccess,
+  loadTrialAccess,
+  schoolModalityFacts,
+  trialAccessReply,
+  vetoInventedPresential,
+} from "./trial-access.ts";
 import { enqueueSdrInput, runSdrWork } from "./sdr-work.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
@@ -7672,6 +7679,74 @@ async function handleSDR(
   );
   if (completedTrialError) throw new Error("sdr_completed_trial_unavailable");
   if (completedTrial?.changed === true) lead.status = "TRIAL_DONE";
+  // A request for the current room is support, not an SDR/model scheduling turn.
+  // Run after burst coalescing and human handoff checks, before any AI call.
+  if (!isMedia && asksLessonAccess(text)) {
+    let access = { link: null as string | null, reason: "lookup_unavailable" };
+    try {
+      access = await loadTrialAccess(
+        sb,
+        tenantId,
+        phone,
+        await findActiveTrial(sb, tenantId, phone),
+        phonesMatch,
+      );
+    } catch {
+      console.warn("[sdr] acesso da experimental indisponível", {
+        leadId: lead.id,
+      });
+    }
+    if (!await isLatestSdrTurn(sb, tenantId, phone, msgId)) return;
+    const { data: current, error: currentError } = await sb.from("crm_leads")
+      .select("ai_handoff,ai_handoff_at").eq("tenant_id", tenantId).eq(
+        "id",
+        lead.id,
+      ).maybeSingle();
+    if (
+      currentError || !current ||
+      (handoffAtivo(current) && (!postTrialHandoffOverride ||
+        !await mayResumePostTrialConversation(sb, tenantId, instance, phone)))
+    ) return;
+    if (!await beginEffects()) return;
+    if (!access.link) {
+      const { error: handoffError } = await sb.from("crm_leads").update({
+        ai_handoff: true,
+        ai_handoff_at: new Date().toISOString(),
+      }).eq("tenant_id", tenantId).eq("id", lead.id);
+      if (handoffError) throw new Error("trial_access_handoff_failed");
+    }
+    const reply = trialAccessReply(tenantId, access);
+    const delivery = await sendWhatsDetailed(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      lead_id: lead.id,
+      kind: "trial_access",
+      reason: access.reason,
+      handoff: !access.link,
+      delivery_outcome: delivery.outcome,
+      entregue: delivery.outcome === "accepted",
+    });
+    if (!access.link) {
+      const management = await adminProfile(sb, tenantId);
+      if (management.ownerPhone) {
+        await sendWhats(
+          instance,
+          management.ownerPhone,
+          `⚠️ *Acesso da experimental:* ${
+            lead.name || phone
+          } pediu o link da aula, mas não há acesso confirmado disponível (${access.reason}). Confira com o professor e responda no atendimento central. Nenhuma sala nem novo agendamento foi criado; a IA parou neste contato.`,
+        );
+      }
+    }
+    if (delivery.outcome === "accepted") {
+      await sb.from("crm_leads").update({
+        last_outbound_at: new Date().toISOString(),
+      })
+        .eq("tenant_id", tenantId).eq("id", lead.id);
+    } else if (delivery.outcome === "ambiguous") {
+      throw new Error("trial_access_delivery_uncertain");
+    }
+    return;
+  }
   const hoursAnswer = schoolOperatingHoursAnswer(tenantId, text, hist);
   if (hoursAnswer) {
     if (!await beginEffects()) return;
@@ -7838,11 +7913,7 @@ async function handleSDR(
     tenantIdentity?.name,
     "Escola de idiomas",
   );
-  const schoolDescription = tenantIdentity?.location
-    ? `${schoolName}, escola de inglês em ${
-      safeIdentityPart(tenantIdentity.location)
-    }`
-    : `${schoolName}, escola de inglês`;
+  const schoolDescription = `${schoolName}, escola de inglês`;
   const training = resolveAtendenteTraining(cfg);
   const commercialConfig = resolveCommercialPolicy(cfg);
   const leadTraining = wiseWolfLeadTraining(tenantId);
@@ -7944,7 +8015,9 @@ async function handleSDR(
     : "";
 
   const system =
-    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription} (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
+    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription}.\nMODALIDADE CONFIRMADA (prevalece sobre treinamento e histórico): ${
+      schoolModalityFacts(tenantId)
+    }\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
@@ -8037,7 +8110,10 @@ async function handleSDR(
   let reply = String(ai.reply).slice(0, 1500);
   let dispatchMeta: any = null;
 
-  const st = afterTrial ? null : ai.schedule_trial;
+  const inventedPresential = vetoInventedPresential(tenantId, reply);
+  const modalityVeto = inventedPresential !== reply;
+  reply = inventedPresential;
+  const st = afterTrial || modalityVeto ? null : ai.schedule_trial;
   const commercialReply = applyCommercialReplyPolicy({
     history: hist,
     currentMessage: text,
@@ -8069,6 +8145,7 @@ async function handleSDR(
     : { reply, policy: null };
   reply = postTrialAnswer.reply;
   reply = completedTrialReply(reply, afterTrial);
+  reply = vetoInventedPresential(tenantId, reply);
   if (
     commercialReply.policy === "price_unavailable" ||
     commercialReply.policy === "custom_duration_quote_required"

@@ -383,7 +383,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           module: t.type === 'oral_test' ? 'TESTE ORAL' : 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
           officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO)?.meeting_uri,
-          meet: t.type === 'oral_test' ? t.meeting_link : lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
+          meet: t.type === 'oral_test' ? t.meeting_link : lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, t.meeting_link || user.meeting_link),
           phone: t.student_phone,
           type: t.type === 'oral_test' ? 'ORAL_TEST' : 'TRIAL',
           source_id: t.id,
@@ -752,6 +752,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         <span className="truncate">{aula.module}</span>
                       )}
                     </div>
+                    {aula.type === 'TRIAL' && !aula.meet && (
+                      <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300" role="alert">
+                        Sem link de acesso cadastrado. Confirme a sala com a coordenação e envie o link real ao aluno antes da experimental.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-2 items-center shrink-0">

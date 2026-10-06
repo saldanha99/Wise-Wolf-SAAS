@@ -780,6 +780,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-02-z-matricula-com-acesso', title: 'Matrícula concluída entrega o acesso', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'contracts-recording-clause', view: 'contracts', title: 'Acesso junto das boas-vindas', text: 'Quando a matrícula termina com os pagamentos exigidos confirmados, o servidor prepara as boas-vindas com e-mail de login, endereço do portal e orientação de senha. O envio fica registrado mesmo que o aluno feche a página. O feedback pedagógico da experimental continua pendente para o professor, sem bloquear a conclusão financeira da matrícula.' }],
   },
+  {
+    id: '2026-10-06-acesso-experimental-atendimento', title: 'Pedido de link é atendimento de acesso', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'whatsapp-human-handoff', view: 'whatsapp', title: 'Acesso confirmado ou atendimento humano', text: 'Quando alguém pede o link da experimental, a IA consulta o agendamento e a sala cadastrada. Sem acesso confirmado, encaminha à equipe e para nesse contato. Confira o link com o professor; o pedido não cria outra experimental, visita presencial nem sala inventada.' }],
+  },
+  {
+    id: '2026-10-06-acesso-experimental-professor', title: 'Confira o acesso da experimental', roles: ['TEACHER'],
+    steps: [{ target: 'today-lessons', view: 'dashboard', title: 'Experimental precisa de um link real', text: 'A agenda usa primeiro a sala oficial disponível ou o link registrado para aquela experimental. Quando não houver acesso cadastrado, aparece um aviso: confirme com a coordenação e envie o link real ao aluno antes da aula. A confirmação da sua conta Google não cria uma sala para leads automaticamente.' }],
+  },
 ];
 
 /**
