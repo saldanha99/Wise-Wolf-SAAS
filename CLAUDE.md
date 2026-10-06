@@ -3774,3 +3774,20 @@ com impacto no CSS/configuração. NÃO desativar a auditoria nem publicar por S
 A produção permaneceu na release `20261002T202037Z-6f23d076a27c`; as correções
 acima estão no código, não no runtime. Migração de dependências depende de
 direção da pessoa proprietária, com regressão visual e testes completos.
+
+### 06/10/2026 — Antecipações consultam a agenda efetiva (correção preparada)
+
+A tela oferecia ocorrências passadas do mês e datas realizadas no mesmo mês,
+recusadas com `lesson_advance_origin_not_a_booking_occurrence`. Agora lê
+`list_lesson_advance_candidates`: somente origens posteriores a hoje, pela
+`booking_schedule_on_date`, sem lançadas, consumidas ou excluídas. Atualizar
+reconsulta a lista; troca de aluno/mês limpa seleções enquanto carrega. A data
+realizada termina no último dia do mês anterior à origem. A criação valida a
+agenda efetiva (versões/remarcações/avulsas), usa seu horário quando omitido e
+separa erros de passado, mesmo mês e agenda indisponível, com mensagens pt-BR.
+Migration `20261006194950` e teste SQL registrados no release; tour da direção.
+Validado: migration 2× e quatro suítes SQL na VPS em transação com rollback,
+sem fixtures remanescentes; 21 testes de UI/tours e typecheck.
+Ainda NÃO publicado: auditoria de dependências continua reprovando, incluindo
+`braces`/Tailwind 3. A migração de dependências segue dependendo da autorização
+da direção indicada acima; não aplicar esta migration manualmente em produção.

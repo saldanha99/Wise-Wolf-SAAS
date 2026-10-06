@@ -788,6 +788,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-06-acesso-experimental-professor', title: 'Confira o acesso da experimental', roles: ['TEACHER'],
     steps: [{ target: 'today-lessons', view: 'dashboard', title: 'Experimental precisa de um link real', text: 'A agenda usa primeiro a sala oficial disponível ou o link registrado para aquela experimental. Quando não houver acesso cadastrado, aparece um aviso: confirme com a coordenação e envie o link real ao aluno antes da aula. A confirmação da sua conta Google não cria uma sala para leads automaticamente.' }],
   },
+  {
+    id: '2026-10-06-antecipacoes-agenda-valida', title: 'Antecipações com datas válidas', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'historical-lesson-advances', view: 'lesson-advances', title: 'Escolha uma aula disponível', text: 'A lista consulta a agenda efetiva e mostra somente aulas originais posteriores a hoje, ainda disponíveis. A data realizada deve ser de um mês anterior ao da aula original. Use Atualizar após uma mudança de agenda.' }],
+  },
 ];
 
 /**

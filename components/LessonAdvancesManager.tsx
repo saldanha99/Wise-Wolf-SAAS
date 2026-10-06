@@ -1,20 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarArrowDown, CheckCircle2, Loader2, Plane, RefreshCw, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatLocalDateBr, localMonth, localYMD, monthRange, parseLocalDate } from '../lib/dateUtils';
-import { normalizeWeekdayToIndex } from '../lib/weekday';
+import { formatLocalDateBr, localMonth, localYMD, monthRange } from '../lib/dateUtils';
 
 interface Props {
   tenantId?: string;
 }
 
-interface Booking {
-  id: string;
-  teacher_id: string;
-  day_of_week: string;
-  time_slot: string;
-  start_date: string | null;
-  teacher: { full_name?: string } | null;
+interface CandidateSource {
+  booking_id: string;
+  original_date: string;
+  start_time: string;
+  teacher_name: string | null;
 }
 
 interface Candidate {
@@ -31,29 +28,10 @@ const nextMonth = (): string => {
   return localMonth(new Date(now.getFullYear(), now.getMonth() + 1, 1));
 };
 
-export const occurrencesForMonth = (bookings: Booking[], month: string): Candidate[] => {
-  const range = monthRange(month);
-  const start = parseLocalDate(range.start);
-  const end = parseLocalDate(range.endExclusive);
-  if (!start || !end) return [];
-  const rows: Candidate[] = [];
-  for (const booking of bookings) {
-    const weekday = normalizeWeekdayToIndex(booking.day_of_week) + 1;
-    if (weekday < 1 || weekday > 6) continue;
-    for (const cursor = new Date(start); cursor < end; cursor.setDate(cursor.getDate() + 1)) {
-      const date = localYMD(cursor);
-      if (cursor.getDay() !== weekday || (booking.start_date && date < booking.start_date)) continue;
-      rows.push({
-        bookingId: booking.id,
-        originalDate: date,
-        time: String(booking.time_slot || '').substring(0, 5),
-        teacherName: booking.teacher?.full_name || 'Professor',
-        selected: false,
-        advanceDate: '',
-      });
-    }
-  }
-  return rows.sort((a, b) => a.originalDate.localeCompare(b.originalDate) || a.time.localeCompare(b.time));
+export const advanceDateLimit = (originalDate: string): string => {
+  const first = new Date(`${originalDate.slice(0, 7)}-01T12:00:00`);
+  first.setDate(first.getDate() - 1);
+  return localYMD(first);
 };
 
 const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
@@ -64,11 +42,14 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [existing, setExisting] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [alreadyTaught, setAlreadyTaught] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadBase = async () => {
+    setRefreshVersion(value => value + 1);
     if (!tenantId) return;
     setLoading(true);
     setError(null);
@@ -92,23 +73,33 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
   useEffect(() => {
     if (!tenantId || !studentId || !sourceMonth) {
       setCandidates([]);
+      setCandidatesLoading(false);
       return;
     }
     let active = true;
+    setCandidates([]);
+    setCandidatesLoading(true);
+    setError(null);
     void (async () => {
-      const { data, error: bookingError } = await supabase.from('bookings')
-        .select('id, teacher_id, day_of_week, time_slot, start_date, teacher:teacher_id(full_name)')
-        .eq('tenant_id', tenantId).eq('student_id', studentId).in('status', ['SCHEDULED', 'scheduled']);
+      const { data, error: bookingError } = await supabase.rpc('list_lesson_advance_candidates', {
+        p_student_id: studentId,
+        p_month: monthRange(sourceMonth).start,
+      });
       if (!active) return;
       if (bookingError) {
         setError(bookingError.message);
         setCandidates([]);
       } else {
-        setCandidates(occurrencesForMonth((data || []) as unknown as Booking[], sourceMonth));
+        setCandidates(((data || []) as CandidateSource[]).map(row => ({
+          bookingId: row.booking_id, originalDate: row.original_date,
+          time: row.start_time, teacherName: row.teacher_name || 'Professor',
+          selected: false, advanceDate: '',
+        })));
       }
+      setCandidatesLoading(false);
     })();
     return () => { active = false; };
-  }, [tenantId, studentId, sourceMonth]);
+  }, [tenantId, studentId, sourceMonth, refreshVersion]);
 
   const selected = useMemo(() => candidates.filter(row => row.selected), [candidates]);
   const setRow = (index: number, patch: Partial<Candidate>) => {
@@ -116,9 +107,13 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
   };
 
   const create = async () => {
-    if (!studentId || selected.length === 0) return;
+    if (saving || candidatesLoading || !studentId || selected.length === 0) return;
     if (selected.some(row => !row.advanceDate || row.advanceDate >= row.originalDate)) {
       setError('Informe uma data anterior válida para cada aula selecionada.');
+      return;
+    }
+    if (selected.some(row => row.advanceDate > advanceDateLimit(row.originalDate))) {
+      setError('A data realizada precisa ser de um mês anterior ao da aula original.');
       return;
     }
     if (alreadyTaught && selected.some(row => row.advanceDate >= localYMD(new Date()))) {
@@ -140,6 +135,9 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
     });
     if (createError) {
       const messages: Record<string, string> = {
+        lesson_advance_origin_must_be_future: 'Escolha uma aula original posterior a hoje. Atualize a lista de aulas.',
+        lesson_advance_requires_previous_month: 'A data realizada precisa ser de um mês anterior ao da aula original.',
+        lesson_advance_origin_not_a_booking_occurrence: 'A aula original não está mais disponível nessa data. Atualize a lista e confira a agenda do aluno.',
         historical_advance_actual_date_already_used: 'Já existe aula deste aluno na data realizada. Confira o histórico antes de contabilizar outra.',
         historical_advance_month_locked: 'O fechamento desse mês está protegido. Confira com o financeiro antes de alterar.',
         invalid_historical_advance_dates: 'Use datas realizadas nos últimos 120 dias e ocorrências futuras de outro mês.',
@@ -196,7 +194,10 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
           </label>
         </div>
 
-        {studentId && candidates.length === 0 && !loading && <p className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">Não há ocorrências recorrentes para este aluno no mês escolhido.</p>}
+        {studentId && candidates.length === 0 && !loading && !candidatesLoading && !error && <p className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">Não há aulas futuras disponíveis para antecipar neste mês. Aulas já antecipadas, lançadas ou excluídas não aparecem na lista.</p>}
+
+        <p className="mt-4 text-sm text-brand-muted">Escolha uma aula original posterior a hoje e uma data realizada em mês anterior ao da aula original.</p>
+        {candidatesLoading && <p role="status" className="mt-4 text-sm text-brand-muted">Consultando aulas disponíveis…</p>}
 
         {candidates.length > 0 && (
           <div className="mt-6 space-y-3">
@@ -205,10 +206,10 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
               <div key={`${row.bookingId}-${row.originalDate}`} className={`grid grid-cols-[auto_1fr_1fr] items-center gap-3 rounded-2xl border p-3 ${row.selected ? 'border-tenant-primary bg-tenant-primary/5' : 'border-brand-border'}`}>
                 <input aria-label={`Selecionar aula de ${formatLocalDateBr(row.originalDate)}`} type="checkbox" checked={row.selected} onChange={event => setRow(index, { selected: event.target.checked })} className="h-5 w-5 accent-tenant-primary" />
                 <div><p className="text-sm font-black text-brand-text">{formatLocalDateBr(row.originalDate)} · {row.time}</p><p className="text-xs text-brand-muted">{row.teacherName}</p></div>
-                <input aria-label={`Nova data da aula de ${formatLocalDateBr(row.originalDate)}`} type="date" disabled={!row.selected} max={row.originalDate} value={row.advanceDate} onChange={event => setRow(index, { advanceDate: event.target.value })} className="min-w-0 rounded-xl border border-brand-border bg-brand-surface-2 p-2 text-sm font-bold text-brand-text disabled:opacity-40" />
+                <input aria-label={`Nova data da aula de ${formatLocalDateBr(row.originalDate)}`} type="date" disabled={!row.selected} max={advanceDateLimit(row.originalDate)} value={row.advanceDate} onChange={event => setRow(index, { advanceDate: event.target.value })} className="min-w-0 rounded-xl border border-brand-border bg-brand-surface-2 p-2 text-sm font-bold text-brand-text disabled:opacity-40" />
               </div>
             ))}
-            <button disabled={saving || selected.length === 0} onClick={create} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">
+            <button disabled={saving || candidatesLoading || selected.length === 0} onClick={create} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-tenant-primary px-5 py-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">
               {saving ? <Loader2 className="animate-spin" size={18} /> : <CalendarArrowDown size={18} />} {alreadyTaught ? 'Contabilizar' : 'Criar'} {selected.length || ''} antecipação{selected.length === 1 ? '' : 'ões'}
             </button>
           </div>
