@@ -147,4 +147,63 @@ select pg_temp.assert_true(
     where id = '00000000-0000-4000-8000-00000000097c'),
   'aula recusada mudou mesmo assim');
 
+set local request.jwt.claims = '{"role":"service_role"}';
+
+-- [7] Direção usa a mesma porta numa agenda que JÁ tem histórico.
+-- A identidade e todas as alterações existem somente nesta transação revertida.
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-4000-8000-000000000975', 'authenticated', 'authenticated',
+  'autonomy-director@example.invalid', '{"provider":"email","providers":["email"]}',
+  '{"full_name":"Direção Teste","test_fixture":true}', now(), now());
+update public.profiles set tenant_id = 'teacher-schedule-autonomy', role = 'SCHOOL_ADMIN',
+  full_name = 'Direção Teste', lifecycle_status = 'active', is_test_account = true
+where id = '00000000-0000-4000-8000-000000000975';
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000975","role":"authenticated"}';
+do $$ begin
+  perform public.change_booking_schedule('00000000-0000-4000-8000-00000000097a', 'Sexta', '10:00');
+  raise exception 'assertion failed: RPC antiga reescreveu agenda com histórico';
+exception when insufficient_privilege then null;
+end $$;
+select pg_temp.assert_true(
+  (public.teacher_apply_student_schedule_change(
+    '00000000-0000-4000-8000-000000000973',
+    '[{"booking_id":"00000000-0000-4000-8000-00000000097a","new_day":"Segunda","new_time":"16:30"}]'::jsonb,
+    (now() at time zone 'America/Sao_Paulo')::date + 2,
+    'Horário combinado pela direção') ->> 'changed')::int = 1,
+  'direção não conseguiu trocar agenda com histórico para 16:30');
+reset role;
+select pg_temp.assert_true(
+  public.booking_schedule_on_date('00000000-0000-4000-8000-00000000097a',
+    (now() at time zone 'America/Sao_Paulo')::date - 7)->>'time_slot' = '17:30'
+  and public.booking_schedule_on_date('00000000-0000-4000-8000-00000000097a',
+    (now() at time zone 'America/Sao_Paulo')::date + 1)->>'time_slot' = '09:30'
+  and public.booking_schedule_on_date('00000000-0000-4000-8000-00000000097a',
+    (now() at time zone 'America/Sao_Paulo')::date + 2)->>'time_slot' = '16:30',
+  'direção perdeu a vigência de uma das três versões');
+select pg_temp.assert_true(
+  exists(select 1 from public.schedule_change_requests where booking_id='00000000-0000-4000-8000-00000000097a'
+    and new_time='16:30' and initiated_by='SCHOOL' and status='APPLIED'
+    and reviewed_by='00000000-0000-4000-8000-000000000975'),
+  'troca da direção não foi registrada em nome da escola');
+
+set local request.jwt.claims = '{"role":"service_role"}';
+
+-- [8] Diretor de outra escola não alcança a agenda.
+insert into public.tenants(id,name) values ('director-schedule-other', 'Outra Escola Teste');
+update public.profiles set tenant_id='director-schedule-other'
+where id='00000000-0000-4000-8000-000000000975';
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000975","role":"authenticated"}';
+do $$ begin
+  perform public.teacher_apply_student_schedule_change(
+    '00000000-0000-4000-8000-000000000973',
+    '[{"booking_id":"00000000-0000-4000-8000-00000000097c","new_day":"Quinta","new_time":"16:30"}]'::jsonb,
+    (now() at time zone 'America/Sao_Paulo')::date + 2, 'Direção de outra escola');
+  raise exception 'assertion failed: diretor alterou agenda de outra escola';
+exception when insufficient_privilege then null;
+end $$;
+reset role;
+
 rollback;

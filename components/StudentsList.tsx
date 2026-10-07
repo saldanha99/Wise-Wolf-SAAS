@@ -1389,6 +1389,7 @@ ${parsed.details}` : ''));
           <StudentProfileForm
             initialData={editingStudent}
             onSubmit={handleUpdateStudent}
+            onScheduleChanged={fetchStudents}
             onCancel={() => setEditingStudent(null)}
             onDelete={
               editingStudent.is_test_account === true &&

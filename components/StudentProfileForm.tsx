@@ -12,6 +12,7 @@ interface StudentProfileFormProps {
     initialData?: any;
     onSubmit: (data: any) => void;
     onCancel: () => void;
+    onScheduleChanged?: () => void;
     onDelete?: () => void;
     title?: string;
     teachers?: any[];
@@ -28,7 +29,7 @@ interface GuardianCandidate {
     phone: string | null;
 }
 
-const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, onSubmit, onCancel, onDelete, title = 'Aluno', teachers = [], currentUserRole, tenantId }) => {
+const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, onSubmit, onCancel, onScheduleChanged, onDelete, title = 'Aluno', teachers = [], currentUserRole, tenantId }) => {
     // RBAC Logic: Director (School Admin) or Super Admin has full access
     const isDirector = currentUserRole === 'SCHOOL_ADMIN' || currentUserRole === 'SUPER_ADMIN';
 
@@ -957,7 +958,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                         <StudentScheduleManager
                             studentId={initialData.id}
-                            tenantId={initialData.tenant_id} // Assuming initialData has tenant_id, usually filtering by it anyway
+                            tenantId={tenantId || initialData.tenant_id}
                             teachers={teachers}
                             student={{
                                 id: initialData.id,
@@ -965,9 +966,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 professor_id: initialData.professor_id || null,
                                 class_frequency: initialData.class_frequency || null,
                             }}
-                            onUpdate={() => {
-                                // Optional: Refresh parent or local state if needed
-                            }}
+                            onUpdate={onScheduleChanged}
                         />
                     </div>
                 )}

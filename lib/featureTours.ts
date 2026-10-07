@@ -792,6 +792,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-06-antecipacoes-agenda-valida', title: 'Antecipações com datas válidas', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'historical-lesson-advances', view: 'lesson-advances', title: 'Escolha uma aula disponível', text: 'A lista consulta a agenda efetiva e mostra somente aulas originais posteriores a hoje, ainda disponíveis. A data realizada deve ser de um mês anterior ao da aula original. Use Atualizar após uma mudança de agenda.' }],
   },
+  {
+    id: '2026-10-07-troca-horario-direcao', title: 'Troca de horário pela direção', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'director-schedule-change', view: 'schedule_explorer', title: 'Aplique a troca na Agenda do aluno', text: 'No Mapa de Aulas, abra o aluno e a aba Agenda. Use Alterar horário, escolha o novo dia, horário, motivo e uma data a partir de amanhã, e clique em Aplicar troca. A mudança preserva as aulas anteriores, verifica conflitos e prepara o aviso à coordenação. A grade é atualizada após salvar. Salvar Perfil altera somente os dados cadastrais.' }],
+  },
 ];
 
 /**

@@ -26,7 +26,7 @@ describe('professor altera o horário do próprio aluno', () => {
     fireEvent.change(day, { target: { value: 'Terça' } });
     fireEvent.change(screen.getByPlaceholderText(/explique o motivo/i), { target: { value: 'Aluno pediu para estudar de manhã.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar troca (1)' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('A Gestão foi avisada no grupo');
+    expect(await screen.findByRole('status')).toHaveTextContent('O aviso à coordenação foi colocado na fila');
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('teacher_apply_student_schedule_change', expect.objectContaining({
       p_student_id: 'student-test',
       p_changes: [{ booking_id: 'booking-test', new_day: 'Terça', new_time: '08:00' }],

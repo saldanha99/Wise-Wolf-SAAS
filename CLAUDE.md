@@ -3812,3 +3812,20 @@ Confirmado após release: marker ativo, RPC de candidatos presente, criação us
 booking_schedule_on_date e SHA-256 do bundle LessonAdvancesManager servido igual
 ao build. Backup reversível em `/opt/wisewolf/backups/release-20261006T203520Z-beeb10281418`.
 As notas anteriores de bloqueio/não publicação foram superadas por este release.
+
+### 07/10/2026 — Troca de horário pela direção no Mapa de Aulas
+
+`StudentScheduleManager` usava a RPC legada `change_booking_schedule`, que não
+costura versões e é barrada pelo trigger quando o booking já tem histórico.
+Agora Alterar horário abre o editor compartilhado, limitado ao booking clicado,
+e aplica pela `teacher_apply_student_schedule_change`: ela já autoriza gestores
+da escola, exige motivo e vigência futura, verifica conflitos e preserva aulas
+anteriores. Nenhuma permissão foi ampliada e não há migration nova.
+`StudentProfileForm.onScheduleChanged` atualiza o mapa/lista pai após a gravação;
+Salvar Perfil é identificado como cadastro. A confirmação diferencia aviso na
+fila de entrega. Tour `2026-10-07-troca-horario-direcao` aponta ao Mapa de Aulas.
+Validação: 20 testes UI/tour, typecheck e build com vídeos públicos habilitados.
+A suíte SQL já registrada `professor_troca_horario_do_proprio_aluno.sql` agora
+reproduz a recusa legada da direção, aplica 16:30 numa agenda versionada, confere
+três vigências e recusa diretor de outra escola. Executada na VPS com rollback,
+sem fixtures remanescentes. Publicação pendente da execução oficial do release.

@@ -708,7 +708,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   });
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
+    <div data-tour="director-schedule-change" className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
       <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl flex flex-col shadow-xs shrink-0">
         <div className="p-5 border-b dark:border-brand-border">
@@ -1101,6 +1101,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               planDuration: editingBooking.fullProfile?.fidelity_plan
             }}
             onSubmit={handleUpdateStudentProfile}
+            onScheduleChanged={() => {
+              void fetchDetailData();
+              onRefresh?.();
+            }}
             onCancel={() => setEditingBooking(null)}
             onDelete={(user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN') ? handleDeleteBooking : undefined}
             currentUserRole={user?.role}

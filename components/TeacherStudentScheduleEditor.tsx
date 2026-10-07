@@ -7,6 +7,8 @@ interface TeacherStudentScheduleEditorProps {
   studentName: string;
   tenantId: string;
   teacherId: string;
+  bookingId?: string;
+  managerMode?: boolean;
   onClose: () => void;
   onChanged?: () => void;
 }
@@ -50,6 +52,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   studentName,
   tenantId,
   teacherId,
+  bookingId,
+  managerMode = false,
   onClose,
   onChanged,
 }) => {
@@ -65,12 +69,12 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   const [originalDate, setOriginalDate] = useState('');
   const [proposedDate, setProposedDate] = useState('');
   const [reason, setReason] = useState('');
-  const [initiatedBy, setInitiatedBy] = useState('TEACHER');
+  const [initiatedBy, setInitiatedBy] = useState(managerMode ? 'SCHOOL' : 'TEACHER');
 
   const loadBookings = async () => {
     setLoading(true);
     setError('');
-    const { data, error: queryError } = await supabase
+    let query = supabase
       .from('bookings')
       .select('id, day_of_week, time_slot')
       .eq('student_id', studentId)
@@ -79,6 +83,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
       .in('status', ['SCHEDULED', 'scheduled'])
       .order('day_of_week')
       .order('time_slot');
+    if (bookingId) query = query.eq('id', bookingId);
+    const { data, error: queryError } = await query;
 
     if (queryError) {
       setError('Não foi possível carregar a agenda deste aluno.');
@@ -105,7 +111,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
 
   useEffect(() => {
     void loadBookings();
-  }, [studentId, teacherId, tenantId]);
+  }, [studentId, teacherId, tenantId, bookingId]);
 
   const changedBookings = useMemo(
     () => bookings.filter(item => item.day_of_week !== item.originalDay || item.time_slot !== item.originalTime),
@@ -119,7 +125,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
     setBookings(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
   };
 
-  // Troca permanente: o professor aplica direto, todas as aulas numa transação só.
+  // Professor e direção usam a mesma transação para preservar a vigência.
   // As aulas antes da vigência continuam no horário antigo; a Gestão é avisada no grupo.
   const applyPermanentChange = async () => {
     if (!changedBookings.length) return;
@@ -135,21 +141,27 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
     setApplying(true);
     setError('');
     setApplied('');
-    const { data: result, error: rpcError } = await supabase.rpc('teacher_apply_student_schedule_change', {
-      p_student_id: studentId,
-      p_changes: changedBookings.map(item => ({ booking_id: item.id, new_day: item.day_of_week, new_time: item.time_slot })),
-      p_effective_from: effectiveFrom,
-      p_reason: reason,
-    });
-    setApplying(false);
-
-    if (rpcError || result?.ok === false) {
-      setError(friendlyScheduleError(rpcError?.message || result?.error || ''));
-      return;
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc('teacher_apply_student_schedule_change', {
+        p_student_id: studentId,
+        p_changes: changedBookings.map(item => ({ booking_id: item.id, new_day: item.day_of_week, new_time: item.time_slot })),
+        p_effective_from: effectiveFrom,
+        p_reason: reason,
+      });
+      if (rpcError || result?.ok !== true) {
+        setError(friendlyScheduleError(rpcError?.message || result?.error || ''));
+        return;
+      }
+      setApplied(result.changed === 0
+        ? 'A agenda já possui esse horário na data escolhida.'
+        : `Horário alterado a partir de ${formatDate(effectiveFrom)}.${result.notification_queued ? ' O aviso à coordenação foi colocado na fila.' : ''}`);
+      setBookings(current => current.map(item => ({ ...item, originalDay: item.day_of_week, originalTime: item.time_slot })));
+      onChanged?.();
+    } catch {
+      setError('Não foi possível confirmar a troca. Reabra a agenda e confira o horário antes de tentar novamente.');
+    } finally {
+      setApplying(false);
     }
-    setApplied(`Horário alterado a partir de ${formatDate(effectiveFrom)}.${result?.notification_queued ? ' A Gestão foi avisada no grupo.' : ''}`);
-    setBookings(current => current.map(item => ({ ...item, originalDay: item.day_of_week, originalTime: item.time_slot })));
-    onChanged?.();
   };
 
   // Troca de UMA aula continua sendo solicitação: aceite da família e revisão da escola.
@@ -221,7 +233,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
           </div>
           <div className="grid gap-3 sm:grid-cols-2 text-xs">
             <label>Tipo de mudança<select value={scope} onChange={e => { setScope(e.target.value as 'PERMANENT' | 'ONE_OFF'); setApplied(''); setError(''); }} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3"><option value="PERMANENT">Permanente</option><option value="ONE_OFF">Somente uma aula</option></select></label>
-            {!permanent && <label>Quem pediu a mudança?<select value={initiatedBy} onChange={e => setInitiatedBy(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3"><option value="TEACHER">Eu, professor</option><option value="STUDENT">Aluno</option><option value="GUARDIAN">Responsável</option></select></label>}
+            {!permanent && <label>Quem pediu a mudança?<select value={initiatedBy} onChange={e => setInitiatedBy(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3">{managerMode && <option value="SCHOOL">Direção da escola</option>}<option value="TEACHER">Professor</option><option value="STUDENT">Aluno</option><option value="GUARDIAN">Responsável</option></select></label>}
             {permanent ? <label>A partir de<input type="date" min={tomorrow()} value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label> : <><label>Data original da aula<input type="date" min={tomorrow()} value={originalDate} onChange={e => setOriginalDate(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label><label>Data proposta<input type="date" min={tomorrow()} value={proposedDate} onChange={e => setProposedDate(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label></>}
             <label className="sm:col-span-2">Motivo<textarea value={reason} maxLength={1000} onChange={e => setReason(e.target.value)} placeholder="Explique o motivo (fica registrado e vai para a Gestão)." className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label>
           </div>

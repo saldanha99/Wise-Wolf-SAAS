@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Calendar, User as UserIcon, Save, RefreshCw, ArrowRightLeft } from 'lucide-react';
+import { Trash2, Plus, Calendar, User as UserIcon, CalendarClock, RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import DirectTeacherTransferModal from './DirectTeacherTransferModal';
+import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
 
 interface StudentScheduleManagerProps {
     studentId: string;
@@ -44,7 +45,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     });
 
     const [processingId, setProcessingId] = useState<string | null>(null);
-    const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, { day: string; time: string }>>({});
+    const [editingSchedule, setEditingSchedule] = useState<Booking | null>(null);
 
     useEffect(() => {
         fetchBookings();
@@ -70,10 +71,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 teacher: Array.isArray(booking.teacher) ? booking.teacher[0] : booking.teacher,
             })) as Booking[];
             setBookings(nextBookings);
-            setScheduleDrafts(Object.fromEntries(nextBookings.map(booking => [
-                booking.id,
-                { day: booking.day_of_week, time: booking.time_slot.slice(0, 5) },
-            ])));
+
         } catch (error) {
             console.error('Error fetching bookings:', error);
         } finally {
@@ -122,38 +120,6 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             if (onUpdate) onUpdate();
         } catch (error: any) {
             alert('Erro ao remover: ' + error.message);
-        } finally {
-            setProcessingId(null);
-        }
-    };
-
-    const handleScheduleSave = async (bookingId: string) => {
-        const currentBooking = bookings.find(booking => booking.id === bookingId);
-        if (!currentBooking) return;
-
-        const draft = scheduleDrafts[bookingId];
-        const nextDay = draft?.day || currentBooking.day_of_week;
-        const nextTime = (draft?.time || currentBooking.time_slot).slice(0, 5);
-        if (nextDay === currentBooking.day_of_week && nextTime === currentBooking.time_slot.slice(0, 5)) return;
-
-        setProcessingId(bookingId);
-        try {
-            // A RPC centraliza autorização, disponibilidade, conflitos,
-            // auditoria e a notificação operacional da mudança de agenda.
-            const { data, error } = await supabase.rpc('change_booking_schedule', {
-                p_booking_id: bookingId,
-                p_day_of_week: nextDay,
-                p_time_slot: nextTime.slice(0, 5),
-            });
-
-            if (error) throw error;
-            if (data && (data as any).ok === false) {
-                throw new Error((data as any).error || 'Não foi possível alterar o horário.');
-            }
-            await fetchBookings();
-            if (onUpdate) onUpdate();
-        } catch (error: any) {
-            alert('Erro ao atualizar horário: ' + error.message);
         } finally {
             setProcessingId(null);
         }
@@ -240,53 +206,19 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             )}
 
             <div className="space-y-3">
-                {bookings.map(booking => {
-                    const draft = scheduleDrafts[booking.id] || {
-                        day: booking.day_of_week,
-                        time: booking.time_slot.slice(0, 5),
-                    };
-                    const scheduleChanged = draft.day !== booking.day_of_week
-                        || draft.time !== booking.time_slot.slice(0, 5);
-
-                    return (
+                {bookings.map(booking => (
                     <div key={booking.id} className="p-3 bg-brand-surface border border-brand-border rounded-xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all flex flex-col md:flex-row items-center gap-4 group">
-
-                        {/* Day & Time Editor */}
                         <div className="flex gap-2 items-center flex-1">
-                            <select
-                                value={draft.day}
-                                onChange={(e) => setScheduleDrafts(prev => ({
-                                    ...prev,
-                                    [booking.id]: { ...draft, day: e.target.value },
-                                }))}
-                                disabled={processingId === booking.id}
-                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text uppercase w-24 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-hidden transition-colors"
-                            >
-                                {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
-
-                            <input
-                                type="time"
-                                step={1800}
-                                value={draft.time}
-                                onChange={(e) => setScheduleDrafts(prev => ({
-                                    ...prev,
-                                    [booking.id]: { ...draft, time: e.target.value },
-                                }))}
-                                disabled={processingId === booking.id}
-                                className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text w-20 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-hidden transition-colors scheme-dark"
-                            />
+                            <span className="text-xs font-black text-brand-text">
+                                {booking.day_of_week} · {booking.time_slot.slice(0, 5)}
+                            </span>
                             <button
                                 type="button"
-                                onClick={() => handleScheduleSave(booking.id)}
-                                disabled={processingId === booking.id || !scheduleChanged}
-                                className="p-2 rounded-lg bg-brand-accent text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                title="Salvar novo dia e horário"
-                                aria-label="Salvar novo dia e horário"
+                                onClick={() => setEditingSchedule(booking)}
+                                className="px-3 py-2 rounded-lg bg-brand-accent text-white text-xs font-bold flex items-center gap-1"
+                                aria-label={`Alterar horário de ${booking.day_of_week} ${booking.time_slot.slice(0, 5)}`}
                             >
-                                {processingId === booking.id
-                                    ? <RefreshCw size={14} className="animate-spin" />
-                                    : <Save size={14} />}
+                                <CalendarClock size={14} /> Alterar horário
                             </button>
                         </div>
 
@@ -309,8 +241,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             {processingId === booking.id ? <RefreshCw size={14} className="animate-spin text-brand-accent" /> : <Trash2 size={14} />}
                         </button>
                     </div>
-                    );
-                })}
+                ))}
 
                 {bookings.length === 0 && !isAdding && (
                     <div className="p-4 border border-dashed border-brand-border rounded-xl text-center">
@@ -319,6 +250,22 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 )}
             </div>
 
+            <p className="text-xs text-brand-muted">Para trocar um horário, use Alterar horário e Aplicar troca. Salvar Perfil salva somente os dados cadastrais.</p>
+            {editingSchedule && (
+                <TeacherStudentScheduleEditor
+                    studentId={studentId}
+                    studentName={student?.full_name || 'Aluno'}
+                    tenantId={tenantId}
+                    teacherId={editingSchedule.teacher_id}
+                    bookingId={editingSchedule.id}
+                    managerMode
+                    onClose={() => setEditingSchedule(null)}
+                    onChanged={() => {
+                        void fetchBookings();
+                        onUpdate?.();
+                    }}
+                />
+            )}
             {showTransfer && student && (
                 <TeacherTransferGenerator
                     tenantId={tenantId}
