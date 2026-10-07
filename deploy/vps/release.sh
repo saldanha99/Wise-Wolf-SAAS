@@ -1518,6 +1518,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261002195026_enrollment_completion_without_feedback.sql"
   "supabase/migrations/20261002195728_enrollment_portal_access_in_completion_queue.sql"
   "supabase/migrations/20261002193942_oral_test_scheduling_lifecycle.sql"
+  "supabase/migrations/20261007175907_enrollment_booking_versioned_schedule_change.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"

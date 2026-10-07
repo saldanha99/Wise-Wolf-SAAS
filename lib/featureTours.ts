@@ -796,6 +796,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-07-troca-horario-direcao', title: 'Troca de horário pela direção', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'director-schedule-change', view: 'schedule_explorer', title: 'Aplique a troca na Agenda do aluno', text: 'No Mapa de Aulas, abra o aluno e a aba Agenda. Use Alterar horário, escolha o novo dia, horário, motivo e uma data a partir de amanhã, e clique em Aplicar troca. A mudança preserva as aulas anteriores, verifica conflitos e prepara o aviso à coordenação. A grade é atualizada após salvar. Salvar Perfil altera somente os dados cadastrais.' }],
   },
+  {
+    id: '2026-10-07-z-troca-horario-matricula', title: 'Troca de horário de aulas da matrícula', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'director-schedule-change', view: 'schedule_explorer', title: 'Altere o horário preservando a matrícula', text: 'Na Agenda do aluno, Alterar horário também permite trocar aulas criadas pela matrícula. Informe o novo horário, motivo e vigência futura; as aulas anteriores e a origem da matrícula ficam preservadas. Se houver uma reserva de matrícula em andamento, escolha outro horário ou aguarde sua conclusão. Uma falha mantém o formulário preenchido para tentar novamente.' }],
+  },
+  {
+    id: '2026-10-07-z-troca-horario-matricula-professor', title: 'Troca de horário de aulas da matrícula', roles: ['TEACHER'],
+    steps: [{ target: 'student-schedule-change', view: 'students', title: 'Use Agenda para aplicar a troca', text: 'Em Meus alunos, abra Agenda no cartão do aluno. A troca permanente também funciona para aulas criadas pela matrícula: informe novo dia, horário, motivo e vigência futura. As aulas anteriores ficam no horário antigo. Uma reserva de matrícula em andamento continua protegida; se a gravação falhar, os campos ficam preenchidos para tentar novamente.' }],
+  },
 ];
 
 /**

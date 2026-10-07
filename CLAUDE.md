@@ -3834,3 +3834,24 @@ checks de serviços, suíte SQL e smoke tests aprovados. Marker ativo conferido
 e SHA-256 do bundle StudentProfileForm servido igual ao build, contendo o editor
 com a RPC canônica. Backup em
 `/opt/wisewolf/backups/release-20261007T132327Z-b696154d8835`.
+
+### 07/10/2026 — Troca de horário de aula materializada da matrícula (correção preparada)
+
+O formulário mascarava `invalid_enrollment_booking_link` como erro de data/motivo.
+`protect_enrollment_schedule_reservation` comparava o horário novo ao slot comercial
+original, bloqueando a RPC canônica para bookings com `enrollment_offer_slot_id`.
+Migration `20261007175907` aceita a divergência somente no mesmo booking materializado,
+com vínculo/participantes preservados e versão permanente APPLIED correspondente.
+Mudança exige revisão do ator na mesma transação e vigência futura; update sem mudança
+reconhece a versão persistida. Origem da oferta/slot não é reescrita nem desligada.
+Reserva RESERVED viva no destino continua barrada. Nenhum grant público novo.
+
+Mensagens distinguem vínculo da matrícula, reserva em andamento e sessão expirada;
+falha desconhecida não acusa campos válidos. Formulário permanece preenchido.
+Tours de direção/professor e migration registrados no release; regressão SQL existente
+agora começa com uma aula materializada, preserva origem e três vigências, recusa
+edição direta/reserva viva/outro professor/outra escola. Testes na VPS somente em
+transação revertida, migration 2×, sem mensagens externas ou dados reais alterados.
+Validado: 24 testes UI/tours, typecheck e build com vídeos públicos habilitados;
+suítes SQL de troca de horário e reservas autoritativas passaram com rollback,
+sem fixtures remanescentes. Correção ainda não publicada; aguarda release oficial.

@@ -30,6 +30,12 @@ const formatDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDate
 
 const friendlyScheduleError = (message: string) => {
   const knownMessages = [
+    'Sessão expirada. Entre novamente.',
+    'Seu perfil não pode alterar agendas.',
+    'Aluno fora da sua escola.',
+    'Aula fora da sua agenda.',
+    'Escolha um dia válido de segunda a sábado.',
+    'Nenhuma aula selecionada para troca.',
     'Você só pode alterar alunos da sua própria agenda.',
     'O professor já possui uma aula nesse dia e horário.',
     'O aluno já possui uma aula nesse dia e horário.',
@@ -41,10 +47,12 @@ const friendlyScheduleError = (message: string) => {
   ];
   const conflict = message.match(/Choque de agenda[^.]*\./);
   if (conflict) return conflict[0];
+  if (/booking_conflicts_with_enrollment_reservation/.test(message)) return 'Esse horário está reservado para uma matrícula em andamento. Escolha outro horário ou aguarde a conclusão da matrícula.';
+  if (/invalid_enrollment_booking_link/.test(message)) return 'Não foi possível atualizar o horário da aula vinculada à matrícula. Seus dados foram mantidos; peça à coordenação para verificar o vínculo.';
   if (/inactive_student_scheduled_booking_forbidden/.test(message)) return 'O aluno está inativo. Fale com a coordenação antes de trocar o horário.';
   if (/schedule_change_one_pending|duplicate key/.test(message)) return 'Já existe uma proposta pendente para esta aula. Aguarde a revisão da escola.';
   if (/original_occurrence|one_off|occurrence_already/.test(message)) return 'Confira a data original e a proposta. A data original precisa corresponder a uma aula futura da agenda.';
-  return knownMessages.find(known => message.includes(known)) || 'Não foi possível salvar. Confira a data, o horário e o motivo (mínimo de 8 caracteres).';
+  return knownMessages.find(known => message.includes(known)) || 'Não foi possível salvar a troca de horário. Seus dados foram mantidos. Tente novamente; se o erro continuar, fale com a coordenação.';
 };
 
 const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> = ({
@@ -241,7 +249,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
           {successId && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">Proposta registrada. Aguarde o aceite da família e a aprovação da escola.</p>}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold text-red-600 dark:text-red-300">
+            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold text-red-600 dark:text-red-300">
               <AlertCircle size={16} className="mt-0.5 shrink-0" /> {error}
             </div>
           )}

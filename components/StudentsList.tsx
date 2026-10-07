@@ -1005,7 +1005,7 @@ ${parsed.details}` : ''));
   const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 h-auto xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
+    <div data-tour="student-schedule-change" className="flex flex-col xl:flex-row gap-6 h-auto xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
 
       {/* Sidebar: Teacher Filter (Admins Only) */}
       {showSidebar && (
