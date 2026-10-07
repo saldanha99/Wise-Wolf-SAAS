@@ -3835,7 +3835,7 @@ e SHA-256 do bundle StudentProfileForm servido igual ao build, contendo o editor
 com a RPC canônica. Backup em
 `/opt/wisewolf/backups/release-20261007T132327Z-b696154d8835`.
 
-### 07/10/2026 — Troca de horário de aula materializada da matrícula (correção preparada)
+### 07/10/2026 — Troca de horário de aula materializada da matrícula
 
 O formulário mascarava `invalid_enrollment_booking_link` como erro de data/motivo.
 `protect_enrollment_schedule_reservation` comparava o horário novo ao slot comercial
@@ -3854,4 +3854,14 @@ edição direta/reserva viva/outro professor/outra escola. Testes na VPS somente
 transação revertida, migration 2×, sem mensagens externas ou dados reais alterados.
 Validado: 24 testes UI/tours, typecheck e build com vídeos públicos habilitados;
 suítes SQL de troca de horário e reservas autoritativas passaram com rollback,
-sem fixtures remanescentes. Correção ainda não publicada; aguarda release oficial.
+sem fixtures remanescentes.
+Publicado pelo release oficial `20261007T220009Z-7273d1bee6ff`, origem `686133049c54`:
+1.239 testes Vitest, 1.468 testes Deno, auditoria sem vulnerabilidades, suíte SQL
+transacional e smoke tests aprovados. Primeira tentativa parou por timeout SSH antes
+de alterar produção; segunda concluída pelo mesmo processo, sem desativar guardas.
+Marker ativo e função com correção confirmados; dono postgres, sem EXECUTE para anon
+ou authenticated. SHA-256 dos bundles StudentProfileForm e StudentsList servidos
+igual ao build da release. Backup reversível:
+`/opt/wisewolf/backups/release-20261007T220009Z-7273d1bee6ff`.
+Nenhum horário real foi alterado para testar; reabrir o formulário e aplicar a troca
+combinada. O arquivo local não rastreado foi preservado e devolvido ao checkout.
