@@ -3828,4 +3828,9 @@ Validação: 20 testes UI/tour, typecheck e build com vídeos públicos habilita
 A suíte SQL já registrada `professor_troca_horario_do_proprio_aluno.sql` agora
 reproduz a recusa legada da direção, aplica 16:30 numa agenda versionada, confere
 três vigências e recusa diretor de outra escola. Executada na VPS com rollback,
-sem fixtures remanescentes. Publicação pendente da execução oficial do release.
+sem fixtures remanescentes. Publicado pelo release oficial
+`20261007T132327Z-b696154d8835`, origem `25c21b8c979e`: 1.235 testes Vitest,
+checks de serviços, suíte SQL e smoke tests aprovados. Marker ativo conferido
+e SHA-256 do bundle StudentProfileForm servido igual ao build, contendo o editor
+com a RPC canônica. Backup em
+`/opt/wisewolf/backups/release-20261007T132327Z-b696154d8835`.
