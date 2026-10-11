@@ -51,6 +51,7 @@ export const teacherMenuItems = (pendingLessonsCount: number): NavItem[] => [
   { id: 'lessons', label: 'Lançar Aula', icon: BookOpen, section: 'Dia a dia', primary: true, short: 'Lançar' },
   { id: 'lesson-sessions', label: 'Salas e continuidade', icon: Video, section: 'Dia a dia', short: 'Salas' },
   { id: 'pending', label: 'Pendentes', icon: AlertCircle, section: 'Dia a dia', badge: pendingLessonsCount, primary: true },
+  { id: 'lesson-history', label: 'Histórico de aulas', icon: FileText, section: 'Dia a dia', short: 'Histórico' },
   { id: 'reschedules', label: 'Reposições', icon: Repeat, section: 'Dia a dia' },
   { id: 'students', label: 'Alunos', icon: Users, section: 'Dia a dia' },
   { id: 'meeting_links', label: 'Links de Aula', icon: Video, section: 'Dia a dia', short: 'Links' },

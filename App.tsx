@@ -1,3 +1,5 @@
+import TeacherHistoryAccess from './components/TeacherHistoryAccess';
+import LessonHistoryPanel from './components/LessonHistoryPanel';
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from './lib/supabase';
@@ -169,6 +171,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'automation', label: 'Smart', group: 'Administração' },
   ],
   [UserRole.SCHOOL_ADMIN]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Aulas', keywords: 'auditoria atraso reclamações' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Aulas' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Aulas' },
@@ -218,6 +221,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.COORDINATOR]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Qualidade' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
@@ -226,6 +230,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'profile', label: 'Meu perfil', group: 'Conta' },
   ],
   [UserRole.TEACHER]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Professor' },
     { tab: 'dashboard', label: 'Dashboard', group: 'Professor' },
     { tab: 'lessons', label: 'Lançar Aula', group: 'Professor' },
@@ -364,7 +369,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const uid = user?.id;
     const role = String(user?.role);
-    if (!uid || (!TOUR_ROLES.includes(role) && role !== UserRole.SALESPERSON)) return;
+    if (!uid || (!TOUR_ROLES.includes(role) && role !== UserRole.SALESPERSON && role !== UserRole.COORDINATOR)) return;
     let vivo = true;
     void (async () => {
       const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
@@ -536,6 +541,8 @@ const App: React.FC = () => {
 
   // Restaura a sessão persistida pelo Supabase depois de refresh/reabertura da aba.
   useEffect(() => {
+    // O extrato próprio tem login independente e não restaura acesso operacional.
+    if (window.location.pathname === '/historico-prestacao') { setIsRestoringSession(false); return; }
     let mounted = true;
 
     const restoreSession = async () => {
@@ -1112,6 +1119,8 @@ const App: React.FC = () => {
     );
   }
 
+  if (path === '/historico-prestacao') return <TeacherHistoryAccess />;
+
   if (path === '/view-contract') {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
       <PublicContractView />
@@ -1317,6 +1326,7 @@ const App: React.FC = () => {
       'msg_settings': <TeacherMessageSettings user={user} />,
       'contracts': <ContractManagement tenantId={currentTenant?.id} />,
       'student-payments': <AdminPaymentsList tenantId={currentTenant?.id} />,
+      'lesson-history': <LessonHistoryPanel user={user} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,
       'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,

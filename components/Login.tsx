@@ -84,11 +84,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
+    <>
     <SignInCard2
         onLogin={handleLogin}
         isLoading={loading}
         error={error}
     />
+    <a href="/historico-prestacao" className="fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-slate-600 bg-white rounded-xl px-3 py-2 underline text-center">Teacher: consultar histórico após encerramento</a>
+    </>
   );
 };
 

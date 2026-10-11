@@ -95,6 +95,7 @@ export const ADMIN_NAV: NavGroup[] = [
   // ── Aulas ─────────────────────────────────────────────────────────────────
   { id: 'lesson-quality', label: 'Qualidade das aulas', icon: ShieldAlert, section: 'Aulas', tabs: [
     { id: 'lesson-quality', label: 'Acompanhamento' },
+    { id: 'lesson-history', label: 'Histórico de aulas' },
     { id: 'schedule-requests', label: 'Aceites de horário' },
     { id: 'quality-contacts', label: 'Contatos verificados' },
     { id: 'lesson-sessions', label: 'Salas e continuidade', badgeKey: 'resumos_para_revisar' },

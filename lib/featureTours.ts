@@ -48,7 +48,7 @@ export interface FeatureTour {
   id: string;
   /** Título curto, aparece no cabeçalho do balão e no menu "Novidades". */
   title: string;
-  roles: (TourRole | 'SALESPERSON')[];
+  roles: (TourRole | 'SALESPERSON' | 'COORDINATOR')[];
   steps: TourStep[];
   /**
    * Só para escolas neste modo de autorização do registro das aulas. Os tours
@@ -804,6 +804,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-07-z-troca-horario-matricula-professor', title: 'Troca de horário de aulas da matrícula', roles: ['TEACHER'],
     steps: [{ target: 'student-schedule-change', view: 'students', title: 'Use Agenda para aplicar a troca', text: 'Em Meus alunos, abra Agenda no cartão do aluno. A troca permanente também funciona para aulas criadas pela matrícula: informe novo dia, horário, motivo e vigência futura. As aulas anteriores ficam no horário antigo. Uma reserva de matrícula em andamento continua protegida; se a gravação falhar, os campos ficam preenchidos para tentar novamente.' }],
   },
+  {
+    id: '2026-10-10-historico-aulas-rastreavel', title: 'Histórico de aulas e conferência da prestação', roles: ['TEACHER', 'SCHOOL_ADMIN', 'COORDINATOR'],
+    steps: [
+      { target: 'lesson-history-panel', view: 'lesson-history', title: 'Consulte sua prestação', text: 'O Histórico de aulas reúne aulas realizadas, futuras e pendentes. As categorias separam faltas, reposições e feriados; cada total pode ser conferido pelas aulas abaixo. O teacher consulta somente a própria prestação, inclusive registros de alunos já transferidos.' },
+      { target: 'lesson-history-filters', view: 'lesson-history', title: 'Filtre por aluno e período', text: 'Escolha o mês, um intervalo de datas ou Toda a prestação / encerramento. Abra Detalhes e alterações para conferir a trilha ou registrar uma contestação. A coordenação registra correções com justificativa e resolve a divergência preservando o original.' },
+      { target: 'lesson-history-report', view: 'lesson-history', title: 'Arquive a conferência', text: 'Baixe o relatório ou use Imprimir / salvar PDF. O documento respeita os filtros e inclui alunos, última atividade, pendências, contestações e alterações. A conferência não conclui o encerramento nem altera o pagamento.' },
+    ],
+  },
 ];
 
 /**
@@ -823,12 +831,12 @@ export function pendingFeatureTours(
   context?: FeatureTourContext,
 ): FeatureTour[] {
   const seen = new Set(seenIds);
-  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole | 'SALESPERSON') && !seen.has(t.id) && fitsContext(t, context));
+  return FEATURE_TOURS.filter(t => t.roles.includes(role as TourRole | 'SALESPERSON' | 'COORDINATOR') && !seen.has(t.id) && fitsContext(t, context));
 }
 
 /** Tour mais recente do papel — é o que "Novidades" reabre. */
 export function latestFeatureTourFor(role: string, context?: FeatureTourContext): FeatureTour | undefined {
-  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole | 'SALESPERSON') && fitsContext(t, context));
+  return [...FEATURE_TOURS].reverse().find(t => t.roles.includes(role as TourRole | 'SALESPERSON' | 'COORDINATOR') && fitsContext(t, context));
 }
 
 /** Passos achatados para o motor, todos sob o capítulo "Novidade". */

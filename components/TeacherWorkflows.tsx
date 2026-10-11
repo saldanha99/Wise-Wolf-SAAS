@@ -1,3 +1,4 @@
+import LessonHistoryPanel from './LessonHistoryPanel';
 import React, { useState, useEffect } from 'react';
 import { LogOut, CalendarOff, Loader2, AlertCircle, CheckCircle, ChevronDown, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -15,6 +16,7 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
     const [profile, setProfile] = useState<any>(null);
     const [absences, setAbsences] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showHistory, setShowHistory] = useState(false);
 
     // Offboarding
     const [offReason, setOffReason] = useState('');
@@ -77,6 +79,8 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
 
     return (
         <div className="space-y-4">
+            <button onClick={() => setShowHistory(!showHistory)} className="px-4 py-3 rounded-xl border border-brand-border font-bold">Conferir histórico de aulas e encerramento</button>
+            {showHistory && <LessonHistoryPanel user={{ id: user.id, role: 'TEACHER' }} teacherId={user.id} />}
             {/* OFFBOARDING */}
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">

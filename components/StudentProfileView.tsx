@@ -1,3 +1,4 @@
+import LessonHistoryPanel from './LessonHistoryPanel';
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
@@ -348,9 +349,10 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                 </div>
               )}
 
-              {/* CLASSES */}
+              {/* Histórico operacional e pedagógico do aluno */}
               {tab === 'classes' && (
                 <div className="space-y-2">
+                  <LessonHistoryPanel user={user} initialStudentId={studentId} />
                   {(data.classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (data.classes || []).map((c: any, i: number) => {
                       const pl = PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };

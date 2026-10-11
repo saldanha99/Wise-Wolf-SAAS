@@ -3865,3 +3865,38 @@ igual ao build da release. Backup reversível:
 `/opt/wisewolf/backups/release-20261007T220009Z-7273d1bee6ff`.
 Nenhum horário real foi alterado para testar; reabrir o formulário e aplicar a troca
 combinada. O arquivo local não rastreado foi preservado e devolvido ao checkout.
+
+### 10/10/2026 — Histórico operacional de aulas e conferência da prestação (preparado)
+
+Parte 2: `LessonHistoryPanel` no menu do teacher, da coordenação e em Qualidade
+na direção; também na ficha do aluno e na conferência de Saída / Ausência.
+Filtros de aluno/mês/intervalo, categorias exclusivas, futuras/não finalizadas,
+passivo de reposições separado, última atividade e relatório HTML/ impressão PDF.
+Fontes oficiais: class_logs, agenda efetiva, exclusões e reschedules; não altera
+folha, presença original, contratos ou resumos do Meet. Correções operacionais
+versionadas com justificativa; feriado/cancelamento excluem somente uma ocorrência
+sem lançamento/antecipação, e reabertura exige nova correção auditada. Teacher
+contesta; direção/coordenação resolve, preservando o original.
+
+Trilha prospectiva privada e imutável de criação/alteração/remoção, anterior/atual,
+autor quando conhecido e motivo da origem; baseline único sem inventar autoria
+legada. Eventos canônicos das reposições continuam consultáveis. Remoções e
+reatribuições de lançamento ficam visíveis sem contar como realizadas; transferir
+booking preserva pendências anteriores quando há prova na trilha. Não se inventa
+vínculo passado de agenda transferida antes da implantação.
+
+`/historico-prestacao` tem login próprio para o extrato do teacher desligado,
+com membership TEACHER revogada e lifecycle offboarded. A restauração operacional
+do App não roda nessa rota; não se afrouxam get_my_access_context, profiles,
+dossiê nem ProtectedRoute. Suspensos não recebem a exceção. Novidades passam a
+atender COORDINATOR sem criar tour de boas-vindas para esse papel.
+
+Migration `20261010232456` e teste `lesson_history_traceability.sql` no release;
+tour `2026-10-10-historico-aulas-rastreavel`. Validação: 1.251 testes Vitest,
+typecheck/build; migration 2× e teste transacional em clone só de estrutura,
+mais regressões de antecipações, troca de horário, sugestões do Meet e SECDEF.
+Desktop/celular (390 px) com fixtures, sem overflow. Nenhum dado real alterado,
+nenhuma mensagem enviada. NÃO publicado nesta tarefa. Política de retenção
+operacional/contratual não ganhou prazo jurídico inventado nem expurgo automático;
+o prazo das fontes do Meet não se aplica por inferência. Detalhes e limitações:
+[runbook](docs/runbooks/lesson-history-traceability.md).

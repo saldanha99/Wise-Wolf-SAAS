@@ -1519,6 +1519,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261002195728_enrollment_portal_access_in_completion_queue.sql"
   "supabase/migrations/20261002193942_oral_test_scheduling_lifecycle.sql"
   "supabase/migrations/20261007175907_enrollment_booking_versioned_schedule_change.sql"
+  "supabase/migrations/20261010232456_lesson_history_traceability.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"
@@ -1656,6 +1657,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/atomic_teacher_availability_replacement.sql"
   "supabase/tests/lesson_advances.sql"
   "supabase/tests/historical_lesson_advance_settlement.sql"
+  "supabase/tests/lesson_history_traceability.sql"
   "supabase/tests/lesson_advance_valid_origins.sql"
   "supabase/tests/schedule_contact_quality.sql"
   "supabase/tests/lesson_advance_integrity_and_explicit_logging.sql"
