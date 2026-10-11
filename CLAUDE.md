@@ -3900,3 +3900,16 @@ nenhuma mensagem enviada. NÃO publicado nesta tarefa. Política de retenção
 operacional/contratual não ganhou prazo jurídico inventado nem expurgo automático;
 o prazo das fontes do Meet não se aplica por inferência. Detalhes e limitações:
 [runbook](docs/runbooks/lesson-history-traceability.md).
+
+Publicação de 11/10/2026: release oficial `20261011T170527Z-e6a31dfd9953`,
+origem `02fb68a3cbc7f51fa09f913042705508f58981a2`, concluído com 1.251 testes
+Vitest, 1.468 testes Deno, typecheck, build, auditoria sem vulnerabilidades,
+migration 2×, suíte SQL transacional e smoke tests. Marker ativo confirmado;
+RPC do histórico dono postgres, authenticated autorizado e anon recusado.
+Baseline de 2.481 lançamentos, fixtures desta tarefa ausentes. Consulta real do
+extrato próprio em leitura/rollback: 24 linhas e 32 eventos, sem expor dados
+pessoais. SHA-256 do bundle App servido igual ao build; rota de consulta após
+encerramento respondeu 200 e abriu o formulário autenticado. Backup reversível
+em `/opt/wisewolf/backups/release-20261011T170527Z-e6a31dfd9953`.
+A indicação de não publicação acima foi superada por este release. Artefatos
+locais não rastreados preservados durante a publicação e restaurados depois.

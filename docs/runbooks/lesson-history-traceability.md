@@ -1,6 +1,6 @@
 # Histórico de aulas, transparência e rastreabilidade
 
-Implementação da Parte 2, preparada em 10/10/2026. Não publicada por esta tarefa.
+Implementação da Parte 2, preparada em 10/10/2026 e publicada em 11/10/2026 pelo release oficial `20261011T170527Z-e6a31dfd9953`, origem `02fb68a3cbc7f51fa09f913042705508f58981a2`.
 
 ## Acesso
 
@@ -47,3 +47,9 @@ Migration `20261010232456_lesson_history_traceability.sql` e teste `supabase/tes
 Validação de banco: cópia só de estrutura na VPS, dados fixture com notificações suprimidas e rollback; migration aplicada duas vezes. A restauração por postgres não consegue restaurar os defaults de supabase_admin: reproduzir somente os ALTER DEFAULT PRIVILEGES usando supabase_admin no clone, excluindo o schema cron ausente, antes da suíte de segurança. Nenhuma migration desta entrega deve ser aplicada manualmente em produção.
 
 Testes cobrem escopo, leitura pós-encerramento sem acesso operacional, versão concorrente, original preservado, contestação/resolução, feriado exclusivo, passivo sem data, remoção auditada e pendências na transferência. Regressões: histórico de antecipações, troca de horário, sugestões de lançamento do Meet e hardening de SECURITY DEFINER. UI: filtros, erros, contestação/correção, autenticação dedicada, exportação segura e tours. Conferência visual com dados fictícios em desktop e viewport 390 px.
+
+## Verificação da publicação de 11/10/2026
+
+Release oficial concluído, incluindo migration 2×, suíte SQL transacional, 1.251 testes Vitest, 1.468 testes Deno, typecheck, build, auditoria sem vulnerabilidades e smoke tests. Marker ativo `20261011T170527Z-e6a31dfd9953`; backup reversível `/opt/wisewolf/backups/release-20261011T170527Z-e6a31dfd9953`.
+
+Verificado após ativação: função de consulta com dono postgres, EXECUTE para authenticated e sem EXECUTE para anon; baseline com 2.481 registros e nenhum tenant fixture desta tarefa. A RPC foi chamada como teacher autenticado em leitura e rollback (24 linhas, 32 eventos), sem mostrar dados pessoais. SHA-256 do bundle App servido igual ao build, com a RPC do histórico; rota `/historico-prestacao` respondeu HTTP 200 e exibiu a entrada autenticada. Os arquivos locais de captura/contrato foram preservados fora da árvore durante o release e restaurados depois.
