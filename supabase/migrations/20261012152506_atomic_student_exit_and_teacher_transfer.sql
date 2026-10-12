@@ -15,6 +15,35 @@ $guard$);
  end if;
 end $patch$;
 
+-- Categorias novas ou legadas destinadas ao aluno também falham fechadas.
+-- Os avisos oficiais da própria saída e os destinados à equipe são exceções.
+create or replace function private.student_notice_requires_active(p_kind text)
+returns boolean language sql immutable set search_path='' as $$
+ select upper(btrim(coalesce(p_kind,'LESSON_REMINDER'))) not like 'TEACHER_%'
+ and upper(btrim(coalesce(p_kind,'LESSON_REMINDER'))) not like 'INTERVIEW_%'
+ and upper(btrim(coalesce(p_kind,'LESSON_REMINDER'))) not like 'AFFILIATE_%'
+ and upper(btrim(coalesce(p_kind,'LESSON_REMINDER'))) not in (
+  'STUDENT_SUSPENDED','STUDENT_OFFBOARDED','ENROLLMENT_MANAGEMENT_CLOSED',
+  'ENROLLMENT_TEACHER_CLOSED','SCHEDULE_CHANGE_GROUP','CONFLICT_TEACHER_ALERT',
+  'SCHOOL_AI_BRIEFING','CRON_ALERT','ASAAS_HEALTH','TRIAL_MANAGEMENT_ACCEPTED','TRIAL_TEACHER_REQUESTED');
+$$;
+alter function private.student_notice_requires_active(text) owner to postgres;
+revoke all on function private.student_notice_requires_active(text) from public,anon,authenticated,service_role;
+
+do $patch$ declare definition text;anchor text;begin
+ definition:=pg_get_functiondef('public.begin_notification_delivery_submission(uuid,uuid,text,text,text,text,uuid,bigint)'::regprocedure);
+ if position('private.student_notice_requires_active' in definition)=0 then
+  anchor:='  if v_kind=''ENROLLMENT_STUDENT_CONFIRMED'' then';
+  if position(anchor in definition)=0 then raise exception 'all_student_submission_anchor_missing';end if;
+  execute replace(definition,anchor,$guard$
+  if v_notification.student_id is not null and private.student_notice_requires_active(v_kind)
+    and not public.is_student_notifiable(v_notification.student_id) then
+   return jsonb_build_object('ok',false,'action','REVIEW_REQUIRED','reason','student_notifications_suppressed');
+  end if;
+$guard$||anchor);
+ end if;
+end $patch$;
+
 create or replace function private.silence_student_automation(p_student uuid)
 returns void language plpgsql security definer set search_path='' as $$
 declare tenant text; changed integer;
@@ -27,10 +56,7 @@ begin
  where tenant_id=tenant and student_id=p_student and status in ('pending','failed')
    and delivery_status in ('queued','failed','preparing')
    and accepted_at is null and provider_message_id is null
-   and coalesce(notification_kind,'LESSON_REMINDER') in (
-     'LESSON_REMINDER','BIRTHDAY','ORAL_TEST_STUDENT','ORAL_TEST_REMINDER_STUDENT',
-     'LESSON_RECORDING_NOTICE_STUDENT','LESSON_RECORDING_CONSENT_REQUEST',
-     'SCHEDULE_CHANGE_FAMILY_ACCEPTANCE','ENROLLMENT_STUDENT_CONFIRMED','TEACHER_MEET_ROOM','MANAGEMENT_NOTICE');
+   and private.student_notice_requires_active(notification_kind);
  get diagnostics changed=row_count;
  update public.attendance_confirmations set delivery_status='CANCELLED',
    last_delivery_error='student_notifications_suppressed'
@@ -71,10 +97,7 @@ begin
  if new.student_id is not null and new.status in ('pending','failed')
    and new.delivery_status in ('queued','failed','preparing')
    and new.provider_message_id is null and new.accepted_at is null
-   and coalesce(new.notification_kind,'LESSON_REMINDER') in (
-     'LESSON_REMINDER','BIRTHDAY','ORAL_TEST_STUDENT','ORAL_TEST_REMINDER_STUDENT',
-     'LESSON_RECORDING_NOTICE_STUDENT','LESSON_RECORDING_CONSENT_REQUEST',
-     'SCHEDULE_CHANGE_FAMILY_ACCEPTANCE','ENROLLMENT_STUDENT_CONFIRMED','TEACHER_MEET_ROOM','MANAGEMENT_NOTICE')
+   and private.student_notice_requires_active(new.notification_kind)
    and not public.is_student_notifiable(new.student_id) then
   new.status:='skipped'; new.delivery_status:='skipped'; new.last_error:='student_notifications_suppressed';
  end if;
@@ -304,6 +327,8 @@ create or replace function private.assert_no_transfer_reservation(p_tenant text,
 returns void language plpgsql security definer set search_path='' as $$
 begin
  if p_teacher is null or public.dow_name_to_int(p_day) is null or p_time is null then return; end if;
+ -- A trava do teacher também cobre overlaps (18h15 versus 18h30).
+ perform pg_advisory_xact_lock(hashtextextended(p_tenant||':teacher-transfer:'||p_teacher::text,0));
  perform pg_advisory_xact_lock(hashtextextended('schedule:teacher:'||p_teacher::text||':'||public.fold_accents(public.canonical_weekday_name(p_day))||':'||left(p_time,5),0));
  if exists(select 1 from public.teacher_transfers t cross join lateral jsonb_array_elements(t.proposed_slots) s
   where t.tenant_id=p_tenant and t.to_teacher_id=p_teacher and t.student_id is distinct from p_student
@@ -365,6 +390,7 @@ do $patch$ declare definition text;anchor text;begin
   if position(anchor in definition)=0 then raise exception 'proposal_validation_anchor_missing';end if;
   definition:=replace(definition,anchor,$guard$
   IF NOT public.is_student_notifiable(p_student_id) THEN RAISE EXCEPTION 'Aluno inativo não pode ser transferido.' USING ERRCODE='23514'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended((SELECT tenant_id FROM public.profiles WHERE id=p_student_id)||':teacher-transfer:'||p_to_teacher::text,0));
   PERFORM pg_advisory_xact_lock(hashtextextended('schedule:teacher:'||p_to_teacher::text||':'||public.fold_accents(slot->>'day_of_week')||':'||(slot->>'time_slot'),0)) FROM jsonb_array_elements(p_slots) slot ORDER BY slot->>'day_of_week',slot->>'time_slot';
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_slots) slot WHERE NOT private.transfer_slot_available((SELECT tenant_id FROM public.profiles WHERE id=p_student_id),p_to_teacher,public.dow_name_to_int(slot->>'day_of_week'),(slot->>'time_slot')::time,p_cutover,p_student_id)) THEN RAISE EXCEPTION 'Um dos horários escolhidos não está mais disponível. Atualize a lista.' USING ERRCODE='23P01'; END IF;
   RETURN public.create_teacher_transfer_unchecked(

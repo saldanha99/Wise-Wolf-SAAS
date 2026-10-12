@@ -25,10 +25,17 @@ select pg_temp.assert_true((select delivery_status='uncertain' from public.notif
 select pg_temp.assert_true((select delivery_status='accepted' and provider_message_id='fixture-provider' from public.notification_queue where tenant_id='transfer-exit-fixture' and message_body='fixture accepted'),'provider receipt preserved');
 insert into public.notification_queue(tenant_id,student_id,student_phone,message_body,scheduled_for) values('transfer-exit-fixture','f9130000-0000-4000-8000-000000000002','5500000000000','fixture late',now());
 select pg_temp.assert_true((select delivery_status='skipped' from public.notification_queue where tenant_id='transfer-exit-fixture' and message_body='fixture late'),'late producer stopped');
+insert into public.notification_queue(tenant_id,student_id,student_phone,message_body,scheduled_for,notification_kind) values
+ ('transfer-exit-fixture','f9130000-0000-4000-8000-000000000002','5500000000000','fixture legacy activity',now(),'HEARTS_FULL'),
+ ('transfer-exit-fixture','f9130000-0000-4000-8000-000000000002','5500000000000','fixture future category',now(),'NEW_STUDENT_CATEGORY');
+select pg_temp.assert_true((select count(*)=2 from public.notification_queue where tenant_id='transfer-exit-fixture' and message_body in ('fixture legacy activity','fixture future category') and delivery_status='skipped'),'legacy and future student categories stopped');
+select pg_temp.assert_true(not private.student_notice_requires_active('STUDENT_OFFBOARDED') and not private.student_notice_requires_active('TEACHER_STUDENT_SUSPENDED'),'official exit notices remain in own workflow');
 update public.profiles set status='Ativo' where id='f9130000-0000-4000-8000-000000000002';
+insert into public.notification_queue(tenant_id,student_id,student_phone,message_body,scheduled_for) values('transfer-exit-fixture','f9130000-0000-4000-8000-000000000002','5500000000000','fixture just before pause',now());
 insert into public.student_offboarding_operations(id,tenant_id,student_id,source_lifecycle_status,target_lifecycle_status,status,claim_token,lease_expires_at,snapshot)
  values('f9132000-0000-4000-8000-000000000001','transfer-exit-fixture','f9130000-0000-4000-8000-000000000002','active','suspended','CLAIMED',gen_random_uuid(),now()+interval '5 minutes','{}');
 select pg_temp.assert_true(not public.is_student_notifiable('f9130000-0000-4000-8000-000000000002'),'pause fences before provider completion');
+select pg_temp.assert_true((select delivery_status='skipped' from public.notification_queue where tenant_id='transfer-exit-fixture' and message_body='fixture just before pause'),'begin pause retires unsent messages immediately');
 update public.student_offboarding_operations set status='ABORTED' where id='f9132000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(public.is_student_notifiable('f9130000-0000-4000-8000-000000000002'),'aborted operation restores future eligibility');
 select pg_temp.assert_true((select delivery_status='skipped' from public.notification_queue where tenant_id='transfer-exit-fixture' and message_body='fixture late'),'no resurrection of skipped messages');

@@ -3956,6 +3956,8 @@ no release: a porta de notificações bloqueia também operações de pausa/saí
 CLAIMED/UNKNOWN/BLOCKED ainda não concluídas. Triggers cancelam somente pendências
 sem aceite do provedor, encerram care touchpoints e propostas ainda não aplicadas;
 novas pendências de fila/presença são barradas. Aceitos, entregues e incertos não
+são apagados. Categorias legadas, como HEARTS_FULL, e novas categorias dirigidas
+ao aluno passam pela mesma proteção também na cerca anterior ao provedor. Não
 são reenviados nem apagados. Abortada a operação, só envios futuros voltam a ser
 elegíveis; skipped não ressuscita. Backfill com `schema_one_shots`, sem Asaas ou
 alteração financeira. As mensagens oficiais de encerramento seguem sua rota.
