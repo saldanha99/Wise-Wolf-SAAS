@@ -64,4 +64,5 @@ do $$declare result jsonb;again jsonb;slots jsonb:='[{"day_of_week":"Segunda","t
  perform pg_temp.assert_true(not exists(select 1 from public.notification_queue where tenant_id='transfer-exit-fixture' and notification_kind='TEACHER_TRANSFER'),'direct transfer does not duplicate management family announcement');
 end $$;
 select pg_temp.assert_true(not has_function_privilege('anon','public.admin_schedule_student_transfer(uuid,uuid,jsonb,date,text,uuid)','execute'),'anonymous cannot transfer');
+select pg_temp.assert_true(position('transfer_row.cutover_date > (now() AT TIME ZONE' in pg_get_functiondef('public.apply_teacher_transfer(uuid)'::regprocedure))>0 or position('transfer_row.cutover_date > (now() at time zone' in pg_get_functiondef('public.apply_teacher_transfer(uuid)'::regprocedure))>0,'cutover uses Sao Paulo, not UTC current_date');
 rollback;

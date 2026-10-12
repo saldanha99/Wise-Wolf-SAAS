@@ -3979,6 +3979,11 @@ sem mensagem externa. Tour de novidade da direção incluído.
 No fluxo direto, o anúncio à família permanece com a Gestão, como no fluxo
 imediato anterior; o job não repete o anúncio humano. O dossiê ao novo titular
 continua pelo gatilho APPLIED, sem disparo antecipado ao confirmar uma data futura.
+Vigência e cron usam a data de São Paulo, inclusive após 21h BRT (virada UTC).
+Retirada da agenda futura por transferência aceita não apaga nem bloqueia
+pendências históricas de cobertura; cobertura futura ainda exige conciliação.
+Aplicação integral do caso Vinicius/Mateus foi validada transacionalmente e
+revertida por rollback antes da publicação, sem mensagem externa.
 
 Caso autorizado: Vinicius Oliveira Chaves → Mateus, seg/ter/qui 18h30,
 vigência 13/10/2026. A direção confirmou nesta conversa; Mateus confirmou

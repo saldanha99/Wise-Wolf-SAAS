@@ -259,6 +259,8 @@ grant execute on function public.admin_schedule_student_transfer(uuid,uuid,jsonb
 -- A agenda antiga sobrevive para conferência; não deixa lançamentos órfãos.
 do $patch$ declare definition text; anchor text; begin
  definition:=pg_get_functiondef('public.apply_teacher_transfer(uuid)'::regprocedure);
+ definition:=replace(definition,'transfer_row.cutover_date > current_date',
+   'transfer_row.cutover_date > (now() at time zone ''America/Sao_Paulo'')::date');
  definition:=replace(definition,'SET professor_id2 = transfer_row.to_teacher_id','SET professor_id2 = NULL');
  definition:=replace(definition,'AND student.professor_id2 = transfer_row.from_teacher_id;',
    'AND student.professor_id2 IN (transfer_row.from_teacher_id,transfer_row.to_teacher_id);');
@@ -310,6 +312,31 @@ $retire$);
   definition:=replace(definition,E'  );\nEND;',E'  );\n  END IF;\nEND;');
  end if;
  execute definition;
+end $patch$;
+
+-- Pendência histórica do substituto não impede retirar somente a agenda futura.
+-- Uma cobertura futura ainda pendente/confirmada continua exigindo conciliação.
+do $patch$ declare definition text;anchor text;begin
+ definition:=pg_get_functiondef('public.protect_booking_source_coverage()'::regprocedure);
+ if position('audited_transfer_retired_schedule' in definition)=0 then
+  anchor:='  if tg_op = ''UPDATE'' and not (';
+  if position(anchor in definition)=0 then raise exception 'transfer_history_coverage_anchor_missing';end if;
+  definition:=replace(definition,anchor,$guard$
+  -- audited_transfer_retired_schedule: não apaga cobertura ou lançamento antigo.
+  if tg_op='UPDATE' and old.status='SCHEDULED' and new.status='CANCELLED'
+   and new.tenant_id is not distinct from old.tenant_id and new.teacher_id is not distinct from old.teacher_id
+   and new.student_id is not distinct from old.student_id and new.date is not distinct from old.date
+   and new.start_date is not distinct from old.start_date and new.day_of_week is not distinct from old.day_of_week
+   and new.time_slot is not distinct from old.time_slot and exists(
+    select 1 from public.teacher_transfers t where t.tenant_id=old.tenant_id and t.student_id=old.student_id
+     and t.from_teacher_id=old.teacher_id and t.status='ACCEPTED' and t.cutover_date<=(now() at time zone 'America/Sao_Paulo')::date
+     and not exists(select 1 from public.class_coverages c where c.booking_id=old.id and c.tenant_id=old.tenant_id
+      and c.class_date>=t.cutover_date and (lower(c.status)='confirmed' and c.class_log_id is null
+       or lower(c.status)='pending' and coalesce(c.invite_expires_at,(c.class_date::text||' '||left(c.class_time,5)||':00-03')::timestamptz)>now()))
+   ) then return new;end if;
+  if tg_op = 'UPDATE' and not (
+$guard$);execute definition;
+ end if;
 end $patch$;
 
 -- Um conflito individual não impede as outras transferências do dia.
