@@ -4013,7 +4013,7 @@ bytes: `/opt/wisewolf/backups/vinicius-mateus-transfer-20261012T162142Z/database
 Sem mudança em mensalidade, contrato, cobrança ou prestação histórica. Arquivos
 locais não rastreados do usuário restaurados após o release.
 
-### 12/10/2026 — Continuidade da triagem de professores (preparado)
+### 12/10/2026 — Continuidade da triagem de professores (publicado)
 
 `avancarTriagem` seleciona no servidor a próxima pergunta após extrair somente
 a etapa aberta. A mesma resposta agradece e pergunta; não exige nova mensagem
@@ -4025,3 +4025,26 @@ progresso divergente. Não amplia o limite de respostas nem altera remuneração
 Regressões nas dez etapas e tour da direção incluídos. Laura ficou bloqueada
 pela cadência após as respostas extras; recuperação deve conferir histórico,
 handoff e recibo durável, sem replay de webhook ou retomada em lote.
+
+Publicado pelo release oficial `20261012T185756Z-b693b8203a95`, origem
+`1ad5f00033b4e6fa1be3e2df990f1d05a46f40c7`: 1.259 testes Vitest, 1.472
+Deno, typecheck, auditoria sem vulnerabilidades, suíte SQL transacional e
+smoke tests aprovados; serviços saudáveis. Backup de release em
+`/opt/wisewolf/backups/release-20261012T185756Z-b693b8203a95`.
+
+Laura, candidatura `8a15c286-d5a8-409e-85aa-d8a39f8f589b`: o “Sim” à
+remuneração de 12/10 às 18h10m38 UTC, provider
+`AC2B712A47308EDCFE7647A9865EC6AF`, foi silenciado por `rate_limit` depois
+das respostas extras exigidas pelo bug. A direção autorizou reparar nesta
+conversa. Após conferir a pergunta anterior, toda a conversa e ausência de
+intervenção posterior, registrado somente `remuneracao_ok=true`; demais
+respostas, status IN_PROGRESS e contratação intactos. Teste com rollback,
+aplicação única e repetição sem nova auditoria aprovados. Trilha
+`hr_screening_rate_limited_answer_repaired` (uma linha), backup restrito e
+validado de 3.904.805 bytes em
+`/opt/wisewolf/backups/laura-screening-20261012-IiPLBP/before.dump`.
+Nenhuma mensagem externa enviada nesse reparo. Retomada imediata da conversa
+depende de sessão autenticada no canal oficial; a sessão do navegador estava
+na tela de login. Não repetir a pergunta de remuneração, criar aprovação,
+replay de webhook ou contornar autenticação. Arquivos locais não rastreados
+do usuário preservados e restaurados após o release.
