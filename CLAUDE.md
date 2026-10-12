@@ -3948,3 +3948,34 @@ Inativo e Lariza SUSPENDED bloqueadas, Vinicius ativo com telefone corrigido.
 Fixture novo ausente. Nenhuma mensagem externa de teste ou reenvio foi feito.
 Backup da release: `/opt/wisewolf/backups/release-20261012T151425Z-01697d2f7446`.
 Arquivos locais não rastreados preservados e restaurados após a publicação.
+
+### 12/10/2026 — Saída silencia pendências e transferência com nova agenda (preparado)
+
+Migration `20261012152506_atomic_student_exit_and_teacher_transfer.sql` registrada
+no release: a porta de notificações bloqueia também operações de pausa/saída
+CLAIMED/UNKNOWN/BLOCKED ainda não concluídas. Triggers cancelam somente pendências
+sem aceite do provedor, encerram care touchpoints e propostas ainda não aplicadas;
+novas pendências de fila/presença são barradas. Aceitos, entregues e incertos não
+são reenviados nem apagados. Abortada a operação, só envios futuros voltam a ser
+elegíveis; skipped não ressuscita. Backfill com `schema_one_shots`, sem Asaas ou
+alteração financeira. As mensagens oficiais de encerramento seguem sua rota.
+
+Gestão → Agenda do aluno → Transferência definitiva: escolher data de início,
+manter horários ou escolher novos horários, teacher e motivo. A consulta
+`get_student_transfer_options` usa slots discretos de 30 minutos, inclusive
+end_time NULL, e apenas teachers ativos da escola. `admin_schedule_student_transfer`
+valida novamente, exige quantidade igual à grade fixa e identidade idempotente.
+Futura fica ACCEPTED até a data; não troca o vínculo antecipadamente. A aplicação
+preserva bookings antigos CANCELLED, class_logs e trilha, cria a nova agenda e
+desativa pendências da agenda antiga. Não altera preço, frequência ou contrato.
+Reservas protegem gravações de bookings/versões, reposições, experimentais,
+coberturas e matrícula; aplicação revalida a disponibilidade. Falha individual
+no job registra auditoria sem impedir as demais trocas. Proposta com aceite
+também consulta a disponibilidade canônica. Testes SQL usam fixtures e rollback,
+sem mensagem externa. Tour de novidade da direção incluído.
+
+Caso autorizado: Vinicius Oliveira Chaves → Mateus, seg/ter/qui 18h30,
+vigência 13/10/2026. A direção confirmou nesta conversa; Mateus confirmou
+seg/ter às 15h23 UTC e acrescentou quinta às 15h24 UTC em 12/10, no WhatsApp
+central. Efetivar somente após publicação, backup e última revalidação.
+Não encerrar Flávio nem alterar a folha/contratos dos outros alunos por inferência.

@@ -94,7 +94,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
     expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-10-10-historico-aulas-rastreavel');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-12-avisos-respeitam-inatividade');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-12-z-transferencia-com-nova-agenda');
     expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-10-02-teste-oral-na-agenda-aluno');
     expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
   });
@@ -190,8 +190,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     // "Novidades" também segue o modo.
     expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-10-10-historico-aulas-rastreavel');
     expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-10-10-historico-aulas-rastreavel');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-12-avisos-respeitam-inatividade');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-12-avisos-respeitam-inatividade');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-12-z-transferencia-com-nova-agenda');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-12-z-transferencia-com-nova-agenda');
   });
 
   it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {

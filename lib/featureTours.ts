@@ -816,6 +816,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-12-avisos-respeitam-inatividade', title: 'Avisos respeitam a situação do aluno', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'student-schedule-change', view: 'students', title: 'Confira o cadastro antes de enviar', text: 'Lembretes e confirmações de aula passam a consultar também a situação acadêmica e financeira imediatamente antes do envio. Alunos inativos, suspensos ou desligados não recebem esses avisos. Mantenha o telefone correto na ficha: mensagens antigas não são reenviadas após uma correção. Pausa e encerramento continuam pelos procedimentos próprios, preservando o histórico.' }],
   },
+  {
+    id: '2026-10-12-z-transferencia-com-nova-agenda', title: 'Transferência definitiva com nova agenda', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'student-schedule-change', view: 'students', title: 'Escolha como transferir', text: 'Na Agenda do aluno, abra Transferência definitiva. Informe a data de início, escolha manter os mesmos horários ou selecionar novos horários e depois o professor. A lista consulta as vagas cadastradas e reservas existentes; mantenha a quantidade de aulas contratada. A troca fica programada para a data escolhida e preserva o histórico, valores e contrato.' }],
+  },
 ];
 
 /**
