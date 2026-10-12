@@ -259,6 +259,9 @@ grant execute on function public.admin_schedule_student_transfer(uuid,uuid,jsonb
 -- A agenda antiga sobrevive para conferência; não deixa lançamentos órfãos.
 do $patch$ declare definition text; anchor text; begin
  definition:=pg_get_functiondef('public.apply_teacher_transfer(uuid)'::regprocedure);
+ definition:=replace(definition,'SET professor_id2 = transfer_row.to_teacher_id','SET professor_id2 = NULL');
+ definition:=replace(definition,'AND student.professor_id2 = transfer_row.from_teacher_id;',
+   'AND student.professor_id2 IN (transfer_row.from_teacher_id,transfer_row.to_teacher_id);');
  anchor:='DELETE FROM public.bookings AS booking';
  if position(anchor in definition)>0 then
   definition:=replace(definition,anchor,'UPDATE public.bookings AS booking SET status = ''CANCELLED''');
@@ -297,6 +300,14 @@ $guard$);
     AND class_date>=transfer_row.cutover_date AND delivery_status='PENDING' AND provider_message_id IS NULL AND sent_at IS NULL;
   UPDATE public.teacher_transfers
 $retire$);
+ end if;
+ if position('direct_transfer_notice_owned_by_management' in definition)=0 then
+  -- Como na transferência direta anterior, a Gestão é dona do anúncio à família.
+  -- O dossiê ao novo titular continua pelo trigger auditável de APPLIED.
+  definition:=replace(definition,'  PERFORM public._enqueue_school_whatsapp(',
+    E'  -- direct_transfer_notice_owned_by_management\n  IF transfer_row.token NOT LIKE ''direct:%'' THEN\n  PERFORM public._enqueue_school_whatsapp(');
+  definition:=replace(definition,E'  );\n\n  SELECT profile.phone',E'  );\n  END IF;\n\n  SELECT profile.phone');
+  definition:=replace(definition,E'  );\nEND;',E'  );\n  END IF;\nEND;');
  end if;
  execute definition;
 end $patch$;

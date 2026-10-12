@@ -8,7 +8,7 @@ insert into auth.users(id,aud,role,email,raw_app_meta_data,raw_user_meta_data,cr
  select ('f9130000-0000-4000-8000-00000000000'||n)::uuid,'authenticated','authenticated','transfer-exit-'||n||'@example.invalid','{"provider":"email"}'::jsonb,'{"test_fixture":true}'::jsonb,now(),now() from generate_series(1,5) n;
 update public.profiles set tenant_id='transfer-exit-fixture',lifecycle_status='active',status='Ativo',status_financial='ACTIVE',is_test_account=true,
  full_name='Transfer exit fixture '||right(id::text,1),role=case right(id::text,1) when '1' then 'SCHOOL_ADMIN' when '2' then 'STUDENT' when '5' then 'STUDENT' else 'TEACHER' end,
- phone=null where id::text like 'f9130000-0000-4000-8000-00000000000%';
+ phone=case when right(id::text,1)='2' then '5500000000000' else null end where id::text like 'f9130000-0000-4000-8000-00000000000%';
 insert into public.tenant_memberships(user_id,tenant_id,role,status,is_primary) select id,tenant_id,role,'ACTIVE',true from public.profiles where tenant_id='transfer-exit-fixture' on conflict(user_id,tenant_id) do update set role=excluded.role,status='ACTIVE',is_primary=true;
 insert into public.tenant_user_contexts(user_id,tenant_id) select id,tenant_id from public.profiles where tenant_id='transfer-exit-fixture' on conflict(user_id) do update set tenant_id=excluded.tenant_id;
 update public.profiles set professor_id='f9130000-0000-4000-8000-000000000003' where id='f9130000-0000-4000-8000-000000000002';
@@ -61,6 +61,7 @@ do $$declare result jsonb;again jsonb;slots jsonb:='[{"day_of_week":"Segunda","t
  perform pg_temp.assert_true((select count(*)=1 from public.bookings where tenant_id='transfer-exit-fixture' and status='SCHEDULED' and day_of_week='Segunda' and time_slot='18:30'),'new schedule exactly once');
  perform public.apply_teacher_transfer((result->>'transfer_id')::uuid);
  perform pg_temp.assert_true((select count(*)=1 from public.bookings where tenant_id='transfer-exit-fixture' and status='SCHEDULED'),'application retry idempotent');
+ perform pg_temp.assert_true(not exists(select 1 from public.notification_queue where tenant_id='transfer-exit-fixture' and notification_kind='TEACHER_TRANSFER'),'direct transfer does not duplicate management family announcement');
 end $$;
 select pg_temp.assert_true(not has_function_privilege('anon','public.admin_schedule_student_transfer(uuid,uuid,jsonb,date,text,uuid)','execute'),'anonymous cannot transfer');
 rollback;

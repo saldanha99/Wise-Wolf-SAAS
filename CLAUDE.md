@@ -3956,9 +3956,9 @@ no release: a porta de notificações bloqueia também operações de pausa/saí
 CLAIMED/UNKNOWN/BLOCKED ainda não concluídas. Triggers cancelam somente pendências
 sem aceite do provedor, encerram care touchpoints e propostas ainda não aplicadas;
 novas pendências de fila/presença são barradas. Aceitos, entregues e incertos não
-são apagados. Categorias legadas, como HEARTS_FULL, e novas categorias dirigidas
-ao aluno passam pela mesma proteção também na cerca anterior ao provedor. Não
-são reenviados nem apagados. Abortada a operação, só envios futuros voltam a ser
+são reenviados nem apagados. Categorias legadas, como HEARTS_FULL, e novas categorias
+dirigidas ao aluno passam pela mesma proteção também na cerca anterior ao provedor.
+Abortada a operação, só envios futuros voltam a ser
 elegíveis; skipped não ressuscita. Backfill com `schema_one_shots`, sem Asaas ou
 alteração financeira. As mensagens oficiais de encerramento seguem sua rota.
 
@@ -3975,6 +3975,10 @@ coberturas e matrícula; aplicação revalida a disponibilidade. Falha individua
 no job registra auditoria sem impedir as demais trocas. Proposta com aceite
 também consulta a disponibilidade canônica. Testes SQL usam fixtures e rollback,
 sem mensagem externa. Tour de novidade da direção incluído.
+
+No fluxo direto, o anúncio à família permanece com a Gestão, como no fluxo
+imediato anterior; o job não repete o anúncio humano. O dossiê ao novo titular
+continua pelo gatilho APPLIED, sem disparo antecipado ao confirmar uma data futura.
 
 Caso autorizado: Vinicius Oliveira Chaves → Mateus, seg/ter/qui 18h30,
 vigência 13/10/2026. A direção confirmou nesta conversa; Mateus confirmou
