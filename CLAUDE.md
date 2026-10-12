@@ -3937,3 +3937,14 @@ pessoa; não se infere saída pelo silêncio nem pelo valor vencido.
 Infraestrutura confirmada: PostgreSQL na VPS própria, com componentes locais
 de autenticação/API/storage da stack self-hosted. Não usar Supabase Cloud nem
 deploy de functions pelo CLI hospedado; o nome da pasta não muda a infraestrutura.
+
+Publicado pelo release oficial `20261012T151425Z-01697d2f7446`, origem
+`e4de9fe511c3e5a543f31f86c4daa621bf758c7b`: 1.256 testes Vitest, 1.468
+testes Deno, typecheck, auditoria sem vulnerabilidades, migration 2×, suíte SQL
+transacional e smoke tests aprovados. Marker ativo e checksums das funções de
+fila/presença conferidos; serviços saudáveis. Em leitura após publicação,
+nenhum dos 19 cadastros inativos/suspensos da escola ficou notificável; Yasmin
+Inativo e Lariza SUSPENDED bloqueadas, Vinicius ativo com telefone corrigido.
+Fixture novo ausente. Nenhuma mensagem externa de teste ou reenvio foi feito.
+Backup da release: `/opt/wisewolf/backups/release-20261012T151425Z-01697d2f7446`.
+Arquivos locais não rastreados preservados e restaurados após a publicação.
