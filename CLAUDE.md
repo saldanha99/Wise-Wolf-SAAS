@@ -4012,3 +4012,16 @@ Backup específico anterior ao registro, arquivo válido e restrito de 56.656.79
 bytes: `/opt/wisewolf/backups/vinicius-mateus-transfer-20261012T162142Z/database-before.dump`.
 Sem mudança em mensalidade, contrato, cobrança ou prestação histórica. Arquivos
 locais não rastreados do usuário restaurados após o release.
+
+### 12/10/2026 — Continuidade da triagem de professores (preparado)
+
+`avancarTriagem` seleciona no servidor a próxima pergunta após extrair somente
+a etapa aberta. A mesma resposta agradece e pergunta; não exige nova mensagem
+para continuar. Pedidos de próxima pergunta não viram respostas, chaves futuras
+do modelo não pulam etapas e conclusão continua exigindo os dez campos. O
+handler persiste com comparação do estado anterior e confere novamente handoff
+antes de responder; falha de gravação ou concorrência não envia pergunta com
+progresso divergente. Não amplia o limite de respostas nem altera remuneração.
+Regressões nas dez etapas e tour da direção incluídos. Laura ficou bloqueada
+pela cadência após as respostas extras; recuperação deve conferir histórico,
+handoff e recibo durável, sem replay de webhook ou retomada em lote.

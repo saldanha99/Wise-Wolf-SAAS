@@ -820,6 +820,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-12-z-transferencia-com-nova-agenda', title: 'Transferência definitiva com nova agenda', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'student-schedule-change', view: 'students', title: 'Escolha como transferir', text: 'Na Agenda do aluno, abra Transferência definitiva. Informe a data de início, escolha manter os mesmos horários ou selecionar novos horários e depois o professor. A lista consulta as vagas cadastradas e reservas existentes; mantenha a quantidade de aulas contratada. A troca fica programada para a data escolhida e preserva o histórico, valores e contrato.' }],
   },
+  {
+    id: '2026-10-12-zz-triagem-sem-pedidos-extras', title: 'Triagem com continuidade', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'sidebar-nav', view: 'hr', title: 'Uma pergunta por resposta', text: 'A triagem de professores passa a enviar a próxima pergunta junto do agradecimento, sem exigir que o candidato peça para continuar. O progresso só avança após salvar a resposta. Perguntas já respondidas não são repetidas, e o atendimento humano continua protegido. Confira as candidaturas no RH; não há retomada em lote de conversas antigas.' }],
+  },
 ];
 
 /**

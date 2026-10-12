@@ -54,9 +54,9 @@ import {
   reconcileSuppressedLead,
 } from "../_shared/commercial-contact-policy.ts";
 import {
+  avancarTriagem,
   ETAPAS,
   etapasRespondidas,
-  mergeRespostas,
   promptTriagem,
   triagemCompleta,
 } from "./triagem.ts";
@@ -8583,8 +8583,18 @@ async function handleRita(
 
   // `mergeRespostas` descarta chave inventada pelo modelo e não sobrescreve o
   // que a pessoa já respondeu.
-  const merged = mergeRespostas(answers, ai.answers);
+  const progress = collecting && !primeiraInteracao && !ai.notify_director
+    ? avancarTriagem(
+      answers,
+      ai.answers || {},
+      text,
+      [...hist].reverse().find((m: any) => m.role === "assistant")?.content ||
+        "",
+    )
+    : null;
+  const merged = progress?.answers || answers;
   const upd: Record<string, unknown> = { preinterview_answers: merged };
+  let completionNotice: string | null = null;
   if (app.preinterview_status === "SENT") {
     upd.preinterview_status = "IN_PROGRESS";
   }
@@ -8599,11 +8609,8 @@ async function handleRita(
       const digest = Object.entries(merged)
         .map(([k, v]) => `• ${rotulo.get(k) || k}: ${String(v).slice(0, 160)}`)
         .join("\n");
-      await sendWhats(
-        instance,
-        adm.ownerPhone,
-        `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`,
-      );
+      completionNotice =
+        `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`;
     }
   } else if (collecting) {
     // Progresso visível no log: sem isto não dá para saber em que etapa as
@@ -8611,6 +8618,33 @@ async function handleRita(
     console.log(
       `[rita] ${app.id}: ${etapasRespondidas(merged)}/${ETAPAS.length} etapas`,
     );
+  }
+
+  // Outra resposta ou intervenção humana invalida esta rodada, sem sobrescrever.
+  if (
+    await inboxConversationHasActiveHandoff(
+      sb,
+      tenantId,
+      instance,
+      `${phone}@s.whatsapp.net`,
+    )
+  ) return;
+  let progressUpdate = sb.from("job_applications").update(upd)
+    .eq("tenant_id", tenantId).eq("id", app.id)
+    .eq("preinterview_status", app.preinterview_status)
+    .or("ai_handoff.is.null,ai_handoff.eq.false");
+  progressUpdate = app.preinterview_answers == null
+    ? progressUpdate.is("preinterview_answers", null)
+    : progressUpdate.eq(
+      "preinterview_answers",
+      JSON.stringify(app.preinterview_answers),
+    );
+  const { data: savedProgress, error: progressError } = await progressUpdate
+    .select("id").maybeSingle();
+  if (progressError) throw new Error("rh_progress_persistence_failed");
+  if (!savedProgress) return;
+  if (completionNotice && adm.ownerPhone) {
+    await sendWhats(instance, adm.ownerPhone, completionNotice);
   }
 
   if (ai.notify_director && adm.ownerPhone) {
@@ -8623,8 +8657,17 @@ async function handleRita(
     );
   }
 
-  await sb.from("job_applications").update(upd).eq("id", app.id);
-  const reply = String(ai.reply).slice(0, 1500);
+  // Não manda a próxima pergunta se a resposta não foi persistida, nem passa
+  // por cima de uma intervenção humana que ocorreu durante a chamada ao modelo.
+  if (
+    await inboxConversationHasActiveHandoff(
+      sb,
+      tenantId,
+      instance,
+      `${phone}@s.whatsapp.net`,
+    )
+  ) return;
+  const reply = String(progress?.reply || ai.reply).slice(0, 1500);
   const entregueRh = await sendWhats(instance, phone, reply);
   await logMsg(sb, tenantId, phone, "rita", "out", reply, {
     application_id: app.id,

@@ -35,7 +35,11 @@ export interface EtapaTriagem {
 // perguntas que dependem delas. Os números são comerciais — não invente nem
 // arredonde ao editar.
 export const ETAPAS: EtapaTriagem[] = [
-  { key: "nacionalidade", rotulo: "nacionalidade", pergunta: "Você tem nacionalidade brasileira?" },
+  {
+    key: "nacionalidade",
+    rotulo: "nacionalidade",
+    pergunta: "Você tem nacionalidade brasileira?",
+  },
   { key: "idade", rotulo: "idade", pergunta: "Qual a sua idade?" },
   {
     key: "modelo_ok",
@@ -44,11 +48,16 @@ export const ETAPAS: EtapaTriagem[] = [
       "Nosso modelo são aulas particulares 1:1, focadas no objetivo de cada aluno (viagem, trabalho, conversação...). Você adapta cada aula ao nível e à necessidade do aluno, com plataforma, materiais prontos, agenda flexível e suporte da coordenação — é só focar em ensinar.",
     pergunta: "Esse formato faz sentido pra você?",
   },
-  { key: "formacao", rotulo: "formação", pergunta: "Qual a sua formação? Está cursando ou já concluiu?" },
+  {
+    key: "formacao",
+    rotulo: "formação",
+    pergunta: "Qual a sua formação? Está cursando ou já concluiu?",
+  },
   {
     key: "computador_internet",
     rotulo: "equipamento",
-    pergunta: "Você tem computador ou notebook com internet estável para dar as aulas online?",
+    pergunta:
+      "Você tem computador ou notebook com internet estável para dar as aulas online?",
   },
   {
     key: "remuneracao_ok",
@@ -66,14 +75,16 @@ export const ETAPAS: EtapaTriagem[] = [
   {
     key: "niveis",
     rotulo: "níveis que ensina",
-    pergunta: "Quais níveis de inglês você consegue ensinar? Básico, intermediário, avançado ou todos?",
+    pergunta:
+      "Quais níveis de inglês você consegue ensinar? Básico, intermediário, avançado ou todos?",
   },
   {
     key: "turno",
     rotulo: "turno disponível",
     bloco:
       "Sobre disponibilidade: nossa maior demanda hoje é à TARDE (13h30–18h) e à NOITE (18h–22h). Também temos manhã (07h–11h), com menos vagas.",
-    pergunta: "Qual turno se encaixa melhor na sua rotina? (manhã, tarde, noite ou mais de um)",
+    pergunta:
+      "Qual turno se encaixa melhor na sua rotina? (manhã, tarde, noite ou mais de um)",
   },
   {
     key: "apresentacao_en",
@@ -89,15 +100,19 @@ const preenchida = (v: unknown): boolean =>
   v !== null && v !== undefined && String(v).trim() !== "";
 
 /** Primeira etapa ainda sem resposta. `null` = triagem completa. */
-export const proximaEtapa = (answers: Respostas | null | undefined): EtapaTriagem | null =>
+export const proximaEtapa = (
+  answers: Respostas | null | undefined,
+): EtapaTriagem | null =>
   ETAPAS.find((e) => !preenchida((answers || {})[e.key])) ?? null;
 
-export const triagemCompleta = (answers: Respostas | null | undefined): boolean =>
-  proximaEtapa(answers) === null;
+export const triagemCompleta = (
+  answers: Respostas | null | undefined,
+): boolean => proximaEtapa(answers) === null;
 
 /** Quantas das 10 etapas já têm resposta — vira barra de progresso no painel. */
-export const etapasRespondidas = (answers: Respostas | null | undefined): number =>
-  ETAPAS.filter((e) => preenchida((answers || {})[e.key])).length;
+export const etapasRespondidas = (
+  answers: Respostas | null | undefined,
+): number => ETAPAS.filter((e) => preenchida((answers || {})[e.key])).length;
 
 /**
  * Junta o que o modelo extraiu ao que já existia.
@@ -123,6 +138,37 @@ export const mergeRespostas = (
   }
   return out;
 };
+
+/** Uma resposta coleta somente a etapa aberta; o servidor emenda UMA próxima pergunta. */
+export function avancarTriagem(
+  anteriores: Respostas,
+  novas: Respostas,
+  texto: string,
+  ultimaMensagem = "",
+) {
+  const atual = proximaEtapa(anteriores);
+  const pedidoDeProxima =
+    /^(?:tem mais alguma pergunta|qual (?:é )?a pr[oó]xima pergunta)[?!\s.]*$/i
+      .test(texto.trim());
+  const permitidas: Respostas = {};
+  const autorizandoInicio = etapasRespondidas(anteriores) === 0 &&
+    /(?:podemos|posso|pode(?:mos)?).*?(?:come[cç]ar|iniciar)/i.test(
+      ultimaMensagem,
+    );
+  if (atual && !pedidoDeProxima && !autorizandoInicio) {
+    permitidas[atual.key] = novas?.[atual.key];
+    if (atual.key === "apresentacao_en") {
+      permitidas.nota_ingles = novas?.nota_ingles;
+    }
+  }
+  const answers = mergeRespostas(anteriores, permitidas);
+  const seguinte = proximaEtapa(answers);
+  const avancou = etapasRespondidas(answers) > etapasRespondidas(anteriores);
+  const pergunta = seguinte
+    ? [seguinte.bloco, seguinte.pergunta].filter(Boolean).join("\n\n")
+    : "A triagem foi concluída. O time vai analisar seu perfil e entrar em contato com os próximos passos.";
+  return { answers, reply: `${avancou ? "Obrigada! " : ""}${pergunta}` };
+}
 
 /**
  * System prompt de UMA etapa.
@@ -179,16 +225,26 @@ export const promptTriagem = (opts: {
     : "";
 
   return `${persona}
-FASE: TRIAGEM — etapa ${etapasRespondidas(opts.answers) + 1} de ${ETAPAS.length}: ${etapa.rotulo}.
+FASE: TRIAGEM — etapa ${
+    etapasRespondidas(opts.answers) + 1
+  } de ${ETAPAS.length}: ${etapa.rotulo}.
 
-FAÇA APENAS ESTA PERGUNTA, uma só, e AGUARDE a resposta:${etapa.bloco ? `\n${etapa.bloco}` : ""}
+FAÇA APENAS ESTA PERGUNTA, uma só, e AGUARDE a resposta:${
+    etapa.bloco ? `\n${etapa.bloco}` : ""
+  }
 "${etapa.pergunta}"
 
-Se a mensagem do candidato JÁ responder a esta pergunta, registre em answers.${etapa.key} e faça a pergunta normalmente na próxima mensagem — nunca emende duas perguntas.
+Se a mensagem do candidato JÁ responder a esta pergunta, registre em answers.${etapa.key}. O servidor selecionará a próxima pergunta na MESMA resposta, sem repetir a pergunta respondida nem aguardar outra mensagem do candidato.
 Se a resposta for evasiva ou fora do assunto, repita a pergunta com gentileza e deixe answers.${etapa.key} em null.
-${jaSabe.length ? `Já respondido (NÃO pergunte de novo): ${jaSabe.join("; ")}.` : ""}${extra}
+${
+    jaSabe.length
+      ? `Já respondido (NÃO pergunte de novo): ${jaSabe.join("; ")}.`
+      : ""
+  }${extra}
 
 Responda SOMENTE com JSON válido:
-{"reply": "sua mensagem ao candidato", "answers": {"${etapa.key}": null${etapa.key === "apresentacao_en" ? ', "nota_ingles": null' : ""}}, "notify_director": null}
+{"reply": "sua mensagem ao candidato", "answers": {"${etapa.key}": null${
+    etapa.key === "apresentacao_en" ? ', "nota_ingles": null' : ""
+  }}, "notify_director": null}
 Em answers, preencha SOMENTE se a mensagem desta vez trouxe a resposta; senão null. Em notify_director, um recado curto ao diretor se o candidato pedir algo que você não resolve.`;
 };
