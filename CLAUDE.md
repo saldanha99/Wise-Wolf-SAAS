@@ -3949,7 +3949,7 @@ Fixture novo ausente. Nenhuma mensagem externa de teste ou reenvio foi feito.
 Backup da release: `/opt/wisewolf/backups/release-20261012T151425Z-01697d2f7446`.
 Arquivos locais não rastreados preservados e restaurados após a publicação.
 
-### 12/10/2026 — Saída silencia pendências e transferência com nova agenda (preparado)
+### 12/10/2026 — Saída silencia pendências e transferência com nova agenda (publicado)
 
 Migration `20261012152506_atomic_student_exit_and_teacher_transfer.sql` registrada
 no release: a porta de notificações bloqueia também operações de pausa/saída
@@ -3988,5 +3988,27 @@ revertida por rollback antes da publicação, sem mensagem externa.
 Caso autorizado: Vinicius Oliveira Chaves → Mateus, seg/ter/qui 18h30,
 vigência 13/10/2026. A direção confirmou nesta conversa; Mateus confirmou
 seg/ter às 15h23 UTC e acrescentou quinta às 15h24 UTC em 12/10, no WhatsApp
-central. Efetivar somente após publicação, backup e última revalidação.
+central. Registrada somente após publicação, backup e última revalidação.
 Não encerrar Flávio nem alterar a folha/contratos dos outros alunos por inferência.
+
+Release oficial `20261012T161603Z-51f6e35b495b`, origem
+`0df83a38201d98c26e190be0bba29d750519008b`: 1.259 testes Vitest, 1.468 Deno,
+typecheck, auditoria sem vulnerabilidades, migration 2×, suíte SQL e smoke
+aprovados. Marker ativo e serviços saudáveis. Após publicação: zero pendências
+seguras de aluno inativo elegíveis nas categorias abrangidas (incluindo legadas),
+zero alunos inativos/suspensos da escola notificáveis e zero fixtures novas.
+Backup: `/opt/wisewolf/backups/release-20261012T161603Z-51f6e35b495b`.
+
+Transferência real `b5097bcb-bb40-415a-bcf7-a4a97efab432`, ACCEPTED/programada
+para 13/10/2026, pela RPC administrativa; request durável
+`435d60bd-1d86-4f15-9299-37093de56433`. Seg/ter/qui 18h30, três aulas.
+Hoje o titular e os três bookings antigos continuam com Flávio, como esperado;
+o cron `wisewolf-apply-teacher-transfers` está ativo às 09h UTC / 06h BRT e
+aplica somente na vigência. Não aplicar antecipadamente nem repetir anúncio
+humano à família. Auditoria da programação conferida; nenhuma mensagem nova
+de transferência ao aluno foi enfileirada. Acompanhar APPLIED e eventual
+`teacher_transfer_apply_failed`, sem duplicar a operação.
+Backup específico anterior ao registro, arquivo válido e restrito de 56.656.791
+bytes: `/opt/wisewolf/backups/vinicius-mateus-transfer-20261012T162142Z/database-before.dump`.
+Sem mudança em mensalidade, contrato, cobrança ou prestação histórica. Arquivos
+locais não rastreados do usuário restaurados após o release.
