@@ -550,13 +550,13 @@ async function resolveRecipient(
 
   // Aluno inativo/arquivado/suspenso/desligado: o diretor optou por NÃO notificar.
   // Pula SEM marcar como enviado → se reativar, volta a receber o aviso.
-  const st = student?.status || "Ativo";
-  const inativo =
-    ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"]
-      .includes(st) ||
-    student?.status_financial === "ARCHIVED" ||
-    ["suspended", "offboarded"].includes(student?.lifecycle_status || "");
-  if (inativo) {
+  const eligibility = await supabase.rpc("is_student_notifiable", {
+    p_id: charge.student_id,
+  });
+  if (eligibility.error) {
+    throw new Error("student_notification_revalidation_failed");
+  }
+  if (eligibility.data !== true) {
     return {
       ok: false,
       phone: "",

@@ -201,6 +201,15 @@ async function loadActiveMember(
     String(profile.lifecycle_status || "").trim().toLowerCase() !== "active" ||
     String(membershipResult.data?.user_id || "") !== userId
   ) invalid(`${role.toLowerCase()}_not_active_in_tenant`);
+  if (role === "STUDENT") {
+    const eligibility = await supabase.rpc("is_student_notifiable", {
+      p_id: userId,
+    });
+    if (eligibility.error) {
+      unavailable("student_notification_revalidation_unavailable");
+    }
+    if (eligibility.data !== true) invalid("student_notifications_suppressed");
+  }
   return profile;
 }
 

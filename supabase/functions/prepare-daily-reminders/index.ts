@@ -95,6 +95,11 @@ serve(async (req) => {
                 let studentId: string | null = null;
 
                 if (cls.student_id) {
+                    const eligibility = await supabaseClient.rpc('is_student_notifiable', { p_id: cls.student_id });
+                    if (eligibility.error || eligibility.data !== true) {
+                        skipped.push(`class ${cls.source_id}: student notifications suppressed or unavailable`);
+                        continue;
+                    }
                     const { data: student } = await supabaseClient
                     .from('profiles')
                     .select('id, full_name, phone, attendance_phone, lifecycle_status')

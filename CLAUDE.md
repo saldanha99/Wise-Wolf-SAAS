@@ -3913,3 +3913,27 @@ encerramento respondeu 200 e abriu o formulário autenticado. Backup reversível
 em `/opt/wisewolf/backups/release-20261011T170527Z-e6a31dfd9953`.
 A indicação de não publicação acima foi superada por este release. Artefatos
 locais não rastreados preservados durante a publicação e restaurados depois.
+
+### 12/10/2026 — Avisos respeitam inatividade e suspensão (preparado)
+
+`is_student_notifiable` também bloqueia suspensão financeira e as grafias
+Suspenso/SUSPENDED/Pausado do estado acadêmico, preservando autorização e grants.
+Preparação, envio manual de lembrete, fila, confirmação de presença e cobrança
+consultam a porta canônica e exigem true explícito; falha na consulta não envia.
+Claim/binding da presença e cerca da fila revalidam antes do provedor, inclusive
+replay. Avisos oficiais de pausa/saída permanecem no fluxo específico.
+Migration `20261012145740`, teste SQL transacional, regressão de wiring e tour
+da direção registrados no release. Não altera matrículas ou cobranças em lote.
+
+Reparos exatos autorizados nesta conversa: telefone de Vinicius Oliveira Chaves
+confirmado pela direção e corrigido; Yasmin Preciosa, cuja saída foi aceita pela
+escola em 31/08, estava ativa e foi marcada Inativo pela RPC administrativa.
+Financeiro e histórico preservados; sem reenviar mensagens antigas nem alterar
+Asaas. Backup anterior completo (acesso restrito):
+`/opt/wisewolf/backups/student-notification-repair-20261012/database-before.sql.gz`.
+As demais suspensões combinadas mas não cadastradas precisam de conciliação por
+pessoa; não se infere saída pelo silêncio nem pelo valor vencido.
+
+Infraestrutura confirmada: PostgreSQL na VPS própria, com componentes locais
+de autenticação/API/storage da stack self-hosted. Não usar Supabase Cloud nem
+deploy de functions pelo CLI hospedado; o nome da pasta não muda a infraestrutura.

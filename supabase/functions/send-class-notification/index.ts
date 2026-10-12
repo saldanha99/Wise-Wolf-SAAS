@@ -137,6 +137,15 @@ async function loadStudent(
     String(data.lifecycle_status || "").trim().toLowerCase() !== "active" ||
     String(membershipResult.data?.user_id || "") !== studentId
   ) throw new ApiError(404, "student_not_available_for_occurrence");
+  const eligibility = await admin.rpc("is_student_notifiable", {
+    p_id: studentId,
+  });
+  if (eligibility.error) {
+    throw new ApiError(503, "student_notification_revalidation_failed");
+  }
+  if (eligibility.data !== true) {
+    throw new ApiError(409, "student_notifications_suppressed");
+  }
   if (data.is_test_account !== false) {
     // Fail-closed: fixtures (e registros antigos sem marcação explícita)
     // nunca podem gerar comunicação externa.
