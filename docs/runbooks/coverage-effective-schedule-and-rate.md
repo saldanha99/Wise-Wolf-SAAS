@@ -21,3 +21,7 @@ Testes de UI conferem prévia sem escrita, erro sem fallback, valor por papel, m
 A publicação usa exclusivamente `deploy/vps/release.sh`, com árvore limpa na branch configurada, dependências do lock e todas as migrations/testes registrados. Não registrar ausência nem disparar convite real para testar a publicação.
 
 O auxiliar legado `private.coverage_candidates` pertence a `supabase_admin` em produção. O wrapper novo pertence a `postgres`: a migration concede EXECUTE somente a esse papel interno. Clones usados para validar precisam preservar os donos e ACLs reais; restaurar como `supabase_admin` evita mascarar essa dependência.
+
+## Publicação de 16/10/2026
+
+Release `20261016T182218Z-004d643f285e`, origem `a93a936122370808751d1166bc5e398935307e48`, publicada pelo processo oficial. Passaram 1.267 testes Vitest, 1.476 Deno, typecheck, build, auditoria, migration em duas aplicações, suíte SQL transacional completa e smokes. API real retornou 30 ocorrências para o caso solicitado; consulta de substitutos respondeu 200. Arquivos servidos e fontes das edges tiveram SHA-256 conferido. Clones removidos e nenhuma fixture desta tarefa na produção. Os testes não registraram coberturas reais nem enviaram mensagens externas.

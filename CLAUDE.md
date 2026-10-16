@@ -4087,3 +4087,18 @@ mascarado esse dono. Migration nova ainda não publicada ganhou GRANT somente a
 postgres, mantendo anon/authenticated fechados; suíte testa o privilégio interno.
 Reproduzido o dono/ACL reais no clone e validado o fluxo com rollback. A produção
 continuou na release de 12/10, sem coluna nova ou fixtures remanescentes.
+
+Publicado pelo release oficial `20261016T182218Z-004d643f285e`, origem
+`a93a936122370808751d1166bc5e398935307e48`: 1.267 testes Vitest, 1.476 testes
+Deno, typecheck, build, auditoria sem vulnerabilidades, migration 2×, suíte SQL
+transacional completa e smoke tests aprovados. Marker ativo conferido; RPCs
+somente service_role, dono postgres, colunas de oferta indisponíveis na consulta
+operacional do aluno. API HTTP 200 retornou 30 aulas no período de 19–23/10 e
+confirmou o exemplo da agenda em segunda/quarta às 09:30. Os bundles servidos de
+Cobertura, Ausência e Lançamento e os fontes das duas edges bateram SHA-256 com
+a release. Backups anteriores e da release preservados, em especial
+`/opt/wisewolf/backups/release-20261016T182218Z-004d643f285e`.
+Os dois clones de validação foram removidos; zero fixtures novas na produção.
+Nenhuma ausência, convite, mensagem externa ou pagamento real foi criado para
+testar. Arquivos locais não rastreados do usuário foram preservados e restaurados.
+As indicações de não publicação e falhas acima foram superadas por este release.
