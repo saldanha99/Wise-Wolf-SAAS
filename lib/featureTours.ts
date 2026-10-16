@@ -824,6 +824,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-12-zz-triagem-sem-pedidos-extras', title: 'Triagem com continuidade', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'sidebar-nav', view: 'hr', title: 'Uma pergunta por resposta', text: 'A triagem de professores passa a enviar a próxima pergunta junto do agradecimento, sem exigir que o candidato peça para continuar. O progresso só avança após salvar a resposta. Perguntas já respondidas não são repetidas, e o atendimento humano continua protegido. Confira as candidaturas no RH; não há retomada em lote de conversas antigas.' }],
   },
+  {
+    id: '2026-10-16-cobertura-agenda-e-valor', title: 'Cobertura com agenda vigente e valor por aula', roles: ['SCHOOL_ADMIN', 'COORDINATOR'],
+    steps: [{ target: 'coverage-effective-schedule', view: 'coverage', title: 'Confira as aulas e a oferta de cobertura', text: 'Escolha o professor e o período da ausência. A lista usa os dias e horários vigentes em cada data, incluindo mudanças de agenda, sem aulas antecipadas, excluídas ou já cobertas. Cada linha representa 30 minutos. Somente o diretor pode informar um valor por aula antes de enviar o convite; em branco, vale a tarifa normal do substituto. O valor informado fica fixado no convite, aparece antes do aceite e entra no pagamento após o lançamento da aula pagável. Confira eventuais pendências de envio na própria tela.' }],
+  },
+  {
+    id: '2026-10-16-cobertura-valor-professor', title: 'Confira o valor antes de aceitar a cobertura', roles: ['TEACHER'],
+    steps: [{ target: 'sidebar-nav', view: 'teacher-financials', title: 'Oferta por aula de 30 minutos', text: 'O convite de cobertura informa o valor escolhido pela direção ou a aplicação da sua tarifa normal. Confira antes de aceitar. Cada parte de 30 minutos tem seu convite e seu valor; uma aula de 1 hora ocupa duas partes. Após dar e lançar a aula, o valor combinado entra no Financeiro, sujeito às verificações normais de presença. A cobertura mantém o horário daquela data, mesmo quando o aluno passou por uma mudança de agenda.' }],
+  },
 ];
 
 /**

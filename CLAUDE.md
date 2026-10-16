@@ -4048,3 +4048,27 @@ depende de sessão autenticada no canal oficial; a sessão do navegador estava
 na tela de login. Não repetir a pergunta de remuneração, criar aprovação,
 replay de webhook ou contornar autenticação. Arquivos locais não rastreados
 do usuário preservados e restaurados após o release.
+
+### 16/10/2026 — Cobertura com agenda vigente e valor exclusivo da direção (preparado)
+
+A prévia da ausência usa `coverage_booking_occurrences` → `booking_schedule_on_date`,
+sem criar ausência ao listar e sem fallback de calendário no navegador. O fallback
+antigo confundia índices seg=0 com getDay seg=1; a consulta antiga também ignorava
+versões e abortava diante de um aluno inativo. Seleção, busca de substitutos,
+validação, trigger e aceite passam a usar a ocorrência efetiva. Lançamento de
+cobertura prioriza `class_time` da cobertura, preservando o booking de origem.
+
+A direção pode oferecer um valor por ocorrência de 30 min antes do convite;
+em branco permanece a tarifa normal. Autor vem da sessão e membership SCHOOL_ADMIN
+ativa do tenant é conferida na edge e no banco. Oferta/autoria/data imutáveis;
+coordenação, professor e outros papéis não definem valor. Convite WhatsApp e página
+de aceite mostram a oferta ao substituto. A folha canônica aplica a oferta somente
+à aula confirmada, lançada e pagável, preservando ajustes e bloqueios existentes.
+Aulas de 1 h continuam em duas partes. Resultado parcial não declara sucesso total.
+
+Migration `20261016165219`, teste SQL transacional e testes Deno registrados no
+release; tours de direção/coordenação/professor incluídos. Validação em clone de
+estrutura: migration 2×, aceite, lançamento autenticado pelo substituto, financeiro,
+permissões e regressões de cobertura, aula de 1 h, troca de horário, antecipação e
+SECDEF, sempre rollback. Nenhum convite real enviado nem agenda real alterada.
+Fluxo: [runbook](docs/runbooks/coverage-effective-schedule-and-rate.md).

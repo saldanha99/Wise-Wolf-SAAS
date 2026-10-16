@@ -132,15 +132,27 @@ function invitePage(
   actionPath: string,
   classDate: unknown,
   classTime: unknown,
+  offeredRate: unknown,
 ): Response {
   const date = formatDate(classDate) ?? "data informada";
   const time = formatTime(classTime) ?? "horário informado";
+  const rate =
+    typeof offeredRate === "number" && Number.isFinite(offeredRate) &&
+      offeredRate > 0
+      ? `${
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+          .format(offeredRate)
+      } por aula de 30 minutos`
+      : "Tarifa normal do professor por aula de 30 minutos";
   const content = `<h1>Convite para cobertura de aula</h1>
     <p>A coordenação precisa de uma cobertura em <strong>${
     escapeHtml(date)
   }</strong>, às <strong>${
     escapeHtml(time)
   }</strong>. Você pode assumir essa aula?</p>
+    <p style="margin-top:16px"><strong>${
+    escapeHtml(rate)
+  }</strong>. O pagamento depende do lançamento da aula pagável.</p>
     <form method="post" action="${escapeHtml(actionPath)}" autocomplete="off">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button class="accept" type="submit" name="decision" value="accept">Confirmar cobertura</button>
@@ -260,7 +272,7 @@ async function handleGet(url: URL): Promise<Response> {
   if (!supabase) return safeError(503);
   const { data: coverage, error } = await supabase
     .from("class_coverages")
-    .select("status,class_date,class_time,invite_expires_at")
+    .select("status,class_date,class_time,invite_expires_at,offered_rate")
     .eq("token", token)
     .maybeSingle();
 
@@ -316,6 +328,7 @@ async function handleGet(url: URL): Promise<Response> {
     url.pathname,
     coverage.class_date,
     coverage.class_time,
+    coverage.offered_rate,
   );
 }
 

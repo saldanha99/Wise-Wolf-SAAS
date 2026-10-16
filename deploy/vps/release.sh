@@ -479,7 +479,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/lesson-planner/planner-input.test.ts \
   supabase/functions/student-card-suggestions \
   supabase/functions/coverage-admin/briefing.ts \
+  supabase/functions/coverage-admin/offered-rate.ts \
   supabase/functions/coverage-admin/briefing.test.ts \
+  supabase/functions/coverage-admin/offered-rate.test.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -760,6 +762,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-card-suggestions/core.test.ts \
   supabase/functions/student-card-suggestions/runner.test.ts \
   supabase/functions/coverage-admin/briefing.test.ts \
+  supabase/functions/coverage-admin/offered-rate.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/sync-subscription-status/subscription-read.test.ts \
@@ -1522,6 +1525,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261010232456_lesson_history_traceability.sql"
   "supabase/migrations/20261012145740_suspended_students_notification_guard.sql"
   "supabase/migrations/20261012152506_atomic_student_exit_and_teacher_transfer.sql"
+  "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"
@@ -1698,6 +1702,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/assentos_de_aluno_no_hub.sql"
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
   "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
+  "supabase/tests/coverage_effective_schedule_director_rate.sql"
   "supabase/tests/reposicao_com_trilha_e_canais_de_aviso.sql"
   "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
   "supabase/tests/canal_financeiro_e_folha_previa_do_mes.sql"

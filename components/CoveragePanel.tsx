@@ -42,7 +42,7 @@ const CoveragePanel: React.FC<Props> = ({ tenantId }) => {
                 const { data: bookings } = await supabase
                     .from('bookings')
                     .select('teacher_id, student_id')
-                    .eq('tenant_id', tenantId || '');
+                    .eq('tenant_id', tenantId || '').eq('status', 'SCHEDULED');
 
                 const porProf = new Map<string, Set<string>>();
                 (bookings || []).forEach((b: any) => {
@@ -71,7 +71,7 @@ const CoveragePanel: React.FC<Props> = ({ tenantId }) => {
     }, [teachers, search]);
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div data-tour="coverage-effective-schedule" className="space-y-6 animate-in fade-in duration-500">
             <div className="rounded-4xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-6">
                 <div className="flex items-start gap-3">
                     <div className="shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-600">

@@ -389,9 +389,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           if (c.class_date !== dateStr) continue;
           const ab = assumedBookings.find(x => x.id === c.booking_id);
           if (!ab) { hidden += 1; continue; }
-          if (i === 0 && isStillFutureToday(ab.time_slot || c.class_time)) continue;
+          if (i === 0 && isStillFutureToday(c.class_time || ab.time_slot)) continue;
           if (logs?.some(l => l.booking_id === ab.id)) continue;
-          await processLesson(ab, 'REGULAR', ab.time_slot || c.class_time);
+          await processLesson(ab, 'REGULAR', c.class_time || ab.time_slot);
         }
 
         // Reschedules
