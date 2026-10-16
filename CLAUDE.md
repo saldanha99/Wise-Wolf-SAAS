@@ -4072,3 +4072,10 @@ estrutura: migration 2×, aceite, lançamento autenticado pelo substituto, finan
 permissões e regressões de cobertura, aula de 1 h, troca de horário, antecipação e
 SECDEF, sempre rollback. Nenhum convite real enviado nem agenda real alterada.
 Fluxo: [runbook](docs/runbooks/coverage-effective-schedule-and-rate.md).
+
+Publicação de 16/10: a primeira tentativa oficial da cobertura parou antes da
+ativação em `atomic_student_exit_and_teacher_transfer.sql`: o fixture tinha
+agenda fixa na sexta e lançamento em `current_date-3`, compatíveis apenas às
+segundas. Corrigido somente o dia do booking fictício, derivado da data do log;
+regressão de transferência/saída passou em clone com rollback. Nenhuma regra
+operacional foi relaxada e o estado de produção anterior foi preservado.
