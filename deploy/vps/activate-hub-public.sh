@@ -10,7 +10,7 @@ DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$PROJECT_DIR/.env.deploy.local}"
 HUB_HOSTNAME="hub.wisewolflanguage.com.br"
 HUB_ZONE_NAME="wisewolflanguage.com.br"
 HUB_PUBLIC_URL="https://$HUB_HOSTNAME"
-EXPECTED_VPS_IP="187.127.46.251"
+EXPECTED_VPS_IP="179.236.255.4"
 HUB_CREATE_DNS="${HUB_CREATE_DNS:-no}"
 HUB_DNS_WAIT_SECONDS="${HUB_DNS_WAIT_SECONDS:-300}"
 CLOUDFLARE_API_TOKEN_FILE="${CLOUDFLARE_API_TOKEN_FILE:-}"
@@ -313,7 +313,7 @@ done
 [[ "$expected_nginx_sha" =~ ^[a-f0-9]{64}$ ]]
 [[ "$expected_override_sha" =~ ^[a-f0-9]{64}$ ]]
 [[ "$public_url" = "https://hub.wisewolflanguage.com.br" ]]
-[[ "$expected_vps_ip" = "187.127.46.251" ]]
+[[ "$expected_vps_ip" = "179.236.255.4" ]]
 for required_file in "$base_compose" "$nginx_path" \
   "$stage_dir/nginx.conf" "$stage_dir/docker-compose.override.yml"; do
   [[ -f "$required_file" && ! -L "$required_file" ]]

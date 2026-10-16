@@ -217,7 +217,7 @@ expected_api_url=${10}
 
 [[ "$(id -un)" = "$expected_user" ]]
 current_ip="$(hostname -I | awk '{print $1}')"
-[[ "$current_ip" = "$expected_host" || "$expected_host" = "187.127.46.251" ]]
+[[ "$current_ip" = "$expected_host" || "$expected_host" = "179.236.255.4" ]]
 for required_dir in "$app_dir" "$compose_dir" "$functions_dir" "$supabase_dir"; do
   [[ -d "$required_dir" ]]
 done

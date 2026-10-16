@@ -120,7 +120,7 @@ for required_var in "${required_vars[@]}"; do
 done
 [[ "$DEPLOY_SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
   die "DEPLOY_SSH_HOST inválido"
-[[ "$DEPLOY_HOST" = "187.127.46.251" ]] || die "VPS de destino inesperada"
+[[ "$DEPLOY_HOST" = "179.236.255.4" ]] || die "VPS de destino inesperada"
 [[ "$DEPLOY_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "DEPLOY_USER inválido"
 for remote_path in \
   "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" "$DEPLOY_SUPABASE_DIR"; do
@@ -178,7 +178,7 @@ validate_path() {
   [[ "$1" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ &&
     "$1" != *".."* && "$1" != *"//"* ]]
 }
-[[ "$expected_host" = "187.127.46.251" ]]
+[[ "$expected_host" = "179.236.255.4" ]]
 [[ "$(id -un)" = "$expected_user" ]]
 case " $(hostname -I) " in
   *" $expected_host "*) ;;
@@ -354,7 +354,7 @@ run_migration() {
     -v ON_ERROR_STOP=1
 }
 
-[[ "$expected_host" = "187.127.46.251" ]]
+[[ "$expected_host" = "179.236.255.4" ]]
 [[ "$(id -un)" = "$expected_user" ]]
 case " $(hostname -I) " in
   *" $expected_host "*) ;;
