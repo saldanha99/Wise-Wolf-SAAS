@@ -132,9 +132,18 @@ Guia técnico para o Claude Code neste projeto.
 ## Stack do Projeto
 
 > ⚠️ **NÃO usamos a nuvem da Supabase.** Tudo roda na VPS própria
-> (`187.127.46.251`, host SSH `wisewolf-vps`). O que roda lá é a **stack Supabase
+> (`179.236.255.4`, host SSH `wisewolf-vps`). O que roda lá é a **stack Supabase
 > self-hosted** — não é PostgreSQL puro. Confundir as duas coisas leva a desligar
 > container achando que é sobra, ou a tentar deploy pelo caminho errado.
+>
+> 🚚 **Desde 16/10/2026 a VPS é a da Everglades** (antes: `187.127.46.251`, a VPS
+> da Forza Motos, que não hospeda mais o Wise Wolf). Mesmas pastas em
+> `/opt/wisewolf`. O que mudou: quem publica os domínios é o **Caddy da
+> Everglades** (`/opt/everglades/Caddyfile`, bloco "Wise Wolf"), não mais o
+> Traefik — os labels `traefik.*` dos composes não têm efeito lá. Domínio novo
+> ou mudança de header = editar esse bloco, `caddy validate` e `caddy reload`
+> no container `everglades-proxy`. A VPS é compartilhada com o site da Everglades
+> e o Edital Lei Seca: nada de `docker system prune`/restart geral.
 
 - **Frontend:** **Vite** + React + TypeScript + Tailwind CSS (`vite build`).
   Não é Next.js — não existe `next.config.*` nem App Router. `App.tsx` na raiz.

@@ -111,11 +111,11 @@ After deployment, validate routing while preserving the production hostname and
 without changing public DNS:
 
 ```sh
-curl --resolve system.wisewolflanguage.com.br:443:187.127.46.251 \
+curl --resolve system.wisewolflanguage.com.br:443:179.236.255.4 \
   --fail --show-error --silent --output /dev/null --dump-header - \
   https://system.wisewolflanguage.com.br/
 
-curl --resolve system.wisewolflanguage.com.br:443:187.127.46.251 \
+curl --resolve system.wisewolflanguage.com.br:443:179.236.255.4 \
   --fail --show-error --silent --output /dev/null --dump-header - \
   https://system.wisewolflanguage.com.br/login
 ```
