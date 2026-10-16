@@ -237,6 +237,10 @@ do $patch$ declare definition text; old_conflict text;begin
  end if;
 end $patch$;
 
+-- O auxiliar legado pertence ao supabase_admin em produção; o wrapper com dono
+-- postgres precisa de EXECUTE explícito. Não abre a função para papéis da API.
+grant execute on function private.coverage_candidates(text,uuid,date) to postgres;
+
 create or replace function public.coverage_candidates_for_booking(p_tenant text,p_booking uuid,p_date date,p_time text)
 returns table(teacher_id uuid,teacher_name text,teacher_phone text)
 language plpgsql stable security definer set search_path='' as $$

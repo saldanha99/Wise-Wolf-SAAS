@@ -19,3 +19,5 @@ Migration `20261016165219_coverage_effective_schedule_director_rate.sql`, reexec
 Testes de UI conferem prévia sem escrita, erro sem fallback, valor por papel, moeda com vírgula, validação antes de enviar, invalidação do período e falha parcial. Testes Deno conferem papéis, precisão, limites e texto do convite.
 
 A publicação usa exclusivamente `deploy/vps/release.sh`, com árvore limpa na branch configurada, dependências do lock e todas as migrations/testes registrados. Não registrar ausência nem disparar convite real para testar a publicação.
+
+O auxiliar legado `private.coverage_candidates` pertence a `supabase_admin` em produção. O wrapper novo pertence a `postgres`: a migration concede EXECUTE somente a esse papel interno. Clones usados para validar precisam preservar os donos e ACLs reais; restaurar como `supabase_admin` evita mascarar essa dependência.

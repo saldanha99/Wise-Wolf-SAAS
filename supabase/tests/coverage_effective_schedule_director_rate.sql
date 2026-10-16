@@ -98,5 +98,8 @@ do $$begin
  begin perform offered_rate from public.class_coverages where id='cf163000-0000-4000-8000-000000000001';raise exception 'student saw remuneration';exception when insufficient_privilege then null;end;
 end $$;
 reset role;
+select pg_temp.assert_true(has_function_privilege('postgres','private.coverage_candidates(text,uuid,date)','execute')
+ and not has_function_privilege('authenticated','private.coverage_candidates(text,uuid,date)','execute')
+ and not has_function_privilege('anon','private.coverage_candidates(text,uuid,date)','execute'),'internal owner can call candidate helper without exposing it to API roles');
 select pg_temp.assert_true(not has_function_privilege('authenticated','public.coverage_booking_occurrences(text,uuid[],date,date,boolean)','execute') and not has_function_privilege('anon','public.coverage_candidates_for_booking(text,uuid,date,text)','execute'),'service-only reads');
 rollback;

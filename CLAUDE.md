@@ -4079,3 +4079,11 @@ agenda fixa na sexta e lançamento em `current_date-3`, compatíveis apenas às
 segundas. Corrigido somente o dia do booking fictício, derivado da data do log;
 regressão de transferência/saída passou em clone com rollback. Nenhuma regra
 operacional foi relaxada e o estado de produção anterior foi preservado.
+
+A segunda tentativa parou antes do commit por ACL do auxiliar legado
+`private.coverage_candidates`: dono `supabase_admin`, sem EXECUTE para `postgres`,
+o dono do wrapper novo. A cópia de estrutura restaurada como postgres havia
+mascarado esse dono. Migration nova ainda não publicada ganhou GRANT somente a
+postgres, mantendo anon/authenticated fechados; suíte testa o privilégio interno.
+Reproduzido o dono/ACL reais no clone e validado o fluxo com rollback. A produção
+continuou na release de 12/10, sem coluna nova ou fixtures remanescentes.
