@@ -54,7 +54,9 @@ do $$declare result jsonb;again jsonb;slots jsonb:='[{"day_of_week":"Segunda","t
  begin insert into public.bookings(tenant_id,teacher_id,student_id,day_of_week,time_slot,start_date,status) values('transfer-exit-fixture','f9130000-0000-4000-8000-000000000004','f9130000-0000-4000-8000-000000000002','Segunda','18:30',current_date+1,'SCHEDULED');
  -- Same student is intentionally allowed during materialization; remove this probe inside its subtransaction.
  raise exception 'rollback same student probe';exception when raise_exception then if sqlerrm<>'rollback same student probe' then raise;end if;end;
- update public.teacher_transfers set cutover_date=current_date where id=(result->>'transfer_id')::uuid;
+ -- Vigência pela data de São Paulo, como apply_teacher_transfer: current_date é UTC e,
+ -- entre 21h e 24h BRT, já é amanhã — a troca ficava para o dia seguinte e o teste reprovava.
+ update public.teacher_transfers set cutover_date=(now() at time zone 'America/Sao_Paulo')::date where id=(result->>'transfer_id')::uuid;
  perform public.apply_teacher_transfer((result->>'transfer_id')::uuid);
  perform pg_temp.assert_true((select status='CANCELLED' from public.bookings where id='f9131000-0000-4000-8000-000000000001'),'old booking preserved, not deleted');
  perform pg_temp.assert_true((select count(*)=1 from public.class_logs where booking_id='f9131000-0000-4000-8000-000000000001'),'old log remains linked');
