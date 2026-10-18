@@ -4133,6 +4133,17 @@ lê o arquivo novo), autorizado pela direção nesta conversa. Backup:
 página sem `action`, navegador resolve para `/functions/v1/accept-coverage?token=…`, POST
 com token falso chega à função (409 em HTML). Nenhum convite foi aceito ou recusado
 para testar; os dois convites da Bruna seguem `pending` e valem pelos mesmos links.
-⚠️ O manifesto de functions do último release não conhece este hotfix: o próximo
-`release.sh` vai acusar drift em `accept-coverage`/`claim-coverage`. Com este commit
-na branch de deploy, publicar com `DEPLOY_ALLOW_FUNCTION_DRIFT=1`.
+Release oficial `20261018T014125Z-6b3ff9f98062`, origem `9bd0da8f`, com
+`DEPLOY_ALLOW_FUNCTION_DRIFT=1` depois de conferir que só essas duas functions
+divergiam do manifesto (agora atualizado): 1.234 testes Vitest, 245 Deno, suíte SQL e
+smoke aprovados. Backup: `/opt/wisewolf/backups/release-20261018T014125Z-6b3ff9f98062`.
+Foi o **primeiro release na VPS da Everglades** e saiu na terceira tentativa:
+- ⚠️ **A VPS nova não tinha `jq`** — o preflight morre calado em `command -v jq`
+  (`set -e` dentro do heredoc, sem mensagem). Instalado por `apt-get install jq`.
+  Preflight mudo: rode o heredoc dele com `bash -x` para achar a linha.
+- ⚠️ `atomic_student_exit_and_teacher_transfer.sql` punha a vigência em `current_date`
+  (UTC) e `apply_teacher_transfer` aplica pela data de São Paulo: entre 21h e 24h BRT a
+  troca ficava para "amanhã" e o release reprovava ("old booking preserved, not
+  deleted"). O teste usa a data de São Paulo; a função estava certa.
+Aviso à Bruna (texto aprovado pela direção) enviado pela instância central com os
+dois links, pela régua `whatsapp_outbound_permit` (`reply`).
