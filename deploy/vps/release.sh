@@ -471,6 +471,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/lesson-planner/teacher-card.ts \
   supabase/functions/lesson-planner/teacher-card.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/accept-coverage/form-action.test.ts \
   supabase/functions/lesson-planner/approved-lessons.ts \
   supabase/functions/lesson-planner/approved-lessons.test.ts \
   supabase/functions/lesson-planner/access.ts \
@@ -869,6 +870,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
 npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/asaas-adjudication/core.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/accept-coverage/form-action.test.ts \
   supabase/functions/student-card-suggestions/source.test.ts \
   supabase/functions/register-teacher/contract-terms.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \

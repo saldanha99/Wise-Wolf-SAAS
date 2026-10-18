@@ -265,9 +265,10 @@ async function notifyAfterClaim(
   }
 }
 
+// Sem `action` no formulário: posta para a própria URL do link. Ver a nota em
+// `accept-coverage` — o `url.pathname` aqui dentro não tem o `/functions/v1`.
 function claimPage(
   token: string,
-  actionPath: string,
   opp: JsonObject,
 ): Response {
   const date = formatDate(opp.class_date) ?? "data informada";
@@ -280,7 +281,7 @@ function claimPage(
   }</strong> em <strong>${escapeHtml(date)}</strong>, às <strong>${
     escapeHtml(time)
   }</strong>. Quem aceitar primeiro fica com a aula — e ela conta no seu pagamento.</p>
-    <form method="post" action="${escapeHtml(actionPath)}" autocomplete="off">
+    <form method="post" autocomplete="off">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button class="accept" type="submit" name="decision" value="accept">Eu cubro essa aula</button>
       <button class="decline" type="submit" name="decision" value="decline">Não posso</button>
@@ -366,7 +367,7 @@ async function handleGet(url: URL): Promise<Response> {
       String(opp.original_teacher_id || ""),
     ).maybeSingle(),
   ]);
-  return claimPage(token, url.pathname, {
+  return claimPage(token, {
     ...opp,
     student_name: student?.full_name,
     original_teacher_name: original?.full_name,

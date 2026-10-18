@@ -127,9 +127,13 @@ function formatTime(value: unknown): string | null {
   return match ? `${match[1]}:${match[2]}` : null;
 }
 
+// O formulário NÃO leva `action`: posta para a própria URL do link
+// (`/functions/v1/accept-coverage?token=…`). O `url.pathname` visto aqui dentro
+// é `/accept-coverage` — o Kong tira o `/functions/v1` antes de repassar — e
+// postar para ele caía na rota do painel do Kong, que pede usuário e senha
+// (Basic Auth). Mesmo desenho do convite de treinamento.
 function invitePage(
   token: string,
-  actionPath: string,
   classDate: unknown,
   classTime: unknown,
   offeredRate: unknown,
@@ -153,7 +157,7 @@ function invitePage(
     <p style="margin-top:16px"><strong>${
     escapeHtml(rate)
   }</strong>. O pagamento depende do lançamento da aula pagável.</p>
-    <form method="post" action="${escapeHtml(actionPath)}" autocomplete="off">
+    <form method="post" autocomplete="off">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button class="accept" type="submit" name="decision" value="accept">Confirmar cobertura</button>
       <button class="decline" type="submit" name="decision" value="decline">Não posso cobrir</button>
@@ -325,7 +329,6 @@ async function handleGet(url: URL): Promise<Response> {
   }
   return invitePage(
     token,
-    url.pathname,
     coverage.class_date,
     coverage.class_time,
     coverage.offered_rate,

@@ -1928,6 +1928,11 @@ professores para Terça 15:30; o slot discreto devolve 3.
 - ⚠️ **`accept-coverage` devolve HTML e funciona** — testado, o gateway entrega
   `text/html`. É exceção à regra "edge function não renderiza HTML" (que vale para o que o
   Kong serve nas rotas do SPA). Não "conserte" movendo para o SPA sem medir.
+  ⚠️ **"Funciona" valia só para o GET.** Até 17/10/2026 o botão Confirmar postava para
+  `url.pathname` — que dentro do container é `/accept-coverage`, porque o Kong tira o
+  `/functions/v1` — e caía na rota do painel do Kong (401, pedido de usuário e senha).
+  **Formulário de edge function não leva `action`**: `<form method="post">` posta para a
+  própria URL do link. Guardado por `accept-coverage/form-action.test.ts`.
 - ⚠️ **Página HTML com `Referrer-Policy: no-referrer` NÃO pode checar `Origin` no POST.**
   Com essa política o navegador manda `Origin: null` no envio do formulário (medido no
   Chromium em 16/09/2026). A `teacher-training-invite` fazia a checagem e devolvia 403
@@ -4111,3 +4116,23 @@ Os dois clones de validação foram removidos; zero fixtures novas na produção
 Nenhuma ausência, convite, mensagem externa ou pagamento real foi criado para
 testar. Arquivos locais não rastreados do usuário foram preservados e restaurados.
 As indicações de não publicação e falhas acima foram superadas por este release.
+
+### 17/10/2026 — Aceite de cobertura pelo link (hotfix publicado)
+
+A professora abria o convite de cobertura, tocava em Confirmar e o navegador pedia
+usuário e senha. `accept-coverage` e `claim-coverage` montavam o `action` do formulário
+com `url.pathname` (`/accept-coverage`, sem o `/functions/v1` que o Kong tira) e o POST
+caía no Basic Auth do painel do Kong. Kong mostrou ~10 tentativas da Bruna em dois
+convites, todas 401; nenhuma oportunidade do dia (`claim-coverage`) foi ganha na
+história. Agora `<form method="post">` sem `action`, como o convite de treinamento;
+teste `accept-coverage/form-action.test.ts` registrado no release (fmt + allow-read).
+
+Publicado por hotfix (scp das duas `index.ts`, sem reiniciar: a política `per_request`
+lê o arquivo novo), autorizado pela direção nesta conversa. Backup:
+`/opt/wisewolf/backups/hotfix-coverage-form-action-20261018T010616Z`. Conferido no ar:
+página sem `action`, navegador resolve para `/functions/v1/accept-coverage?token=…`, POST
+com token falso chega à função (409 em HTML). Nenhum convite foi aceito ou recusado
+para testar; os dois convites da Bruna seguem `pending` e valem pelos mesmos links.
+⚠️ O manifesto de functions do último release não conhece este hotfix: o próximo
+`release.sh` vai acusar drift em `accept-coverage`/`claim-coverage`. Com este commit
+na branch de deploy, publicar com `DEPLOY_ALLOW_FUNCTION_DRIFT=1`.
