@@ -832,6 +832,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-16-cobertura-valor-professor', title: 'Confira o valor antes de aceitar a cobertura', roles: ['TEACHER'],
     steps: [{ target: 'sidebar-nav', view: 'teacher-financials', title: 'Oferta por aula de 30 minutos', text: 'O convite de cobertura informa o valor escolhido pela direção ou a aplicação da sua tarifa normal. Confira antes de aceitar. Cada parte de 30 minutos tem seu convite e seu valor; uma aula de 1 hora ocupa duas partes. Após dar e lançar a aula, o valor combinado entra no Financeiro, sujeito às verificações normais de presença. A cobertura mantém o horário daquela data, mesmo quando o aluno passou por uma mudança de agenda.' }],
   },
+  {
+    id: '2026-10-20-reserva-de-agenda-inicio-futuro', title: 'Reserva de agenda para quem começa depois', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'enrollment-link-tab', view: 'dashboard', title: 'Segure o horário até o início', text: 'Em "Link Matrícula", quando o aluno começa numa data futura, marque "Reservar estes horários na agenda do professor até o início" e digite o valor combinado com o professor e o nome do aluno. O link, a reserva e o lançamento na folha do professor nascem juntos. É pagamento interno da escola: o aluno não paga e a taxa de matrícula continua sendo uma decisão à parte. Até o início, nenhuma outra matrícula, troca de horário ou sugestão da atendente usa esse horário.' }],
+  },
+  {
+    id: '2026-10-20-reserva-de-agenda-professor', title: 'Horário reservado para aluno novo', roles: ['TEACHER'],
+    steps: [{ target: 'agenda-future-start-hold-legend', view: 'schedule', title: 'Reservado até o aluno começar', text: 'Quando um aluno fecha agora e começa numa data futura, o horário dele aparece na sua Agenda tracejado em verde-azulado (RES), com a data de início. A escola paga a reserva na sua folha do mês. Mantenha o horário livre até lá; quando o aluno assina, a aula fixa dele passa a ocupar o mesmo lugar.' }],
+  },
 ];
 
 /**

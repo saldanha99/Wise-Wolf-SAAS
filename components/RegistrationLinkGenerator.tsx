@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Link as LinkIcon, Copy, Check, Calendar, Clock, BookOpen, Users,
-    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2, BadgePercent, X
+    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2, BadgePercent, X,
+    CalendarClock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
@@ -17,6 +18,13 @@ import {
     weekdayIndex,
 } from '../lib/enrollmentOffer';
 import { formatCents, resolveAffiliateLookup, type AffiliateMatch } from '../lib/affiliateProgram';
+import {
+    formatHoldDay,
+    holdAllowedForStart,
+    parseHoldAmount,
+    parseHoldSlots,
+    type FutureStartHoldSlot,
+} from '../lib/scheduleHold';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
@@ -83,6 +91,16 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [busyRows, setBusyRows] = useState<Array<{
         teacher_id: string; day_of_week: string; time_slot: string;
     }>>([]);
+    // Horários que outro aluno com início futuro já segura (reserva paga).
+    const [heldRows, setHeldRows] = useState<FutureStartHoldSlot[]>([]);
+
+    // Reserva de agenda: o aluno começa numa data futura e a escola paga ao
+    // professor para segurar o horário até lá. Pagamento interno — entra na
+    // folha do professor; o aluno não paga e a taxa de matrícula não muda.
+    const [holdSchedule, setHoldSchedule] = useState(false);
+    const [holdAmount, setHoldAmount] = useState('');
+    const [holdStudent, setHoldStudent] = useState('');
+    const [holdResult, setHoldResult] = useState('');
 
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
@@ -168,12 +186,16 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         setGeneratedLink('');
         setCopied(false);
         setFormError('');
+        setHoldResult('');
     }, [
         duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
         selectedProfessor, selectedProfessor2, isDependent, studentPhone,
         selectedGuardianId, scheduleSlots, startDate, enableProRata, billingStartMonth,
-        studentLevel, selectedAffiliate,
+        studentLevel, selectedAffiliate, holdSchedule, holdAmount, holdStudent,
     ]);
+
+    const holdAllowed = duration !== 0 && holdAllowedForStart(startDate, dateInSaoPaulo());
+    const holdActive = holdSchedule && holdAllowed;
 
     // Update slots when frequency changes
     useEffect(() => {
@@ -194,12 +216,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         if (teacherIds.length === 0 || !tenantId) {
             setAvailabilityRows([]);
             setBusyRows([]);
+            setHeldRows([]);
             return;
         }
         let cancelled = false;
         setAvailabilityLoading(true);
         (async () => {
-            const [availability, bookings] = await Promise.all([
+            const [availability, bookings, holds] = await Promise.all([
                 supabase.from('teacher_availability')
                     .select('teacher_id,day_of_week,start_time,end_time')
                     .eq('tenant_id', tenantId)
@@ -209,15 +232,22 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                     .eq('tenant_id', tenantId)
                     .in('teacher_id', teacherIds)
                     .in('status', ['SCHEDULED', 'scheduled']),
+                supabase.rpc('list_future_start_holds', {
+                    p_tenant_id: tenantId,
+                    p_teacher_ids: teacherIds,
+                    p_include_inactive: false,
+                }),
             ]);
             if (cancelled) return;
-            if (availability.error || bookings.error) {
+            if (availability.error || bookings.error || holds.error) {
                 setFormError('Não foi possível confirmar a agenda dos professores. Recarregue e tente novamente.');
                 setAvailabilityRows([]);
                 setBusyRows([]);
+                setHeldRows([]);
             } else {
                 setAvailabilityRows((availability.data || []) as typeof availabilityRows);
                 setBusyRows((bookings.data || []) as typeof busyRows);
+                setHeldRows(parseHoldSlots(holds.data));
             }
             setAvailabilityLoading(false);
         })();
@@ -293,6 +323,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         row.teacher_id === teacherId
         && weekdayIndex(row.day_of_week) === weekdayIndex(day)
         && normalizeEnrollmentTime(row.time_slot) === normalizeEnrollmentTime(time)
+    ) || heldRows.some(row =>
+        row.teacher_id === teacherId
+        && row.day_of_week === weekdayIndex(day)
+        && normalizeEnrollmentTime(row.class_time) === normalizeEnrollmentTime(time)
     );
 
     const availableTimes = (teacherId: string, day: string) => {
@@ -350,6 +384,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         if (isDependent && !isValidBrazilianMobile(studentPhone)) {
             return setFormError('Informe um WhatsApp válido do aluno, com DDD. A cobrança continuará no responsável.');
         }
+        const holdAmountValue = holdActive ? parseHoldAmount(holdAmount) : null;
+        if (holdActive && holdAmountValue === null) {
+            return setFormError('Informe o valor da reserva para o professor (maior que zero, até R$ 1.000).');
+        }
+        const holdStudentLabel = holdStudent.trim();
+        if (holdActive && (holdStudentLabel.length < 1 || holdStudentLabel.length > 120)) {
+            return setFormError('Informe o nome do aluno da reserva: é o que aparece na agenda e na folha do professor.');
+        }
 
         const validSchedule = scheduleSlots.map(slot => ({
             day: slot.day,
@@ -395,22 +437,53 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
             setGenerating(true);
-            // A indicação entra na chave: trocar o afiliado gera outro link.
+            // A indicação e a reserva entram na chave: trocar qualquer uma gera outro link.
             const affiliateCode = affiliateApplies ? selectedAffiliate?.affiliate_code || null : null;
-            const requestKey = JSON.stringify({ data, affiliateCode });
+            const hold = holdActive && holdAmountValue !== null
+                ? { amount: holdAmountValue, student: holdStudentLabel }
+                : null;
+            const requestKey = JSON.stringify({ data, affiliateCode, hold });
             const requestId = offerRequestIds.current[requestKey] || crypto.randomUUID();
             offerRequestIds.current[requestKey] = requestId;
-            // Com indicação: porta própria, que cria pela porta pública e aplica
-            // o benefício no mesmo commit (cupom inválido desfaz o link inteiro).
-            const { data: offerId, error: offerErr } = affiliateCode
-                ? await supabase.rpc('create_enrollment_offer_with_affiliate', {
-                    p_payload: { ...data, requestId },
-                    p_affiliate_code: affiliateCode,
-                })
-                : await supabase.rpc('create_enrollment_offer', {
-                    p_payload: { ...data, requestId },
-                });
-            if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
+            let offerId: string | null = null;
+            if (hold) {
+                // Link + reserva + lançamento na folha no MESMO commit: se a
+                // reserva falhar, o link também não nasce.
+                const { data: holdData, error: holdErr } = await supabase.rpc(
+                    'create_enrollment_offer_with_future_hold',
+                    {
+                        p_payload: { ...data, requestId },
+                        p_hold_amount: hold.amount,
+                        p_student_label: hold.student,
+                        p_affiliate_code: affiliateCode,
+                    },
+                );
+                if (holdErr) throw holdErr;
+                const response = (holdData || {}) as {
+                    offer_id?: string;
+                    hold?: { hold_until?: string; holds?: Array<{ month?: string }> };
+                };
+                offerId = response.offer_id || null;
+                const month = response.hold?.holds?.[0]?.month || '';
+                setHoldResult(
+                    `Horários segurados na agenda do professor até ${formatHoldDay(response.hold?.hold_until || startDate)}. `
+                    + `R$ ${hold.amount.toFixed(2).replace('.', ',')} lançado na folha${month ? ` de ${month.split('-').reverse().join('/')}` : ''} do professor.`,
+                );
+            } else {
+                // Com indicação: porta própria, que cria pela porta pública e aplica
+                // o benefício no mesmo commit (cupom inválido desfaz o link inteiro).
+                const { data: createdId, error: offerErr } = affiliateCode
+                    ? await supabase.rpc('create_enrollment_offer_with_affiliate', {
+                        p_payload: { ...data, requestId },
+                        p_affiliate_code: affiliateCode,
+                    })
+                    : await supabase.rpc('create_enrollment_offer', {
+                        p_payload: { ...data, requestId },
+                    });
+                if (offerErr) throw offerErr;
+                offerId = typeof createdId === 'string' ? createdId : null;
+            }
+            if (!offerId) throw new Error('offer id vazio');
             delete offerRequestIds.current[requestKey];
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
         } catch (e) {
@@ -985,6 +1058,74 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                     </div>
                 </div>
 
+                {/* SECTION 2.4: RESERVA DE AGENDA (aluno com início futuro, pago ao professor) */}
+                {duration !== 0 && (
+                    <div
+                        data-tour="future-start-hold-field"
+                        className="bg-teal-50/60 dark:bg-teal-900/10 rounded-2xl p-6 border border-teal-200/70 dark:border-teal-900/30"
+                    >
+                        <label className={`flex items-start gap-3 ${holdAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                            <input
+                                type="checkbox"
+                                checked={holdActive}
+                                disabled={!holdAllowed}
+                                onChange={e => setHoldSchedule(e.target.checked)}
+                                className="mt-0.5 w-5 h-5 rounded accent-teal-600 shrink-0"
+                            />
+                            <span>
+                                <span className="flex items-center gap-2 text-sm font-black text-brand-text dark:text-slate-200">
+                                    <CalendarClock size={16} className="text-teal-600 dark:text-teal-400 shrink-0" aria-hidden="true" />
+                                    Reservar estes horários na agenda do professor até o início
+                                </span>
+                                <span className="block mt-1 text-[11px] text-brand-muted leading-relaxed">
+                                    {holdAllowed
+                                        ? `O aluno começa em ${formatHoldDay(startDate)}: até lá o professor segura o horário e a escola paga a ele o valor abaixo, na folha do mês. É pagamento interno — o aluno não paga e a taxa de matrícula não muda.`
+                                        : 'Disponível quando as aulas começam numa data futura (ajuste "Início das Aulas").'}
+                                </span>
+                            </span>
+                        </label>
+
+                        {holdActive && (
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="future-start-hold-amount" className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">
+                                        Valor da reserva para o professor
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted font-bold text-sm">R$</span>
+                                        <input
+                                            id="future-start-hold-amount"
+                                            inputMode="decimal"
+                                            autoComplete="off"
+                                            value={holdAmount}
+                                            onChange={e => setHoldAmount(e.target.value)}
+                                            placeholder="30,00"
+                                            className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-teal-300 dark:border-teal-900/50 rounded-xl text-base font-black text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500"
+                                        />
+                                    </div>
+                                    {selectedProfessor2 && (
+                                        <p className="text-[10px] text-brand-muted mt-1">Com dois professores na grade, cada um recebe este valor.</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label htmlFor="future-start-hold-student" className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">
+                                        Aluno (aparece na agenda e na folha)
+                                    </label>
+                                    <input
+                                        id="future-start-hold-student"
+                                        autoComplete="off"
+                                        maxLength={120}
+                                        value={holdStudent}
+                                        onChange={e => setHoldStudent(e.target.value)}
+                                        placeholder="Nome do aluno"
+                                        className="w-full px-4 py-3 bg-brand-surface border border-teal-300 dark:border-teal-900/50 rounded-xl text-base font-medium text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* SECTION 2.5: MATRÍCULA DE DEPENDENTE (cobrança no CPF de outro titular) */}
                 <div className="bg-indigo-50/60 dark:bg-indigo-900/10 rounded-2xl p-6 border border-indigo-200/70 dark:border-indigo-900/30">
                     <label className="flex items-center gap-3 cursor-pointer">
@@ -1110,6 +1251,12 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     {copied ? 'Copiado!' : 'Copiar'}
                                 </button>
                             </div>
+                            {holdResult && (
+                                <p className="mt-3 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs font-semibold text-teal-800 dark:border-teal-900/50 dark:bg-teal-900/20 dark:text-teal-300">
+                                    <CalendarClock size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                    <span>{holdResult}</span>
+                                </p>
+                            )}
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
                                 * Este link expira automaticamente se as regras de negócio forem alteradas.
                             </p>

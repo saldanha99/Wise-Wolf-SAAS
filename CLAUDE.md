@@ -4147,3 +4147,41 @@ Foi o **primeiro release na VPS da Everglades** e saiu na terceira tentativa:
   deleted"). O teste usa a data de São Paulo; a função estava certa.
 Aviso à Bruna (texto aprovado pela direção) enviado pela instância central com os
 dois links, pela régua `whatsapp_outbound_permit` (`reply`).
+
+### 20/10/2026 — Reserva de agenda para aluno com início futuro (preparado, não publicado)
+
+Caso do Well: fechou seg/qua 20h30 com o Teacher Mateus para começar em 05/11; o
+horário precisa ficar seguro até lá e a escola paga ao professor por segurar (R$ 30
+combinados). Antes era só um ajuste manual ("Reserva de agenda — Mariana Pastro"),
+sem nada que impedisse outro aluno de pegar o horário.
+
+- **Gerador de link** (`RegistrationLinkGenerator`): com início futuro, a opção
+  "Reservar estes horários na agenda do professor até o início" pede valor livre e o
+  nome do aluno. `create_enrollment_offer_with_future_hold(payload, valor, aluno,
+  cupom)` cria link + reserva + lançamento na folha no MESMO commit (porta própria ao
+  lado das públicas; folha do mês já fechada desfaz tudo). Horário reservado some da
+  grade do gerador.
+- **É pagamento interno**: entra na folha por `set_closing_adjustment` (mesma régua do
+  lançamento manual, mês corrente). Não cobra o aluno e NÃO mexe na taxa de matrícula —
+  isentar matrícula continua sendo decisão separada.
+- **Trava**: `teacher_future_start_holds` + `private.future_start_hold_blocks`. Barra
+  horário RECORRENTE de outra oferta na validação oficial (`teacher_slot_held`), nas
+  sugestões do fechamento da atendente, no `match_teachers_for_plan`, no
+  `teacher_free_recurring_slots` e por trigger em `bookings` (recorrente) e
+  `booking_schedule_versions`. Aula com data (reposição, experimental, cobertura) antes
+  do início passa: o horário está livre de fato até lá. A própria oferta nunca é barrada.
+- Vale até a data de início, oferta revogada/vencida sem assinatura, ou
+  `release_future_start_hold` (o pagamento fica; tirar é pela tela de repasse).
+- **Agenda do professor**: reserva aparece tracejada em verde-azulado (RES) com a data,
+  via `list_future_start_holds` (jsonb; professor só vê as dele).
+- ⚠️ Funções antigas remendadas (`lock_and_validate…`, `trial_closing_free_slots`…)
+  são do dono `postgres`: helper novo chamado por elas precisa ser do `postgres` também
+  (`alter function … owner to postgres`), senão "permission denied for function".
+- ⚠️ O release aplica só migrations sem marker (ensaio 2× com rollback antes) — não a
+  lista inteira a cada deploy. Reentrância continua obrigatória por causa do ensaio.
+
+Migration `20261020233000_reserva_de_agenda_inicio_futuro.sql` e teste
+`reserva_de_agenda_inicio_futuro.sql` registrados no release; validados na VPS em
+rollback (migration 2× + teste). Tours `2026-10-20-reserva-de-agenda-*`.
+Pendente após publicar: linha de reserva do Well (oferta `3e6029fa…`) ligada ao ajuste
+de R$ 30 já lançado em 2026-10 (`3379c7fc…`), SEM criar um segundo lançamento.

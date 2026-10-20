@@ -18,6 +18,7 @@ import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { localYMD } from '../lib/dateUtils';
 import { dateForDayIndex, weekStartOf } from '../lib/scheduleGrid';
 import { coverageAgendaItems, dateWindow, rescheduleAgendaItems, type CoverageAgendaRow, type RescheduleAgendaRow } from '../lib/coverageAgenda';
+import { formatHoldDay, parseHoldSlots } from '../lib/scheduleHold';
 import StudentProfileForm from './StudentProfileForm';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -189,6 +190,38 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           };
         }
       });
+    }
+
+    // 3b. Reservas de agenda: aluno que já fechou e começa numa data futura. O
+    // horário fica segurado (e pago na folha) até o início; quando o aluno
+    // assina, o agendamento dele passa a ocupar o mesmo lugar e a reserva some.
+    if (resolvedTenantId) {
+      const { data: holdData, error: holdError } = await supabase.rpc('list_future_start_holds', {
+        p_tenant_id: resolvedTenantId,
+        p_teacher_ids: [teacherId],
+        p_include_inactive: false,
+      });
+      if (holdError) {
+        console.warn('[TeacherAvailabilityEditor] Falha ao carregar reservas de agenda:', holdError);
+      }
+      for (const hold of parseHoldSlots(holdData)) {
+        const editorDayIdx = hold.day_of_week - 1; // DB 1=Seg … 6=Sáb; editor 0=Seg
+        if (editorDayIdx < 0 || editorDayIdx >= DAYS.length) continue;
+        const key = `${editorDayIdx}-${hold.class_time.slice(0, 5)}`;
+        if (newBookings[key]) continue;
+        const startLabel = formatHoldDay(hold.hold_until);
+        newBookings[key] = {
+          id: hold.hold_id,
+          studentId: `hold-${hold.hold_id}`,
+          student: hold.student_label || 'Aluno',
+          module: 'RES',
+          type: 'RESERVA',
+          readOnly: true,
+          isExperimental: false,
+          dateLabel: startLabel,
+          caption: `Reservado para ${hold.student_label} — começa em ${startLabel}. A escola paga a reserva na sua folha.`,
+        };
+      }
     }
 
     // 4. Coberturas ASSUMIDAS e reposições dos próximos 7 dias — aulas que são
@@ -437,6 +470,10 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
           <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Cobertura / Reposição (com a data)</span>
         </div>
+        <div className="flex items-center gap-2" data-tour="agenda-future-start-hold-legend">
+          <div className="w-2.5 h-2.5 rounded-full border border-dashed border-teal-500 bg-teal-500/30" />
+          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Reservado (aluno começa na data)</span>
+        </div>
       </div>
 
       {/* Main Calendar Container */}
@@ -502,13 +539,15 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                               ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
                               : booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA'
                                 ? 'bg-amber-400/20 text-amber-500 border border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
-                                : 'bg-brand-accent/20 text-brand-text border border-brand-accent shadow-[0_0_10px_rgba(var(--brand-accent),0.3)]'
+                                : booking.type === 'RESERVA'
+                                  ? 'bg-teal-500/15 text-teal-500 border border-dashed border-teal-500/60'
+                                  : 'bg-brand-accent/20 text-brand-text border border-brand-accent shadow-[0_0_10px_rgba(var(--brand-accent),0.3)]'
                               }`}
                           >
                             {/* Glass highlight effect */}
                             <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
                             <div className="flex items-center gap-1.5 overflow-hidden relative z-10">
-                              <div className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
+                              <div className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.type === 'RESERVA' ? 'bg-teal-500 text-white' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
                                 }`}>
                                 {booking.student[0]}
                               </div>
@@ -523,6 +562,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                             {booking.isExperimental && <span className="text-[8px] font-black opacity-80 relative z-10">{booking.type === 'TESTE ORAL' ? 'ORAL' : 'EXP'}</span>}
                             {!booking.isExperimental && booking.type === 'REPOSIÇÃO' && <span className="text-[8px] font-black opacity-80 relative z-10">REPO</span>}
                             {!booking.isExperimental && booking.type === 'COBERTURA' && <span className="text-[8px] font-black opacity-80 relative z-10">COB</span>}
+                            {booking.type === 'RESERVA' && <span className="text-[8px] font-black opacity-80 relative z-10">RES</span>}
                           </div>
                         ) : (
                           <button

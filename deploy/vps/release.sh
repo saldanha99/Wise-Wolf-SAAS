@@ -1528,6 +1528,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261012145740_suspended_students_notification_guard.sql"
   "supabase/migrations/20261012152506_atomic_student_exit_and_teacher_transfer.sql"
   "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
+  "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"
@@ -1708,6 +1709,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/reposicao_com_trilha_e_canais_de_aviso.sql"
   "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
   "supabase/tests/canal_financeiro_e_folha_previa_do_mes.sql"
+  "supabase/tests/reserva_de_agenda_inicio_futuro.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
