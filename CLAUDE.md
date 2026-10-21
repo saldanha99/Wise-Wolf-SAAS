@@ -4148,7 +4148,7 @@ Foi o **primeiro release na VPS da Everglades** e saiu na terceira tentativa:
 Aviso à Bruna (texto aprovado pela direção) enviado pela instância central com os
 dois links, pela régua `whatsapp_outbound_permit` (`reply`).
 
-### 20/10/2026 — Reserva de agenda para aluno com início futuro (preparado, não publicado)
+### 20/10/2026 — Reserva de agenda para aluno com início futuro (publicado)
 
 Caso do Well: fechou seg/qua 20h30 com o Teacher Mateus para começar em 05/11; o
 horário precisa ficar seguro até lá e a escola paga ao professor por segurar (R$ 30
@@ -4183,5 +4183,16 @@ sem nada que impedisse outro aluno de pegar o horário.
 Migration `20261020233000_reserva_de_agenda_inicio_futuro.sql` e teste
 `reserva_de_agenda_inicio_futuro.sql` registrados no release; validados na VPS em
 rollback (migration 2× + teste). Tours `2026-10-20-reserva-de-agenda-*`.
-Pendente após publicar: linha de reserva do Well (oferta `3e6029fa…`) ligada ao ajuste
-de R$ 30 já lançado em 2026-10 (`3379c7fc…`), SEM criar um segundo lançamento.
+
+Publicado pelo release oficial `20261020T234152Z-6486ba50c301`, origem `f8b68bf4`,
+autorizado pela direção nesta conversa. Backup:
+`/opt/wisewolf/backups/release-20261020T234152Z-6486ba50c301`. A primeira tentativa
+parou na auditoria (alerta alto novo do `launch-editor` em `vite ≤6.4.3`, só de
+desenvolvimento) antes de tocar a VPS; corrigido trocando só a entrada do `vite` no
+lockfile para 6.4.4 (dentro do `^6.2.0`). Conferido no ar: tabela e 6 funções com dono
+`postgres`, os 4 patches, as 2 travas, RPC fechada para `anon`, chunks do gerador e da
+agenda servidos com o código novo. Reserva do Well (oferta `3e6029fa…`, seg/qua 20h30
+com o Mateus até 05/11) cadastrada ligada ao ajuste de R$ 30 já lançado em 2026-10
+(`3379c7fc…`): um único lançamento; bloqueia outra oferta e a sugestão da atendente,
+libera a oferta dele. Arquivos locais não rastreados do usuário foram preservados e
+restaurados.
