@@ -3789,6 +3789,15 @@ A produção permaneceu na release `20261002T202037Z-6f23d076a27c`; as correçõ
 acima estão no código, não no runtime. Migração de dependências depende de
 direção da pessoa proprietária, com regressão visual e testes completos.
 
+Atualização 21/10/2026: a correção ENTROU no ar no release `20261006T203520Z`
+(06/10 17:40 BRT) e segue em todos os seguintes. Conferido: `index.ts` e
+`trial-access.ts` publicados batem por hash com o repositório, e nenhuma resposta da
+IA citou presencial, visita ou a cidade desde então (a "experiência presencial" de
+08/10 foi digitada pela equipe, `human_takeover`, sobre outra escola). Antes do
+veto, cinco leads ouviram que havia aula presencial: finais 8448 (23/07), 3954 e
+9782 (10/08), 1845 (22/09) e 5151 (05/10, o Well, que matriculou online). Nenhuma
+mensagem retroativa enviada; decisão da direção.
+
 ### 06/10/2026 — Antecipações consultam a agenda efetiva (correção preparada)
 
 A tela oferecia ocorrências passadas do mês e datas realizadas no mesmo mês,
