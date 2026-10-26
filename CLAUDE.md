@@ -4221,3 +4221,8 @@ pendentes. Status/valor/data divergentes e referências desconhecidas ficam em
 triagem. Não descobrir aluno por nome ou valor, nem reprocessar a inbox inteira.
 Migration reexecutável registrada no release; testes SQL somente no QA isolado.
 A infraestrutura Supabase é auto-hospedada junto ao PostgreSQL da própria VPS.
+
+A publicação de 26/10 exigiu atualizar o lockfile de DOMPurify, Vitest/mocker,
+fast-uri e serialize-javascript. Remotion 4.0.515 fixa Zod 4.4.3, coberto pelo
+GHSA-mrhx-c7xc-m3w5: override somente de Zod para 4.6.7 (mesma major), sem
+rebaixar Remotion. `npm audit` zerado; typechecks de app e vídeo aprovados.
