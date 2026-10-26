@@ -1529,6 +1529,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261012152506_atomic_student_exit_and_teacher_transfer.sql"
   "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
   "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
+  "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"

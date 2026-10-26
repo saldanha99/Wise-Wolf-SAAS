@@ -128,3 +128,39 @@ Deno.test("observation failure disposition fails closed", () => {
     throw new Error("observation failures were classified unsafely");
   }
 });
+
+Deno.test("confirmed read grants approval without claiming cash settlement", async () => {
+  for (const status of ["CONFIRMED", "AUTHORIZED", "PENDING"]) {
+    let outcome: unknown;
+    await applyEnrollmentPaymentObservation({
+      rpc: (_name: string, args: Record<string, unknown>) => {
+        outcome = args?.p_outcome;
+        return Promise.resolve({
+          data: { ok: true, processing_state: "BILLING_READY" },
+          error: null,
+        });
+      },
+    }, {
+      tenantId: "tenant-a",
+      studentId: "00000000-0000-4000-8000-000000000001",
+      offerId: "00000000-0000-4000-8000-000000000002",
+      providerPaymentId: "pay_exact",
+      providerCustomerId: "cus_exact",
+      providerSubscriptionId: "sub_exact",
+      paymentKind: "SUBSCRIPTION_ACTIVATION",
+      outcome: "PENDING",
+      providerValue: 299,
+      externalReference:
+        "enrollment:00000000-0000-4000-8000-000000000002:subscription",
+      providerStatus: status,
+      dueDate: "2026-10-05",
+      billingType: "CREDIT_CARD",
+      description: "Monthly",
+    });
+    if (outcome !== (status === "CONFIRMED" ? "APPROVED" : "PENDING")) {
+      throw new Error(
+        "confirmation/access mapping changed cash or authorized state",
+      );
+    }
+  }
+});

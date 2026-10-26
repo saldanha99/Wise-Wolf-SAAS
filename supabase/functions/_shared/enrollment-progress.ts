@@ -22,7 +22,7 @@ export type EnrollmentPaymentObservation = {
   providerCustomerId: string;
   providerSubscriptionId: string | null;
   paymentKind: EnrollmentPaymentKind;
-  outcome: "SETTLED" | "PENDING" | "UNSETTLED";
+  outcome: "SETTLED" | "APPROVED" | "PENDING" | "UNSETTLED";
   providerValue: number;
   externalReference: string;
   providerStatus: string;
@@ -210,7 +210,10 @@ export async function applyEnrollmentPaymentObservation(
       p_provider_customer_id: input.providerCustomerId,
       p_provider_subscription_id: input.providerSubscriptionId,
       p_payment_kind: input.paymentKind,
-      p_outcome: input.outcome,
+      p_outcome: input.outcome === "PENDING" &&
+          input.providerStatus.trim().toUpperCase() === "CONFIRMED"
+        ? "APPROVED"
+        : input.outcome,
       p_provider_value: input.providerValue,
       p_external_reference: input.externalReference,
       p_provider_status: input.providerStatus,
@@ -247,7 +250,7 @@ export async function resolveEnrollmentPaymentObservationBinding(
     studentId: string;
     providerPaymentId: string;
     externalReference: string | null;
-    outcome: "SETTLED" | "PENDING" | "UNSETTLED";
+    outcome: "SETTLED" | "APPROVED" | "PENDING" | "UNSETTLED";
   },
 ): Promise<EnrollmentPaymentObservationBinding | null> {
   const { data, error } = await admin.rpc(

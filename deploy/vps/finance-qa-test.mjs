@@ -33,6 +33,7 @@ const migrations = [
   'supabase/migrations/20260915174000_renovacao_com_novas_condicoes_e_horario.sql',
   'supabase/migrations/20260915178000_renovacao_pagina_com_marca_da_escola.sql',
   'supabase/migrations/20260917105957_renewal_due_date_roll_forward.sql',
+  'supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql',
 ];
 const tests = process.argv.slice(2);
 if (!tests.length) throw new Error('Informe pelo menos um arquivo supabase/tests/*.sql.');

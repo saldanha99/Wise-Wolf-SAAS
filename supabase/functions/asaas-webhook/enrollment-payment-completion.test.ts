@@ -8,10 +8,10 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("recurring enrollment waits for its exact first settled charge", () => {
+Deno.test("cash settlement remains distinct from enrollment confirmation", () => {
   assert(
     !isSettledPaymentEvent("PAYMENT_CONFIRMED"),
-    "authorization/confirmation cannot complete enrollment",
+    "confirmation must not become cash settlement",
   );
   assert(
     isSettledPaymentEvent("PAYMENT_RECEIVED") &&
@@ -115,4 +115,92 @@ Deno.test({
       "service operation can no longer create the exact offer-bound enrollment fee",
     );
   },
+});
+
+Deno.test("legacy installments use exact fresh identities for pending and paid states", async () => {
+  const { verifiedLegacySubscriptionPayment } = await import(
+    "./legacy-subscription-origin.ts"
+  );
+  const expected = {
+    studentId: "00000000-0000-4000-8000-000000000001",
+    customerId: "cus_bound",
+    subscriptionId: "sub_bound",
+  };
+  const parent = {
+    id: expected.subscriptionId,
+    customer: expected.customerId,
+    status: "ACTIVE",
+  };
+  const charge = {
+    id: "pay_bound",
+    customer: expected.customerId,
+    subscription: expected.subscriptionId,
+    status: "PENDING",
+    value: 389,
+    dueDate: "2026-10-30",
+  };
+  const verify = (
+    eventName: string,
+    eventPayment: unknown,
+    authoritativePayment: unknown,
+    authoritativeSubscription: unknown = parent,
+  ) =>
+    verifiedLegacySubscriptionPayment({
+      eventName,
+      eventPayment,
+      authoritativePayment,
+      authoritativeSubscription,
+      expected,
+    });
+  assert(
+    verify("PAYMENT_CREATED", charge, charge),
+    "pending legacy invoice disappeared",
+  );
+  assert(
+    !verify("PAYMENT_RECEIVED", charge, charge),
+    "unpaid invoice became a receipt",
+  );
+  assert(
+    !verify("PAYMENT_CREATED", charge, { ...charge, customer: "cus_other" }),
+    "foreign customer accepted",
+  );
+  assert(
+    !verify("PAYMENT_CREATED", charge, {
+      ...charge,
+      subscription: "sub_other",
+    }),
+    "foreign subscription accepted",
+  );
+  assert(
+    !verify("PAYMENT_CREATED", charge, { ...charge, value: 390 }),
+    "changed amount accepted",
+  );
+  assert(
+    !verify("PAYMENT_CREATED", charge, { ...charge, status: "RECEIVED" }),
+    "stale event accepted",
+  );
+  assert(
+    !verify("PAYMENT_CREATED", charge, charge, {
+      ...parent,
+      externalReference: "unknown",
+    }),
+    "unknown reference accepted",
+  );
+  const confirmed = { ...charge, status: "CONFIRMED" };
+  assert(
+    verify("PAYMENT_CONFIRMED", confirmed, confirmed),
+    "exact confirmation rejected",
+  );
+  const received = { ...charge, status: "RECEIVED", paymentDate: "2026-10-26" };
+  assert(
+    verify("PAYMENT_RECEIVED", received, received),
+    "exact settlement rejected",
+  );
+  assert(
+    !verify("PAYMENT_RECEIVED", { ...received, paymentDate: null }, {
+      ...received,
+      paymentDate: null,
+    }),
+    "undated cash accepted",
+  );
 });

@@ -1737,7 +1737,7 @@ function buildWebhookEnrollmentObservation(input: {
   offerId: string | null;
   payment: AsaasWebhookPayment;
   paymentKind: EnrollmentPaymentKind;
-  outcome: "SETTLED" | "UNSETTLED";
+  outcome: "SETTLED" | "APPROVED" | "UNSETTLED";
   externalReference: string;
   providerStatus: string;
   providerValue: number;
@@ -1796,7 +1796,7 @@ async function resolveWebhookEnrollmentObservationBinding(
     studentId: string;
     providerPaymentId: string;
     externalReference: string | null;
-    outcome: "SETTLED" | "UNSETTLED";
+    outcome: "SETTLED" | "APPROVED" | "UNSETTLED";
     localPaymentId: string;
   },
 ): Promise<EnrollmentPaymentObservationBinding | null> {
@@ -2962,7 +2962,14 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         let verifiedLegacyOrigin = false;
         if (
           !parentReference && !String(payment.externalReference || "").trim() &&
-          SETTLED_PAYMENT_EVENTS.has(event)
+          [
+            "PAYMENT_CREATED",
+            "PAYMENT_UPDATED",
+            "PAYMENT_OVERDUE",
+            "PAYMENT_CONFIRMED",
+            "PAYMENT_RECEIVED",
+            "PAYMENT_RECEIVED_IN_CASH",
+          ].includes(event)
         ) {
           const readIntegration = await resolveAsaasIntegration(
             supabase,
@@ -3243,6 +3250,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     }
 
     const settledPayment = isSettledPaymentEvent(event);
+    // Card confirmation grants access; cash effects still require settlement.
+    const approvedEnrollmentPayment = event === "PAYMENT_CONFIRMED" &&
+      providerStatus === "CONFIRMED";
     const fullyRefunded = event === "PAYMENT_REFUNDED" ||
       (Number.isFinite(paymentValue) &&
         paymentValue > 0 &&
@@ -3254,7 +3264,8 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     // competence. Never let arrival order between different charges decide
     // whether the student is ACTIVE or OVERDUE.
     if (
-      settledPayment || event === "PAYMENT_OVERDUE" ||
+      settledPayment || approvedEnrollmentPayment ||
+      event === "PAYMENT_OVERDUE" ||
       providerDeletionUpdateOnly ||
       enrollmentPaymentUnsettled
     ) {
@@ -3276,7 +3287,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
       return;
     }
 
-    if (settledPayment || enrollmentPaymentUnsettled) {
+    if (
+      settledPayment || approvedEnrollmentPayment || enrollmentPaymentUnsettled
+    ) {
       const profileQuery = supabase
         .from("profiles")
         .select(
@@ -3309,7 +3322,11 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         return;
       }
 
-      const observationOutcome = settledPayment ? "SETTLED" : "UNSETTLED";
+      const observationOutcome = settledPayment
+        ? "SETTLED"
+        : approvedEnrollmentPayment
+        ? "APPROVED"
+        : "UNSETTLED";
       const observationBinding =
         await resolveWebhookEnrollmentObservationBinding(supabase, {
           tenantId: studentTenantId,

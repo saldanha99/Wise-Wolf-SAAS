@@ -4205,3 +4205,19 @@ com o Mateus até 05/11) cadastrada ligada ao ajuste de R$ 30 já lançado em 20
 (`3379c7fc…`): um único lançamento; bloqueia outra oferta e a sugestão da atendente,
 libera a oferta dele. Arquivos locais não rastreados do usuário foram preservados e
 restaurados.
+
+### 26/10/2026 — Confirmação de acesso e parcelas legadas Asaas
+
+Correção financeira em `confirmed-enrollment-and-legacy-installments.md` no runbook.
+`APPROVED` distingue pagamento confirmado de caixa liquidado: matrícula aceita
+CONFIRMED com evidência local dupla e vínculo exato; PENDING/AUTHORIZED não liberam.
+Agregação de status financeiro considera confirmação para elegibilidade, sem
+inventar crédito, ledger, rateio ou aviso de recebimento. Agenda, contrato,
+reversões, tenant e ciclo de vida continuam protegidos.
+
+Parcelas legadas sem referência podem entrar pelos mesmos ids únicos de cliente
+E assinatura após GET corroborado da cobrança e da assinatura, inclusive eventos
+pendentes. Status/valor/data divergentes e referências desconhecidas ficam em
+triagem. Não descobrir aluno por nome ou valor, nem reprocessar a inbox inteira.
+Migration reexecutável registrada no release; testes SQL somente no QA isolado.
+A infraestrutura Supabase é auto-hospedada junto ao PostgreSQL da própria VPS.
