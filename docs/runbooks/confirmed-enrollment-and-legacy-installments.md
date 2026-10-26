@@ -39,3 +39,19 @@ antigas. Erros de agenda exigem examinar as reservas; não ignorar essa barreira
 A saúde do grupo é verificada pela conexão da instância, histórico do destino e
 recibos do provedor. `accepted` e a presença no histórico não comprovam entrega ou
 leitura. Não reenviar registros `SUBMITTING` já aceitos para tentar obter um recibo.
+
+## Pix particulares e depósitos sem cobrança
+
+A classificação operacional `NAO_RECEITA` preserva o fato bancário em
+`provider_status=RECEIVED`, com caixa em `aporte_ou_movimentacao`, sem receita de
+mensalidade, aluno, competência pré-paga ou rateio escolar. Uma decisão da direção
+se aplica ao id da transação, com consulta fresca ao Asaas, controle de duplicidade
+e evidência reservada. Não transformar o pagador em uma lista permanente de
+exclusão: essa pessoa pode fazer um pagamento escolar legítimo no futuro.
+
+Pix direto sem vínculo comprovado com cobrança/assinatura fica em conferência.
+Nome ou coincidência de valor não bastam para atribuir mensalidade. Uma taxa de
+rescisão também não deve quitar uma mensalidade nem reativar aluno. Na operação,
+a separação entre a conta/chave da escola e recebimentos pessoais reduz esse
+trabalho de classificação. Não apagar o movimento bancário para fazê-lo sumir da
+conciliação nem reprocessar mensagens antigas sem examinar sua natureza.

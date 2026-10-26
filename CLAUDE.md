@@ -4226,3 +4226,29 @@ A publicação de 26/10 exigiu atualizar o lockfile de DOMPurify, Vitest/mocker,
 fast-uri e serialize-javascript. Remotion 4.0.515 fixa Zod 4.4.3, coberto pelo
 GHSA-mrhx-c7xc-m3w5: override somente de Zod para 4.6.7 (mesma major), sem
 rebaixar Remotion. `npm audit` zerado; typechecks de app e vídeo aprovados.
+
+Publicado em 26/10 pelo release `20261026T232704Z-78a4e308c906` (origem
+`e183100a`); hashes dos três consumidores financeiros conferidos na VPS. Passaram
+1.272 testes Vitest, 1.481 Deno, três suítes financeiras no QA isolado e a
+verificação de movimentação pessoal sem aviso/rateio. Banco anterior em backup
+restrito `finance-sync-20261026-E0rIUk`, com provas operacionais reservadas.
+
+Reparos pontuais por GET canônico: cartão confirmado passou a atender o requisito
+financeiro da matrícula. A conclusão de um caso também exigiu reconciliar a reserva
+materializada com quatro trocas de horário SCHOOL_ADMIN já APPLIED em 08/10,
+vigentes em 09/10. Mantidos os horários atuais; registros e assinaturas contratuais
+comparados antes/depois, sem diferença; conclusão pelo fluxo público normal.
+Quatro assinaturas antigas sem ponteiro local foram religadas após confirmar
+cliente/documento e uma única assinatura ativa. Seus quatro recebimentos foram
+processados pela inbox original. Parcelas pendentes verificadas foram recuperadas
+sem marcá-las como pagas. As três contas consultadas passaram na regra real de
+acesso ACTIVE e cobrança OK.
+
+Três Pix (R$ 130 no total) foram explicitamente confirmados pela direção como
+particulares: NAO_RECEITA/RECEIVED, sem aluno, sem alocação e sem intenção de aviso
+escolar. Conciliação preserva o caixa não operacional. Nunca usar lista negra por
+nome/pagador nem classificar novos Pix sem contexto. Pendências de depósitos
+diretos e de rescisão exigem confirmar a natureza; não declarar conciliação total
+apenas porque os processadores estão ativos. A primeira auditoria ampla após os
+reparos caiu de 59 para 32 apontamentos, antes da recuperação adicional de parcelas
+futuras; preservar essa distinção entre saúde da rotina e conciliação concluída.
