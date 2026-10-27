@@ -4574,3 +4574,17 @@ direção, cópia pública). Override `html2canvas` → `npm:html2canvas-pro@2.5
 `html2canvas` original enquanto o CSS tiver oklch. A captura do convite limita a
 escala a 15 M de pixels (teto de canvas do Safari no iPhone) e a mensagem de
 erro deixou de culpar a assinatura da escola.
+
+### 27/10/2026 — Reposição dada por substituto sem termo individual
+
+A Bruna não marcava a reposição da Bianca (titular Débora): o guarda do termo
+só dispensava reposição para o professor com vínculo antigo/termo próprio. Agora
+reposição de aluno atual segue a regra da cobertura pontual
+(`student_term_coverage_exempt` contra `professor_id`/`professor_id2`): titular
+com vínculo antigo ou termo vigente + substituto com contrato geral aceito e
+elegível. Substituto sem contrato e aluno novo continuam exigindo termo.
+Migration `20261027201000` (remendo por âncora, marcador
+`reposicao_por_substituto`) e teste registrados. Reposição já dada no passado
+continua não podendo ser marcada pelo professor
+(`teacher_reschedule_slot_must_be_future`, antifraude): a direção marca a data
+e o professor lança em Pendentes.
