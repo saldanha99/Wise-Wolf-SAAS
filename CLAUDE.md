@@ -4502,3 +4502,26 @@ para a publicação foram restaurados e comparados por SHA-256. Inspeção visua
 produção indisponível no navegador; validação por testes, HTTP e contexto real do
 banco. Modelo ilustrativo, sem assinaturas, em
 `output/pdf/wise-wolf-termo-individual-modelo.pdf`, fora do Git.
+
+### 27/10/2026 — Termo individual não trava falta, reposição nem aluno antigo
+
+Auditoria pós-ativação provou em rollback: lançar falta cria reposição com
+`date='Pendente'` e o gatilho fazia `'Pendente'::date`, recusando TODO lançamento
+de falta ("falha_no_lancamento"); marcar reposição e trocar horário de aluno
+anterior à política exigiam termo (assinatura retroativa não pedida); nenhum aviso
+saía para assinar; `set_student_status` mudava status sem o financeiro. Política
+desligada às 14:55 BRT até a correção (starts_at preservado).
+
+Migration `20261027175500`: reposição sem data não é ocorrência e passa; vínculo
+antigo (`student_term_legacy_relationship`: aluno criado antes de `starts_at` com
+o mesmo professor titular/agenda anterior) dispensa termo em agenda, versões,
+troca de horário e reposição; reposição também vale com termo EXECUTED vigente do
+mesmo professor. Professor NOVO (transferência, cobertura, outro titular, reposição
+dada por outro) continua exigindo termo. Proposta nova avisa a Direção e a
+assinatura da escola avisa o professor pela fila oficial (MANAGEMENT_NOTICE,
+idempotente `student-term:<id>:proposed|school-signed`; falha no aviso só gera
+WARNING). `set_student_status` segue fachada autenticada (auditoria SECDEF), mas
+recusa a transição: pausa/reativação/encerramento só pelo fluxo oficial.
+Teste `termo_individual_nao_trava_falta_e_reposicao.sql` reprova sem a correção.
+Dois professores ativos (63 de 109 horários) têm `contract_accepted=false`: não validam
+termo nenhum até aceitarem o contrato geral v3 no app.
