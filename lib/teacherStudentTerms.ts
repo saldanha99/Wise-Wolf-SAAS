@@ -5,7 +5,8 @@ export type IndividualTerm = {
  family_confirmed_at?:string|null;schedule_hash?:string;retired_at?:string|null;closed_reason?:string|null;events?:{event:string;created_at:string;content_hash:string}[];
 };
 export type IndividualTermsData = {ok:boolean;role:string;tenant_id?:string;actor_name:string;general_contract_accepted?:boolean;enabled:boolean;terms:IndividualTerm[];identity?:ProviderDetails|null};
-export type ProviderDetails = {companyName:string;cnpj:string;companyAddress:string;representativeCpf:string};
+// kind INDIVIDUAL = prestador autônomo (CPF), sem empresa.
+export type ProviderDetails = {kind?:'COMPANY'|'INDIVIDUAL';companyName:string;cnpj:string;companyAddress:string;representativeCpf:string};
 export const individualTermPhase:Record<string,string>={IDENTITY_PENDING:'Dados da empresa pendentes',SCHOOL_PENDING:'Aguardando assinatura da escola',TEACHER_PENDING:'Aguardando assinatura do professor',FAMILY_PENDING:'Aguardando confirmação da agenda',EXECUTED:'Termo assinado e agenda confirmada',PROPOSED:'Proposta pendente',DECLINED:'Recusado pelo professor',REVOKED:'Proposta retirada',SUPERSEDED:'Substituído por nova versão',TERMINATED:'Atendimento encerrado'};
 export function termAgenda(slots:TermSlot[]):string {
  const days=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];

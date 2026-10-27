@@ -106,22 +106,16 @@ begin
  insert into public.teacher_availability(tenant_id,teacher_id,day_of_week,start_time,end_time) values(tenant,other_teacher,5,'19:00','20:00');
  insert into public.teacher_absences(id,tenant_id,teacher_id,starts_at,ends_at,reason,status) values(absence,tenant,teacher,coverage_date,coverage_date,'OTHER','ACTIVE');
  insert into public.class_coverages(id,tenant_id,original_teacher_id,cover_teacher_id,student_id,booking_id,absence_id,class_date,class_time,status,token,invite_expires_at) select coverage,tenant,teacher,other_teacher,other_student,id,absence,coverage_date,'19:00','pending',repeat('b',32),(coverage_date::text||'T22:00:00Z')::timestamptz from public.bookings where enrollment_offer_id=offer and day_of_week='Sexta' limit 1;
- perform pg_temp.term_assert(exists(select 1 from private.teacher_student_terms where source_kind='COVERAGE' and source_id=coverage and teacher_id=other_teacher),'coverage did not prepare a scoped term');
- begin perform public.resolve_coverage_invite(repeat('b',32),true);raise exception 'coverage bypassed term';exception when sqlstate 'PT412' then null;end;
-
- select id into coverage_term from private.teacher_student_terms where source_kind='COVERAGE' and source_id=coverage;
- perform set_config('request.jwt.claims',jsonb_build_object('sub',other_teacher,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('identity',null,identity);
- select content_hash into old_hash from private.teacher_student_terms where id=coverage_term;
- perform set_config('request.jwt.claims',jsonb_build_object('sub',director,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('sign',coverage_term,jsonb_build_object('content_hash',old_hash,'typed_name','Diretor Fixture','accepted',true,'has_authority',true));
- perform set_config('request.jwt.claims',jsonb_build_object('sub',other_teacher,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('sign',coverage_term,jsonb_build_object('content_hash',old_hash,'typed_name','Outro Fixture','accepted',true,'has_authority',true));
- perform pg_temp.term_assert(r->>'phase'='EXECUTED','coverage exact agenda not executable');
+ -- Decisão de 27/10/2026: cobertura pontual de aluno atual, por professor com
+ -- contrato geral aceito, dispensa termo; vale o contrato geral e o link de aceite.
+ perform pg_temp.term_assert(not exists(select 1 from private.teacher_student_terms where source_kind='COVERAGE' and source_id=coverage),'pontual coverage of current student prepared a term');
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
  r:=public.resolve_coverage_invite(repeat('b',32),true);
- perform pg_temp.term_assert(r->>'ok'='true','signed coverage not confirmed: '||r::text);
- perform pg_temp.term_assert(exists(select 1 from private.teacher_student_term_bindings where entity_table='class_coverages' and entity_id=coverage and term_id=coverage_term),'coverage confirmation did not reference signatures');
+ perform pg_temp.term_assert(r->>'ok'='true','pontual coverage not confirmed: '||r::text);
+ perform pg_temp.term_assert(not exists(select 1 from private.teacher_student_term_bindings where entity_table='class_coverages' and entity_id=coverage),'exempt coverage bound to a term');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',other_teacher,'role','authenticated')::text,true);
+ r:=public.teacher_student_terms('identity',null,identity);
+ perform set_config('request.jwt.claims','{"role":"service_role"}',true);
 
  -- A alteração direta vira proposta persistente, sem perder a grade atual.
  select id into change_booking from public.bookings where enrollment_offer_id=offer and day_of_week='Sexta';

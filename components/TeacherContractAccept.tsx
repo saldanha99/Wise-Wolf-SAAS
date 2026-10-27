@@ -40,6 +40,9 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [providerDetails, setProviderDetails] = useState({ companyName: '', cnpj: '', companyAddress: '', representativeCpf: '' });
+    // Sem CNPJ, o professor assina o contrato de pessoa física (v2), o mesmo
+    // texto já aceito pelos demais; o v3 é o contrato entre empresas.
+    const [providerKind, setProviderKind] = useState<'COMPANY' | 'INDIVIDUAL'>('COMPANY');
     const dialogRef = useRef<HTMLDivElement>(null);
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawingRef = useRef(false);
@@ -77,6 +80,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                 // legado de rabisco não envia a imagem para o arquivo jurídico.
                 if ((terms.offeredVersion ?? 1) >= 3) setSignatureMode('typed');
                 setProfile(data);
+                setProviderKind(data.cnpj ? 'COMPANY' : 'INDIVIDUAL');
                 setProviderDetails({ companyName: String(data.cnpj_company_name || ''), cnpj: String(data.cnpj || ''),
                     companyAddress: String(data.address || ''), representativeCpf: String(data.cpf || '') });
                 setSignature(normalizedName);
@@ -92,7 +96,9 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
         })();
     }, [userId]);
 
-    const termsVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;
+    const offeredVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;
+    const offersCompanyContract = offeredVersion >= 3;
+    const termsVersion = offersCompanyContract && providerKind === 'INDIVIDUAL' ? 2 : offeredVersion;
     const providerIdentity = { ...providerDetails, representativeHasAuthority: true };
     const contractReadiness = getTeacherContractReadiness(school, profile?.hourly_rate, { termsVersion, providerIdentity });
     const withLessonRecording = contractIncludesLessonRecording('TEACHER', termsVersion);
@@ -319,7 +325,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                             <ShieldCheck size={20} />
                         </div>
                         <div>
-                            <h2 id="teacher-contract-title" className="font-black text-brand-text text-sm uppercase tracking-widest">Aceite do Contrato PJ</h2>
+                            <h2 id="teacher-contract-title" className="font-black text-brand-text text-sm uppercase tracking-widest">{termsVersion >= 3 ? 'Aceite do Contrato PJ' : 'Aceite do Contrato de Prestação'}</h2>
                             <p className="text-[11px] text-brand-muted">Regularização obrigatória para receber alunos</p>
                         </div>
                     </div>
@@ -354,6 +360,17 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     consulta e rastreabilidade.
                                 </p>
                             </div>
+                            {offersCompanyContract && <fieldset data-tour="teacher-provider-kind" className="rounded-xl border border-brand-border p-4 space-y-2">
+                                <legend className="px-1 text-sm font-bold">Como você presta o serviço?</legend>
+                                {([
+                                    ['COMPANY', 'Tenho CNPJ (empresa ou MEI)', 'Contrato entre empresas, com os dados do CNPJ.'],
+                                    ['INDIVIDUAL', 'Sou autônomo, sem CNPJ', 'Contrato de prestação como pessoa física, com seu CPF.'],
+                                ] as const).map(([kind, label, hint]) => <label key={kind} className="flex items-start gap-2 text-sm">
+                                    <input type="radio" name="provider-kind" value={kind} checked={providerKind === kind} disabled={submitting}
+                                        onChange={() => { setProviderKind(kind); setChecked(false); setHasSignature(false); }} className="mt-1" />
+                                    <span><span className="font-bold">{label}</span><span className="block text-xs text-brand-muted">{hint}</span></span>
+                                </label>)}
+                            </fieldset>}
                             {termsVersion >= 3 && <div data-tour="teacher-provider-identity" className="rounded-xl border border-brand-border p-4 space-y-3">
                                 <p className="text-sm font-bold">Empresa que você representa</p>
                                 {([

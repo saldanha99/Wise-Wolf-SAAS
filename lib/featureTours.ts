@@ -864,6 +864,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-27-termo-individual-z-agenda-familia',title:'Confirme sua agenda com a escola',roles:['STUDENT'],
     steps:[{target:'sidebar-nav',view:'dashboard',title:'Confira professor e horários',text:'Quando houver nova proposta de atendimento ou alteração, a confirmação de agenda aparece no início do portal. Seu contrato continua com a escola. Você confere professor, horários e vigência; essa confirmação não assina o contrato profissional, não revela os honorários do professor e não cria cobrança adicional. Na matrícula por link, a grade confirmada no seu contrato é registrada separadamente.'}],
   },
+  {
+    id:'2026-10-27-zz-avisos-e-cobertura-pontual',title:'Termos por aluno: avisos e cobertura pontual',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[{target:'sidebar-nav',view:'lesson-quality',title:'O que exige termo e o que não exige',text:'Quando nasce uma proposta de termo, o grupo da Direção recebe um aviso no WhatsApp; depois que a escola assina, o professor recebe o dele. Alunos que já estudavam com o mesmo professor seguem sem termo para falta, reposição e troca de horário. Cobertura pontual de aluno atual, feita por professor com contrato geral aceito, também dispensa termo: vale o link de aceite. Aluno novo, transferência e troca de titular continuam exigindo os aceites.'}],
+  },
+  {
+    id:'2026-10-27-zz-professor-autonomo',title:'Sem CNPJ? Você também pode assinar',roles:['TEACHER'],
+    steps:[{target:'sidebar-nav',view:'contract_teacher',title:'Empresa ou autônomo',text:'No contrato geral e nos termos por aluno, escolha se presta o serviço com CNPJ (empresa ou MEI) ou como autônomo, com seu CPF. Sem CNPJ, o contrato geral é o de prestação como pessoa física. Quando a escola assinar um termo para você, chega um aviso no seu WhatsApp para conferir e assinar ou recusar.'}],
+  },
 
 ];
 

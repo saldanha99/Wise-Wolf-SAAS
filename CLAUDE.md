@@ -4525,3 +4525,20 @@ recusa a transição: pausa/reativação/encerramento só pelo fluxo oficial.
 Teste `termo_individual_nao_trava_falta_e_reposicao.sql` reprova sem a correção.
 Dois professores ativos (63 de 109 horários) têm `contract_accepted=false`: não validam
 termo nenhum até aceitarem o contrato geral v3 no app.
+
+### 27/10/2026 — Professor autônomo (CPF) e cobertura pontual sem termo
+
+Nenhum professor ativo tinha CNPJ: ninguém assinava termo individual nem o v3
+(contrato entre empresas). Decisões da direção, migration `20261027190000`:
+sem CNPJ, o professor assina o contrato geral v2 de pessoa física mesmo com o v3
+oferecido (`accept_teacher_contract(..., 2)`; a fachada liga
+`app.teacher_pf_contract` só nessa chamada e o remendo por âncora em
+`private.accept_teacher_contract_v2` aceita a v2 apenas assim). O termo individual
+aceita identidade `kind='INDIVIDUAL'` (CPF e endereço; a via diz que as referências
+a empresa/representante valem para o próprio prestador). Cobertura pontual de
+aluno atual (`student_term_coverage_exempt`: titular com vínculo antigo ou termo
+vigente + substituto com contrato geral aceito e elegível) dispensa termo, sem
+proposta nem aviso; aluno novo, transferência e troca de titular seguem exigindo.
+Tela: escolha "Tenho CNPJ / Sou autônomo" no aceite do contrato e nos dados do
+termo. Teste `professor_autonomo_e_cobertura_pontual.sql`; a suíte do termo passou
+a esperar cobertura pontual dispensada. Tours `2026-10-27-zz-*`.

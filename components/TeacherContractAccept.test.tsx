@@ -42,7 +42,29 @@ describe('assinatura v3 pela própria conta do professor', () => {
     expect(rpc.mock.calls.some(([name]) => name === 'accept_teacher_pj_contract')).toBe(false);
   });
 
+  const chooseCompany = async () => {
+    fireEvent.click(await screen.findByRole('radio', { name: /tenho cnpj/i }));
+  };
+
+  it('professor sem CNPJ assina o contrato de pessoa física (v2) mesmo com a v3 oferecida', async () => {
+    const accepted = vi.fn();
+    render(<TeacherContractAccept userId="prof-fixture" onAccepted={accepted} />);
+    expect(await screen.findByRole('radio', { name: /sou autônomo/i })).toBeChecked();
+    expect(screen.queryByLabelText('CNPJ da empresa')).not.toBeInTheDocument();
+    const consent = screen.getByRole('checkbox');
+    await waitFor(() => expect(consent).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /digitar nome/i }));
+    fireEvent.click(consent);
+    fireEvent.click(screen.getByRole('button', { name: /aceitar e assinar contrato/i }));
+    await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+    expect(rpc).toHaveBeenCalledWith('accept_teacher_contract', {
+      p_typed_signature: 'Representante Fixture', p_terms_version: 2,
+    });
+    expect(rpc.mock.calls.some(([name]) => name === 'accept_teacher_pj_contract')).toBe(false);
+  });
+
   const fillProvider = async () => {
+    await chooseCompany();
     await screen.findByLabelText('Razão social / nome empresarial');
     fireEvent.change(screen.getByLabelText('Razão social / nome empresarial'), { target: { value: 'Empresa Fixture Ltda.' } });
     fireEvent.change(screen.getByLabelText('CNPJ da empresa'), { target: { value: '12.ABC.345/01DE-35' } });
@@ -51,6 +73,7 @@ describe('assinatura v3 pela própria conta do professor', () => {
 
   it('bloqueia empresa incompleta, mostra a parte PJ e só então envia a identidade lida à RPC própria', async () => {
     const accepted = vi.fn(); render(<TeacherContractAccept userId="prof-fixture" onAccepted={accepted} />);
+    await chooseCompany();
     await screen.findByLabelText('Razão social / nome empresarial');
     expect(screen.getByRole('button', { name: /aceitar e assinar contrato/i })).toBeDisabled();
     expect(screen.getByRole('checkbox')).toBeDisabled();
