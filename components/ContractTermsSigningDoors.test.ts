@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
  * As portas que GRAVAM a versão do contrato no aceite. Sem a linha em
  * contract_terms_acceptances o contrato é lido como o texto de antes, e sem a
  * mesma versão na tela e no servidor a pessoa assina um texto e fica gravado
- * outro. Nenhuma tela de assinatura deixa isso aparecer num teste de
- * componente — a ordem e o valor enviados são o contrato, então a varredura é
- * do código-fonte (mesmo padrão de lib/profileColumns.test.ts).
+ * outro. Esta varredura complementa os testes de componente e verifica a
+ * ligação entre a versão mostrada e a enviada em todas as portas de assinatura
+ * (mesmo padrão de lib/profileColumns.test.ts).
  * A edge register-teacher tem o próprio teste (Deno):
  * supabase/functions/register-teacher/contract-terms.test.ts.
  */
@@ -53,7 +53,8 @@ describe('professor que regulariza o aceite pelo app (TeacherContractAccept)', (
 
   it('envia ao servidor a mesma versão que mostrou, lida da escola dele', () => {
     expect(screen).toContain("loadContractTerms(userId, 'TEACHER')");
-    expect(screen).toMatch(/supabase\.rpc\('accept_teacher_contract',\s*\{\s*p_typed_signature: finalSignature,\s*p_terms_version: termsVersion,\s*\}\)/);
+    expect(screen).toMatch(/supabase\.rpc\(termsVersion >= 3 \? 'accept_teacher_pj_contract' : 'accept_teacher_contract',\s*\{\s*p_typed_signature: finalSignature,\s*p_terms_version: termsVersion,/);
+    expect(screen).toContain('p_provider_identity: parseTeacherProviderIdentity(providerIdentity)');
     expect(screen).toMatch(/<TeacherContractDocument[\s\S]*?termsVersion=\{termsVersion\}/);
     expect(screen).toContain('const termsVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;');
     expect(screen).not.toContain('CURRENT_CONTRACT_TERMS_VERSION');
