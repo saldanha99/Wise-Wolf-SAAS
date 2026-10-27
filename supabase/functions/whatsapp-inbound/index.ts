@@ -13,6 +13,11 @@ import {
   resolveTenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import {
+  type WhatsappEntry,
+  whatsappEntryEvidence,
+  whatsappEntryNotes,
+} from "./lead-entry.ts";
+import {
   adjacentFourDayAlternative,
   asksToReadContract,
   type CatalogPrice,
@@ -7565,6 +7570,7 @@ async function handleSDR(
   msgId: string,
   beginEffects: () => Promise<boolean>,
   postTrialHandoffOverride = false,
+  entry: WhatsappEntry | null = null,
 ) {
   const { data: allLeads } = await sb.from("crm_leads").select(
     "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count",
@@ -7577,6 +7583,8 @@ async function handleSDR(
       phone,
       status: "NEW",
       source: "WhatsApp (IA)",
+      // Lida por private.lead_origin_evidence: anúncio, link ou busca direta.
+      notes: whatsappEntryNotes(entry),
       ai_handled: true,
     }).select("id, name, phone, status, goal, level, notes, ai_handoff")
       .single();
@@ -8982,6 +8990,7 @@ async function drainSdrConversation(
           input.msgId,
           beginEffects,
           postTrialHandoffOverride,
+          input.entry ?? null,
         );
       },
     );
@@ -10001,6 +10010,7 @@ serve(async (req) => {
           text,
           isMedia,
           msgId,
+          entry: whatsappEntryEvidence(item),
         });
       } catch (error) {
         // The queue wasn't committed. Allow the provider/inbox recovery to retry.

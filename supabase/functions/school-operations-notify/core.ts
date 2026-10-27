@@ -1,3 +1,10 @@
+import {
+  leadFormLabel,
+  leadOriginDetails,
+  leadOriginHeadline,
+  leadOriginJourney,
+} from "./origin-description.ts";
+
 export type Row = Record<string, unknown>;
 const line = (v: unknown, max = 160) =>
   String(v ?? "").replace(/[\r\n*_`]/g, " ").slice(0, max);
@@ -12,40 +19,20 @@ export function operationMessage(source: Row, portal: string): string {
     const origin = source.origin && typeof source.origin === "object"
       ? source.origin as Row
       : {};
-    const channels: Record<string, string> = {
-      PAID: "Tráfego pago (marcação observada)",
-      ORGANIC_SEARCH: "Busca orgânica (referência observada)",
-      REFERRAL: "Referência externa",
-      TAGGED: "Link identificado por UTM",
-      WHATSAPP_UNKNOWN: "WhatsApp — campanha não identificada",
-      DIRECT_UNKNOWN: "Direto / não identificado",
-    };
+    const journey = leadOriginJourney(origin);
     return [
-      "📍 *Origem de novo lead*",
-      `Nome: ${line(source.name) || "Não informado"}`,
-      `WhatsApp: ${line(source.phone, 30) || "Não informado"}`,
-      `Canal: ${channels[String(origin.channel)] || channels.DIRECT_UNKNOWN}`,
-      `Entrada: ${line(origin.surface) || "Não identificada"}`,
-      `Formulário: ${line(origin.form_source) || "Não informado"}`,
-      `Campanha: ${line(origin.utm_campaign) || "Não informada"}`,
-      `Fonte / mídia: ${line(origin.utm_source) || "—"} / ${
-        line(origin.utm_medium) || "—"
-      }`,
-      `Página inicial: ${
-        line(origin.first_landing_path || origin.landing_path) ||
-        "Não informada"
-      }`,
-      `Página do contato: ${
-        line(origin.last_landing_path || origin.landing_path) || "Não informada"
-      }`,
-      `Referência: ${
-        line(origin.first_referrer_host || origin.referrer_host) ||
-        "Não informada"
+      "📍 *Novo lead*",
+      `${line(source.name) || "Nome não informado"} · ${
+        line(source.phone, 30) || "sem WhatsApp"
       }`,
       "",
-      "Metadados do acesso; não comprovam autoria ou resultado de anúncio.",
+      `*De onde veio:* ${leadOriginHeadline(origin)}`,
+      ...(journey ? [journey] : []),
+      `Como pediu contato: ${leadFormLabel(origin.form_source)}`,
+      ...leadOriginDetails(origin),
+      "",
+      "_Pelos dados do acesso; não prova sozinho o resultado de um anúncio._",
       `CRM: ${portal}`,
-      `Referência: ${line(source.lead_id, 40)}`,
     ].join("\n");
   }
   if (

@@ -4542,3 +4542,22 @@ proposta nem aviso; aluno novo, transferência e troca de titular seguem exigind
 Tela: escolha "Tenho CNPJ / Sou autônomo" no aceite do contrato e nos dados do
 termo. Teste `professor_autonomo_e_cobertura_pontual.sql`; a suíte do termo passou
 a esperar cobertura pontual dispensada. Tours `2026-10-27-zz-*`.
+
+### 27/10/2026 — Origem dos leads em frases claras e pista do WhatsApp
+
+O lead do WhatsApp (maior volume) chegava sempre "campanha não identificada",
+mas o WhatsApp informa na 1ª mensagem como a conversa começou
+(`contextInfo.entryPointConversionSource`: `global_search_new_chat`,
+`phone_number_hyperlink`, `ctwa_ad`; anúncio do Meta também em
+`externalAdReply`/`conversionSource`). `whatsapp-inbound/lead-entry.ts` lê isso,
+a fila do SDR o preserva quando as mensagens seguintes chegam sem a pista
+(`enqueue_sdr_work`, migration `20261027200000`) e o lead nasce com
+`notes = 'Origem: {...}'`. `private.lead_origin_evidence` passou a usar a 1ª
+página vista, separa `SOCIAL` (fbclid sozinho NÃO é anúncio), `WHATSAPP_LINK`,
+`WHATSAPP_DIRECT` e `paid_platform` (META_WHATSAPP/META/GOOGLE/OTHER). Aviso do
+grupo e tela "Registros e origens" usam as mesmas frases
+(`school-operations-notify/origin-description.ts`, reexportado em
+`lib/leadOriginDescription.ts` — ⚠️ `lib/leadOrigin.ts` é outro arquivo, o
+rastreador das landing pages). Leads antigos não são reclassificados.
+Sem prefixo de texto no botão do site, link do número no site e na bio do
+Instagram continuam indistinguíveis (os dois são `phone_number_hyperlink`).

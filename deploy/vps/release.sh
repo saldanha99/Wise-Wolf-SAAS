@@ -657,6 +657,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/monthly-reserve-notify/index.ts \
   supabase/functions/school-operations-notify/index.ts \
   supabase/functions/school-operations-notify/core.ts \
+  supabase/functions/school-operations-notify/origin-description.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
   supabase/functions/school-operations-notify/core.test.ts \
   supabase/functions/cancel-prepaid-invoice/index.ts \
@@ -717,6 +718,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
   supabase/functions/whatsapp-inbound/trial-access.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.test.ts \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
@@ -803,6 +806,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
@@ -1543,6 +1547,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261027152745_teacher_student_individual_terms.sql"
   "supabase/migrations/20261027175500_termo_individual_nao_trava_falta_e_reposicao.sql"
   "supabase/migrations/20261027190000_professor_autonomo_e_cobertura_pontual.sql"
+  "supabase/migrations/20261027200000_origem_dos_leads_clara.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1588,6 +1593,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/teacher_student_individual_terms.sql"
   "supabase/tests/termo_individual_nao_trava_falta_e_reposicao.sql"
   "supabase/tests/professor_autonomo_e_cobertura_pontual.sql"
+  "supabase/tests/origem_dos_leads_clara.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"
