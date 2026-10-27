@@ -1,6 +1,6 @@
 # Mudança da matrícula com confirmação financeira
 
-Preparado em 27/10/2026. Publicação da proteção ainda pendente do release oficial.
+Publicado em 27/10/2026 pelo release oficial `20261027T125824Z-27d6d34c40c8`, origem `06c2043abf49226d182c99a232991ceba00937e1`. Banco e quatro bundles HTTP conferidos após a ativação.
 
 ## Problema e comportamento
 
@@ -56,3 +56,5 @@ excluiu uma fatura antiga, conciliar o estado local por prova, sem outro DELETE.
 
 Publicar somente pelo `deploy/vps/release.sh`, com árvore limpa na branch
 configurada, e conferir a função efetiva e os bundles HTTP depois da ativação.
+
+Publicação: 1.283 Vitest, 1.483 Deno, typecheck, build, migrations 2× com rollback, 175 suítes SQL e testes HTTP aprovados. Primeira tentativa interrompida no envio antes da ativação; segunda concluída pelo release oficial.

@@ -4351,7 +4351,7 @@ cobranças futuras de cadastros suspenso/encerrado. Não cancelar por inferênci
 Sem alteração de código, migration ou deploy nesta etapa. Procedimento em
 `docs/runbooks/confirmed-enrollment-and-legacy-installments.md`.
 
-### 27/10/2026 — Status da matrícula depende do financeiro (preparado)
+### 27/10/2026 — Status da matrícula depende do financeiro (publicado)
 
 Editores da lista e da agenda não podem mudar somente o cadastro e deixar a
 recorrência ativa. Helper `changeStudentLifecycle` exige confirmação `ok: true`
@@ -4362,8 +4362,9 @@ idempotente do status vigente. Transição direta ou pelo editor pedagógico ret
 
 Migration reexecutável `20261027114059`, suíte SQL atualizada e tour da direção
 registrados no release. Typecheck, 33 Vitest relacionados, 17 Deno e migration 2×
-com suíte pedagógica/administrativa em rollback aprovados. Ainda não declarar a
-proteção publicada antes do release oficial. Runbook:
+com suíte pedagógica/administrativa em rollback aprovados. Publicado pelo release oficial `20261027T125824Z-27d6d34c40c8` (origem
+`06c2043a`): 1.283 Vitest, 1.483 Deno, typecheck, build e 175 suítes SQL aprovados;
+função efetiva, marcador da migration e quatro bundles HTTP conferidos. Runbook:
 `docs/runbooks/student-lifecycle-billing-confirmation.md`.
 
 Após confirmação da direção, três recorrências legadas e suas faturas futuras
@@ -4375,3 +4376,9 @@ alunos inativos não encontrou assinatura ativa restante; duas dívidas históri
 de outro cadastro exigem decisão própria e não foram apagadas por inferência.
 Provas reservadas em `inactive-billing-stop-20261027` na VPS; nunca publicar
 relatórios financeiros com nomes, documentos ou payloads de alunos no Git público.
+
+A direção confirmou manter as duas dívidas antigas identificadas na conferência,
+impedindo novas mensalidades. Auditoria final da janela 11/09–25/10 ficou sem
+apontamentos após os cancelamentos autorizados (run `6b4a1af2-d34c-4443-9484-54c29c661053`).
+Eventos nativos das exclusões conciliados por identidade e recebimento na janela
+da operação; seis PROCESSED e nenhum TRIAGE desses ids, com payloads preservados.
