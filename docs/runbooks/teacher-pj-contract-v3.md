@@ -1,6 +1,6 @@
 # Contrato geral PJ do professor — versão 3
 
-Preparado em 26/10/2026 por solicitação da direção. **Não publicado**. Sem assinatura real, comunicação externa, cobrança ou alteração persistente de contrato nesta revisão.
+Preparado e **publicado em 26/10/2026** por solicitação da direção, pelo release oficial `20261027T003901Z-40582250ab26`, origem `7d05e10c2263406749a4c2f6b817895a3663173a`. A oferta TEACHER da Wise Wolf passou para V3; STUDENT permaneceu na V2. A implantação não produziu assinatura real, comunicação externa ou cobrança, nem reescreveu contratos anteriores.
 
 ## Regra documental
 
@@ -29,4 +29,13 @@ Para professor que já assinou, preparar e formalizar aditivo próprio com efeit
 - Provas: acesso anônimo/estudante/suspenso recusado, API antiga não contorna identidade PJ, versão desatualizada e empresa inválida recusadas antes de cópia, CNPJ alfanumérico, snapshot congelado, repetição idempotente e preservação do contrato anterior. Nenhuma mensagem externa ou dado financeiro real foi usado no teste.
 - PDF renderizado e revisado em todas as páginas; conferência automática de limites e presença de todas as cláusulas numeradas.
 
-Migration, teste SQL, validação Deno e tour registrados em `deploy/vps/release.sh`/`lib/featureTours.ts`. Publicação somente pelo release oficial, com árvore limpa na branch configurada, após conferência jurídica da minuta e da execução real da prestação. Não declarar V3 ativa antes de conferir a oferta no banco e os bundles publicados.
+Migration, teste SQL, validação Deno e tour registrados em `deploy/vps/release.sh`/`lib/featureTours.ts`. Publicações futuras somente pelo release oficial, com árvore limpa na branch configurada. Conferir a oferta no banco e os bundles publicados antes de declarar uma nova versão ativa.
+
+## Publicação conferida
+
+- Release oficial concluído com 1.276 testes Vitest, 1.483 testes Deno, typechecks, build, pré-validação dupla das migrations com rollback e as 175 suítes SQL registradas; testes HTTP finais aprovados.
+- Oferta efetiva conferida no PostgreSQL da VPS: TEACHER 3 e STUDENT 2; catálogo V3 e one-shot presentes. Nova RPC disponível somente para autenticados; `anon` sem execução e corpo legado em `private` sem execução pelo navegador.
+- Hashes dos quatro arquivos publicados de `register-teacher` e `tenant-legal-assets` iguais aos da origem. Cinco bundles HTTP conferidos, incluindo as quatro telas contratuais e o tour de novidade.
+- Comparação antes/depois: os três registros contratuais existentes e as nove assinaturas de professores foram preservados integralmente nos campos verificados. Nenhum novo aceite real foi criado para testar a publicação.
+- Backup reversível do release em `/opt/wisewolf/backups/release-20261027T003901Z-40582250ab26`; referência reservada da comparação em `/opt/wisewolf/backups/teacher-pj-publish-20261027T002811Z`. Arquivos privados locais e relatórios de alunos foram preservados fora do repositório público.
+- Aditivo para professores que já assinaram e assinatura obrigatória individual por aluno continuam sem implementação neste release.

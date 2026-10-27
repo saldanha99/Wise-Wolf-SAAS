@@ -4226,7 +4226,7 @@ desconto, assinatura ou obrigação retroativa nem reescrever instrumentos aceit
 A apuração de casos anteriores exige contrato efetivamente firmado e evidências;
 relato e falta de registro isolados não constituem decisão automática de culpa.
 
-### 26/10/2026 — Contrato geral do professor PJ v3 (preparado, não publicado)
+### 26/10/2026 — Contrato geral do professor PJ v3 (publicado)
 
 A direção pediu corrigir o contrato atual e preservar o direito de saída com
 transição. V3 identifica empresa/representante e prevê aviso bilateral pactuado
@@ -4248,7 +4248,15 @@ Migration/testes/tour no release. Typecheck, 78 Vitest, 12 Deno e build aprovado
 (build com a flag dos vídeos públicos existentes). Migration 2× e duas suítes SQL
 na VPS em transações com rollback; nenhum efeito persistente ou mensagem externa.
 PDF v3 de 9 páginas com minuta integral e guia de saída, revisado visualmente.
-**Não publicado, sem contratos reais assinados ou reescritos.** Detalhes em
+Publicado pelo release oficial `20261027T003901Z-40582250ab26`, origem
+`7d05e10c2263406749a4c2f6b817895a3663173a`. Oferta real conferida: TEACHER 3,
+STUDENT 2. Passaram 1.276 Vitest, 1.483 Deno e as 175 suítes SQL do release,
+além dos typechecks, build, migrations em execução dupla e testes HTTP finais.
+Quatro arquivos das functions e cinco bundles públicos conferidos por hash.
+Comparação reservada preservou os três registros contratuais e as nove
+assinaturas anteriores; nenhum aceite real foi produzido pela implantação.
+Assinatura por aluno e aditivo de contratos existentes continuam sem implementação.
+Detalhes em
 `docs/runbooks/teacher-pj-contract-v3.md`; minuta em
 `docs/legal/contrato-geral-professor-pj-v3.md`.
 
