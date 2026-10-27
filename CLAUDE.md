@@ -4413,3 +4413,10 @@ exige release oficial, ativação prospectiva dos canais e verificação HTTP pa
 declarar os alertas ativos. Procedimento:
 `docs/runbooks/school-operations-evidence-and-lead-origins.md`; minuta complementar
 em `docs/legal/registro-de-aulas-pontualidade-e-dever-de-comunicacao.md`.
+
+
+A primeira tentativa desta publicação parou antes de preparar a release: o teste
+legado de retorno do login Google disparava focus sem aguardar a instalação do
+listener e sem fixar a página como visível. Passou isoladamente; o fixture agora
+explicita essas duas pré-condições antes do evento. Nenhuma regra de consentimento,
+autenticação ou código do login foi alterada. Reexecutar o release completo.

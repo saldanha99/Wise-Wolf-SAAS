@@ -49,12 +49,17 @@ describe('<LessonRecordingTeacherCard />', () => {
 
   it('bloqueio de popup oferece botão visível e confere a conta ao voltar', async () => {
     vi.spyOn(window, 'open').mockReturnValue(null);
+    // O retorno do login pressupõe a página visível e o listener já instalado.
+    // A execução completa podia disparar focus antes desse efeito do React.
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const listen = vi.spyOn(window, 'addEventListener');
     mockRpc({ data: null, error: null });
     googleMeetAction.mockResolvedValue({ authorization_url: 'https://accounts.google.com/o/oauth2/auth?fixture=1' });
     render(<LessonRecordingTeacherCard />);
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmar conta Google' }));
     expect(await screen.findByRole('link', { name: /entrar com o google/i })).toHaveAttribute('href', 'https://accounts.google.com/o/oauth2/auth?fixture=1');
     expect(screen.getByText(/Seu navegador bloqueou a nova aba/)).toBeInTheDocument();
+    await waitFor(() => expect(listen).toHaveBeenCalledWith('focus', expect.any(Function)));
     mockRpc({ data: { email: 'confirmada@gmail.com', verified_at: '2026-09-27T23:00:00Z' }, error: null });
     fireEvent(window, new Event('focus'));
     expect(await screen.findByText('confirmada@gmail.com')).toBeInTheDocument();
