@@ -52,6 +52,10 @@ exclusão: essa pessoa pode fazer um pagamento escolar legítimo no futuro.
 Pix direto sem vínculo comprovado com cobrança/assinatura fica em conferência.
 Nome ou coincidência de valor não bastam para atribuir mensalidade. Uma taxa de
 rescisão também não deve quitar uma mensalidade nem reativar aluno. Na operação,
-a separação entre a conta/chave da escola e recebimentos pessoais reduz esse
-trabalho de classificação. Não apagar o movimento bancário para fazê-lo sumir da
+usar outra conta para recebimentos pessoais reduz esse trabalho de classificação.
+Duas chaves dentro da mesma conta não separam os movimentos recebidos pelo Asaas. Não apagar o movimento bancário para fazê-lo sumir da
 conciliação nem reprocessar mensagens antigas sem examinar sua natureza.
+
+O Asaas documenta a origem bancária em `pixTransaction`, `pixQrCodeId`,
+`subscription` e `paymentLink`; a descrição isolada não é prova de mensalidade.
+[Referência oficial](https://docs.asaas.com/docs/como-o-asaas-trata-receitas-na-conta).

@@ -4252,3 +4252,22 @@ diretos e de rescisão exigem confirmar a natureza; não declarar conciliação 
 apenas porque os processadores estão ativos. A primeira auditoria ampla após os
 reparos caiu de 59 para 32 apontamentos, antes da recuperação adicional de parcelas
 futuras; preservar essa distinção entre saúde da rotina e conciliação concluída.
+
+### 26/10/2026 — Fechamento da conferência financeira
+
+Auditoria final com janela fixa de 11/09 a 25/10, igual à comparação inicial:
+119 cobranças e 440 linhas de extrato; 12 apontamentos restantes (1 crítico,
+8 altos, 3 avisos), ante 59. Run `b72318db-64b9-42dd-80d2-dbd1bc6a6136`.
+No total, 21 parcelas pendentes recuperadas (2 + 17 + 2), sem caixa fictício.
+Seis ponteiros de assinatura ativa restaurados por prova individual. Último
+ponteiro nulo de cliente em cobrança ativa aberta foi restaurado; evento original
+OVERDUE processado e diferença de status eliminada. Zero faturas abertas de
+alunos ativos com cliente Asaas conhecido e `provider_customer_id` nulo no fim.
+
+As pendências remanescentes são quatro recebimentos diretos que precisam de
+natureza/competência (inclui taxa descrita como rescisão), uma cobrança sem aluno
+identificado e cobranças futuras de cadastro suspenso/encerrado. Não as converter
+em mensalidade, reativar alunos nem cancelar acordo financeiro por inferência.
+Relatório e evidências de leitura em `output/financeiro-2026-10-26/`, reservados e
+não rastreados. QA efêmero removido; rascunhos PJ e arquivos locais anteriores
+restaurados após o release financeiro, sem publicação acidental desse WIP.
