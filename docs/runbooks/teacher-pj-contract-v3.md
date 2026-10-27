@@ -39,3 +39,9 @@ Migration, teste SQL, validação Deno e tour registrados em `deploy/vps/release
 - Comparação antes/depois: os três registros contratuais existentes e as nove assinaturas de professores foram preservados integralmente nos campos verificados. Nenhum novo aceite real foi criado para testar a publicação.
 - Backup reversível do release em `/opt/wisewolf/backups/release-20261027T003901Z-40582250ab26`; referência reservada da comparação em `/opt/wisewolf/backups/teacher-pj-publish-20261027T002811Z`. Arquivos privados locais e relatórios de alunos foram preservados fora do repositório público.
 - Aditivo para professores que já assinaram e assinatura obrigatória individual por aluno continuam sem implementação neste release.
+
+Atualização de 27/10/2026: o termo individual por aluno foi publicado e ativado em
+release posterior, sem modificar as vias gerais já assinadas. Ver
+[Termo individual por aluno](teacher-student-individual-terms.md). A observação
+acima descreve exclusivamente o escopo histórico do release da V3; um eventual
+aditivo ao contrato geral anterior continua exigindo formalização própria.

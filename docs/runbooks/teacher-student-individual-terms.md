@@ -1,7 +1,9 @@
 # Termo individual por aluno
 
-Implementação solicitada em 27/10/2026. A ativação é prospectiva por escola,
-separada da aplicação da migration. Confirmar publicação antes de declarar ativa.
+Publicado pelo release oficial `20261027T165826Z-e9ab217f6a92`, origem
+`f23c88c56f45a481b9ebce8424080c618872da11`. Regra ativa na Wise Wolf desde
+27/10/2026 às 14:15:55 (America/Sao_Paulo), prospectivamente. A ativação por escola
+é separada da aplicação da migration; os demais tenants permanecem desabilitados.
 
 ## Partes e manifestação
 
@@ -101,3 +103,33 @@ contrato profissional e recusa de versão desatualizada. Deno verifica que falha
 ou resposta malformada da guarda nunca autoriza cobrança. Tours por papel no
 catálogo. Publicação somente por deploy/vps/release.sh, árvore limpa, dependências
 do lockfile. Conferir RPCs, ACLs, triggers e hashes dos bundles/functions no ar.
+
+## Publicação e ativação conferidas em 27/10/2026
+
+- Release completo aprovado: 1.293 testes Vitest, 1.488 testes Deno e 177 suítes
+  SQL, além de typechecks, build, auditoria de dependências, migrations 2× com
+  rollback e smoke HTTP. A suíte SQL específica passou novamente após a ativação,
+  em transação com rollback e sem integrações externas.
+- Checksum da migration, seis arquivos de functions e quatro bundles servidos
+  por HTTP correspondem à origem publicada. Dez triggers de proteção conferidos.
+  RPC humana recusou anon (HTTP 401) e service_role (HTTP 403); consulta como
+  direção autenticada retornou enabled=true. Tabelas privadas sem acesso direto
+  pelo navegador; guarda de cobrança reservada ao servidor.
+- Inventário anterior preservado: três registros contratuais, três aceites e os
+  campos contratuais/fiscais verificados de 77 perfis. Nenhum termo individual foi
+  assinado pela implantação; zero fixtures permaneceram no banco.
+- Transição auditada: uma matrícula já iniciada e uma transferência já aceita,
+  cada qual limitada ao snapshot anterior. Não se abriu exceção para toda a
+  carteira nem para novos vínculos; links antigos ainda não iniciados seguem a
+  regra nova ao começar uma matrícula.
+- Provas e backup privados em
+  `/opt/wisewolf/backups/individual-student-terms-20261027` e backup reversível do
+  release em `/opt/wisewolf/backups/release-20261027T165826Z-e9ab217f6a92`.
+  Não colocar identidade de alunos, partes ou snapshots desses backups no Git.
+- Modelo ilustrativo de três páginas em
+  `output/pdf/wise-wolf-termo-individual-modelo.pdf`, gerado pela rotina real de
+  exportação e revisado visualmente, sem assinaturas. As vias de atendimentos
+  reais são emitidas pelo portal com os dados e aceites das próprias partes.
+
+A inspeção visual da sessão de produção estava desabilitada no navegador; a
+conferência de publicação usou os artefatos HTTP, as permissões reais e o banco.

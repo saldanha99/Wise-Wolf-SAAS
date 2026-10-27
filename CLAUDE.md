@@ -4438,10 +4438,11 @@ backup reservado `school-operations-20261027`. O PDF de três páginas está em
 `output/pdf/wise-wolf-guia-registros-origens-e-protecao.pdf`, fora do Git. Os
 120 arquivos privados anteriores foram restaurados e comparados por hash.
 A indicação de preparação acima é histórica e foi superada por esta publicação.
-A assinatura obrigatória por aluno continua exigindo implementação própria.
+A assinatura obrigatória por aluno exigia implementação própria nesse release;
+foi publicada e ativada no release posterior registrado abaixo.
 
 
-### 27/10/2026 — Assinatura do professor por aluno (preparado)
+### 27/10/2026 — Assinatura do professor por aluno (publicado e ativo)
 
 A direção solicitou implementar o fluxo antes pendente. Migration
 `20261027152745_teacher_student_individual_terms.sql`, RPC humana
@@ -4478,7 +4479,26 @@ papéis, privacidade, recusa, repetição, hash alterado, texto imutável, encer
 matrícula pública, cobrança bloqueada, grade idempotente, cobertura com assinatura,
 proposta de horário e transferência futura. 43 Vitest relacionados, 9 Deno,
 typechecks aprovados. PDF de amostra gerado pela mesma rotina e revisado nas três
-páginas. Sem mensagem, assinatura, aluno ou pagamento real de teste. Ainda falta
-publicação/ativação para declarar a regra obrigatória ativa. Fluxo em
+páginas. Sem mensagem, assinatura, aluno ou pagamento real de teste. Fluxo em
 `docs/runbooks/teacher-student-individual-terms.md`, minuta em
 `docs/legal/termo-individual-professor-aluno-v1.md`.
+
+Publicado pelo release oficial `20261027T165826Z-e9ab217f6a92`, origem
+`f23c88c56f45a481b9ebce8424080c618872da11`: 1.293 Vitest, 1.488 Deno, 177 suítes
+SQL, typechecks, build, auditoria de dependências, migrations 2× e smoke HTTP
+aprovados. Checksum, seis arquivos de functions e quatro bundles HTTP conferidos.
+API humana recusou anon (401) e service_role (403); direção autenticada consultou
+a política habilitada. Dez triggers e guardas de materialização/conclusão/cobrança
+conferidos. Suíte SQL repetida após ativação, em rollback, sem efeitos externos.
+
+Política ativa somente na Wise Wolf em 27/10/2026 às 14:15:55 BRT. Transição
+registrou uma matrícula já iniciada e uma transferência já aceita, limitadas aos
+snapshots anteriores, sem inventar assinaturas. Zero termos assinados na ativação,
+zero fixtures remanescentes. Comparação preservou três registros contratuais,
+três aceites e os campos contratuais/fiscais verificados de 77 perfis. Provas no
+backup privado `individual-student-terms-20261027`; rollback do release no backup
+`release-20261027T165826Z-e9ab217f6a92`. Os 126 arquivos privados locais guardados
+para a publicação foram restaurados e comparados por SHA-256. Inspeção visual de
+produção indisponível no navegador; validação por testes, HTTP e contexto real do
+banco. Modelo ilustrativo, sem assinaturas, em
+`output/pdf/wise-wolf-termo-individual-modelo.pdf`, fora do Git.

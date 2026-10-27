@@ -2,6 +2,14 @@
 
 Revisão 3 de 26/10/2026. Responsável pela decisão comercial: direção da escola.
 
+Atualização operacional de 27/10/2026: a assinatura individual escola-professor
+foi publicada e ativada prospectivamente na Wise Wolf. O funcionamento, as travas
+e a transição estão em [Termo individual por aluno](../runbooks/teacher-student-individual-terms.md).
+O texto efetivamente oferecido nessa implementação está em
+[Termo individual — versão 1](termo-individual-professor-aluno-v1.md). As indicações
+de implementação futura nesta revisão retratam o estado em 26/10 e foram superadas
+nesse ponto; a publicação não substitui as manifestações das próprias partes.
+
 Complemento desta revisão: o contrato geral PJ foi reescrito em `contrato-geral-professor-pj-v3.md`, com identificação da empresa e representante, preservação de direitos, autonomia e comunicação bilateral de saída com 30 dias corridos. Esse prazo é contratual, não mínimo universal imposto pelo art. 599 do Código Civil. A transição não exige novos alunos, trabalho gratuito ou permanência até encontrar substituto. Redução por acordo, motivo justificado, cálculo proporcional e ausência de descontos automáticos estão expressos. A disponibilização da versão 3 no aplicativo é separada de cada assinatura efetiva, que exige os dados da empresa e a manifestação do próprio representante. Para contratos anteriores, eventual mudança exige instrumento próprio aceito pelas partes; não converter automaticamente a identidade de pessoa física em empresa nem transferir obrigações sem a concordância necessária.
 
 Esta revisão simplifica a proposta inicial de termo com três signatários. O aluno continua contratando a escola. A assinatura obrigatória por aluno será a do professor com a escola, em termo individual que identifica o aluno beneficiário. A família confirma a agenda e recebe a identificação do responsável pelo atendimento; não precisa contratar o professor diretamente. Se uma mudança exigir novas condições no contrato do aluno, a escola obterá o aceite específico do aluno ou responsável.
