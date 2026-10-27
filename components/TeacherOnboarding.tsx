@@ -207,12 +207,16 @@ const TeacherOnboarding: React.FC = () => {
                 const el = document.getElementById('teacher-contract-print');
                 if (!el) throw new Error('Documento do contrato indisponível para captura.');
                 const html2pdf = (await import('html2pdf.js')).default;
+                // O Safari do iPhone recusa canvas acima de ~16,7 milhões de pixels,
+                // e o contrato inteiro na largura do celular passa disso com escala 1,5.
+                const capturedArea = Math.max(1, el.scrollWidth * el.scrollHeight);
+                const captureScale = Math.min(1.5, Math.sqrt(15_000_000 / capturedArea));
                 // O plugin aceita `pagebreak` em runtime, mas a declaração de tipos
                 // publicada pelo pacote ainda não expõe essa opção.
                 const pdfOptions = {
                         margin: 8,
                         image: { type: 'jpeg', quality: 0.85 },
-                        html2canvas: { scale: 1.5, useCORS: true },
+                        html2canvas: { scale: captureScale, useCORS: true },
                         jsPDF: { unit: 'mm', format: 'a4' },
                         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
                     };
@@ -224,7 +228,7 @@ const TeacherOnboarding: React.FC = () => {
                 if (!contractPdfBase64) throw new Error('PDF jurídico vazio.');
             } catch (pdfErr) {
                 console.error('PDF jurídico do contrato não foi gerado:', pdfErr);
-                throw new Error('Não foi possível congelar a versão jurídica do contrato. Verifique a assinatura da escola e tente novamente.');
+                throw new Error('Não foi possível gerar o PDF do contrato neste aparelho. Tente novamente; se persistir, abra o convite em outro navegador.');
             }
 
             const { data, error: fnError } = await supabase.functions.invoke('register-teacher', {

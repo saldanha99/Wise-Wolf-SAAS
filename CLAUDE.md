@@ -4561,3 +4561,16 @@ grupo e tela "Registros e origens" usam as mesmas frases
 rastreador das landing pages). Leads antigos não são reclassificados.
 Sem prefixo de texto no botão do site, link do número no site e na bio do
 Instagram continuam indistinguíveis (os dois são `phone_number_hyperlink`).
+
+### 27/10/2026 — PDF do contrato no navegador quebrado desde o Tailwind 4
+
+Professor não conseguia assinar o convite ("Não foi possível congelar a versão
+jurídica do contrato"): o PDF é gerado no celular por `html2pdf.js`, que usa
+`html2canvas` 1.4.1, e ele recusa `oklch()` — formato de todas as cores do
+Tailwind 4 (migração de 06/10). Nenhum convite fechou depois de 14/09. Mesmo
+defeito em todo PDF gerado no navegador (contrato do aluno, Contratos da
+direção, cópia pública). Override `html2canvas` → `npm:html2canvas-pro@2.5.2`
+(mesma API, suporta oklch). ⚠️ Não remova o override nem volte ao
+`html2canvas` original enquanto o CSS tiver oklch. A captura do convite limita a
+escala a 15 M de pixels (teto de canvas do Safari no iPhone) e a mensagem de
+erro deixou de culpar a assinatura da escola.
