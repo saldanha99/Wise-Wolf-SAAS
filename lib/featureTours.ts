@@ -848,6 +848,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-27-matricula-e-cobranca-juntas', title: 'Pausa e encerramento com financeiro conferido', roles: ['SCHOOL_ADMIN'],
     steps: [{ target: 'sidebar-nav', view: 'students', title: 'Aguarde a confirmação da matrícula', text: 'Ao pausar ou encerrar uma matrícula, o sistema confere a assinatura e as cobranças no Asaas antes de confirmar o novo status. Isso também vale ao editar o cadastro pela lista de alunos ou pela agenda. Se houver divergência ou falha de comunicação, a tela mostra a pendência para conferência e não confirma a mudança. Pagamentos recebidos e documentos assinados são preservados. Use Pausar para interrupção temporária e Encerrar para saída definitiva.' }],
   },
+  {
+    id: '2026-10-27-registros-de-aula-e-origem', title: 'Registros de aula e origem dos leads', roles: ['SCHOOL_ADMIN', 'COORDINATOR'],
+    steps: [{ target: 'sidebar-nav', view: 'lesson-quality', title: 'Confira os registros e os alertas', text: 'Na Central de Qualidade, abra Registros e origens para consultar os horários observados no relatório nativo do Meet e a origem dos novos contatos. Os grupos privados recebem alertas de atraso a partir de 5 minutos e novos leads com sua campanha quando identificada. Dados sem identidade ou origem comprovadas continuam sinalizados; não há multa, desconto ou confirmação automática de aula. Professores suspensos ou desligados ficam fora dos convites individuais e dos novos aceites.' }],
+  },
 ];
 
 /**

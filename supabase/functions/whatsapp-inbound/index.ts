@@ -1,3 +1,4 @@
+import { teacherMayReceiveOpportunity } from "../_shared/opportunity-dispatch.ts";
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -6988,6 +6989,7 @@ async function dispatchTrial(
   let dispatched = 0;
   const names: string[] = [];
   for (const t of eligible) {
+    if (!await teacherMayReceiveOpportunity(sb, tenantId, t.id)) continue;
     const msg =
       `⚡ *Experimental disponível — ${formatted} às ${time}*\n\nOlá, Teacher ${
         t.name.split(" ")[0]

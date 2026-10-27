@@ -1,0 +1,19 @@
+# Registro de aulas, pontualidade e comunicação de ocorrências
+
+Minuta complementar para revisão e formalização. Não substitui instrumentos já assinados e não altera direitos retroativamente.
+
+A escola deve combinar horário e sala oficial, acompanhar a prestação do serviço e oferecer um canal acessível para comunicar aula não realizada, atraso, problema técnico ou necessidade de reposição. A ausência de resposta a uma pesquisa de acompanhamento não equivale a confirmação da aula, satisfação, renúncia a reclamação, aceite de cobrança ou autorização para desconto.
+
+**Cláusula sugerida ao aluno/responsável.** O aluno ou responsável é orientado a informar à escola, assim que razoavelmente possível, divergência relevante na aula, especialmente ausência do professor, atraso, problema de acesso ou aula não realizada. A escola mantém seus próprios meios de acompanhamento. A falta de resposta aos contatos de acompanhamento não afasta direitos legais nem exonera a escola de prestar e acompanhar o serviço. O relato poderá ser apresentado pelo canal da escola e será analisado com os demais registros disponíveis.
+
+**Cláusula sugerida ao prestador PJ.** O prestador assume a execução das aulas que livremente aceitar, nos horários combinados, e deve comunicar impedimento ou divergência à escola assim que razoavelmente possível. A apuração de horário observa a aula contratada e o contexto efetivo de acesso, incluindo entrega da sala, identificação da conta, troca de professor e indisponibilidade técnica. A programação de aulas não constitui, por si só, controle de jornada geral do prestador. A configuração contratual deve corresponder à autonomia que exista de fato na prestação; nenhuma cláusula garante ausência de vínculo empregatício quando os fatos forem incompatíveis.
+
+**Cláusula sugerida de registro e contestação.** A escola pode utilizar os relatórios nativos de participação das salas oficiais para documentar a execução das aulas, conforme o aviso de privacidade aplicável. São tratados somente os dados necessários à conferência, com acesso restrito à direção e coordenação. Os alertas internos indicam horário previsto, primeira entrada observada e referência da evidência; não constituem decisão automática sobre culpa ou penalidade. O titular pode apresentar explicação ou correção pelo canal da escola. Mudanças na evidência são rastreadas. A retenção ordinária dos registros operacionais é limitada a 90 dias; eventual preservação para uma disputa concreta exige procedimento próprio, finalidade e prazo documentados, sem coleta geral por tempo indefinido.
+
+Os grupos “Atrasos — Professores” e “Atrasos — Alunos” são canais privados de alerta da gestão. A fonte de evidência é o relatório nativo do Meet, não uma anotação narrativa da IA. Identidade desconhecida, reunião aberta, sala não entregue ou ausência de relatório não provam atraso nem falta. O prazo interno de 90 dias não apaga automaticamente cópias de mensagens nos aparelhos dos participantes; a gestão deve aplicar sua política de retenção também ao canal de comunicação. O limite de 5 minutos configura o aviso operacional; não altera a tolerância contratual nem cria multa.
+
+Recomenda-se também que a Central de Qualidade acompanhe solicitações sem resposta e sem relatório confiável como pendência a verificar. O silêncio do aluno exige outro meio de conferência; não deve ser usado como defesa automática da escola.
+
+A adoção de nova redação exige o procedimento documental correspondente: versão futura para novos contratos e, quando aplicável, aditivo válido para quem já assinou. Não reescrever o PDF antigo ou inventar aceite.
+
+Referências: [relatório nativo de presença do Google Meet](https://support.google.com/meet/answer/10090454?hl=pt-BR), [LGPD, especialmente arts. 6º, 18 e 46](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm) e [CLT, arts. 2º, 3º e 9º](https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm).

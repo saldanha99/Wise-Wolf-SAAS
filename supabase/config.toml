@@ -65,3 +65,8 @@ entrypoint = "./functions/student-card-notify/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/gamma-book-generator/index.ts"
+
+[functions.school-operations-notify]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/school-operations-notify/index.ts"

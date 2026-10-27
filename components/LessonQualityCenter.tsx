@@ -1,3 +1,4 @@
+import SchoolOperationsEvidence from './SchoolOperationsEvidence';
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import StudentHandover from './StudentHandover';
@@ -22,7 +23,7 @@ export default function LessonQualityCenter() {
   const [error, setError] = useState('');
   const [handover, setHandover] = useState<string | null>(null);
   // Aba do extrato de pontualidade (20260928120000): um professor por vez.
-  const [tab, setTab] = useState<'cases' | 'punctuality'>('cases');
+  const [tab, setTab] = useState<'cases' | 'punctuality' | 'operations'>('cases');
   const load = useCallback(async () => {
     setBusy(true); setError('');
     try {
@@ -47,8 +48,9 @@ export default function LessonQualityCenter() {
     <div role="tablist" aria-label="Central de qualidade" className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
       <button type="button" role="tab" aria-selected={tab === 'cases'} onClick={() => setTab('cases')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'cases' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Casos e indicadores</button>
       <button type="button" role="tab" data-tour="quality-punctuality-tab" aria-selected={tab === 'punctuality'} onClick={() => setTab('punctuality')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'punctuality' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Pontualidade</button>
+      <button type="button" role="tab" aria-selected={tab === 'operations'} onClick={() => setTab('operations')} className="px-4 py-2 text-sm font-semibold">Registros e origens</button>
     </div>
-    {tab === 'punctuality' ? <TeacherPunctualityPanel /> : <>
+    {tab === 'operations' ? <SchoolOperationsEvidence /> : tab === 'punctuality' ? <TeacherPunctualityPanel /> : <>
     <div className="flex flex-wrap items-end gap-3">
       <label className="text-sm">De<input aria-label="Data inicial" type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>
       <label className="text-sm">Até<input aria-label="Data final" type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900" /></label>

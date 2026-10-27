@@ -655,7 +655,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/payment-split-notify/safety.test.ts \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/school-operations-notify/index.ts \
+  supabase/functions/school-operations-notify/core.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/school-operations-notify/core.test.ts \
   supabase/functions/cancel-prepaid-invoice/index.ts \
   supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/dre-report/index.ts \
@@ -834,6 +837,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/school-operations-notify/core.test.ts \
   supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/payment-split-notify/management-outbound-fence.test.ts \
   supabase/functions/payment-split-notify/management-summary.test.ts \
@@ -1031,6 +1035,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/school-operations-notify/index.ts \
   supabase/functions/cancel-prepaid-invoice/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
@@ -1534,6 +1539,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
   "supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql"
   "supabase/migrations/20261027114059_student_lifecycle_requires_financial_confirmation.sql"
+  "supabase/migrations/20261027135908_school_operations_evidence_and_lead_origins.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1575,6 +1581,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"
   "supabase/tests/student_status_and_level_management.sql"
+  "supabase/tests/school_operations_evidence_and_lead_origins.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"
@@ -1816,6 +1823,7 @@ HARDENED_FUNCTIONS=(
   dre-report
   payment-split-notify
   monthly-reserve-notify
+  school-operations-notify
   student-card-notify
   student-renewal-notify
   student-renewal-billing
@@ -4601,6 +4609,7 @@ for protected_function in \
   accept-opportunity \
   cancel-prepaid-invoice \
   monthly-reserve-notify \
+  school-operations-notify \
   student-card-notify \
   student-renewal-notify \
   student-renewal-billing \

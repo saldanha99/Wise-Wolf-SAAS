@@ -18,7 +18,10 @@ import {
   safeCommunicationText,
   type TenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
-import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
+import {
+  loadOpportunityDispatchGuard,
+  teacherMayReceiveOpportunity,
+} from "../_shared/opportunity-dispatch.ts";
 // As mensagens do fechamento vivem junto do bot que lê as respostas
 // (`whatsapp-inbound`): texto de pergunta e texto de resposta precisam mudar
 // juntos. As duas funções são publicadas no mesmo pacote.
@@ -714,6 +717,22 @@ serve(async (req) => {
         continue;
       }
       for (const ph of phones) {
+        const mayNotify = async () => {
+          const ids = [
+            ...new Set(
+              recipients.filter((r) => cleanPhone(r.phone) === ph).map((r) =>
+                r.teacher_id
+              ),
+            ),
+          ];
+          for (const id of ids) {
+            if (await teacherMayReceiveOpportunity(sb, opp.tenant_id, id)) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (!await mayNotify()) continue;
         const msg =
           `Lembrete da experimental de ${formatted} às ${slot.time}, para ${
             opp.student_name || "o aluno"
@@ -738,14 +757,22 @@ serve(async (req) => {
                 "PENDING",
               );
           },
-          send: () =>
-            sendWhatsTextDetailed({
+          send: async () => {
+            if (!await mayNotify()) {
+              return {
+                outcome: "rejected" as const,
+                messageId: null,
+                httpStatus: null,
+              };
+            }
+            return await sendWhatsTextDetailed({
               base: EVOLUTION_API_URL,
               keys: EVOLUTION_KEYS,
               instance: t.teacherInstance!,
               to: ph,
               text: msg,
-            }),
+            });
+          },
         });
         if (outcome === "sent") result.teacher_reminders++;
         else if (outcome === "failed") {

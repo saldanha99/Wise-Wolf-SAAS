@@ -60,8 +60,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
     const setTeacherLifecycle = async (teacher: any, status: 'active' | 'suspended' | 'offboarded') => {
         const labels: Record<string, string> = {
-            suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.\n\n⚠️ Os convites de aula experimental são enviados no GRUPO de WhatsApp dos professores. Para ele parar de recebê-los, remova-o do grupo manualmente no WhatsApp.`,
-            offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).\n\n⚠️ Remova-o também do GRUPO de WhatsApp dos professores — os convites de experimental são disparados no grupo e o sistema não consegue barrar por lá.`,
+            suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.\n\nNovas oportunidades são enviadas individualmente e ficam bloqueadas para professores suspensos. Confira também a participação dele nos grupos antigos da escola.`,
+            offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).\n\nNovas oportunidades e novos aceites ficam bloqueados para o professor desligado. Confira também a participação dele nos grupos antigos da escola.`,
             active: `Reativar ${teacher.name}?\n\nVolta ao cruzamento de agenda e às automações.`,
         };
         const reason = status === 'active' ? null : window.prompt(labels[status] + '\n\nMotivo:', '');

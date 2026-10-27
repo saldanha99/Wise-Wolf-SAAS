@@ -1,3 +1,4 @@
+import { leadOriginNotes } from '../../lib/leadOrigin';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Save, Globe, Loader2, Plus, Trash2, LayoutTemplate, GraduationCap, Wand2, Sparkles, Rocket, Video, MessageSquare, Users, Target, HelpCircle, List, CheckCircle, PlayCircle, Send } from 'lucide-react';
@@ -235,7 +236,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                 tenant_id: tenantId,
                 status: 'NEW',
                 source: `preview_${config.template_type}`,
-                notes: `Capturado no Preview: ${data.level ? data.level : ''} ${data.goal ? data.goal : ''}`.trim()
+                notes: leadOriginNotes(`Capturado no Preview: ${data.level ? data.level : ''} ${data.goal ? data.goal : ''}`.trim())
             });
 
             if (error) throw error;

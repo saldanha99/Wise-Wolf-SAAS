@@ -74,3 +74,31 @@ Deno.test("directed request blocks a second auction even for another slot", () =
     "SKIP_GENERIC",
   );
 });
+
+Deno.test("a stale recipient list cannot authorize a suspended teacher or an unavailable eligibility read", async () => {
+  const { teacherMayReceiveOpportunity } = await import(
+    "./opportunity-dispatch.ts"
+  );
+  const id = "00000000-0000-4000-8000-000000000011";
+  for (
+    const result of [{ data: false, error: null }, {
+      data: true,
+      error: { code: "503" },
+    }, { data: null, error: null }]
+  ) {
+    if (
+      await teacherMayReceiveOpportunity(
+        { rpc: () => Promise.resolve(result) },
+        "fixture",
+        id,
+      )
+    ) throw new Error("ineligible teacher admitted");
+  }
+  if (
+    !await teacherMayReceiveOpportunity(
+      { rpc: () => Promise.resolve({ data: true, error: null }) },
+      "fixture",
+      id,
+    )
+  ) throw new Error("active teacher blocked");
+});

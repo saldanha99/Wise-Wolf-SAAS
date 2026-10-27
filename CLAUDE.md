@@ -4382,3 +4382,34 @@ impedindo novas mensalidades. Auditoria final da janela 11/09–25/10 ficou sem
 apontamentos após os cancelamentos autorizados (run `6b4a1af2-d34c-4443-9484-54c29c661053`).
 Eventos nativos das exclusões conciliados por identidade e recebimento na janela
 da operação; seis PROCESSED e nenhum TRIAGE desses ids, com payloads preservados.
+
+
+### 27/10/2026 — Registros operacionais e origem de contatos (preparado)
+
+Migration `20261027135908` e worker `school-operations-notify`: três canais
+privados, configuração prospectiva e outbox com cerca antes do POST. Relatório
+nativo encerrado do Meet gera evidência mínima por pessoa identificada, revisões
+e retenção de até 90 dias; desconhecido não vira atraso/falta. Sem desconto,
+multa, mudança na folha ou habilitação do antigo extrato desligado da escola.
+Direção/coordenação consultam Registros e origens na Central de Qualidade.
+Silêncio do aluno não confirma aula nem afasta dever de acompanhamento.
+
+Convites passam a privados. `teacher_opportunity_recipient_eligible` revalida
+perfil/tenant/membership/ciclo antes do envio, lembrete e aceite; suspensos e
+encerrados ficam fora mesmo em listas antigas. Regularização pontual autorizada
+foi auditada com backup e documentos assinados preservados; ids em prova privada.
+
+Origem conserva UTMs, página inicial/contato e hostname de referência, sem query
+sensível ou identificador publicitário bruto. Canal e entrada no blog são
+independentes; ausência de evidência permanece desconhecida. Captura primeira
+parte na sessão do institucional e landings; sem avisos retroativos. Publicar o
+institucional só depois do app por `publish-institutional-origin-tracker.sh`,
+que preserva o site atual e usa sua ativação oficial. Nunca publicar WIP do outro
+repositório incidentalmente. Grupos e participantes somente no backup privado.
+
+Migration 2×, ACLs/fonte alterada/resultado incerto e relatório real em rollback
+validados; nenhum alerta de teste para pessoas reais. Tour no release. Ainda
+exige release oficial, ativação prospectiva dos canais e verificação HTTP para
+declarar os alertas ativos. Procedimento:
+`docs/runbooks/school-operations-evidence-and-lead-origins.md`; minuta complementar
+em `docs/legal/registro-de-aulas-pontualidade-e-dever-de-comunicacao.md`.

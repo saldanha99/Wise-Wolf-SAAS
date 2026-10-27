@@ -4,7 +4,10 @@ import {
   loadTenantWhatsAppRoute,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
-import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
+import {
+  loadOpportunityDispatchGuard,
+  teacherMayReceiveOpportunity,
+} from "../_shared/opportunity-dispatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -464,7 +467,7 @@ serve(async (req) => {
       ? body.opportunity_id.trim()
       : "";
     let oppKind = body.kind === "TRAINING" ? "TRAINING" : "TRIAL";
-    const mode = body.dispatch_mode === "group" ? "group" : "individual";
+    const mode = "individual"; // Shared groups cannot exclude suspended teachers.
     if (
       !student_name ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -556,12 +559,11 @@ serve(async (req) => {
         "[Broadcast] tenant sem portalUrl configurado; usando fallback para claim-opportunity",
       );
     }
-    if (mode === "group" && !route?.teachersGroupId) {
+    if (!route) {
       return new Response(
         JSON.stringify({
-          error:
-            "⚠️ Configure o grupo de professores antes de divulgar em grupo.",
-          error_code: "missing_group_route",
+          error: "⚠️ A instância central da escola não está disponível.",
+          error_code: "missing_school_route",
         }),
         {
           status: 409,
@@ -792,83 +794,11 @@ serve(async (req) => {
         interests || "Não informado"
       }${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
 
-    // No grupo estão todos os professores, inclusive quem não vai pegar a aula.
-    // Nome e objetivo do aluno ali dentro é dado pessoal exposto a quem não
-    // precisa dele — então o grupo recebe data, hora e link, e quem clicar vê o
-    // resto na página de aceite. A DM individual continua com os dados.
-    const groupMessage = oppKind === "TRAINING"
-      ? textMessage
-      : `⚡ *EXPERIMENTAL — ${route.identity.brandName} — ${formattedDate} (${dayString}) às ${time}*\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar garante a aula experimental — os dados do aluno aparecem na página de aceite.\n\n👇 *Aceitar agora:*\n${claimLink}`;
-
     const endpoint = `${API_URL}/message/sendText/${
       encodeURIComponent(
         INSTANCE,
       )
     }`;
-
-    // ============ MODO GRUPO: posta no grupo de professores configurado ============
-    if (mode === "group") {
-      const destinationGroup = route.teachersGroupId!;
-      let ok = false;
-      let failureReason: string | null = null;
-      let failureStatus: number | null = null;
-
-      try {
-        for (const key of API_KEYS) {
-          const result = await sendEvolutionText(
-            endpoint,
-            key,
-            destinationGroup,
-            groupMessage,
-          );
-          if (result.providerStatus === 401) continue;
-          failureReason = result.providerFailure;
-          failureStatus = result.providerStatus;
-          if (failureReason && result.providerPayload) {
-            console.warn(
-              "[Broadcast] Payload bruto provider (grupo):",
-              result.providerPayload,
-            );
-          }
-          ok = result.success;
-          if (!ok) {
-            console.warn(
-              "[Broadcast] Falha no envio de grupo",
-              destinationGroup.slice(-4),
-              result.providerStatus,
-              result.providerFailure,
-            );
-          }
-          break;
-        }
-      } catch {
-        ok = false;
-      }
-
-      if (!ok) {
-        return json(
-          {
-            success: false,
-            error: "WhatsApp delivery failed",
-            provider_status: failureStatus,
-            provider_error: failureReason,
-            id: oppData.id,
-            retryable: true,
-          },
-          502,
-        );
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          id: oppData.id,
-          mode: "group",
-          claim_link: claimLink,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
     // ============ MODO INDIVIDUAL (default): DM só para professores ATIVOS ============
     //    Antes ia num broadcast de GRUPO: qualquer um no grupo (inclusive ex-professor
@@ -894,6 +824,8 @@ serve(async (req) => {
         .select("id, full_name, phone, status")
         .in("id", activeTeacherIds)
         .eq("lifecycle_status", "active")
+        .eq("tenant_id", tenantId)
+        .eq("role", "TEACHER")
       : { data: [], error: null };
 
     if (teachersErr) {
@@ -913,6 +845,9 @@ serve(async (req) => {
     const failed: string[] = [];
 
     for (const r of recipients) {
+      if (!await teacherMayReceiveOpportunity(supabaseAdmin, tenantId, r.id)) {
+        continue;
+      }
       let ok = false;
       let failureReason: string | null = null;
       let failureStatus: number | null = null;
@@ -922,6 +857,9 @@ serve(async (req) => {
       const targetNumber = (await resolveJid(INSTANCE, r.phone!)) || r.phone!;
       try {
         for (const key of API_KEYS) {
+          if (
+            !await teacherMayReceiveOpportunity(supabaseAdmin, tenantId, r.id)
+          ) break;
           const result = await sendEvolutionText(
             endpoint,
             key,

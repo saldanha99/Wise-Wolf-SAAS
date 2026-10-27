@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import TeacherTrainingScheduler from './TeacherTrainingScheduler';
-import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
+import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { buildBroadcastErrorMessage, parseFunctionErrorAsync } from '../lib/functionInvokeErrors';
 
@@ -38,19 +38,12 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     // Preferred Slots (weekly preferences)
     const [preferredSlots, setPreferredSlots] = useState<PreferredSlot[]>([]);
 
-    // Modo de disparo: 'group' posta no grupo de professores configurado em
-    // WhatsApp (Conexão); 'individual' manda DM só pros professores ativos.
-    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('individual');
     // TRIAL = aula experimental de aluno · TRAINING = treinamento de professor.
     // Sem este campo o broadcast caía sempre em TRIAL, e o treinamento entrava na
     // folha como AULA EXPERIMENTAL a R$ 8,00 em vez de R$ 16,00 de treinador —
     // foi o que aconteceu com o treinamento da Teacher Lais em julho/2026.
     const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
-    // A experimental voltou a poder ir ao grupo (16/09/2026, pedido da direção:
-    // é de lá que ela copia o link para mandar a um professor específico). Quem
-    // protege o dado do aluno agora é a MENSAGEM: o grupo recebe data, hora e
-    // link, sem nome nem objetivo — isso aparece na página de aceite.
-    const effectiveDispatchMode = dispatchMode;
+    // Convites privados permitem excluir professores suspensos antes de cada envio.
     const [lastClaimLink, setLastClaimLink] = useState('');
     const [linkCopied, setLinkCopied] = useState(false);
 
@@ -115,7 +108,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                     time: targetTime,
                     interests: studentInterests,
                     preferred_slots: preferredSlots.length > 0 ? preferredSlots : undefined,
-                    dispatch_mode: effectiveDispatchMode,
+                    dispatch_mode: 'individual',
                     kind,
                 },
             });
@@ -130,17 +123,10 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                 throw new Error(friendlyMessage + (parsedError.details ? `\n\n${parsedError.details}` : ''));
             }
 
-            const isGroupMode = data.mode === 'group';
-
+            const detail = `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
             if (data.warning) {
-                const detail = isGroupMode
-                    ? 'Grupo institucional configurado'
-                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
                 alert(`⚠️ Vaga criada, mas houve falha no WhatsApp.\n${detail}\n${data.warning}`);
             } else {
-                const detail = isGroupMode
-                    ? 'Grupo institucional configurado'
-                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
                 alert(`🚀 Oportunidade enviada!\n${detail}.\nID: ${data.id}`);
             }
             if (data?.claim_link) {
@@ -329,34 +315,11 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2 pt-2">
                                     <Send size={14} /> Como disparar
                                 </p>
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDispatchMode('individual')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'individual'
-                                            ? 'bg-orange-500 text-white shadow-sm'
-                                            : 'text-brand-muted hover:bg-brand-surface'
-                                            }`}
-                                    >
-                                        <Users size={14} /> Todos os Professores
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDispatchMode('group')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'group'
-                                            ? 'bg-orange-500 text-white shadow-sm'
-                                            : 'text-brand-muted hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-40'
-                                            }`}
-                                    >
-                                        <MessageCircle size={14} /> Só no Grupo
-                                    </button>
+                                <div className="flex items-center gap-2 p-3 bg-brand-surface-2 border-2 border-brand-border rounded-xl text-xs font-bold">
+                                    <Users size={14} /> Convites privados para professores ativos
                                 </div>
                                 <p className="text-[10px] text-brand-muted font-medium px-1">
-                                    {effectiveDispatchMode === 'individual'
-                                        ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem), com nome e objetivo do aluno.'
-                                        : kind === 'TRIAL'
-                                        ? 'Publica no grupo só data, horário e o link de aceite — nome e objetivo do aluno aparecem na página, para quem clicar.'
-                                        : 'Treinamentos podem ser publicados no grupo institucional configurado.'}
+                                    A situação do professor é conferida antes de cada convite. Suspensos e desligados não recebem oportunidades.
                                 </p>
                             </div>
 
@@ -401,9 +364,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 )}
                             </button>
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
-                                {effectiveDispatchMode === 'individual'
-                                    ? 'Envia individualmente a cada professor ativo da escola.'
-                                    : 'Envia ao grupo institucional de professores da escola.'}
+                                Envia individualmente a cada professor ativo da escola.
                             </p>
                         </div>
 

@@ -1,3 +1,4 @@
+import { leadOriginNotes } from '../../lib/leadOrigin';
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Loader2, CheckCircle } from 'lucide-react';
@@ -47,7 +48,7 @@ export default function StudentLandingTemplate() {
                 tenant_id: config.tenant_id,
                 status: 'NEW', // Enters the Kanban
                 source: `landing_page_${config.template_type || 'sales'}`,
-                notes: formData.notes || 'Cadastro via Página de Captura'
+                notes: leadOriginNotes(formData.notes || 'Cadastro via Página de Captura')
             });
 
             if (error) throw error;
