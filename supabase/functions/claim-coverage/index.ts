@@ -425,6 +425,14 @@ async function handlePost(req: Request): Promise<Response> {
     p_token: token,
     p_accept: accept,
   });
+  if (error?.code === "PT412") {
+    return respond(
+      "Termo individual pendente",
+      "Esta cobertura ainda não foi confirmada. Entre no portal da escola, abra Meu Contrato > Termos por aluno e confira o termo e a assinatura da escola antes de assinar. Depois volte a este convite. A assinatura é feita apenas pela sua conta autenticada.",
+      "neutral",
+      409,
+    );
+  }
   if (error) {
     console.error("claim_coverage_opportunity failed", { code: error.code });
     return safeError(503);

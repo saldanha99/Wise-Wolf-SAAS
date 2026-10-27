@@ -852,6 +852,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-27-registros-de-aula-e-origem', title: 'Registros de aula e origem dos leads', roles: ['SCHOOL_ADMIN', 'COORDINATOR'],
     steps: [{ target: 'sidebar-nav', view: 'lesson-quality', title: 'Confira os registros e os alertas', text: 'Na Central de Qualidade, abra Registros e origens para consultar os horários observados no relatório nativo do Meet e a origem dos novos contatos. Os grupos privados recebem alertas de atraso a partir de 5 minutos e novos leads com sua campanha quando identificada. Dados sem identidade ou origem comprovadas continuam sinalizados; não há multa, desconto ou confirmação automática de aula. Professores suspensos ou desligados ficam fora dos convites individuais e dos novos aceites.' }],
   },
+  {
+    id:'2026-10-27-termo-individual-por-aluno',title:'Aceite individual de cada atendimento',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[{target:'sidebar-nav',view:'lesson-quality',title:'Acompanhe os termos por aluno',text:'Na Central de Qualidade, ou em Contratos para a direção, confira as propostas por aluno. O professor confirma sua empresa; a direção lê e assina a versão, e o próprio professor pode assinar ou recusar. A família confirma a agenda em registro separado. Novas cobranças e atribuições só avançam com os aceites exigidos; contratos e aulas antigos permanecem preservados. Mudança de agenda exige nova versão. A coordenação pode preparar e acompanhar, mas não assina pela direção ou pelo professor.'}],
+  },
+  {
+    id:'2026-10-27-termo-individual-professor',title:'Confira cada atendimento antes de assumir',roles:['TEACHER'],
+    steps:[{target:'sidebar-nav',view:'contract_teacher',title:'Leia e assine cada termo por aluno',text:'Em Meu Contrato, abra Termos por aluno. Confirme os dados da empresa e leia a agenda, a vigência e as condições reservadas antes de assinar com seu nome. Você pode recusar a proposta. A escola também precisa manifestar sua concordância; ninguém assina por você. Atendimentos antigos não recebem assinatura retroativa. O termo fica disponível em PDF, com o histórico da versão.'}],
+  },
+  {
+    id:'2026-10-27-termo-individual-z-agenda-familia',title:'Confirme sua agenda com a escola',roles:['STUDENT'],
+    steps:[{target:'sidebar-nav',view:'dashboard',title:'Confira professor e horários',text:'Quando houver nova proposta de atendimento ou alteração, a confirmação de agenda aparece no início do portal. Seu contrato continua com a escola. Você confere professor, horários e vigência; essa confirmação não assina o contrato profissional, não revela os honorários do professor e não cria cobrança adicional. Na matrícula por link, a grade confirmada no seu contrato é registrada separadamente.'}],
+  },
+
 ];
 
 /**

@@ -8,6 +8,7 @@ import { authorizeRequest } from "../_shared/request-auth.ts";
 import {
   markEnrollmentFailure,
   markEnrollmentStage,
+  studentBillingTeacherTermsReady,
 } from "../_shared/enrollment-progress.ts";
 import {
   resolveAsaasIntegration,
@@ -112,6 +113,20 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    if (
+      !await studentBillingTeacherTermsReady(
+        authorization.admin,
+        authorization.tenantId,
+        userId,
+      )
+    ) {
+      return json({
+        success: false,
+        error: "TEACHER_TERM_PENDING",
+        message:
+          "Aguarde a assinatura do termo individual pela escola e pelo professor antes de continuar a cobrança.",
+      }, 409);
+    }
 
     if (isSelfStudent && !offer) {
       return json({ success: false, error: "enrollment_offer_required" }, 403);

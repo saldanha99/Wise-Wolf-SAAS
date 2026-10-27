@@ -48,4 +48,11 @@ describe('transferência definitiva com vigência e disponibilidade', () => {
   it('falha fechada na consulta rejeitada', async () => {
     rpc.mockRejectedValue(new Error('rede')); renderModal(); expect(await screen.findByRole('alert')).toHaveTextContent('consultar a disponibilidade'); expect(screen.getByRole('button', { name: 'Confirmar transferência' })).toBeDisabled();
   });
+  it('não anuncia nem aplica transferência pendente de assinaturas', async () => {
+    const callback=vi.fn();renderModal(callback);await choose('KEEP');
+    rpc.mockResolvedValueOnce({data:{ok:true,status:'PENDING',pending_terms:true},error:null});
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar transferência'}));
+    expect(await screen.findByRole('status')).toHaveTextContent('A atribuição atual foi preservada');expect(callback).not.toHaveBeenCalled();
+  });
+
 });

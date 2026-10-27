@@ -1,3 +1,4 @@
+import TeacherStudentTerms from './TeacherStudentTerms';
 
 import React, { useEffect, useState } from 'react';
 import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw, Sparkles } from 'lucide-react';
@@ -492,6 +493,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in-up font-sans">
+      <TeacherStudentTerms compact />
 
       {/* Financial Closing Modal */}
       {showClosingModal && (

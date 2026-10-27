@@ -164,3 +164,36 @@ Deno.test("confirmed read grants approval without claiming cash settlement", asy
     }
   }
 });
+
+Deno.test("billing never treats a missing or unavailable individual term decision as approval", async () => {
+  const { studentBillingTeacherTermsReady } = await import(
+    "./enrollment-progress.ts"
+  );
+  for (const data of [false, null, {}, "true"]) {
+    if (
+      await studentBillingTeacherTermsReady(
+        { rpc: () => Promise.resolve({ data, error: null }) },
+        "fixture",
+        "fixture-student",
+      )
+    ) throw new Error("missing signature allowed billing");
+  }
+  let threw = false;
+  try {
+    await studentBillingTeacherTermsReady(
+      { rpc: () => Promise.resolve({ data: true, error: { code: "503" } }) },
+      "fixture",
+      "fixture-student",
+    );
+  } catch {
+    threw = true;
+  }
+  if (!threw) throw new Error("unavailable decision allowed billing");
+  if (
+    !await studentBillingTeacherTermsReady(
+      { rpc: () => Promise.resolve({ data: true, error: null }) },
+      "fixture",
+      "fixture-student",
+    )
+  ) throw new Error("approved binding blocked");
+});

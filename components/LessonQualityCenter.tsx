@@ -1,3 +1,4 @@
+import TeacherStudentTerms from './TeacherStudentTerms';
 import SchoolOperationsEvidence from './SchoolOperationsEvidence';
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
@@ -45,6 +46,7 @@ export default function LessonQualityCenter() {
   const metrics = [['planned', 'Sessões previstas'], ['eligible', 'Auditorias criadas'], ['sent', 'Enviadas'], ['delivered', 'Entregues'], ['read', 'Lidas'], ['responded', 'Com retorno'], ['unknown', 'Não acompanhadas'], ['failed', 'Falhas / incertas'], ['missing_log', 'Sem lançamento há 24h'], ['unverified_contact', 'Contato não verificado']];
   return <div className="space-y-5 text-slate-800 dark:text-slate-100">
     <header><h1 className="text-2xl font-bold">Central de qualidade</h1><p className="mt-2 text-sm text-slate-500">Relatos da família, registros operacionais e o relatório de presença do Meet para análise humana. Silêncio não significa satisfação; nenhum desses avisos altera o pagamento — são para conversar com o professor.</p></header>
+    <TeacherStudentTerms />
     <div role="tablist" aria-label="Central de qualidade" className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
       <button type="button" role="tab" aria-selected={tab === 'cases'} onClick={() => setTab('cases')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'cases' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Casos e indicadores</button>
       <button type="button" role="tab" data-tour="quality-punctuality-tab" aria-selected={tab === 'punctuality'} onClick={() => setTab('punctuality')} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${tab === 'punctuality' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500'}`}>Pontualidade</button>

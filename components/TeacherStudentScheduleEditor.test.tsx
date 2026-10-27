@@ -72,4 +72,14 @@ describe('professor altera o horário do próprio aluno', () => {
     expect(screen.getByRole('button', { name: 'Solicitar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /aplicar troca/i })).not.toBeInTheDocument();
   });
+  it('mantém a alteração como proposta quando faltam os aceites individuais', async () => {
+    const onChanged=vi.fn();render(<TeacherStudentScheduleEditor {...props} onChanged={onChanged} />);
+    fireEvent.change(await screen.findByRole('combobox',{name:'Dia proposto para Segunda 08:00'}),{target:{value:'Terça'}});
+    fireEvent.change(screen.getByPlaceholderText(/explique o motivo/i),{target:{value:'Solicitação futura do aluno fixture.'}});
+    rpc.mockResolvedValueOnce({data:{ok:true,pending_terms:true,changed:0},error:null});
+    fireEvent.click(screen.getByRole('button',{name:'Aplicar troca (1)'}));
+    expect(await screen.findByRole('status')).toHaveTextContent('A grade atual foi preservada');
+    expect(onChanged).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Aplicar troca (1)'})).toBeInTheDocument();
+  });
+
 });

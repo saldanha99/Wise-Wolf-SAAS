@@ -422,6 +422,9 @@ const PublicRegistration: React.FC = () => {
                     return;
                 }
 
+
+                const termStatus=await supabase.rpc('teacher_student_terms',{p_action:'enrollment_status',p_id:offerId});
+                if(termStatus.error||termStatus.data?.ready!==true){setError('Sua matrícula está salva e aguarda a conferência dos aceites da escola e do professor. Nenhuma nova cobrança será iniciada enquanto houver essa pendência.');setStep('FORM');return;}
                 if (progress.status === 'AWAITING_PAYMENT') {
                     try {
                         const pendingKind = getPendingEnrollmentPaymentKind(
@@ -759,6 +762,12 @@ const PublicRegistration: React.FC = () => {
                 termsVersion: offeredContractTermsVersion('STUDENT', contractData),
             });
             setSignedTermsVersion(recordedTermsVersion);
+            const readiness = await supabase.rpc('teacher_student_terms',{p_action:'enrollment_status',p_id:contractData._offerId});
+            if(readiness.error||readiness.data?.ok!==true)throw new Error('Não foi possível conferir os aceites do atendimento. Nenhuma cobrança foi iniciada. Tente novamente.');
+            if(readiness.data.ready!==true){
+                setError('Seu contrato com a escola foi salvo. A matrícula aguarda a assinatura do termo individual pela escola e pelo professor. Nenhuma cobrança foi iniciada nesta etapa. Retorne a este link para continuar após a confirmação.');setStep('FORM');return;
+            }
+
 
             enrollmentData = {
                 ...contractData,

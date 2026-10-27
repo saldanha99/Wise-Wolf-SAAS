@@ -142,7 +142,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
       .join('\n');
     const confirmed = window.confirm(
       `Alterar o horário de ${studentName} a partir de ${formatDate(effectiveFrom)}?\n\n${summary}\n\n` +
-      'As aulas anteriores continuam no horário antigo. A Gestão será avisada no grupo.',
+      'A grade só será alterada após os aceites individuais exigidos. As aulas anteriores continuam no horário antigo.',
     );
     if (!confirmed) return;
 
@@ -160,6 +160,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
         setError(friendlyScheduleError(rpcError?.message || result?.error || ''));
         return;
       }
+      if(result.pending_terms){setApplied('Proposta salva. A escola e o professor precisam assinar o termo individual, e a família confirmar a agenda. A grade atual foi preservada. Depois, retome esta alteração.');return;}
       setApplied(result.changed === 0
         ? 'A agenda já possui esse horário na data escolhida.'
         : `Horário alterado a partir de ${formatDate(effectiveFrom)}.${result.notification_queued ? ' O aviso à coordenação foi colocado na fila.' : ''}`);

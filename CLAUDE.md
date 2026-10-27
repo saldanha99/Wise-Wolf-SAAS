@@ -4439,3 +4439,46 @@ backup reservado `school-operations-20261027`. O PDF de três páginas está em
 120 arquivos privados anteriores foram restaurados e comparados por hash.
 A indicação de preparação acima é histórica e foi superada por esta publicação.
 A assinatura obrigatória por aluno continua exigindo implementação própria.
+
+
+### 27/10/2026 — Assinatura do professor por aluno (preparado)
+
+A direção solicitou implementar o fluxo antes pendente. Migration
+`20261027152745_teacher_student_individual_terms.sql`, RPC humana
+`teacher_student_terms`, modelo jurídico 1 e tabelas privadas com RLS. Escola e
+professor assinam pelo próprio contexto autenticado, com nome digitado, leitura,
+representação, data do servidor, texto integral e SHA-256; a família confirma só
+agenda, sem receber honorários/CPF profissional. Primeira assinatura congela a
+via. Reemissão preserva o anterior e exige novos aceites; silêncio não assina.
+PDF da via e comprovantes, além dos tours por papel, incluídos. Identidade PJ
+nova é confirmada pelo próprio prestador e não reescreve o contrato geral anterior.
+
+Matrícula por link mantém o contrato aluno-escola e pausa antes da cobrança;
+proposta individual é criada da oferta/grade, com confirmação separada referida à
+assinatura do aluno. Materialização, conclusão e três portas Asaas consultam a
+guarda. Triggers cobrem bookings, versões, reposições, cobertura e novos
+professores na ficha. Atendimentos manuais têm preparação própria. Troca direta
+de horário persiste como proposta até os aceites; depois retomar a alteração.
+Transferência nova fica PENDING, sem anunciar novo titular confirmado; após os
+aceites a gestão usa Concluir atribuição da transferência, mantendo a vigência
+futura. Links de cobertura orientam a assinatura autenticada e não assinam o
+instrumento por token. Treinamento sem aluno e provas históricas anteriores não
+exigem assinatura retroativa.
+
+Ativação prospectiva somente da Wise Wolf, após release oficial, backup e
+inventário. Ofertas já iniciadas e transferências já aceitas ainda não aplicadas são
+relacionadas em tabelas de transição com seu escopo exato, sem copiar assinatura
+para termo. A exceção da transferência conserva professor, aluno, grade e
+vigência previamente autorizados e não permite antecipar sua data. Agenda/contratos antigos permanecem íntegros;
+nenhuma multa, desconto, assinatura em nome de terceiro ou cobrança do professor
+é produzida pela implantação. Não afirmar ausência garantida de vínculo CLT.
+
+Migration aplicada duas vezes em transação com rollback e suíte isolada aprovada:
+papéis, privacidade, recusa, repetição, hash alterado, texto imutável, encerramento,
+matrícula pública, cobrança bloqueada, grade idempotente, cobertura com assinatura,
+proposta de horário e transferência futura. 43 Vitest relacionados, 9 Deno,
+typechecks aprovados. PDF de amostra gerado pela mesma rotina e revisado nas três
+páginas. Sem mensagem, assinatura, aluno ou pagamento real de teste. Ainda falta
+publicação/ativação para declarar a regra obrigatória ativa. Fluxo em
+`docs/runbooks/teacher-student-individual-terms.md`, minuta em
+`docs/legal/termo-individual-professor-aluno-v1.md`.

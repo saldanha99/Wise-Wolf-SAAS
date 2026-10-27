@@ -1,3 +1,4 @@
+import TeacherStudentTerms from './TeacherStudentTerms';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
@@ -343,6 +344,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            <TeacherStudentTerms />
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-xs border border-brand-border">
                 <h3 className="text-lg font-bold text-brand-text flex items-center gap-2">

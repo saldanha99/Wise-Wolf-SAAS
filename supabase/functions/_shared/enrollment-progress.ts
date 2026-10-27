@@ -341,3 +341,17 @@ export async function reopenEnrollmentForUnsettledPayment(
   }
   return data as Record<string, unknown>;
 }
+
+/** Nenhuma cobrança nova enquanto faltar manifestação do atendimento individual. */
+export async function studentBillingTeacherTermsReady(
+  admin: PaymentAdminClient,
+  tenantId: string,
+  studentId: string,
+): Promise<boolean> {
+  const result = await admin.rpc("student_billing_teacher_terms_ready", {
+    p_tenant_id: tenantId,
+    p_student_id: studentId,
+  });
+  if (result.error) throw new Error("teacher_terms_verification_unavailable");
+  return result.data === true;
+}

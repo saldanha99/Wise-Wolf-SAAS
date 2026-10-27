@@ -91,7 +91,7 @@ const DirectTeacherTransferModal: React.FC<DirectTeacherTransferModalProps> = ({
     const confirmed = window.confirm(
       `Transferir definitivamente ${student.full_name} para ${targetName}?\n\n` +
       `Início: ${cutover}. Horários: ${chosenSlots.map(slot => `${slot.day_of_week} ${slot.time_slot}`).join(' · ')}\n\n` +
-      'A transferência é definitiva, aplicada na data de início. Não altera mensalidade ou contrato.',
+      'A proposta depende dos aceites do termo individual e da agenda. A atribuição atual permanece até a conclusão. Não altera mensalidade.',
     );
     if (!confirmed) return;
 
@@ -108,13 +108,14 @@ const DirectTeacherTransferModal: React.FC<DirectTeacherTransferModalProps> = ({
     });
     setSaving(false);
 
-    if (rpcError || data?.ok !== true || !['APPLIED', 'ACCEPTED'].includes(data.status)) {
+    if (rpcError || data?.ok !== true || !['PENDING', 'APPLIED', 'ACCEPTED'].includes(data.status)) {
       setError(friendlyTransferError(rpcError?.message || data?.error || ''));
       return;
     }
 
     // O aviso ao novo titular sai por gatilho em teacher_transfers (20260928100000),
     // pela fila da instância central — só com WhatsApp no cadastro dele.
+    if(data.pending_terms||data.status==='PENDING'){setSuccess('Proposta de transferência salva. Abra Termos por aluno para recolher as assinaturas da escola e do professor e a confirmação da agenda pela família. A atribuição atual foi preservada; depois conclua a transferência no termo.');return;}
     setSuccess(`Transferência definitiva de ${student.full_name} para ${data?.to_teacher_name || targetName} ${data?.status === 'APPLIED' ? 'aplicada' : 'programada'} para ${cutover}. Não depende de aceite pelo link.`);
     await onTransferred(data?.status === 'APPLIED' ? toTeacher : student.professor_id || '');
     } catch {

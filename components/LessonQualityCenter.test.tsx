@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
+vi.mock('./TeacherStudentTerms', () => ({default:()=>null}));
 vi.mock('../lib/supabase', () => ({ supabase: { rpc } }));
 
 import LessonQualityCenter from './LessonQualityCenter';

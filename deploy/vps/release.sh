@@ -1540,6 +1540,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql"
   "supabase/migrations/20261027114059_student_lifecycle_requires_financial_confirmation.sql"
   "supabase/migrations/20261027135908_school_operations_evidence_and_lead_origins.sql"
+  "supabase/migrations/20261027152745_teacher_student_individual_terms.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1582,6 +1583,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_attention_quality.sql"
   "supabase/tests/student_status_and_level_management.sql"
   "supabase/tests/school_operations_evidence_and_lead_origins.sql"
+  "supabase/tests/teacher_student_individual_terms.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"

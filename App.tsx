@@ -65,6 +65,7 @@ const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
+const TeacherStudentTerms = lazy(() => import('./components/TeacherStudentTerms'));
 const ContractManagement = lazy(() => import('./components/ContractManagement'));
 const AdminPaymentsList = lazy(() => import('./components/AdminPaymentsList'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
@@ -1309,7 +1310,7 @@ const App: React.FC = () => {
               setActiveTab('schedule_explorer');
             }}
           /> :
-          user.role === UserRole.STUDENT ? <StudentDashboard user={user} tenantId={currentTenant?.id} /> :
+          user.role === UserRole.STUDENT ? <><TeacherStudentTerms compact /><StudentDashboard user={user} tenantId={currentTenant?.id} /></> :
           user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} /> :
             <>
               {/* Funil pós-contratação: pop-up diário de responsabilidades do professor */}
@@ -1458,7 +1459,7 @@ const App: React.FC = () => {
         <TeacherInviteGenerator tenantId={currentTenant?.id || ''} />
         <VendorInviteGenerator tenantId={currentTenant?.id || ''} />
       </div>,
-      'contract_teacher': <PublicContractView id={user.id} />,
+      'contract_teacher': <><TeacherStudentTerms /><PublicContractView id={user.id} /></>,
 
       // VENDEDOR tabs
       'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
