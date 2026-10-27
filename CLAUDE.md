@@ -4384,7 +4384,7 @@ Eventos nativos das exclusões conciliados por identidade e recebimento na janel
 da operação; seis PROCESSED e nenhum TRIAGE desses ids, com payloads preservados.
 
 
-### 27/10/2026 — Registros operacionais e origem de contatos (preparado)
+### 27/10/2026 — Registros operacionais e origem de contatos (publicado)
 
 Migration `20261027135908` e worker `school-operations-notify`: três canais
 privados, configuração prospectiva e outbox com cerca antes do POST. Relatório
@@ -4408,9 +4408,8 @@ que preserva o site atual e usa sua ativação oficial. Nunca publicar WIP do ou
 repositório incidentalmente. Grupos e participantes somente no backup privado.
 
 Migration 2×, ACLs/fonte alterada/resultado incerto e relatório real em rollback
-validados; nenhum alerta de teste para pessoas reais. Tour no release. Ainda
-exige release oficial, ativação prospectiva dos canais e verificação HTTP para
-declarar os alertas ativos. Procedimento:
+validados; nenhum alerta de teste para pessoas reais. Tour incluído. A publicação
+e a ativação prospectiva foram conferidas conforme o registro abaixo. Procedimento:
 `docs/runbooks/school-operations-evidence-and-lead-origins.md`; minuta complementar
 em `docs/legal/registro-de-aulas-pontualidade-e-dever-de-comunicacao.md`.
 
@@ -4420,3 +4419,23 @@ legado de retorno do login Google disparava focus sem aguardar a instalação do
 listener e sem fixar a página como visível. Passou isoladamente; o fixture agora
 explicita essas duas pré-condições antes do evento. Nenhuma regra de consentimento,
 autenticação ou código do login foi alterada. Reexecutar o release completo.
+
+
+Publicado pelo release oficial `20261027T143316Z-6269f48e561e`, origem
+`c8916503a5ba95467cf61abf6a2e98e361bb88e0`: 1.285 Vitest, 1.487 Deno, 176 suítes
+SQL, typechecks, build, migration 2× e smoke HTTP aprovados. Sete fontes das
+functions e quatro arquivos HTTP bateram SHA-256 com a release. Canais ativados
+somente para ocorrências futuras; participantes e rota conferidos sem mensagens
+fictícias. Os dois suspensos foram recusados pela regra, com cinco prestadores
+ativos ainda elegíveis. Consulta como authenticated da direção retornou três
+canais. A inspeção visual da sessão de produção estava desabilitada no navegador.
+
+Institucional publicado pelo ativador oficial `20261027T145048Z`: somente o
+script nos 3.177 HTMLs, com comparação integral ao backup e 477 outros arquivos
+preservados. Homepage, blog e página de curso conferidos por HTTP. Configurações,
+ids de grupos, provas de participantes e comparação de assinaturas continuam no
+backup reservado `school-operations-20261027`. O PDF de três páginas está em
+`output/pdf/wise-wolf-guia-registros-origens-e-protecao.pdf`, fora do Git. Os
+120 arquivos privados anteriores foram restaurados e comparados por hash.
+A indicação de preparação acima é histórica e foi superada por esta publicação.
+A assinatura obrigatória por aluno continua exigindo implementação própria.

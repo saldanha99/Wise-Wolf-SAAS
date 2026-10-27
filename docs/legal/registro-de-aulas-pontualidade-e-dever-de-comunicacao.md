@@ -16,4 +16,4 @@ Recomenda-se também que a Central de Qualidade acompanhe solicitações sem res
 
 A adoção de nova redação exige o procedimento documental correspondente: versão futura para novos contratos e, quando aplicável, aditivo válido para quem já assinou. Não reescrever o PDF antigo ou inventar aceite.
 
-Referências: [relatório nativo de presença do Google Meet](https://support.google.com/meet/answer/10090454?hl=pt-BR), [LGPD, especialmente arts. 6º, 18 e 46](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm) e [CLT, arts. 2º, 3º e 9º](https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm).
+Referências: [relatório nativo de presença do Google Meet](https://support.google.com/meet/answer/10090454?hl=pt-BR), [LGPD, especialmente arts. 6º, 18 e 46](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm), [CDC, especialmente arts. 14 e 20](https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm) e [CLT, arts. 2º, 3º e 9º](https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm).

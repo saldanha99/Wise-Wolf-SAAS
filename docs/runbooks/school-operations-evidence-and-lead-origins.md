@@ -1,6 +1,6 @@
 # Registros operacionais, convites e origem dos leads
 
-Preparado em 27/10/2026. Publicar e conferir antes de declarar alertas ativos.
+Publicado em 27/10/2026 pelo release oficial `20261027T143316Z-6269f48e561e`, origem `c8916503a5ba95467cf61abf6a2e98e361bb88e0`. Os três canais privados foram habilitados prospectivamente após a conferência dos participantes e das permissões.
 
 ## Pontualidade e privacidade
 
@@ -16,7 +16,7 @@ A Central de Qualidade tem a aba Registros e origens, somente direção/coordena
 
 Outbox privada por evento/tenant. Antes do envio há claim, fonte recalculada, grupo configurado, instância central e integração revalidados e transição atômica para SUBMITTING. O teto de mensagens é consultado antes de SUBMITTING; adiamento sem POST expira o claim e permite retomada. Um resultado incerto fica UNKNOWN ou SUBMITTING e não é retomado automaticamente. ACCEPTED indica aceite do provedor, não entrega ou leitura. Falha antes de submeter pode retomar após lease. Fixtures e previews são suprimidos. Não existe backfill de mensagens antigas.
 
-Cron a cada dois minutos chama `school-operations-notify` autenticado. A configuração não aceita destinatário ou corpo vindo do navegador. O serviço usa somente fontes e grupos autorizados no banco. Retenção de registros, revisões e outbox: até 90 dias.
+Cron a cada dois minutos chama `school-operations-notify` autenticado pela chave já existente no Vault (`wisewolf_service_role_key`). A rota interna via Kong retornou HTTP 200 em testMode depois da ativação, sem envio externo. A configuração não aceita destinatário ou corpo vindo do navegador. O serviço usa somente fontes e grupos autorizados no banco. Retenção de registros, revisões e outbox: até 90 dias.
 
 ## Professores suspensos
 
@@ -35,3 +35,22 @@ Publicação do institucional: depois do release do app, `deploy/vps/publish-ins
 ## Validação
 
 Migration reexecutável, registrada no release; testes SQL em transação com rollback, duas aplicações. ACLs, supressão de fixtures, imutabilidade de origem, classificação prudente, fonte alterada e impossibilidade de retomar resultado incerto. Deno: mensagem de alerta/origem e elegibilidade do professor. Vitest: captura entre páginas, ausência de segredos nos metadados e integração da Central. Todos os testes HTTP de produção usam testMode e não enviam mensagens de teste a pessoas reais.
+
+
+## Conferência de publicação
+
+Passaram 1.285 testes Vitest, 1.487 Deno e 176 suítes SQL, com migration em
+execução dupla e rollback no ensaio. Sete arquivos de functions e quatro
+arquivos públicos conferidos por SHA-256. RPC autenticada da direção retornou os
+três canais; os dois cadastros suspensos ficaram inelegíveis, mantendo cinco
+prestadores ativos elegíveis. Não se criou aula, lead ou mensagem fictícia para
+testar na produção. A inspeção visual da sessão publicada ficou indisponível
+nas configurações do navegador; a validação usou testes, banco e arquivos HTTP.
+
+Institucional publicado pelo ativador oficial em `20261027T145048Z`: 3.177 HTMLs
+com somente a inclusão do script e outros 477 arquivos idênticos ao backup.
+Três páginas HTTP conferidas e SHA do tracker igual ao app. Avisos prospectivos;
+não se deve esperar mensagens antigas nos grupos recém-criados. O guia em PDF
+foi revisado visualmente e permanece em armazenamento reservado, fora do Git.
+Fixtures de captação devem usar origem de preview/teste e e-mail
+`@example.invalid`, para ficarem fora da fila de comunicação.
