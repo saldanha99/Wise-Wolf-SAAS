@@ -6,7 +6,7 @@
 begin;
 create or replace function pg_temp.fix_assert(v boolean,m text) returns void language plpgsql as $$begin if not coalesce(v,false) then raise exception 'termo nao trava falta: %',m;end if;end$$;
 do $test$
-declare tenant text:='term-pending-fixture-'||gen_random_uuid();teacher uuid:=gen_random_uuid();other_teacher uuid:=gen_random_uuid();old_student uuid:=gen_random_uuid();new_student uuid:=gen_random_uuid();director uuid:=gen_random_uuid();
+declare tenant text:='term-pending-fixture-'||gen_random_uuid();teacher uuid:=gen_random_uuid();other_teacher uuid:=gen_random_uuid();unsigned_teacher uuid:=gen_random_uuid();old_student uuid:=gen_random_uuid();new_student uuid:=gen_random_uuid();director uuid:=gen_random_uuid();
  booking uuid:=gen_random_uuid();resched uuid:=gen_random_uuid();today date:=(now() at time zone 'America/Sao_Paulo')::date;original_eligibility text;r jsonb;term uuid;v_hash text;group_jid text:='120363999999999999@g.us';
 begin
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
@@ -39,7 +39,12 @@ begin
  insert into public.booking_schedule_versions(booking_id,tenant_id,day_of_week,time_slot,valid_from) values(booking,tenant,'Terça','19:00',today+7);
 
  -- 4. Professor novo continua exigindo termo, para aluno antigo ou novo.
- begin insert into public.reschedules(tenant_id,teacher_id,student_id,date,time) values(tenant,other_teacher,old_student,(today+4)::text,'19:00');raise exception 'outro professor sem termo';exception when sqlstate 'PT412' then null;end;
+ -- Reposição por substituto com contrato geral é cobertura pontual
+ -- (reposicao_por_substituto_sem_termo.sql); sem contrato geral, exige termo.
+ insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values(unsigned_teacher,unsigned_teacher||'@example.invalid','{"provider":"email"}','{"test_fixture":true}');
+ update public.profiles set tenant_id=tenant,full_name='Sem Contrato Fixture',role='TEACHER',is_test_account=true,phone=null,status='Ativo',lifecycle_status='active',contract_accepted=false where id=unsigned_teacher;
+ insert into public.tenant_memberships(user_id,tenant_id,role,status,is_primary) values(unsigned_teacher,tenant,'TEACHER','ACTIVE',true) on conflict(user_id,tenant_id) do update set role='TEACHER',status='ACTIVE';
+ begin insert into public.reschedules(tenant_id,teacher_id,student_id,date,time) values(tenant,unsigned_teacher,old_student,(today+4)::text,'19:00');raise exception 'outro professor sem termo';exception when sqlstate 'PT412' then null;end;
  begin insert into public.reschedules(tenant_id,teacher_id,student_id,date,time) values(tenant,teacher,new_student,(today+4)::text,'19:00');raise exception 'aluno novo sem termo';exception when sqlstate 'PT412' then null;end;
  begin insert into public.bookings(tenant_id,teacher_id,student_id,day_of_week,time_slot,start_date) values(tenant,other_teacher,old_student,'Quarta','18:00',today+3);raise exception 'agenda com outro professor sem termo';exception when sqlstate 'PT412' then null;end;
  perform pg_temp.fix_assert(private.student_term_legacy_relationship(tenant,old_student,teacher) and not private.student_term_legacy_relationship(tenant,old_student,other_teacher) and not private.student_term_legacy_relationship(tenant,new_student,teacher),'regra do vinculo antigo');
