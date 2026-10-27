@@ -4325,3 +4325,28 @@ em mensalidade, reativar alunos nem cancelar acordo financeiro por inferência.
 Relatório e evidências de leitura em `output/financeiro-2026-10-26/`, reservados e
 não rastreados. QA efêmero removido; rascunhos PJ e arquivos locais anteriores
 restaurados após o release financeiro, sem publicação acidental desse WIP.
+
+### 27/10/2026 — Conciliação após confirmação da direção
+
+Três Pix diretos confirmados como mensalidade e um recebimento de rescisão foram
+conciliados por ids exatos, com GET fresco, identidade exclusiva e auditoria da
+decisão. Mensalidades continuam individuais; rescisão usa OTHER, sem quitar
+competência nem gerar cobertura. Uma entrada de caixa por recebimento, datas
+originais e notificações históricas suprimidas antes do commit; nada de fixtures
+reais ou webhooks inventados.
+
+O encerramento de um cadastro legado exigiu recuperar também uma mensalidade
+antiga recebida e ausente localmente: o inventário completo do provedor bloqueava
+corretamente o fluxo. Após a recuperação, o school-admin autenticado concluiu;
+assinatura Asaas excluída/inativa, sem estorno. Assinatura do perfil e documentos
+contratuais comparados por hash e preservados. Data da regularização administrativa
+não é prova da data histórica do último atendimento.
+
+Backup anterior validado e provas em diretório reservado
+`finance-owner-confirmations-20261027` na VPS; relatório local não rastreado em
+`output/financeiro-2026-10-27/`. Auditoria da mesma janela de 11/09 a 25/10:
+119 cobranças, 440 linhas de extrato, 4 apontamentos (1 crítico, 3 avisos), ante 12;
+zero altos. Restam três casos que dependem da direção: cliente sem aluno e duas
+cobranças futuras de cadastros suspenso/encerrado. Não cancelar por inferência.
+Sem alteração de código, migration ou deploy nesta etapa. Procedimento em
+`docs/runbooks/confirmed-enrollment-and-legacy-installments.md`.

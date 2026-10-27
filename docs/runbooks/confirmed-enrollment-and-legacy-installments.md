@@ -59,3 +59,25 @@ conciliação nem reprocessar mensagens antigas sem examinar sua natureza.
 O Asaas documenta a origem bancária em `pixTransaction`, `pixQrCodeId`,
 `subscription` e `paymentLink`; a descrição isolada não é prova de mensalidade.
 [Referência oficial](https://docs.asaas.com/docs/como-o-asaas-trata-receitas-na-conta).
+
+## Confirmações da direção e encerramento de cadastro legado
+
+Depois da confirmação expressa da natureza, um Pix direto recebido pode ser
+conciliado operacionalmente por id exato, com backup, GET fresco do provedor,
+identidade e cliente exclusivos, conferência de duplicidade e auditoria da decisão.
+Não inventar vínculo de assinatura ou `externalReference` para passar no importador
+automático. Preservar cada transferência e a data original do crédito. Taxa de
+rescisão fica em `payment_type=OTHER`, com descrição própria, sem quitar mensalidade
+nem criar cobertura pré-paga.
+
+Uma falha de encerramento antes da mudança no provedor pode indicar recebimento
+histórico ausente: `school-admin` compara todo o inventário da assinatura, inclusive
+meses antigos. Conferir esse inventário, recuperar somente o fato financeiro
+comprovado e repetir o fluxo autenticado. Não contornar a validação com update de
+status nem excluir a assinatura diretamente. Regularização administrativa atual
+não comprova o último dia histórico de aulas.
+
+Reparos de recebimentos antigos devem impedir reenvio de notificações na mesma
+transação, preservando a fila e a evidência da supressão; nunca tratar dado real como
+fixture. Comparar documentos assinados antes/depois do encerramento e executar
+nova auditoria com a mesma janela para medir o resultado.
