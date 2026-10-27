@@ -56,7 +56,9 @@ describe('professor que regulariza o aceite pelo app (TeacherContractAccept)', (
     expect(screen).toMatch(/supabase\.rpc\(termsVersion >= 3 \? 'accept_teacher_pj_contract' : 'accept_teacher_contract',\s*\{\s*p_typed_signature: finalSignature,\s*p_terms_version: termsVersion,/);
     expect(screen).toContain('p_provider_identity: parseTeacherProviderIdentity(providerIdentity)');
     expect(screen).toMatch(/<TeacherContractDocument[\s\S]*?termsVersion=\{termsVersion\}/);
-    expect(screen).toContain('const termsVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;');
+    expect(screen).toContain('const offeredVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;');
+    // Única exceção à versão oferecida: sem CNPJ, o contrato de pessoa física (v2).
+    expect(screen).toContain("const termsVersion = offersCompanyContract && providerKind === 'INDIVIDUAL' ? 2 : offeredVersion;");
     expect(screen).not.toContain('CURRENT_CONTRACT_TERMS_VERSION');
   });
 
