@@ -23,7 +23,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3
  * tabela `contract_terms_versions` (migration 20260927150000).
  * `lib/contractTerms.test.ts` confere os três.
  */
-export const TEACHER_CONTRACT_TERMS_VERSION = 2;
+export const TEACHER_CONTRACT_TERMS_VERSION = 3;
 
 /**
  * A versão que a página diz ter mostrado, se for uma que esta função conhece

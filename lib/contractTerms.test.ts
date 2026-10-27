@@ -20,7 +20,7 @@ describe('versão do texto do contrato', () => {
   it.each(KINDS)('%s: contrato ainda não assinado mostra a versão que a escola oferece', (kind) => {
     // Escola que decidiu registrar as aulas: a versão com a cláusula.
     const withClause = resolveContractTermsVersion(kind, { signed: false, offeredVersion: 2 });
-    expect(withClause).toBe(CURRENT_CONTRACT_TERMS_VERSION[kind]);
+    expect(withClause).toBe(2);
     expect(contractIncludesLessonRecording(kind, withClause)).toBe(true);
     // Escola que não decidiu: o texto sem a cláusula — o contrato não afirma
     // que ela grava aulas no Meet nem que contrata o provedor de IA.
@@ -58,6 +58,10 @@ describe('versão do texto do contrato', () => {
   });
 
   it('só aceita versão que esta tela conhece', () => {
+    expect(resolveContractTermsVersion('TEACHER', { signed: false, offeredVersion: 3 })).toBe(3);
+    expect(resolveContractTermsVersion('TEACHER', { signed: true, recordedVersion: 2, offeredVersion: 3 })).toBe(2);
+    expect(resolveContractTermsVersion('TEACHER', { signed: true, offeredVersion: 3 })).toBe(1);
+    expect(parseContractTermsVersion('STUDENT', 3)).toBeNull();
     expect(parseContractTermsVersion('STUDENT', 2)).toBe(2);
     expect(parseContractTermsVersion('STUDENT', CURRENT_CONTRACT_TERMS_VERSION.STUDENT + 1)).toBeNull();
     expect(parseContractTermsVersion('TEACHER', null)).toBeNull();
@@ -99,10 +103,11 @@ describe('versão do texto do contrato', () => {
  * a tabela contract_terms_versions (migration) e a edge register-teacher.
  */
 describe('versão do contrato: tela, banco e edge contam a mesma história', () => {
-  const migration = readFileSync(
+  const legacyMigration = readFileSync(
     join(ROOT, 'supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql'),
     'utf8',
   );
+  const migration = legacyMigration + readFileSync(join(ROOT, 'supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql'), 'utf8');
   const seeded = [...migration.matchAll(/\('(STUDENT|TEACHER)',\s*(\d+),\s*(true|false),/g)]
     .map(([, kind, version, includes]) => ({ kind: kind as ContractKind, version: Number(version), includes: includes === 'true' }));
 

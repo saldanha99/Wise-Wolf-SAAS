@@ -51,12 +51,13 @@ function fakeAdmin(options: {
 
 Deno.test("pagina antiga (sem versao) ou versao desconhecida e recusada", () => {
   assert(
-    TEACHER_CONTRACT_TERMS_VERSION === 2,
+    TEACHER_CONTRACT_TERMS_VERSION === 3,
     "versao mais nova do contrato mudou sem revisar a edge",
   );
   assert(requestedTeacherContractTermsVersion(2) === 2, "versao 2 recusada");
   assert(requestedTeacherContractTermsVersion(1) === 1, "versao 1 recusada");
-  for (const value of [undefined, null, 0, 3, "2", 2.5, {}]) {
+  assert(requestedTeacherContractTermsVersion(3) === 3, "versao 3 recusada");
+  for (const value of [undefined, null, 0, 4, "2", 2.5, {}]) {
     assert(
       requestedTeacherContractTermsVersion(value) === null,
       `versao ${JSON.stringify(value)} foi aceita`,

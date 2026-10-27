@@ -17,6 +17,7 @@ import {
   recordTeacherContractTerms,
   requestedTeacherContractTermsVersion,
 } from "./contract-terms.ts";
+import { parseTeacherProviderIdentity } from "./provider-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -228,6 +229,15 @@ async function handleRequest(req: Request): Promise<Response> {
       requestedTermsVersion,
       await offeredTeacherContractTermsVersion(admin, invite.tenantId),
     );
+    const providerIdentity = contractTermsVersion >= 3
+      ? parseTeacherProviderIdentity(body.providerIdentity)
+      : null;
+    if (
+      contractTermsVersion >= 3 &&
+      (!providerIdentity || providerIdentity.representativeCpf !== cpf)
+    ) {
+      throw new InputError("providerIdentity");
+    }
     const hourlyRate = Number(invite.data.hourlyRate);
     const subject = String(invite.data.subject).trim();
     const schoolInfo = invite.data.schoolInfo as Record<string, unknown>;
@@ -265,6 +275,12 @@ async function handleRequest(req: Request): Promise<Response> {
       cpf,
       address,
       birth_date: birthDate,
+      ...(providerIdentity
+        ? {
+          cnpj: providerIdentity.cnpj,
+          cnpj_company_name: providerIdentity.companyName,
+        }
+        : {}),
       contract_accepted: true,
       accepted_at: acceptedAt,
       user_ip: trustedIp,
@@ -312,6 +328,7 @@ async function handleRequest(req: Request): Promise<Response> {
           cpf,
           address,
           birthDate,
+          ...(providerIdentity ? { providerIdentity } : {}),
         },
         legal_snapshot: schoolInfo,
         commercial_snapshot: {

@@ -10,6 +10,7 @@ import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 import { LEGACY_CONTRACT_TERMS_VERSION, contractIncludesLessonRecording } from '../lib/contractTerms';
 import { loadContractTerms } from '../services/contractTermsService';
 import { LessonRecordingClauseNotice } from './LessonRecordingClauseNotice';
+import { parseTeacherProviderIdentity } from '../lib/teacherProviderIdentity';
 
 // Aceite de contrato PJ para professor JÁ logado que nunca aceitou (contract_accepted=false).
 // Contas criadas pelo caminho manual (create-teacher-account) nascem sem aceite e não passam
@@ -38,6 +39,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
     const [hasSignature, setHasSignature] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [providerDetails, setProviderDetails] = useState({ companyName: '', cnpj: '', companyAddress: '', representativeCpf: '' });
     const dialogRef = useRef<HTMLDivElement>(null);
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawingRef = useRef(false);
@@ -56,7 +58,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                 const [profileResult, privateProfile, payResult, terms] = await Promise.all([
                     supabase
                     .from('profiles')
-                    .select(PROFILE_SAFE_COLS)
+                    .select(`${PROFILE_SAFE_COLS},cnpj,cnpj_company_name`)
                     .eq('id', userId)
                     .single(),
                     loadAuthorizedProfilePrivate(userId),
@@ -64,14 +66,19 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     loadContractTerms(userId, 'TEACHER'),
                 ]);
                 if (profileResult.error) throw profileResult.error;
-                const data = {
+                const data: Record<string, unknown> = {
                     ...profileResult.data,
                     ...privateProfile,
                     hourly_rate: (payResult.data as any)?.hourly_rate ?? privateProfile.hourly_rate,
                 };
                 const normalizedName = ((data.full_name as string) || '').trim();
                 setOfferedTermsVersion(terms.offeredVersion);
+                // A V3 usa a manifestação autenticada e nominal. O caminho
+                // legado de rabisco não envia a imagem para o arquivo jurídico.
+                if ((terms.offeredVersion ?? 1) >= 3) setSignatureMode('typed');
                 setProfile(data);
+                setProviderDetails({ companyName: String(data.cnpj_company_name || ''), cnpj: String(data.cnpj || ''),
+                    companyAddress: String(data.address || ''), representativeCpf: String(data.cpf || '') });
                 setSignature(normalizedName);
                 setIsValidSignature(normalizedName.length >= 3);
                 setHasSignature(false);
@@ -85,9 +92,16 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
         })();
     }, [userId]);
 
-    const contractReadiness = getTeacherContractReadiness(school, profile?.hourly_rate);
     const termsVersion = offeredTermsVersion ?? LEGACY_CONTRACT_TERMS_VERSION;
+    const providerIdentity = { ...providerDetails, representativeHasAuthority: true };
+    const contractReadiness = getTeacherContractReadiness(school, profile?.hourly_rate, { termsVersion, providerIdentity });
     const withLessonRecording = contractIncludesLessonRecording('TEACHER', termsVersion);
+    const updateProvider = (key: keyof typeof providerDetails, value: string) => {
+        setProviderDetails(current => ({ ...current, [key]: value }));
+        setChecked(false); setHasSignature(false);
+        const canvas = signatureCanvasRef.current;
+        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    };
 
     useEffect(() => {
         if (!signatureCanvasRef.current) return;
@@ -253,9 +267,10 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
             }
             // Grava junto a versão do texto que esta tela mostrou (a que a
             // escola oferece; o servidor recusa outra).
-            const { data, error } = await supabase.rpc('accept_teacher_contract', {
+            const { data, error } = await supabase.rpc(termsVersion >= 3 ? 'accept_teacher_pj_contract' : 'accept_teacher_contract', {
                 p_typed_signature: finalSignature,
                 p_terms_version: termsVersion,
+                ...(termsVersion >= 3 ? { p_provider_identity: parseTeacherProviderIdentity(providerIdentity) } : {}),
             });
             if (error) throw error;
             if (!data?.ok) {
@@ -268,6 +283,9 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     // cópia do contrato (tenant_contract_records).
                     escola_sem_identidade_juridica: 'A escola ainda não configurou os dados jurídicos do contrato. Avise a direção.',
                     valor_por_aula_ausente: 'Seu valor por aula ainda não foi cadastrado. Avise a direção antes de assinar.',
+                    empresa_invalida: 'Confira os dados da empresa, o CPF e seus poderes de representação.',
+                    contexto_invalido: 'Sua conta não está habilitada para assinar nesta escola.',
+                    contrato_ja_assinado: 'Já existe contrato assinado. Esta tela não substitui o documento anterior.',
                 };
                 setError(map[data?.error] || 'Não foi possível registrar o aceite. Tente novamente.');
                 return;
@@ -336,6 +354,20 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     consulta e rastreabilidade.
                                 </p>
                             </div>
+                            {termsVersion >= 3 && <div data-tour="teacher-provider-identity" className="rounded-xl border border-brand-border p-4 space-y-3">
+                                <p className="text-sm font-bold">Empresa que você representa</p>
+                                {([
+                                    ['companyName', 'Razão social / nome empresarial', 160],
+                                    ['cnpj', 'CNPJ da empresa', 18],
+                                    ['companyAddress', 'Endereço completo da empresa', 300],
+                                    ['representativeCpf', 'CPF do representante', 14],
+                                ] as const).map(([key, label, maxLength]) => <label key={key} className="block text-xs font-bold">{label}
+                                    <input value={providerDetails[key]} maxLength={maxLength} disabled={submitting}
+                                        onChange={event => updateProvider(key, event.target.value)}
+                                        className="mt-1 block w-full rounded-lg border border-brand-border bg-brand-surface p-3 text-sm" />
+                                </label>)}
+                                <p className="text-xs text-brand-muted">Confira os dados. A assinatura declara que você possui poderes para contratar em nome dessa empresa.</p>
+                            </div>}
                             <div className="overflow-hidden rounded-2xl border border-brand-border bg-white">
                                 <div className="w-full">
                                         <TeacherContractDocument
@@ -348,6 +380,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             hourlyRate={Number(profile?.hourly_rate) || undefined}
                                             subscriptionId={profile?.subscription_id || undefined}
                                             termsVersion={termsVersion}
+                                            providerIdentity={providerIdentity}
                                             displayMode="responsive"
                                             showPrintButton={false}
                                         />
@@ -357,7 +390,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                             {!contractReadiness.isReady && (
                                 <div role="alert" className="flex items-start gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
                                     <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                                    <span>Aceite bloqueado até a escola configurar {contractReadiness.missingFields.join(', ')}. Nenhuma identidade de outro tenant será usada.</span>
+                                    <span>Antes de assinar, confira os campos pendentes: {contractReadiness.missingFields.join(', ')}. Os dados da escola devem ser completados pela direção.</span>
                                 </div>
                             )}
 
@@ -379,7 +412,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     >
                                         <Type size={14} /> Digitar nome
                                     </button>
-                                    <button
+                                    {termsVersion < 3 && <button
                                         type="button"
                                         onClick={() => setSignatureMode('scribble')}
                                         disabled={loading || submitting || !contractReadiness.isReady}
@@ -388,7 +421,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             : 'border-brand-border text-brand-muted hover:border-blue-500 hover:text-blue-700'}`}
                                     >
                                         <PencilLine size={14} /> Rabisco no app
-                                    </button>
+                                    </button>}
                                 </div>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${signatureMode === 'typed'
@@ -491,9 +524,8 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                     className="mt-1 w-5 h-5 accent-emerald-600 shrink-0"
                                 />
                                 <span className="text-sm text-brand-text font-medium">
-                                    Li e aceito os termos do contrato de prestação de serviços como PJ (pessoa jurídica autônoma),
-                                    reconhecendo a autonomia da minha agenda e a inexistência de vínculo empregatício. Registrarei
-                                    a nota fiscal dos serviços prestados conforme a legislação.
+                                    Li e aceito a versão apresentada do contrato. {termsVersion >= 3 && 'Confirmo os dados da empresa e meus poderes para representá-la, inclusive as regras de autonomia, atendimento e transição contratual de 30 dias. '}
+                                    A assinatura não contém renúncia a direitos indisponíveis. Emitirei a nota fiscal conforme a legislação aplicável.
                                 </span>
                             </label>
 

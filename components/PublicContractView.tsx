@@ -25,10 +25,11 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
         : profile?.school_info && typeof profile.school_info === 'object'
             ? profile.school_info as SchoolInfo
             : null;
-    const contractReadiness = getTeacherContractReadiness(schoolInfo, profile?.hourly_rate);
     // Versão do texto gravada no snapshot do contrato (commercial_snapshot).
     // Contrato de antes não tem: TeacherContractDocument mostra o texto antigo.
     const contractTermsVersion = parseContractTermsVersion('TEACHER', profile?.contractTermsVersion) ?? undefined;
+    const contractReadiness = getTeacherContractReadiness(schoolInfo, profile?.hourly_rate,
+        { termsVersion: contractTermsVersion ?? 1, providerIdentity: profile?.providerIdentity });
 
     const handleDownloadPdf = async () => {
         const el = contractPdfRef.current;
@@ -177,6 +178,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     hourlyRate={profile.hourly_rate}
                     rateUnit={profile.rateUnit}
                     termsVersion={contractTermsVersion}
+                    providerIdentity={profile.providerIdentity}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}
@@ -198,6 +200,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     hourlyRate={profile.hourly_rate}
                     rateUnit={profile.rateUnit}
                     termsVersion={contractTermsVersion}
+                    providerIdentity={profile.providerIdentity}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}

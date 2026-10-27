@@ -4206,6 +4206,52 @@ com o Mateus até 05/11) cadastrada ligada ao ajuste de R$ 30 já lançado em 20
 libera a oferta dele. Arquivos locais não rastreados do usuário foram preservados e
 restaurados.
 
+### 26/10/2026 — Encerramento autorizado e instrumentos de continuidade
+
+Uma saída autorizada foi concluída pelo `school-admin` na sessão autenticada da
+direção: estado COMPLETED, política WAIVE_CURRENT_MONTH, histórico preservado,
+aulas futuras encerradas e cobranças futuras canceladas. Recebimentos anteriores
+foram preservados; uma divergência legada foi corrigida pelo reparador canônico,
+com prova fresca do Asaas antes da operação. Comunicações autorizadas saíram pelo
+canal oficial, sem confundir aceite do provedor com leitura ou quitação do aluno.
+Identificadores, nomes, extratos e evidências ficam somente no relatório reservado
+em `output/seguranca-contratual-2026-10-26/`, fora do Git público.
+
+Minutas e procedimento em `docs/legal/seguranca-contratual-e-continuidade.md`;
+Word e PDFs em armazenamento reservado. O aluno mantém o contrato com a escola;
+o termo individual proposto é firmado por escola e professor, com o aluno como
+beneficiário e confirmação da agenda pela família em registro separado. O fluxo
+obrigatório de assinatura por aluno ainda não está implementado. Não criar multa,
+desconto, assinatura ou obrigação retroativa nem reescrever instrumentos aceitos.
+A apuração de casos anteriores exige contrato efetivamente firmado e evidências;
+relato e falta de registro isolados não constituem decisão automática de culpa.
+
+### 26/10/2026 — Contrato geral do professor PJ v3 (preparado, não publicado)
+
+A direção pediu corrigir o contrato atual e preservar o direito de saída com
+transição. V3 identifica empresa/representante e prevê aviso bilateral pactuado
+de 30 dias corridos (não mínimo legal universal), recusa de novas propostas,
+redução por acordo, motivos de saída antecipada e data final sem depender de
+substituto. Bônus de 10% mantido; penalidades proporcionais com manifestação,
+sem desconto automático ou reparação duplicada. Removidas da V3 a renúncia ampla
+a direitos, a presunção de MEI e a retenção global por ausência de NF.
+
+V1/V2 preservadas. Novos convites validam PJ e congelam identidade; primeiro
+aceite pelo app usa `accept_teacher_pj_contract`, com perfil bloqueado, tenant e
+membership ativos. API antiga não contorna V3; corpo legado protegido em private.
+Cópia consultada usa snapshot, não cadastro atual. Não alterar `rateUnit` no
+aceite do app. Seed one-shot promove apenas TEACHER da Wise Wolf de V2 para V3.
+Não força reaceite, aditivo ou assinatura por aluno; vias anteriores exigem
+instrumento próprio para mudanças futuras.
+
+Migration/testes/tour no release. Typecheck, 78 Vitest, 12 Deno e build aprovados
+(build com a flag dos vídeos públicos existentes). Migration 2× e duas suítes SQL
+na VPS em transações com rollback; nenhum efeito persistente ou mensagem externa.
+PDF v3 de 9 páginas com minuta integral e guia de saída, revisado visualmente.
+**Não publicado, sem contratos reais assinados ou reescritos.** Detalhes em
+`docs/runbooks/teacher-pj-contract-v3.md`; minuta em
+`docs/legal/contrato-geral-professor-pj-v3.md`.
+
 ### 26/10/2026 — Confirmação de acesso e parcelas legadas Asaas
 
 Correção financeira em `confirmed-enrollment-and-legacy-installments.md` no runbook.

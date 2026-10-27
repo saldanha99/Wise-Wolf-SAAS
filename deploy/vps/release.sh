@@ -585,6 +585,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/register-vendor/index.test.ts \
   supabase/functions/register-teacher/contract-terms.ts \
   supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/register-teacher/provider-identity.ts \
+  supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
@@ -873,6 +875,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/accept-coverage/form-action.test.ts \
   supabase/functions/student-card-suggestions/source.test.ts \
   supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
@@ -1529,6 +1532,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261012152506_atomic_student_exit_and_teacher_transfer.sql"
   "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
   "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
+  "supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1564,6 +1568,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
   "supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql"
   "supabase/tests/versao_do_contrato_no_aceite.sql"
+  "supabase/tests/contrato_professor_pj_e_transicao.sql"
   "supabase/tests/registro_autorizado_pela_escola.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"

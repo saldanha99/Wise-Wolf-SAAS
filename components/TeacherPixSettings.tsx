@@ -128,7 +128,7 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">CNPJ (MEI)</label>
+                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">CNPJ da empresa</label>
                             <input
                                 type="text"
                                 value={cnpj}

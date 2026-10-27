@@ -53,7 +53,7 @@ export const LEGACY_CONTRACT_TERMS_VERSION = 1;
  */
 export const CURRENT_CONTRACT_TERMS_VERSION: Readonly<Record<ContractKind, number>> = {
   STUDENT: 2,
-  TEACHER: 2,
+  TEACHER: 3,
 };
 
 /** Primeira versão de cada contrato que traz a cláusula do registro das aulas. */
@@ -153,6 +153,7 @@ export function contractIncludesLessonRecording(kind: ContractKind, version: num
 
 /** Rótulo curto para a direção conferir o que cada pessoa assinou. */
 export function contractTermsLabel(kind: ContractKind, version: number): string {
+  if (kind === 'TEACHER' && version >= 3) return `Versão ${version} — PJ, autonomia e transição contratual de 30 dias`;
   return contractIncludesLessonRecording(kind, version)
     ? `Versão ${version} — com a cláusula do registro das aulas`
     : `Versão ${version} — texto anterior, sem a cláusula do registro das aulas`;

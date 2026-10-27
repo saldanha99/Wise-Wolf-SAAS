@@ -840,6 +840,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-20-reserva-de-agenda-professor', title: 'Horário reservado para aluno novo', roles: ['TEACHER'],
     steps: [{ target: 'agenda-future-start-hold-legend', view: 'schedule', title: 'Reservado até o aluno começar', text: 'Quando um aluno fecha agora e começa numa data futura, o horário dele aparece na sua Agenda tracejado em verde-azulado (RES), com a data de início. A escola paga a reserva na sua folha do mês. Mantenha o horário livre até lá; quando o aluno assina, a aula fixa dele passa a ocupar o mesmo lugar.' }],
   },
+  {
+    id: '2026-10-26-contrato-professor-pj', title: 'Novo contrato de prestação por PJ', roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    steps: [{ target: 'sidebar-nav', view: 'dashboard', title: 'Contratos novos e saída organizada', text: 'Quando a escola oferecer a versão 3, o novo contrato do professor identificará a empresa e preverá autonomia e comunicação de saída com 30 dias corridos de transição, com hipóteses de redução e encerramento antecipado. Na assinatura, confira CNPJ, razão social, endereço e representação. Contratos anteriormente assinados mantêm o texto original; qualquer alteração deles exige instrumento próprio. A assinatura individual por aluno ainda depende de implementação.' }],
+  },
 ];
 
 /**

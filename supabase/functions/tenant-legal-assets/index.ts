@@ -488,6 +488,7 @@ async function resolveContract(
     cpf: party.cpf,
     address: party.address,
     birth_date: party.birthDate,
+    providerIdentity: party.providerIdentity || null,
     hourly_rate: commercial.hourlyRate,
     rateUnit: teacherContractRateUnit(commercial),
     // Versão do texto assinado (register-teacher grava desde 27/09/2026).

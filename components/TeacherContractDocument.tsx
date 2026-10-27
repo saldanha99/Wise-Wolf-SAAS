@@ -3,6 +3,8 @@ import { useReactToPrint } from 'react-to-print';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
+import { TEACHER_PJ_CONTRACT_SINCE, teacherPjClauses } from '../lib/teacherPjContract';
+import { parseTeacherProviderIdentity } from '../lib/teacherProviderIdentity';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLÁUSULA DO REGISTRO DAS AULAS (versão 2 em diante)
@@ -73,22 +75,27 @@ interface TeacherContractProps {
      * a versão oferecida explicitamente, e grava a mesma.
      */
     termsVersion?: number;
+    providerIdentity?: unknown;
     displayMode?: 'responsive' | 'a4';
     showPrintButton?: boolean;
     innerRef?: React.RefObject<HTMLDivElement>;
 }
 
-export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRate?: number | null) {
+export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRate?: number | null,
+    options?: { termsVersion: number; providerIdentity?: unknown }) {
     const schoolIdentity = getSchoolContractIdentity(school);
     const normalizedHourlyRate = Number(hourlyRate);
     const hasValidHourlyRate = Number.isFinite(normalizedHourlyRate) && normalizedHourlyRate > 0;
+    const providerReady = !options || options.termsVersion < TEACHER_PJ_CONTRACT_SINCE
+        || Boolean(parseTeacherProviderIdentity(options.providerIdentity));
     return {
         ...schoolIdentity,
         hourlyRate: hasValidHourlyRate ? normalizedHourlyRate : null,
-        isReady: schoolIdentity.isReady && hasValidHourlyRate,
-        missingFields: hasValidHourlyRate
+        isReady: schoolIdentity.isReady && hasValidHourlyRate && providerReady,
+        missingFields: [...(hasValidHourlyRate
             ? schoolIdentity.missingFields
-            : [...schoolIdentity.missingFields, 'valor por aula'],
+            : [...schoolIdentity.missingFields, 'valor por aula']),
+            ...(!providerReady ? ['razão social, CNPJ, endereço da empresa e CPF do representante válidos'] : [])],
     };
 }
 
@@ -106,6 +113,7 @@ export function TeacherContractDocument({
     userIp,
     subscriptionId,
     termsVersion,
+    providerIdentity,
     displayMode = 'a4',
     showPrintButton = true,
     innerRef,
@@ -113,7 +121,6 @@ export function TeacherContractDocument({
     const componentRef = useRef<HTMLDivElement>(null);
     const documentRef = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
     const isResponsive = displayMode === 'responsive';
-    const schoolIdentity = getTeacherContractReadiness(school, hourlyRate);
     // Contrato assinado nunca muda de texto: sem versão gravada no aceite, é o
     // texto de antes da cláusula do registro das aulas.
     const contractVersion = resolveContractTermsVersion('TEACHER', {
@@ -121,6 +128,9 @@ export function TeacherContractDocument({
         recordedVersion: termsVersion,
     });
     const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractVersion);
+    const isPjContract = contractVersion >= TEACHER_PJ_CONTRACT_SINCE;
+    const provider = parseTeacherProviderIdentity(providerIdentity);
+    const schoolIdentity = getTeacherContractReadiness(school, hourlyRate, { termsVersion: contractVersion, providerIdentity });
 
     const handlePrint = useReactToPrint({
         contentRef: documentRef,
@@ -217,24 +227,32 @@ export function TeacherContractDocument({
                         {schoolIdentity.name}
                     </div>
                     <div className="text-right text-[10px] text-gray-500 uppercase font-bold">
-                        Professor Autônomo
+                        {isPjContract ? 'Prestação de serviços por pessoa jurídica' : 'Professor Autônomo'}
                     </div>
                 </div>
 
-                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-gray-200 py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
+                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-gray-200 py-2">{isPjContract ? 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS – PESSOA JURÍDICA' : 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO'}</h1>
 
                 {/* Identificação das Partes */}
                 <div className="mb-4 space-y-2 text-justify">
                     <p>
                         <strong>CONTRATANTE:</strong> {schoolIdentity.name}, inscrita no CNPJ sob nº {schoolIdentity.cnpj}, com sede em {schoolIdentity.address}, neste ato representada por {schoolIdentity.directorName}, doravante denominada <strong>“CONTRATANTE”</strong>.
                     </p>
-                    <p>
+                    {isPjContract ? <p>
+                        <strong>CONTRATADA:</strong> {provider?.companyName || '[RAZÃO SOCIAL PENDENTE]'}, inscrita no CNPJ sob nº {provider?.cnpj || '[CNPJ PENDENTE]'}, com sede em {provider?.companyAddress || '[ENDEREÇO DA EMPRESA PENDENTE]'}, representada por {teacherName || '[REPRESENTANTE PENDENTE]'}, CPF {provider?.representativeCpf || '[CPF PENDENTE]'}, que declara poderes para esta contratação. Professor executor inicialmente indicado: {teacherName || '[PROFESSOR PENDENTE]'}. Doravante denominada <strong>“CONTRATADA”</strong>. Na Cláusula 11ª, “CONTRATADO” designa o professor executor quanto ao registro de suas aulas e aos seus direitos sobre dados pessoais.
+                    </p> : <p>
                         <strong>CONTRATADO:</strong> {teacherName || '---'}, brasileiro(a), nascido(a) em {teacherBirthDate || '---'}, portador(a) do RG nº {teacherRG || '---'}, CPF nº {teacherCPF || '---'}, domiciliado(a) em {teacherAddress || '---'}, doravante denominado <strong>“PROFESSOR”</strong>.
-                    </p>
+                    </p>}
                 </div>
 
                 {/* Cláusulas */}
                 <div className="space-y-3">
+                    {isPjContract ? teacherPjClauses(lessonRate).map(clause => (
+                        <div key={clause.title} data-contract-clause="pj-v3">
+                            <h3 className="font-bold uppercase text-[#002366] mb-1">{clause.title}</h3>
+                            {clause.paragraphs.map(paragraph => <p key={paragraph.slice(0, 8)} className="text-justify">{paragraph}</p>)}
+                        </div>
+                    )) : <>
                     <div>
                         <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 1ª – OBJETO</h3>
                         <p className="text-justify">
@@ -364,11 +382,12 @@ export function TeacherContractDocument({
                         </p>
                     </div>
 
+                    </>}
                     {withLessonRecording && <TeacherLessonRecordingClause />}
                 </div>
 
                 <p className="mt-4 text-justify italic text-gray-500">
-                    E, por estarem justos e contratados, assinam o presente instrumento em duas vias de igual teor, juntamente com duas testemunhas.
+                    {isPjContract ? 'As partes firmam este instrumento por meio eletrônico, com acesso à versão integral e ao comprovante das manifestações. A assinatura do representante vincula a pessoa jurídica identificada, nos limites de seus poderes.' : 'E, por estarem justos e contratados, assinam o presente instrumento em duas vias de igual teor, juntamente com duas testemunhas.'}
                 </p>
 
                 {/* Assinaturas */}
@@ -421,8 +440,8 @@ export function TeacherContractDocument({
                                 )}
                             </div>
                             <div className="border-t border-black pt-1 w-full text-center">
-                                <p className="font-bold uppercase text-[10px]">{teacherName || 'Professor'}</p>
-                                <p className="text-[8px] text-gray-500 uppercase">CONTRATADO</p>
+                                <p className="font-bold uppercase text-[10px]">{isPjContract ? provider?.companyName || '[RAZÃO SOCIAL PENDENTE]' : teacherName || 'Professor'}</p>
+                                <p className="text-[8px] text-gray-500 uppercase">{isPjContract ? `CONTRATADA — representada por ${teacherName}` : 'CONTRATADO'}</p>
                             </div>
                         </div>
                     </div>
