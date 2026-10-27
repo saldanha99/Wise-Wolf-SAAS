@@ -41,6 +41,7 @@ declare
   v_lifecycle text;
   v_sensitive_blocked boolean := false;
   v_unlinked_blocked boolean := false;
+  v_lifecycle_blocked boolean := false;
 begin
   perform set_config('role', 'postgres', true);
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
@@ -103,13 +104,24 @@ begin
          lifecycle_status = 'active'
    where id = v_student;
 
-  -- 1. Diretor altera nível para B1 e status para Inativo
+  -- A alteração pedagógica não pode suspender sem concluir o financeiro.
   perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', v_director::text)::text, true);
+  begin
+    perform public.update_student_pedagogical_profile(
+      v_student, jsonb_build_object('module', 'B1', 'status', 'Inativo')
+    );
+  exception when sqlstate '55000' then
+    if sqlerrm <> 'student_lifecycle_requires_school_admin' then raise; end if;
+    v_lifecycle_blocked := true;
+  end;
+  perform pg_temp.assert_true(v_lifecycle_blocked, 'perfil pedagógico não contorna o financeiro');
+  perform pg_temp.assert_true((select module='A1' and lifecycle_status='active' from public.profiles where id=v_student), 'falha mantém a alteração composta atômica');
+
+  -- 1. Diretor altera o nível sem mudar o ciclo financeiro.
   v_res := public.update_student_pedagogical_profile(
     v_student,
     jsonb_build_object(
-      'module', 'B1',
-      'status', 'Inativo'
+      'module', 'B1'
     )
   );
   perform pg_temp.assert_true((v_res ->> 'success')::boolean, 'diretor update deve ter sucesso');
@@ -121,17 +133,37 @@ begin
 
   perform pg_temp.assert_equals(v_mod, 'B1', 'modulo atualizado pelo diretor');
   perform pg_temp.assert_equals(v_part, 'B1-1', 'book part atualizado pelo diretor');
-  perform pg_temp.assert_equals(v_status, 'Inativo', 'status atualizado pelo diretor');
-  perform pg_temp.assert_equals(v_lifecycle, 'suspended', 'lifecycle atualizado pelo diretor');
+  perform pg_temp.assert_equals(v_status, 'Ativo', 'edição pedagógica preserva o status');
+  perform pg_temp.assert_equals(v_lifecycle, 'active', 'edição pedagógica preserva o ciclo financeiro');
 
-  -- 1b. Só a direção reativa o aluno. Professor não enxerga aluno inativo desde
-  -- a migration 20260922040818, então o passo 2 precisa de um aluno ativo —
-  -- como na escola real, onde quem inativa e reativa é a direção.
+  v_lifecycle_blocked := false;
+  begin
+    perform public.set_student_academic_status(v_student, 'Inativo', 'fixture');
+  exception when sqlstate '55000' then
+    if sqlerrm <> 'student_lifecycle_requires_school_admin' then raise; end if;
+    v_lifecycle_blocked := true;
+  end;
+  perform pg_temp.assert_true(v_lifecycle_blocked, 'RPC legada não suspende sem financeiro');
+
+  -- Um pedido idempotente do status vigente continua compatível.
   v_res := public.update_student_pedagogical_profile(
     v_student,
     jsonb_build_object('status', 'Ativo')
   );
-  perform pg_temp.assert_true((v_res ->> 'success')::boolean, 'diretor reativa o aluno');
+  perform pg_temp.assert_true((v_res ->> 'success')::boolean, 'status vigente é idempotente');
+
+  -- Fixture local: reativação também precisa passar pelo fluxo financeiro.
+  update public.profiles set status='Inativo', lifecycle_status='suspended' where id=v_student;
+  v_lifecycle_blocked := false;
+  begin
+    perform public.set_student_academic_status(v_student, 'Ativo', 'fixture');
+  exception when sqlstate '55000' then
+    if sqlerrm <> 'student_lifecycle_requires_school_admin' then raise; end if;
+    v_lifecycle_blocked := true;
+  end;
+  perform pg_temp.assert_true(v_lifecycle_blocked, 'RPC legada não reativa sem financeiro');
+  perform pg_temp.assert_true((select lifecycle_status='suspended' from public.profiles where id=v_student), 'reativação negada preserva a pausa');
+  update public.profiles set status='Ativo', lifecycle_status='active' where id=v_student;
 
   -- 2. Professor responsável altera o nível para A2 e TENTA mexer no status.
   -- Desde a migration 20260922032314 o status é administração da direção: o

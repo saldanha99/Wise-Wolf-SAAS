@@ -4,7 +4,6 @@ import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
 import { safeMeetingLink } from '../lib/meetingLink';
-import { parseFunctionErrorAsync } from '../lib/functionInvokeErrors';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
@@ -14,6 +13,7 @@ import StudentProfileEditor from './StudentProfileEditor';
 import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 import { provisionStudentAccount } from '../lib/studentAccountProvisioning';
+import { changeStudentLifecycle } from '../lib/studentLifecycleRequest';
 import {
   canPreserveExactlyOneCurrentMonthInvoice,
   isConfirmedOrReceivedCurrentMonthStatus,
@@ -595,21 +595,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       // Atualiza status se alterado no formulário
       if (formData.status && formData.status !== (editingStudent.status || (isInactive(editingStudent) ? 'Inativo' : 'Ativo'))) {
         const targetInactive = formData.status === 'Inativo' || formData.status === 'Trancado';
-        try {
-          await supabase.functions.invoke('school-admin', {
-            body: {
-              action: 'setStudentLifecycle',
-              studentId: editingStudent.id,
-              status: targetInactive ? 'suspended' : 'active',
-              reason: 'Alterado no formulário de edição do aluno',
-            },
-          });
-        } catch (_) {
-          await supabase.rpc('set_student_academic_status', {
-            p_student_id: editingStudent.id,
-            p_status: formData.status,
-          });
-        }
+        await changeStudentLifecycle(supabase, {
+          studentId: editingStudent.id,
+          status: targetInactive ? 'suspended' : 'active',
+          reason: 'Alterado no formulário de edição do aluno',
+        });
       }
 
       if (contractSigned) {
@@ -619,8 +609,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       }
       setEditingStudent(null);
 
-      // Sincroniza no Asaas apenas campos não-contratuais se já assinou
-      try {
+      // Matrícula inativa não volta ao fluxo de criação/sincronização de cobrança.
+      const statusAfterEdit = formData.status || editingStudent.status || (isInactive(editingStudent) ? 'Inativo' : 'Ativo');
+      if (statusAfterEdit === 'Ativo') try {
         await asaasService.syncStudent({
           user_id: editingStudent.id,
           name: contractSigned ? editingStudent.name : formData.name,
@@ -721,24 +712,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('school-admin', {
-        body: {
-          action: 'setStudentLifecycle',
-          studentId: student.id,
-          status: makeInactive ? 'suspended' : 'active',
-          reason: makeInactive ? 'Suspenso pela coordenação' : null,
-        },
+      const data = await changeStudentLifecycle(supabase, {
+        studentId: student.id,
+        status: makeInactive ? 'suspended' : 'active',
+        reason: makeInactive ? 'Suspenso pela coordenação' : null,
       });
-      if (error || (data && (data as any).ok === false)) {
-        const parsed = await parseFunctionErrorAsync({
-          error,
-          data,
-          fallbackMessage: 'Não foi possível alterar o status do aluno.',
-        });
-        throw new Error(parsed.message + (parsed.details ? `
-
-${parsed.details}` : ''));
-      }
       const newLifecycle = makeInactive ? 'suspended' : 'active';
       setStudents(prev => prev.map(s => s.id === student.id ? {
         ...s,
@@ -861,19 +839,13 @@ ${parsed.details}` : ''));
     isOffboardingRef.current = true;
     setIsOffboarding(true);
     try {
-      const { data, error } = await supabase.functions.invoke('school-admin', {
-        body: {
-          action: 'setStudentLifecycle',
-          studentId: offboardingStudent.id,
-          status: 'offboarded',
-          reason: offboardingReason.trim(),
-          billingPolicy: offboardingPolicy,
-          effectiveEndDate: offboardingEffectiveDate,
-        },
+      const data = await changeStudentLifecycle(supabase, {
+        studentId: offboardingStudent.id,
+        status: 'offboarded',
+        reason: offboardingReason.trim(),
+        billingPolicy: offboardingPolicy,
+        effectiveEndDate: offboardingEffectiveDate,
       });
-      if (error || (data && (data as any).ok === false)) {
-        throw new Error(error?.message || (data as any)?.error || 'falha');
-      }
       const billing = (data as any)?.billing || {};
       setStudents(prev => prev.map(s => s.id === offboardingStudent.id ? { ...s, status: 'Inativo', lifecycle_status: 'offboarded' } : s));
       offboardingPreviewRequestId.current += 1;

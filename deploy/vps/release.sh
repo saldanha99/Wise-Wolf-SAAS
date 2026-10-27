@@ -1533,6 +1533,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
   "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
   "supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql"
+  "supabase/migrations/20261027114059_student_lifecycle_requires_financial_confirmation.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
 )
 DATABASE_TEST_RELATIVES=(

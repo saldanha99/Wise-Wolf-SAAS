@@ -33,6 +33,7 @@ import { asaasService } from '../services/asaasService';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { provisionStudentAccount } from '../lib/studentAccountProvisioning';
+import { changeStudentLifecycle } from '../lib/studentLifecycleRequest';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -620,9 +621,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       // Atualiza status se alterado no formulário
       if (profileData.status && profileData.status !== (loadedProfile.status || 'Ativo')) {
-        await supabase.rpc('set_student_academic_status', {
-          p_student_id: editingBooking.studentId,
-          p_status: profileData.status,
+        await changeStudentLifecycle(supabase, {
+          studentId: editingBooking.studentId,
+          status: ['Inativo', 'Trancado'].includes(profileData.status) ? 'suspended' : 'active',
+          reason: 'Alterado no formulário da gestão de agenda',
         });
       }
 

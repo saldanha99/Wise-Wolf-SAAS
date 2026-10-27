@@ -4350,3 +4350,28 @@ zero altos. Restam três casos que dependem da direção: cliente sem aluno e du
 cobranças futuras de cadastros suspenso/encerrado. Não cancelar por inferência.
 Sem alteração de código, migration ou deploy nesta etapa. Procedimento em
 `docs/runbooks/confirmed-enrollment-and-legacy-installments.md`.
+
+### 27/10/2026 — Status da matrícula depende do financeiro (preparado)
+
+Editores da lista e da agenda não podem mudar somente o cadastro e deixar a
+recorrência ativa. Helper `changeStudentLifecycle` exige confirmação `ok: true`
+do school-admin, sem fallback SQL ou retry incerto; pausa/reativação e encerramento
+também passam por ele. A RPC `set_student_academic_status` mantém somente o pedido
+idempotente do status vigente. Transição direta ou pelo editor pedagógico retorna
+`student_lifecycle_requires_school_admin`, preservando permissões e atomicidade.
+
+Migration reexecutável `20261027114059`, suíte SQL atualizada e tour da direção
+registrados no release. Typecheck, 33 Vitest relacionados, 17 Deno e migration 2×
+com suíte pedagógica/administrativa em rollback aprovados. Ainda não declarar a
+proteção publicada antes do release oficial. Runbook:
+`docs/runbooks/student-lifecycle-billing-confirmation.md`.
+
+Após confirmação da direção, três recorrências legadas e suas faturas futuras
+foram encerradas no Asaas, preservando os 16 recebimentos correspondentes. Dois
+cadastros inativos tinham assinatura local ausente; um cliente não tinha aluno.
+Não foi inventado vínculo de aluno. Reparos locais somente após prova de exclusão,
+com backup e comparação dos documentos assinados. Conferência de 11 clientes de
+alunos inativos não encontrou assinatura ativa restante; duas dívidas históricas
+de outro cadastro exigem decisão própria e não foram apagadas por inferência.
+Provas reservadas em `inactive-billing-stop-20261027` na VPS; nunca publicar
+relatórios financeiros com nomes, documentos ou payloads de alunos no Git público.

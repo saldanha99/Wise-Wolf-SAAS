@@ -844,6 +844,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id: '2026-10-26-contrato-professor-pj', title: 'Novo contrato de prestação por PJ', roles: ['SCHOOL_ADMIN', 'TEACHER'],
     steps: [{ target: 'sidebar-nav', view: 'dashboard', title: 'Contratos novos e saída organizada', text: 'Quando a escola oferecer a versão 3, o novo contrato do professor identificará a empresa e preverá autonomia e comunicação de saída com 30 dias corridos de transição, com hipóteses de redução e encerramento antecipado. Na assinatura, confira CNPJ, razão social, endereço e representação. Contratos anteriormente assinados mantêm o texto original; qualquer alteração deles exige instrumento próprio. A assinatura individual por aluno ainda depende de implementação.' }],
   },
+  {
+    id: '2026-10-27-matricula-e-cobranca-juntas', title: 'Pausa e encerramento com financeiro conferido', roles: ['SCHOOL_ADMIN'],
+    steps: [{ target: 'sidebar-nav', view: 'students', title: 'Aguarde a confirmação da matrícula', text: 'Ao pausar ou encerrar uma matrícula, o sistema confere a assinatura e as cobranças no Asaas antes de confirmar o novo status. Isso também vale ao editar o cadastro pela lista de alunos ou pela agenda. Se houver divergência ou falha de comunicação, a tela mostra a pendência para conferência e não confirma a mudança. Pagamentos recebidos e documentos assinados são preservados. Use Pausar para interrupção temporária e Encerrar para saída definitiva.' }],
+  },
 ];
 
 /**
