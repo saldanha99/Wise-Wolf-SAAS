@@ -872,6 +872,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-27-zz-professor-autonomo',title:'Sem CNPJ? Você também pode assinar',roles:['TEACHER'],
     steps:[{target:'sidebar-nav',view:'contract_teacher',title:'Empresa ou autônomo',text:'No contrato geral e nos termos por aluno, escolha se presta o serviço com CNPJ (empresa ou MEI) ou como autônomo, com seu CPF. Sem CNPJ, o contrato geral é o de prestação como pessoa física. Quando a escola assinar um termo para você, chega um aviso no seu WhatsApp para conferir e assinar ou recusar.'}],
   },
+  {
+    id:'2026-10-28-painel-da-direcao',title:'Painel da direção de cara nova',roles:['SCHOOL_ADMIN'],
+    steps:[{target:'pending-center',view:'dashboard',title:'Os números são os das telas de origem',text:'O início foi redesenhado. Recebido, a receber e inadimplência saem do Fluxo de Caixa; a folha do mês sai do Repasse a Profs, e a receita dos últimos 6 meses é a mesma do caixa. Antes o painel somava a receita pela data de lançamento e estimava a folha no navegador, e os valores não batiam com as outras telas. Clique em qualquer cartão para abrir a tela de onde ele vem.'}],
+  },
 
 ];
 

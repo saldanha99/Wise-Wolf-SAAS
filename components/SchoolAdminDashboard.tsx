@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Users, BookOpen, Clock, Zap, ArrowUpRight, TrendingDown, Target, Award, AlertCircle, Search, MoreHorizontal, UserCheck, Calendar, RefreshCw, FileDown, UserPlus, MoreVertical, Video, DollarSign, Wallet, Beaker } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle, ArrowDownCircle, ArrowUpCircle, Beaker, CalendarCheck, ChevronRight,
+  Clock, GraduationCap, Link2, RefreshCw, Sparkles, TrendingUp, UserPlus, Users, Wallet,
+} from 'lucide-react';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
-import AvailabilityHeatmap from './AvailabilityHeatmap';
 import TeacherTrainingAdmin from './training/TeacherTrainingAdmin';
 import AiTeamPanel from './training/AiTeamPanel';
-import FinancialCharts from './FinancialCharts';
 import RegistrationLinkGenerator from './RegistrationLinkGenerator';
-import AdminPaymentsList from './AdminPaymentsList';
 import AutomacaoSmart from './AutomacaoSmart';
 import ManualTrialScheduler from './ManualTrialScheduler';
 import DirectorPendingCenter from './DirectorPendingCenter';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
-import { formatLocalDateBr } from '../lib/dateUtils';
+import { formatLocalDateBr, localMonth, monthRange } from '../lib/dateUtils';
 
 interface SchoolAdminDashboardProps {
   teachers: Teacher[];
@@ -23,542 +23,497 @@ interface SchoolAdminDashboardProps {
   userRole?: string;
 }
 
-const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, tenantId, onViewTeacherSchedule, onNavigate, userRole }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
+type DashTab = 'analytics' | 'training' | 'registration' | 'recruiting' | 'ai_team';
+
+// Retorno de get_cashflow — a mesma conta do Fluxo de Caixa e do DRE.
+interface Cashflow {
+  entradas: number;
+  saldo: number;
+  a_receber: number;
+  saidas: { professores: number; vendedores: number; indicacoes: number; despesas: number; total: number };
+  inadimplencia: { total: number; count: number; d1_30: number; d31_60: number; d60plus: number };
+  serie: { mes: string; entradas: number }[] | null;
+}
+
+interface PayrollRow { amount: number | string; lessons: number; previa: boolean }
+
+interface RecentPayment {
+  id: string;
+  value: number | string;
+  status: string;
+  payment_date: string | null;
+  profiles: { full_name: string | null } | null;
+}
+
+interface Overview {
+  cash: Cashflow | null;
+  payroll: number | null;
+  payrollPreview: boolean;
+  lessons: number;
+  activeStudents: number;
+  contracted: number;
+  presence: number | null;
+  recent: RecentPayment[];
+}
+
+const EMPTY: Overview = {
+  cash: null, payroll: null, payrollPreview: false, lessons: 0,
+  activeStudents: 0, contracted: 0, presence: null, recent: [],
+};
+
+const money = (v: number | null | undefined, digits = 2) =>
+  v === null || v === undefined
+    ? '—'
+    : `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+
+const monthShort = (m: string) => {
+  const [y, mo] = m.split('-');
+  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+};
+
+const TABS: { id: DashTab; label: string; icon: React.ElementType }[] = [
+  { id: 'analytics', label: 'Visão geral', icon: Sparkles },
+  { id: 'registration', label: 'Link Matrícula', icon: Link2 },
+  { id: 'recruiting', label: 'Recrutamento', icon: UserPlus },
+  { id: 'training', label: 'Treinamento', icon: GraduationCap },
+  { id: 'ai_team', label: 'Equipe de IA', icon: Sparkles },
+];
+
+/**
+ * Cartão com inclinação 3D que segue o ponteiro. Sem ponteiro fino (celular) ou
+ * com "reduzir movimento" ligado, fica parado — só a profundidade estática.
+ */
+const TiltCard: React.FC<{ className?: string; children: React.ReactNode; onClick?: () => void }> = ({ className = '', children, onClick }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const canTilt = useMemo(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(pointer: fine)').matches
+      && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
+
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canTilt || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    ref.current.style.transform = `perspective(900px) rotateX(${(-y * 8).toFixed(2)}deg) rotateY(${(x * 10).toFixed(2)}deg) translateZ(0)`;
+    ref.current.style.setProperty('--glare-x', `${(x + 0.5) * 100}%`);
+    ref.current.style.setProperty('--glare-y', `${(y + 0.5) * 100}%`);
+  };
+  const onLeave = () => {
+    if (ref.current) ref.current.style.transform = '';
+  };
+
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <div
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      className={`group relative rounded-3xl transition-transform duration-200 ease-out will-change-transform [transform-style:preserve-3d] ${className}`}
+    >
+      <Tag
+        type={onClick ? 'button' : undefined}
+        onClick={onClick}
+        className="relative block h-full w-full overflow-hidden rounded-3xl border border-brand-border bg-brand-surface text-left shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_18px_40px_-24px_rgba(15,23,42,0.45)] transition-shadow duration-300 group-hover:shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_30px_60px_-28px_rgba(37,99,235,0.45)]"
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+          style={{ background: 'radial-gradient(420px circle at var(--glare-x,50%) var(--glare-y,0%), color-mix(in srgb, var(--brand-accent) 16%, transparent), transparent 60%)' }}
+        />
+        <span className="relative block h-full [transform:translateZ(24px)]">{children}</span>
+      </Tag>
+    </div>
+  );
+};
+
+const KpiCard: React.FC<{
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ElementType;
+  tone: 'emerald' | 'rose' | 'sky' | 'amber' | 'violet';
+  loading: boolean;
+  onClick?: () => void;
+}> = ({ label, value, hint, icon: Icon, tone, loading, onClick }) => {
+  const tones = {
+    emerald: 'from-emerald-400 to-teal-500 shadow-emerald-500/40',
+    rose: 'from-rose-400 to-red-500 shadow-rose-500/40',
+    sky: 'from-sky-400 to-blue-600 shadow-blue-500/40',
+    amber: 'from-amber-300 to-orange-500 shadow-orange-500/40',
+    violet: 'from-violet-400 to-indigo-600 shadow-indigo-500/40',
+  } as const;
+  return (
+    <TiltCard onClick={onClick}>
+      <span className="flex h-full flex-col gap-4 p-5">
+        <span className="flex items-start justify-between gap-3">
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-brand-muted">{label}</span>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg ${tones[tone]}`}>
+            <Icon size={18} strokeWidth={2.2} />
+          </span>
+        </span>
+        <span className="text-[1.65rem] font-extrabold leading-none tracking-tight text-brand-text tabular-nums">
+          {loading ? <span className="inline-block h-7 w-32 animate-pulse rounded-lg bg-brand-surface-2" /> : value}
+        </span>
+        <span className="mt-auto flex items-center justify-between text-xs text-brand-muted">
+          {hint}
+          {onClick && <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />}
+        </span>
+      </span>
+    </TiltCard>
+  );
+};
+
+const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, tenantId, onNavigate, userRole }) => {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'recruiting' | 'ai_team'>('analytics');
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DashTab>('analytics');
   const [showTrialScheduler, setShowTrialScheduler] = useState(false);
+  const [data, setData] = useState<Overview>(EMPTY);
+  const month = localMonth();
 
-  const [stats, setStats] = useState({
-    realRevenue: 0,
-    mrrForecast: 0,
-    pendingRevenue: 0,
-    overdueCount: 0,
-    ticketAvg: 0,
-    payroll: 0,
-    activeStudents: 0,
-    totalLeads: 0,
-    successRate: 0
-  });
-
-  const [recentPayments, setRecentPayments] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (tenantId) fetchAnalytics();
-  }, [tenantId]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
+    setError(null);
+    const { start, endExclusive } = monthRange(month);
     try {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      // Tudo das fontes oficiais: caixa = get_cashflow (mesma conta do Fluxo de
+      // Caixa e do DRE), folha = payroll_month_preview (mesma do Repasse a Profs).
+      const [cashRes, payrollRes, studentsRes, logsRes, recentRes] = await Promise.all([
+        supabase.rpc('get_cashflow', { p_month: month }),
+        supabase.rpc('payroll_month_preview', { p_month: month }),
+        supabase.rpc('get_authorized_student_billing_summary', { p_tenant_id: tenantId }),
+        supabase
+          .from('class_logs')
+          .select('presence')
+          .eq('tenant_id', tenantId)
+          .gte('class_date', start)
+          .lt('class_date', endExclusive),
+        supabase
+          .from('student_payments')
+          .select('id, value, status, payment_date, profiles ( full_name )')
+          .eq('tenant_id', tenantId)
+          .in('status', ['RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED'])
+          .not('payment_date', 'is', null)
+          .order('payment_date', { ascending: false })
+          .limit(6),
+      ]);
 
-      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
-      const endOfMonth = new Date(startOfMonth);
-      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-      const endOfMonthStr = endOfMonth.toISOString().split('T')[0];
+      const cashRaw = cashRes.data as (Cashflow & { error?: string }) | null;
+      const cash = cashRes.error || !cashRaw || cashRaw.error ? null : cashRaw;
 
-      // 1. Fetch Students (MRR Forecast & Active Count)
-      const { data: students } = await supabase.rpc(
-        'get_authorized_student_billing_summary',
-        { p_tenant_id: tenantId },
-      );
+      const payrollRows = Array.isArray((payrollRes.data as { teachers?: PayrollRow[] } | null)?.teachers)
+        ? (payrollRes.data as { teachers: PayrollRow[] }).teachers
+        : null;
+      const payroll = payrollRes.error || !payrollRows
+        ? null
+        : payrollRows.reduce((acc, r) => acc + Number(r.amount || 0), 0);
+      const lessons = (payrollRows || []).reduce((acc, r) => acc + Number(r.lessons || 0), 0);
 
-      const studentList = students || [];
-      const activeStudents = studentList.length;
+      const students = (studentsRes.data as { monthly_fee: number | null }[] | null) || [];
+      const contracted = students.reduce((acc, s) => acc + Number(s.monthly_fee || 0), 0);
 
-      // MRR Forecast = Sum of all contracts (monthly_fees)
-      const mrrForecast = studentList.reduce((acc, s) => acc + (s.monthly_fee || 0), 0);
+      // Presença: aulas dadas sobre o que foi lançado no mês da aula (class_date).
+      const logs = (logsRes.data as { presence: string | null }[] | null) || [];
+      const presence = logs.length
+        ? (logs.filter((l) => l.presence === 'COMPLETED').length / logs.length) * 100
+        : null;
 
-      // 2. Fetch REAL Payments (Cash Flow - This Month)
-      // We explicitly check:
-      // a) Recieved/Confirmed payments where PAYMENT_DATE is inside the range (Cash Basis)
-      // OR
-      // b) Pending payments where DUE_DATE is inside the range (Forecast)
-
-      // 2. Fetch REAL Revenue from FINANCIAL TRANSACTIONS (Official Ledger)
-      const { data: transactions } = await supabase
-        .from('financial_transactions') // Use the correct table
-        .select('amount, type, created_at')
-        .eq('tenant_id', tenantId)
-        .eq('type', 'ENTRADA') // Only income
-        .gte('created_at', startOfMonth.toISOString())
-        .lt('created_at', endOfMonth.toISOString());
-
-      const realRevenue = (transactions || []).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-
-
-      // Calculate Pending (Pending/Overdue)
-      // Calculate Pending (Pending/Overdue) from Student Payments (Forecast)
-      // We still need to fetch pending payments for this part
-      const { data: pendingPayments } = await supabase
-        .from('student_payments')
-        .select('value, status')
-        .eq('tenant_id', tenantId) // Ensure tenant_id is on student_payments or use inner join
-        .or('status.eq.PENDING,status.eq.OVERDUE'); // Fetch all pending/overdue to filter in memory or fine tune
-
-      // Actually, for dashboard we usually show pending for THIS MONTH.
-      // But "Pendente" widget usually means "A receiveable that is open".
-      // Let's stick to the previous filtered logic but we need to fetch them now since we removed the previous fetch.
-
-      const { data: paymentsForPending } = await supabase
-        .from('student_payments')
-        .select('value, status, due_date')
-        .eq('tenant_id', tenantId)
-        .gte('due_date', startOfMonth.toISOString())
-        .lt('due_date', endOfMonth.toISOString());
-
-      const pendingRevenue = (paymentsForPending || [])
-        .filter(p => p.status === 'PENDING' || p.status === 'OVERDUE')
-        .reduce((acc, p) => acc + (Number(p.value) || 0), 0);
-
-      const overdueCount = (paymentsForPending || []).filter(p => p.status === 'OVERDUE').length;
-
-      const ticketAvg = activeStudents > 0 ? realRevenue / activeStudents : 0;
-
-      // 3. Fetch Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
-      const { data: teachersData } = await supabase.rpc('get_tenant_teacher_pay');
-
-      const teacherRates = new Map((teachersData as any[] || []).map((t: any) => [t.id, t.hourly_rate || 0]));
-
-      const { data: logs } = await supabase
-        .from('class_logs')
-        .select('teacher_id, presence, subtype')
-        .eq('tenant_id', tenantId)
-        .gte('created_at', startOfMonth.toISOString());
-
-      let payroll = 0;
-      let attendanceCount = 0;
-      let totalLogs = 0;
-
-      logs?.forEach(log => {
-        totalLogs++;
-        if (log.presence === 'COMPLETED') attendanceCount++;
-        const rate = teacherRates.get(log.teacher_id) || 0;
-        // Regra canônica: paga exceto falta do professor, reposição (de aluno) e teste oral
-        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
-        const isReplacement = log.subtype === 'REPOSIÇÃO';
-        const isOralTest = log.subtype === 'Teste Oral';
-        if (!isTeacherAbsence && !isReplacement && !isOralTest) {
-          payroll += rate;
-        }
-      });
-
-      const successRate = totalLogs > 0 ? (attendanceCount / totalLogs) * 100 : 100;
-
-      // 4. Fetch Leads
-      const { count: leadsCount } = await supabase
-        .from('crm_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId);
-
-      // 5. Recent Payments List (Global - not just this month, strictly recent)
-      // Actually let's just use the payments from this month query or a separate "recent" query?
-      // "Liste os últimos itens..." usually implies strictly latest globally.
-      const { data: recent } = await supabase
-        .from('student_payments')
-        .select(`
-          id,
-          student_id,
-          value,
-          status,
-          payment_date,
-          profiles ( full_name )
-        `)
-        .eq('tenant_id', tenantId)
-        .in('status', ['RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED'])
-        .order('payment_date', { ascending: false })
-        .limit(5);
-
-      setRecentPayments(recent || []);
-
-      setStats({
-        realRevenue,
-        mrrForecast,
-        pendingRevenue,
-        overdueCount,
-        ticketAvg,
+      setData({
+        cash,
         payroll,
-        activeStudents,
-        totalLeads: leadsCount || 0,
-        successRate
+        payrollPreview: (payrollRows || []).some((r) => r.previa),
+        lessons,
+        activeStudents: students.length,
+        contracted,
+        presence,
+        recent: (recentRes.data as unknown as RecentPayment[] | null) || [],
       });
-
+      if (!cash) setError('Não foi possível ler o caixa do mês agora.');
     } catch (e) {
-      console.error("Error fetching analytics", e);
+      console.error('Erro ao carregar o painel do diretor', e);
+      setError('Não foi possível carregar o painel. Tente atualizar.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId, month]);
 
-  const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      alert("Relatórios consolidados da unidade exportados com sucesso!");
-    }, 1500);
-  };
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  const cash = data.cash;
+  const serie = cash?.serie || [];
+  const maxSerie = Math.max(1, ...serie.map((s) => Number(s.entradas || 0)));
+  // Resultado previsto do mês: entradas reais + o que ainda vence no mês − folha
+  // (competência) − demais saídas já pagas. Sem folha lida, não mostramos número.
+  const otherOut = cash ? Number(cash.saidas.total) - Number(cash.saidas.professores) : 0;
+  const forecast = cash && data.payroll !== null
+    ? Number(cash.entradas) + Number(cash.a_receber) - data.payroll - otherOut
+    : null;
+  const monthName = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   return (
-    <div className="space-y-6 md:space-y-8 animate-fade-in-up font-sans">
-      {/* Header Section */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-brand-border pb-6 mb-6">
-        <div>
-          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text uppercase tracking-wide">
-            {activeTab === 'analytics' ? 'Analytics da Unidade' : 'Academia de Professores'}
-          </h2>
-          <p className="text-brand-muted text-sm mt-0.5">
-            {activeTab === 'analytics' ? 'Monitoramento de hierarquias: Professores e Alunos.' : 'Gestão de treinamentos e padronização.'}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex overflow-x-auto max-w-full bg-brand-surface border border-brand-border p-1 rounded-2xl">
+    <div className="space-y-6 font-sans animate-fade-in-up md:space-y-8">
+      {/* Hero */}
+      <section className="relative overflow-hidden rounded-[2rem] border border-brand-border bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-[0_40px_80px_-40px_rgba(79,70,229,0.75)] md:p-8">
+        <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/15 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-28 left-10 h-64 w-64 rounded-full bg-fuchsia-400/25 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.12] [background-image:linear-gradient(rgba(255,255,255,.6)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.6)_1px,transparent_1px)] [background-size:36px_36px] [mask-image:radial-gradient(ellipse_at_top_right,black,transparent_70%)]" />
+
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Painel da direção · {monthName}</p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight md:text-4xl">
+              {activeTab === 'analytics' ? 'Como a escola está hoje' : TABS.find((t) => t.id === activeTab)?.label}
+            </h2>
+            {activeTab === 'analytics' && (
+              <p className="mt-2 max-w-xl text-sm text-white/80">
+                {loading
+                  ? 'Carregando os números do mês…'
+                  : `${money(cash ? Number(cash.entradas) : null, 0)} recebidos no mês, ${data.activeStudents} alunos ativos e ${data.lessons} aulas lançadas.`}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setActiveTab('analytics')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
+              onClick={() => setShowTrialScheduler(true)}
+              className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-700 shadow-lg shadow-indigo-900/30 transition-transform hover:-translate-y-0.5"
             >
-              Analytics
+              <Beaker size={15} /> Agendar experimental
             </button>
             <button
-              onClick={() => setActiveTab('training')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
+              onClick={fetchAnalytics}
+              className="flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2.5 text-xs font-bold backdrop-blur transition-colors hover:bg-white/20"
+              title="Atualizar dados"
             >
-              Treinamento
-            </button>
-            <button
-              data-tour="enrollment-link-tab"
-              onClick={() => setActiveTab('registration')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
-            >
-              Link Matrícula
-            </button>
-            <button
-              onClick={() => setActiveTab('recruiting')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
-            >
-              Recrutamento (Link)
-            </button>
-            <button
-              onClick={() => setActiveTab('ai_team')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ai_team' ? 'bg-brand-accent text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
-            >
-              🤖 Equipe de IA
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Atualizar
             </button>
           </div>
-
-          {activeTab === 'analytics' && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowTrialScheduler(true)}
-                className="flex items-center gap-2 bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-lg"
-              >
-                <Beaker size={14} /> Agendar Experimental
-              </button>
-              <button
-                onClick={fetchAnalytics}
-                className="p-2 rounded-xl border border-brand-border bg-brand-surface hover:bg-brand-surface-2 text-brand-muted transition-colors"
-                title="Atualizar Dados"
-              >
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              </button>
-              <button
-                onClick={handleExport}
-                disabled={isExporting}
-                className="bg-brand-surface border border-brand-border px-4 py-2 rounded-xl text-xs font-semibold text-brand-text hover:bg-brand-surface-2 transition-all shadow-xs flex items-center gap-2 disabled:opacity-50"
-              >
-                {isExporting ? <RefreshCw className="animate-spin" size={14} /> : <FileDown size={14} />}
-                {isExporting ? 'Exportando...' : 'Exportar Dados'}
-              </button>
-            </div>
-          )}
         </div>
-      </header>
+
+        <nav className="relative mt-6 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-white/20 bg-white/10 p-1.5 backdrop-blur" aria-label="Seções do painel">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              aria-current={activeTab === t.id ? 'page' : undefined}
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition-all ${activeTab === t.id ? 'bg-white text-indigo-700 shadow-md' : 'text-white/80 hover:bg-white/10 hover:text-white'}`}
+            >
+              <t.icon size={14} />
+              {/* Alvo do tour do link de matrícula: o literal é o que o teste de tours procura. */}
+              {t.id === 'registration' ? <span data-tour="enrollment-link-tab">{t.label}</span> : t.label}
+            </button>
+          ))}
+        </nav>
+      </section>
 
       {activeTab === 'analytics' && (
         <>
-          {/* Central de Pendências — tudo que precisa de ação do diretor */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={16} /> {error}
+            </div>
+          )}
+
           <div data-tour="pending-center">
             <DirectorPendingCenter onNavigate={onNavigate} />
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                label: 'Faturamento Total',
-                value: `R$ ${stats.realRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-                sub: 'Entradas Reais (Pago)',
-                icon: DollarSign,
-                iconBg: 'bg-emerald-100 text-emerald-600'
-              },
-              {
-                label: 'Pendente',
-                value: `R$ ${stats.pendingRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-                sub: 'Aberto ou Atrasado',
-                icon: Clock,
-                iconBg: 'bg-orange-100 text-orange-600'
-              },
-              {
-                label: 'Meta de MRR',
-                value: `R$ ${stats.mrrForecast.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-                sub: 'Previsão Contratos',
-                icon: Target,
-                iconBg: 'bg-blue-100 text-blue-600'
-              },
-              {
-                label: 'Inadimplência',
-                value: stats.overdueCount.toString(),
-                sub: 'Faturas Vencidas',
-                icon: TrendingDown,
-                iconBg: 'bg-red-100 text-red-600'
-              },
-            ].map((stat, i) => (
-              <div key={i} className="group relative bg-brand-surface border border-brand-border rounded-2xl p-5 overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl cursor-default">
-                <div
-                  className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-2xl"
-                  style={{ background: `radial-gradient(ellipse at 80% 0%, var(--brand-accent) 0%, transparent 65%)`, opacity: 0.1 }}
-                />
-                <div
-                  className="absolute top-0 left-4 right-4 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  style={{ background: `linear-gradient(90deg, transparent, var(--brand-accent), transparent)`, opacity: 0.5 }}
-                />
-
-                <div className="flex justify-between items-start mb-3">
-                  <span className="text-brand-muted text-[11px] uppercase tracking-widest font-semibold">{stat.label}</span>
-                  <span className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 ${stat.iconBg}`}>
-                    <stat.icon size={20} strokeWidth={2} />
-                  </span>
-                </div>
-                <div className="flex items-end gap-2">
-                  <h3 className="text-brand-text text-[2rem] font-extrabold leading-none tabular-nums tracking-tight">
-                    {loading ? '...' : stat.value}
-                  </h3>
-                </div>
-                <p className="text-brand-muted text-xs mt-1.5">{stat.sub}</p>
-              </div>
-            ))}
+          {/* KPIs */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard
+              label="Recebido no mês"
+              value={money(cash ? Number(cash.entradas) : null)}
+              hint="Dinheiro que entrou no caixa"
+              icon={ArrowDownCircle}
+              tone="emerald"
+              loading={loading}
+              onClick={() => onNavigate?.('cashflow')}
+            />
+            <KpiCard
+              label="A receber no mês"
+              value={money(cash ? Number(cash.a_receber) : null)}
+              hint="Cobranças em aberto que vencem no mês"
+              icon={Clock}
+              tone="sky"
+              loading={loading}
+              onClick={() => onNavigate?.('student-payments')}
+            />
+            <KpiCard
+              label="Inadimplência"
+              value={money(cash ? Number(cash.inadimplencia.total) : null)}
+              hint={cash ? `${cash.inadimplencia.count} cobranças vencidas` : 'Cobranças vencidas'}
+              icon={AlertTriangle}
+              tone="rose"
+              loading={loading}
+              onClick={() => onNavigate?.('student-payments')}
+            />
+            <KpiCard
+              label={data.payrollPreview ? 'Folha do mês (prévia)' : 'Folha do mês'}
+              value={money(data.payroll)}
+              hint={`${data.lessons} aulas pagáveis lançadas`}
+              icon={Wallet}
+              tone="violet"
+              loading={loading}
+              onClick={() => onNavigate?.('payments')}
+            />
           </div>
 
-          {/* Main Content Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column (2/3) */}
-            <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Receita 6 meses — barras com profundidade */}
+            <TiltCard className="lg:col-span-2">
+              <span className="block p-6 md:p-7">
+                <span className="mb-6 flex items-start justify-between gap-4">
+                  <span>
+                    <span className="flex items-center gap-2 text-sm font-bold text-brand-text"><TrendingUp size={16} className="text-emerald-500" /> Receita recebida</span>
+                    <span className="mt-0.5 block text-xs text-brand-muted">Últimos 6 meses, pela data em que o dinheiro entrou</span>
+                  </span>
+                  <span className="rounded-full border border-brand-border bg-brand-surface-2 px-3 py-1 text-[11px] font-semibold text-brand-muted">
+                    Contratado: {money(data.contracted, 0)}/mês
+                  </span>
+                </span>
+                <span className="flex h-52 items-end gap-3 [perspective:700px]">
+                  {serie.length === 0 && !loading && (
+                    <span className="m-auto text-sm text-brand-muted">Sem dados de caixa.</span>
+                  )}
+                  {serie.map((s, i) => {
+                    const h = Math.max(6, Math.round((180 * Number(s.entradas || 0)) / maxSerie));
+                    const current = s.mes === month;
+                    return (
+                      <span key={s.mes} className="group/bar flex flex-1 flex-col items-center gap-2">
+                        <span className="text-[10px] font-bold text-brand-muted opacity-0 transition-opacity group-hover/bar:opacity-100">
+                          {money(Number(s.entradas), 0)}
+                        </span>
+                        <span
+                          className={`relative w-full max-w-14 origin-bottom rounded-t-xl transition-all duration-700 ease-out [transform:rotateX(14deg)] group-hover/bar:[transform:rotateX(0deg)_translateY(-4px)] ${current ? 'bg-gradient-to-t from-blue-600 to-violet-400 shadow-[0_18px_30px_-12px_rgba(99,102,241,0.8)]' : 'bg-gradient-to-t from-emerald-600 to-emerald-300 shadow-[0_14px_24px_-14px_rgba(16,185,129,0.8)]'}`}
+                          style={{ height: loading ? 6 : h, transitionDelay: `${i * 60}ms` }}
+                          title={money(Number(s.entradas))}
+                        >
+                          <span aria-hidden className="absolute inset-x-0 top-0 h-2 rounded-t-xl bg-white/40" />
+                        </span>
+                        <span className={`text-[11px] font-bold capitalize ${current ? 'text-brand-accent' : 'text-brand-muted'}`}>{monthShort(s.mes)}</span>
+                      </span>
+                    );
+                  })}
+                </span>
+              </span>
+            </TiltCard>
 
-              {/* Main Chart Section */}
-              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h3 className="text-brand-text font-bold text-sm">Fluxo Financeiro</h3>
-                    <p className="text-brand-muted text-xs mt-0.5">Entradas recebidas e previsão contratada</p>
-                  </div>
-                  <div className="flex items-center gap-2 bg-brand-surface-2 border border-brand-border rounded-lg px-2.5 py-1.5">
-                    <Calendar size={14} className="text-brand-muted" />
-                    <span className="text-xs font-semibold text-brand-muted">Este Mês</span>
-                    <ArrowUpRight size={14} className="text-brand-muted ml-1" />
-                  </div>
-                </div>
+            {/* Resultado do mês */}
+            <TiltCard>
+              <span className="flex h-full flex-col p-6 md:p-7">
+                <span className="text-sm font-bold text-brand-text">Resultado previsto do mês</span>
+                <span className="mt-0.5 text-xs text-brand-muted">Recebido + a receber − folha − outras saídas</span>
+                <span className={`mt-5 text-4xl font-extrabold tracking-tight tabular-nums ${forecast === null ? 'text-brand-muted' : forecast >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {loading ? '…' : money(forecast, 0)}
+                </span>
+                <span className="mt-6 space-y-2.5 text-sm">
+                  <Line label="Recebido" value={money(cash ? Number(cash.entradas) : null)} dot="bg-emerald-500" />
+                  <Line label="A receber" value={money(cash ? Number(cash.a_receber) : null)} dot="bg-sky-500" />
+                  <Line label="Folha (competência)" value={money(data.payroll)} dot="bg-violet-500" negative />
+                  <Line label="Comissões, indicações e despesas" value={money(cash ? otherOut : null)} dot="bg-rose-500" negative />
+                </span>
+                <button
+                  onClick={() => onNavigate?.('dre')}
+                  className="mt-auto flex items-center gap-1 pt-6 text-xs font-semibold text-brand-accent hover:text-brand-accent-hover"
+                >
+                  Ver DRE completo <ChevronRight size={14} />
+                </button>
+              </span>
+            </TiltCard>
+          </div>
 
-                <div className="flex items-center gap-8 mb-8">
-                  <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Recebido no mês</span>
-                    </div>
-                    <span className="text-brand-text text-xl font-bold leading-tight">
-                      R$ {stats.realRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                  <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-400" />
-                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">MRR contratado</span>
-                    </div>
-                    <span className="text-brand-text text-xl font-bold leading-tight">
-                      R$ {stats.mrrForecast.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Chart Logic */}
-                <div className="w-full space-y-8">
-                  <FinancialCharts tenantId={tenantId} />
-                  <AdminPaymentsList tenantId={tenantId} />
-                </div>
-              </div>
-
-              {/* Recent Payments List (Replaces Team Performance in this view) */}
-              <div className="bg-brand-surface rounded-2xl border border-brand-border overflow-hidden">
-                <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                  <h3 className="text-brand-text font-bold text-sm">Recebimentos Recentes</h3>
-                  <button className="text-xs text-brand-accent font-semibold hover:text-brand-accent-hover transition-colors" onClick={() => onNavigate?.('student-payments')}>
-                    Ver Todos
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Recebimentos recentes */}
+            <TiltCard className="lg:col-span-2">
+              <span className="block">
+                <span className="flex items-center justify-between gap-4 p-6 pb-3 md:px-7">
+                  <span className="text-sm font-bold text-brand-text">Recebimentos recentes</span>
+                  <button onClick={() => onNavigate?.('student-payments')} className="text-xs font-semibold text-brand-accent hover:text-brand-accent-hover">
+                    Ver todos
                   </button>
-                </div>
+                </span>
+                <span className="block divide-y divide-brand-border/60 px-3 pb-3 md:px-4">
+                  {data.recent.length === 0 && (
+                    <span className="block px-3 py-8 text-center text-sm text-brand-muted">
+                      {loading ? 'Carregando…' : 'Nenhum recebimento recente.'}
+                    </span>
+                  )}
+                  {data.recent.map((pay) => {
+                    const settled = isSettledStudentPayment(pay.status);
+                    const awaiting = isStudentPaymentAwaitingCredit(pay.status);
+                    const name = pay.profiles?.full_name || 'Sem aluno vinculado';
+                    return (
+                      <span key={pay.id} className="flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors hover:bg-brand-surface-2">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 text-xs font-bold text-white shadow-md">
+                          {name.trim().charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-brand-text">{name}</span>
+                          <span className="block text-xs text-brand-muted">{formatLocalDateBr(pay.payment_date, '-')}</span>
+                        </span>
+                        <span className={`hidden rounded-full border px-2.5 py-0.5 text-[10px] font-bold sm:inline ${settled ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-600' : awaiting ? 'border-sky-400/30 bg-sky-400/10 text-sky-600' : 'border-amber-400/30 bg-amber-400/10 text-amber-600'}`}>
+                          {settled ? 'PAGO' : awaiting ? 'AGUARDANDO CRÉDITO' : pay.status}
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-brand-text">{money(Number(pay.value))}</span>
+                      </span>
+                    );
+                  })}
+                </span>
+              </span>
+            </TiltCard>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm min-w-[500px]">
-                    <thead className="text-xs text-brand-muted font-semibold border-b border-brand-border">
-                      <tr>
-                        <th className="px-6 py-4 font-medium">Aluno</th>
-                        <th className="px-6 py-4 font-medium">Valor</th>
-                        <th className="px-6 py-4 font-medium">Status</th>
-                        <th className="px-6 py-4 text-right font-medium">Data Pagamento</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-brand-border/50">
-                      {recentPayments.length > 0 ? recentPayments.map((pay, i) => (
-                        <tr key={i} className="hover:bg-brand-surface-2 transition-colors">
-                          <td className="px-6 py-4 font-medium text-brand-text">
-                            {pay.profiles?.full_name || 'Aluno Desconhecido'}
-                          </td>
-                          <td className="px-6 py-4 text-brand-text font-semibold">
-                            R$ {Number(pay.value).toFixed(2)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${isSettledStudentPayment(pay.status) ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
-                              isStudentPaymentAwaitingCredit(pay.status) ? 'bg-sky-400/10 text-sky-500 border-sky-400/30' :
-                              pay.status === 'OVERDUE' ? 'bg-red-400/10 text-red-500 border-red-400/30' :
-                                'bg-amber-400/10 text-amber-500 border-amber-400/30'
-                              }`}>
-                              {isSettledStudentPayment(pay.status) ? 'PAGO' :
-                                isStudentPaymentAwaitingCredit(pay.status) ? 'AGUARDANDO CRÉDITO' :
-                                pay.status === 'OVERDUE' ? 'ATRASADO' : 'PENDENTE'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right text-brand-muted flex items-center justify-end gap-2">
-                            <span className="text-xs">{formatLocalDateBr(pay.payment_date, '-')}</span>
-
-                          </td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={4} className="px-6 py-8 text-center text-brand-muted">
-                            Nenhum pagamento recente encontrado.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column (1/3) */}
             <div className="space-y-6">
-
-              {/* Whatsapp Connection Card (Automacao Smart) */}
               {userRole === 'TEACHER' && <AutomacaoSmart />}
 
-              {/* Financial Summary Widget */}
-              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-brand-text font-bold text-sm">Resumo Financeiro</h3>
-                    <p className="text-brand-muted text-xs mt-0.5">Mês Atual</p>
-                  </div>
-                  <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' : 'bg-red-400/10 text-red-500 border-red-400/30'}`}>
-                    {(stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'Superávit' : 'Déficit')}
-                  </div>
-                </div>
+              {/* Presença em anel */}
+              <TiltCard>
+                <span className="flex items-center gap-5 p-6">
+                  <PresenceRing value={data.presence} loading={loading} />
+                  <span>
+                    <span className="flex items-center gap-2 text-sm font-bold text-brand-text"><CalendarCheck size={16} className="text-brand-accent" /> Presença</span>
+                    <span className="mt-1 block text-xs text-brand-muted">Aulas dadas sobre as lançadas no mês</span>
+                  </span>
+                </span>
+              </TiltCard>
 
-                <div className="space-y-6">
-                  {/* Income */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span className="text-brand-muted">Entradas (Real + Previsto)</span>
-                      <span className="text-brand-text">R$ {(stats.realRevenue + stats.pendingRevenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    {/* Multi-color bar */}
-                    <div className="w-full h-2 bg-brand-surface-2 border border-brand-border rounded-full overflow-hidden flex">
-                      <div style={{ width: `${(stats.realRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-brand-accent h-full" title="Recebido" />
-                      <div style={{ width: `${(stats.pendingRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-brand-accent/40 h-full" title="Pendente" />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-brand-muted font-semibold uppercase tracking-wider mt-1">
-                      <span>Recebido: {stats.realRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                      <span>Pendente: {stats.pendingRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                    </div>
-                  </div>
-
-                  {/* Expenses (Payroll) */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span className="text-brand-muted">Saídas (Folha Professores)</span>
-                      <span className="text-red-400">R$ {stats.payroll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="w-full h-2 bg-brand-surface-2 border border-brand-border rounded-full overflow-hidden">
-                      {/* Scale payroll relative to income for visualization, max 100% */}
-                      <div style={{ width: `${Math.min(100, (stats.payroll / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100)}%` }} className="bg-red-400 h-full" />
-                    </div>
-                    <p className="text-[10px] text-brand-muted font-semibold uppercase tracking-wider mt-1">
-                      Baseado em {stats.activeStudents} alunos ativos
-                    </p>
-                  </div>
-
-                  {/* Net Result Forecast */}
-                  <div className="pt-4 border-t border-brand-border">
-                    <div className="flex justify-between items-end">
-                      <span className="text-[10px] font-semibold text-brand-muted uppercase tracking-widest">Saldo Previsto</span>
-                      <span className={`text-2xl font-extrabold ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        R$ {(stats.realRevenue + stats.pendingRevenue - stats.payroll).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Success Rate Widget (Moved/Kept Small) - or just removing the complex SVG one to save space and tokens if needed. 
-                  Use simpler version below or keep original if I didn't overwrite it. 
-                  I replaced the block containing Success Rate, so I need to decide.
-                  I'll keep a simpler version.
-               */}
-              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex justify-between items-center">
-                <div>
-                  <h3 className="text-brand-text font-bold text-sm">Taxa de Presença</h3>
-                  <p className="text-brand-muted text-xs mt-0.5">Geral da Escola</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-extrabold text-brand-accent">{stats.successRate.toFixed(1)}%</p>
-                  <p className="text-[10px] text-brand-muted font-bold uppercase mt-0.5">Calculado</p>
-                </div>
-              </div>
-
-
-              {/* Real-Time Monitor */}
-              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-brand-text font-bold text-sm flex items-center gap-2">
-                      Monitoramento ao Vivo
-                    </h3>
-                    <p className="text-brand-muted text-xs mt-0.5">Status das salas de aula</p>
-                  </div>
-                  <div className="flex items-center gap-2 px-2.5 py-1 bg-emerald-400/10 border border-emerald-400/30 rounded-full">
-                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-500">AO VIVO</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {teachers.slice(0, 3).map((t, i) => (
-                    <div key={i} className="group flex items-center justify-between p-3 rounded-xl bg-brand-surface-2 border border-brand-border hover:-translate-y-0.5 transition-all duration-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-brand-surface border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent shadow-xs">
-                          {i + 1}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-brand-text leading-tight">{t.name}</p>
-                          <p className="text-xs text-brand-muted mt-0.5">Aula em andamento</p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-semibold text-brand-muted group-hover:text-brand-accent transition-colors uppercase tracking-wider">Monitorar</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Inadimplência por idade */}
+              <TiltCard onClick={() => onNavigate?.('cashflow')}>
+                <span className="block p-6">
+                  <span className="flex items-center gap-2 text-sm font-bold text-brand-text"><Users size={16} className="text-rose-500" /> Vencidas por idade</span>
+                  <span className="mt-4 block space-y-3">
+                    {([
+                      ['1 a 30 dias', cash?.inadimplencia.d1_30, 'from-amber-300 to-amber-500'],
+                      ['31 a 60 dias', cash?.inadimplencia.d31_60, 'from-orange-400 to-orange-600'],
+                      ['Mais de 60 dias', cash?.inadimplencia.d60plus, 'from-rose-500 to-red-600'],
+                    ] as const).map(([label, value, grad]) => {
+                      const total = Number(cash?.inadimplencia.total || 0);
+                      const pct = total > 0 ? (Number(value || 0) / total) * 100 : 0;
+                      return (
+                        <span key={label} className="block">
+                          <span className="flex justify-between text-xs">
+                            <span className="text-brand-muted">{label}</span>
+                            <span className="font-semibold text-brand-text">{money(value === undefined ? null : Number(value), 0)}</span>
+                          </span>
+                          <span className="mt-1.5 block h-2 overflow-hidden rounded-full bg-brand-surface-2">
+                            <span className={`block h-full rounded-full bg-gradient-to-r ${grad} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                          </span>
+                        </span>
+                      );
+                    })}
+                  </span>
+                </span>
+              </TiltCard>
             </div>
           </div>
+
+          <p className="flex items-center gap-1.5 px-1 text-[11px] text-brand-muted">
+            <ArrowUpCircle size={12} /> Caixa, a receber e inadimplência saem do Fluxo de Caixa; a folha, do Repasse a Profs. Os números são os mesmos das telas de origem.
+          </p>
         </>
       )}
 
@@ -566,12 +521,11 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {activeTab === 'ai_team' && <AiTeamPanel tenantId={tenantId} />}
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
       {activeTab === 'recruiting' && (
-        <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
+        <div className="mx-auto max-w-md animate-in zoom-in-95 duration-300">
           <TeacherInviteGenerator tenantId={tenantId || ''} />
         </div>
       )}
 
-      {/* Manual Trial Scheduler Modal */}
       {showTrialScheduler && (
         <ManualTrialScheduler
           tenantId={tenantId || ''}
@@ -581,6 +535,40 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
         />
       )}
     </div>
+  );
+};
+
+const Line: React.FC<{ label: string; value: string; dot: string; negative?: boolean }> = ({ label, value, dot, negative }) => (
+  <span className="flex items-center justify-between gap-3">
+    <span className="flex items-center gap-2 text-brand-muted"><span className={`h-2 w-2 rounded-full ${dot}`} />{label}</span>
+    <span className={`shrink-0 whitespace-nowrap font-semibold tabular-nums ${negative ? 'text-rose-500' : 'text-brand-text'}`}>{negative && value !== '—' ? `− ${value}` : value}</span>
+  </span>
+);
+
+const PresenceRing: React.FC<{ value: number | null; loading: boolean }> = ({ value, loading }) => {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const pct = value === null ? 0 : Math.max(0, Math.min(100, value));
+  return (
+    <span className="relative flex h-24 w-24 shrink-0 items-center justify-center drop-shadow-[0_12px_18px_rgba(37,99,235,0.35)]">
+      <svg viewBox="0 0 80 80" className="h-24 w-24 -rotate-90">
+        <defs>
+          <linearGradient id="presence-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#7c3aed" />
+          </linearGradient>
+        </defs>
+        <circle cx="40" cy="40" r={r} fill="none" stroke="var(--brand-surface-2)" strokeWidth="9" />
+        <circle
+          cx="40" cy="40" r={r} fill="none" stroke="url(#presence-grad)" strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={loading ? c : c - (pct / 100) * c}
+          style={{ transition: 'stroke-dashoffset 900ms ease-out' }}
+        />
+      </svg>
+      <span className="absolute text-lg font-extrabold text-brand-text tabular-nums">
+        {loading || value === null ? '—' : `${value.toFixed(0)}%`}
+      </span>
+    </span>
   );
 };
 
