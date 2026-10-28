@@ -10,7 +10,10 @@ import {
   offeredSlotsInReply,
   parseAvailabilityWindows,
   rankTrialAlternatives,
+  replyDeniesAvailability,
   replyOffersUnknownSlot,
+  replyPromisesTrialCheck,
+  requestedTrialSlot,
   unavailablePreferenceNote,
 } from "./sdr-scheduling.ts";
 const slot = (
@@ -212,4 +215,83 @@ Deno.test("veto: resposta que oferece horário fora da lista é pega; data ISO v
     humanizeIsoDates("dia 2026-09-19 às 09:00"),
     "dia 19/09 às 09:00",
   );
+});
+
+Deno.test("intervalo de dias: 'segunda a quinta-feira' inclui terça e quarta", () => {
+  const [w] = parseAvailabilityWindows("Segunda a quinta-feira, 20h");
+  assertEquals(w.days, [1, 2, 3, 4]);
+  assertEquals(w.fromMin, 20 * 60);
+  assertEquals(parseAvailabilityWindows("de terça à sexta de manhã")[0].days, [
+    2,
+    3,
+    4,
+    5,
+  ]);
+  assertEquals(parseAvailabilityWindows("seg a qui depois das 19h")[0].days, [
+    1,
+    2,
+    3,
+    4,
+  ]);
+});
+
+Deno.test("lead Thiago: sexta 16h pedida depois continua na janela", () => {
+  // 28/10/2026 (quarta). Gravado: "Segunda a quinta-feira, 20h"; depois
+  // pediu "sexta as 16h" e respondeu "Ok" — a sexta não pode sumir.
+  const slots = [slot("2026-10-29", "20:00"), slot("2026-10-30", "16:00")];
+  const windows = parseAvailabilityWindows(
+    "Segunda a quinta-feira, 20h\nDe segunda a quinta-feira, 20h\nInglês trabalho\nAula experimental pode ser na sexta as 16h\nOk",
+  );
+  assertEquals(filterSlotsByWindows(slots, windows).length, 2);
+});
+
+Deno.test("requestedTrialSlot: pedido explícito livre é encontrado", () => {
+  const slots = [slot("2026-10-29", "20:00"), slot("2026-10-30", "16:00")];
+  assertEquals(
+    requestedTrialSlot(
+      ["Ok", "Aula experimental pode ser na sexta as 16h", "Inglês trabalho"],
+      slots,
+      "2026-10-28",
+    )?.date,
+    "2026-10-30",
+  );
+  // preferência com vários dias não é escolha
+  assertEquals(
+    requestedTrialSlot(["De segunda a quinta-feira, 20h"], slots, "2026-10-28"),
+    null,
+  );
+  // pedido mais novo sem professor não deixa o antigo ressuscitar
+  assertEquals(
+    requestedTrialSlot(
+      ["e sabado as 9h?", "pode ser sexta as 16h"],
+      slots,
+      "2026-10-28",
+    ),
+    null,
+  );
+  // negação não é pedido
+  assertEquals(
+    requestedTrialSlot(["sexta as 16h não posso"], slots, "2026-10-28"),
+    null,
+  );
+});
+
+Deno.test("respostas que negam horário ou prometem verificar", () => {
+  assertEquals(
+    replyDeniesAvailability(
+      "Thiago, verifiquei aqui e infelizmente não temos horários disponíveis às sextas-feiras no momento.",
+    ),
+    true,
+  );
+  assertEquals(
+    replyDeniesAvailability("Temos horário na sexta às 16h!"),
+    false,
+  );
+  assertEquals(
+    replyPromisesTrialCheck(
+      "Sexta-feira às 16h é um ótimo horário! Vou verificar a disponibilidade do professor para você",
+    ),
+    true,
+  );
+  assertEquals(replyPromisesTrialCheck("Qual dia fica melhor?"), false);
 });

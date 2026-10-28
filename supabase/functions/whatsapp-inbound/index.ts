@@ -188,11 +188,15 @@ import {
   availabilityFacts,
   availableMenu,
   filterSlotsByWindows,
+  formatSlotBr,
   humanizeIsoDates,
   loadAvailableTrialSlots,
   parseAvailabilityWindows,
   rankTrialAlternatives,
+  replyDeniesAvailability,
   replyOffersUnknownSlot,
+  replyPromisesTrialCheck,
+  requestedTrialSlot,
   unavailablePreferenceNote,
 } from "../_shared/sdr-scheduling.ts";
 import {
@@ -7983,9 +7987,18 @@ async function handleSDR(
   // modelo enxerga; o que não tem professor (sábado) vira fato explícito em
   // vez de horário inventado. A mensagem atual entra junto: a preferência
   // costuma chegar nela e só é gravada em weekly_availability depois.
-  const availabilityWindows = afterTrial
-    ? []
-    : parseAvailabilityWindows(`${lead.weekly_availability || ""}\n${text}`);
+  // As últimas mensagens do lead entram também: o pedido "sexta às 16h" não é
+  // gravado em weekly_availability, e no "Ok" seguinte a sexta sumia da lista
+  // (lead Thiago, 28/10/2026) — a atendente concluiu que não havia sexta.
+  const recentLeadMessages = hist
+    .filter((m: { role: string }) => m.role === "user")
+    .slice(-3)
+    .map((m: { content: string }) => m.content);
+  const availabilityWindows = afterTrial ? [] : parseAvailabilityWindows(
+    `${lead.weekly_availability || ""}\n${
+      recentLeadMessages.join("\n")
+    }\n${text}`,
+  );
   const menuSlots = filterSlotsByWindows(availableSlots, availabilityWindows);
   const menu = availableMenu(menuSlots.length ? menuSlots : availableSlots);
   const availabilityLine = availabilityWindows.length
@@ -8123,7 +8136,43 @@ async function handleSDR(
   const inventedPresential = vetoInventedPresential(tenantId, reply);
   const modalityVeto = inventedPresential !== reply;
   reply = inventedPresential;
-  const st = afterTrial || modalityVeto ? null : ai.schedule_trial;
+  let st = afterTrial || modalityVeto ? null : ai.schedule_trial;
+  // "IA propõe, o código veta" para o pedido explícito: o lead escolheu um
+  // horário que ESTÁ livre e o modelo não preencheu schedule_trial — prometeu
+  // "vou verificar" sem pedir a ninguém, ou disse que não havia horário. O
+  // pedido vai aos professores mesmo assim (lead Thiago, 28/10/2026).
+  if (
+    !st && !afterTrial && !modalityVeto && !activeTrial && !closing &&
+    !isMedia && availableSlots.length
+  ) {
+    const fromCurrent = requestedTrialSlot([text], availableSlots);
+    const requested = fromCurrent ||
+      requestedTrialSlot(
+        [text, ...[...recentLeadMessages].reverse()],
+        availableSlots,
+      );
+    const denies = replyDeniesAvailability(reply);
+    if (
+      requested &&
+      (fromCurrent || denies || replyPromisesTrialCheck(reply))
+    ) {
+      st = { date: requested.date, time: requested.time };
+      if (denies) {
+        reply = `Tenho professor livre na ${
+          formatSlotBr(requested)
+        }! Vou confirmar com ele e te retorno em até 60 minutos — se não der certo, te aviso para combinarmos outro horário 😊`;
+      }
+      console.warn(
+        "[sdr] pedido explícito de horário livre sem schedule_trial; assumido",
+        {
+          leadId: lead.id,
+          date: requested.date,
+          time: requested.time,
+          denies,
+        },
+      );
+    }
+  }
   const commercialReply = applyCommercialReplyPolicy({
     history: hist,
     currentMessage: text,

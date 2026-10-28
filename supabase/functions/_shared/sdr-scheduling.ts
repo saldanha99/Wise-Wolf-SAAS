@@ -1,4 +1,5 @@
 import { isHolidayBR } from "../whatsapp-inbound/holidays.ts";
+import { parseRequestedSlot } from "../whatsapp-inbound/care-conversation.ts";
 
 export interface AvailableTrialSlot {
   date: string;
@@ -184,6 +185,25 @@ const DAY_PATTERNS: Array<[RegExp, number[]]> = [
   [/\bsextas?\b/, [5]],
   [/\bsabados?\b/, [6]],
 ];
+// "segunda a quinta", "de terça à sexta", "seg a qui": intervalo de dias. Sem
+// isso, "Segunda a quinta-feira, 20h" (lead Thiago, 28/10/2026) virava só
+// segunda e quinta — terça e quarta sumiam da lista que a atendente enxerga.
+const DAY_TOKEN =
+  "(segunda|terca|quarta|quinta|sexta|sabado|domingo|seg|ter|qua|qui|sex|sab|dom)";
+const DAY_RANGE_RE = new RegExp(
+  String
+    .raw`\b${DAY_TOKEN}(?:s|-feiras?)?\s+(?:a|ate)\s+${DAY_TOKEN}(?:s|-feiras?)?\b`,
+  "g",
+);
+const DAY_INDEX: Record<string, number> = {
+  dom: 0,
+  seg: 1,
+  ter: 2,
+  qua: 3,
+  qui: 4,
+  sex: 5,
+  sab: 6,
+};
 const PERIODS: Array<[RegExp, number, number]> = [
   [/\bmanha\b|\bcedo\b/, 6 * 60, 12 * 60],
   [/\btarde\b/, 12 * 60, 18 * 60],
@@ -227,6 +247,13 @@ export function parseAvailabilityWindows(text: string): AvailabilityWindow[] {
     const days = new Set<number>();
     for (const [re, list] of DAY_PATTERNS) {
       if (re.test(seg)) list.forEach((d) => days.add(d));
+    }
+    for (const m of seg.matchAll(DAY_RANGE_RE)) {
+      const from = DAY_INDEX[m[1].slice(0, 3)];
+      const to = DAY_INDEX[m[2].slice(0, 3)];
+      if (from !== undefined && to !== undefined && from <= to) {
+        for (let d = from; d <= to; d++) days.add(d);
+      }
     }
     let fromMin: number | null = null;
     let toMin: number | null = null;
@@ -410,4 +437,67 @@ export function replyOffersUnknownSlot(
   return offeredSlotsInReply(reply).some((o) =>
     !known.has(`${o.monthDay} ${o.time}`)
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PEDIDO EXPLÍCITO DE HORÁRIO (28/10/2026, lead Thiago)
+//
+// Ele pediu "sexta às 16h" (três professores livres, inclusive a recém-chegada
+// Maria). O modelo respondeu "vou verificar" SEM preencher schedule_trial — o
+// pedido nunca chegou aos professores — e, no "Ok" seguinte, como a sexta não
+// estava na janela gravada ("segunda a quinta, 20h"), disse que não havia
+// horário na sexta. Aqui o código lê o pedido e, se ele está na lista livre,
+// é ele quem segura a verdade.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WEEKDAY_KEYS = [
+  "domingo",
+  "segunda",
+  "terca",
+  "quarta",
+  "quinta",
+  "sexta",
+  "sabado",
+];
+
+/**
+ * O horário que o lead pediu por último ("sexta às 16h", "dia 30/10 16:00"),
+ * se ele está livre. `messages` vem do mais recente para o mais antigo; a
+ * primeira mensagem com pedido decide — um pedido antigo não ressuscita depois
+ * de um novo, mesmo que o novo não tenha professor. Frase com vários dias
+ * ("segunda a quinta, 20h") é preferência, não escolha.
+ */
+export function requestedTrialSlot(
+  messages: string[],
+  slots: AvailableTrialSlot[],
+  todayIso = localDate(),
+): AvailableTrialSlot | null {
+  for (const raw of messages) {
+    const text = normalize(String(raw || ""));
+    if (!text.trim()) continue;
+    const mentioned = WEEKDAY_KEYS.filter((k) =>
+      new RegExp(String.raw`\b${k}s?\b`).test(text)
+    );
+    if (mentioned.length > 1 || new RegExp(DAY_RANGE_RE.source).test(text)) {
+      continue;
+    }
+    if (/\b(?:nao|nunca|exceto|menos)\b/.test(text)) continue;
+    const req = parseRequestedSlot(raw, todayIso);
+    if (!req) continue;
+    return slots.find((s) => s.date === req.date && s.time === req.time) ||
+      null;
+  }
+  return null;
+}
+
+/** A resposta diz que não há horário/professor ("não temos horários às sextas"). */
+export function replyDeniesAvailability(reply: string): boolean {
+  return /\b(?:nao\s+(?:temos|ha|tem|tenho|existe|encontrei)|sem)\s+(?:\S+\s+){0,3}(?:horarios?|vagas?|disponibilidade|disponiveis|professor(?:es|a)?)\b|\bindisponive(?:l|is)\b/
+    .test(normalize(reply));
+}
+
+/** A resposta promete checar com o professor ("vou verificar a disponibilidade"). */
+export function replyPromisesTrialCheck(reply: string): boolean {
+  return /\b(?:verific\w*|confirm\w*\s+com\s+(?:o|a)\s+professor\w*|consult\w*\s+(?:o|a)\s+professor\w*)\b/
+    .test(normalize(reply));
 }
