@@ -58,13 +58,25 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
     return (
         <div className="min-h-screen w-full bg-[#020617] relative overflow-hidden flex items-center justify-center p-4">
             {/* Brand Watermark */}
-            <div className="absolute top-8 left-8 flex items-center gap-3 opacity-50">
-                <ShieldCheck size={32} className="text-blue-500" />
-                <span className="text-white font-black text-xl tracking-tighter">WISE WOLF</span>
+            <div className="absolute top-6 left-6 flex items-center gap-3">
+                <span className="flex h-10 w-12 items-center justify-center rounded-lg bg-white p-1 shadow-lg">
+                    <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="" className="h-full w-full object-contain" />
+                </span>
+                <span className="text-white font-black text-lg tracking-tight leading-none">
+                    WISE WOLF<span className="block text-[10px] font-semibold tracking-[0.3em] text-white/60">LANGUAGES</span>
+                </span>
             </div>
 
+            {/* Marca d'água: o W com o lobo, grande e quase invisível atrás do cartão */}
+            <img
+                src="/assets/brand/wise-wolf-watermark-soft-dark-20261028.png"
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute -bottom-16 -right-24 w-[min(90vw,760px)] opacity-100 select-none"
+            />
+
             {/* Background gradient effect - Deep Blue Theme */}
-            <div className="absolute inset-0 bg-linear-to-b from-blue-900/20 via-[#002366]/30 to-[#020617]" />
+            <div className="absolute inset-0 bg-linear-to-b from-[#000F66]/25 via-[#06142D]/40 to-[#020617]" />
 
             {/* Noise texture */}
             <div className="absolute inset-0 opacity-[0.03] mix-blend-soft-light"
@@ -151,9 +163,9 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                 <motion.div
                                     initial={{ scale: 0.5, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="mx-auto w-12 h-12 rounded-2xl bg-linear-to-br from-blue-600 to-blue-900 border border-white/10 flex items-center justify-center shadow-lg shadow-blue-500/20"
+                                    className="mx-auto w-20 h-14 rounded-2xl bg-white p-2 flex items-center justify-center shadow-lg shadow-[#CC213B]/20"
                                 >
-                                    <ShieldCheck size={24} className="text-white" />
+                                    <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="Wise Wolf Languages" className="h-full w-full object-contain" />
                                 </motion.div>
 
                                 <div>
@@ -188,7 +200,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                         whileHover={{ scale: 1.01 }}
                                         className="relative group/email"
                                     >
-                                        <div className="absolute -inset-0.5 bg-linear-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/email:opacity-100 transition-opacity" />
+                                        <div className="absolute -inset-0.5 bg-linear-to-r from-[#1A2690]/25 to-[#CC213B]/20 rounded-xl opacity-0 group-hover/email:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
                                             <Mail className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'email' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
@@ -214,7 +226,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                         whileHover={{ scale: 1.01 }}
                                         className="relative group/password"
                                     >
-                                        <div className="absolute -inset-0.5 bg-linear-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/password:opacity-100 transition-opacity" />
+                                        <div className="absolute -inset-0.5 bg-linear-to-r from-[#1A2690]/25 to-[#CC213B]/20 rounded-xl opacity-0 group-hover/password:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
                                             <Lock className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'password' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
@@ -268,7 +280,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     aria-disabled={isLoading}
                                     className="w-full relative group/btn h-12 rounded-xl overflow-hidden"
                                 >
-                                    <div className="absolute inset-0 bg-linear-to-r from-blue-600 to-[#D32F2F] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
+                                    <div className="absolute inset-0 bg-linear-to-r from-[#1A2690] to-[#CC213B] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
                                     <div className="absolute inset-0 opacity-[0.15]" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize:'200px 200px'}} />
 
                                     <div className="relative flex items-center justify-center gap-2 text-white font-bold text-sm tracking-wide uppercase">

@@ -9,8 +9,8 @@ interface Props {
 }
 
 const SKILLS = [
-    { id: 'speaking', label: 'Speaking', color: '#ec4899' },
-    { id: 'pronunciation', label: 'Pronúncia', color: '#a855f7' },
+    { id: 'speaking', label: 'Speaking', color: '#CC213B' },
+    { id: 'pronunciation', label: 'Pronúncia', color: '#2E3FA8' },
     { id: 'listening', label: 'Listening', color: '#3b82f6' },
     { id: 'reading', label: 'Reading', color: '#06b6d4' },
     { id: 'writing', label: 'Writing', color: '#10b981' },

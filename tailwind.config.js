@@ -1,6 +1,20 @@
 const flattenColorPaletteModule = require("tailwindcss/lib/util/flattenColorPalette");
 const flattenColorPalette = flattenColorPaletteModule.default || flattenColorPaletteModule;
 
+// Identidade Wise Wolf (logo oficial): azul-marinho #000066 e vermelho #CC213B.
+// Os tons roxo/violeta/índigo/rosa do Tailwind são redirecionados para essas
+// duas escalas, então nenhuma tela antiga volta a aparecer roxa ou rosada.
+const wolfNavy = {
+    50: "#EEF1FB", 100: "#DCE2F6", 200: "#B9C4EC", 300: "#8C9BDB", 400: "#5A6CC4",
+    500: "#2E3FA8", 600: "#1A2690", 700: "#10197A", 800: "#000F66", 900: "#050A4D",
+    950: "#030633",
+};
+const wolfRed = {
+    50: "#FDF0F2", 100: "#FADDE2", 200: "#F4BAC4", 300: "#EB8C9C", 400: "#DE5670",
+    500: "#CC213B", 600: "#B31B33", 700: "#94162A", 800: "#741222", 900: "#560D19",
+    950: "#34070F",
+};
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     content: [
@@ -21,6 +35,13 @@ module.exports = {
         },
         extend: {
             colors: {
+                wolf: { navy: wolfNavy, red: wolfRed },
+                indigo: wolfNavy,
+                violet: wolfNavy,
+                purple: wolfNavy,
+                fuchsia: wolfRed,
+                pink: wolfRed,
+                rose: wolfRed,
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",

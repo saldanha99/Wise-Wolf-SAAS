@@ -60,7 +60,7 @@ const STATE_COPY: Record<
 > = {
   IDLE: {
     label: "pronto para conversar",
-    color: "#818cf8",
+    color: "#8C9BDB",
     glow: "rgba(99, 102, 241, 0.30)",
   },
   LISTENING: {
@@ -70,7 +70,7 @@ const STATE_COPY: Record<
   },
   THINKING: {
     label: "pensando",
-    color: "#c084fc",
+    color: "#8C9BDB",
     glow: "rgba(168, 85, 247, 0.34)",
   },
   SYNTHESIZING: {

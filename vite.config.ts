@@ -71,7 +71,7 @@ export default defineConfig(({ command, mode }) => {
         },
         VitePWA({
           registerType: 'autoUpdate',
-          includeAssets: ['wise-wolf-icon-32-20260928.png', 'wise-wolf-icon-192-20260928.png'],
+          includeAssets: ['favicon.ico', 'wise-wolf-icon-32-20260928.png', 'wise-wolf-icon-192-20260928.png'],
           manifest: {
             name: 'Wise Wolf Languages — Portal do Aluno',
             short_name: 'Wise Wolf',

@@ -215,7 +215,7 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
                     <Line
                         type="monotone"
                         dataKey="Lucro"
-                        stroke="#8b5cf6"
+                        stroke="#2E3FA8"
                         strokeWidth={2}
                         dot={true}
                     />

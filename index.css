@@ -24,14 +24,14 @@
   :root {
     --brand-bg:           #FFFFFF;
     --brand-surface:      #F8FAFF;
-    --brand-surface-2:    #EEF2FF;
-    --brand-accent:       #2563EB;
-    --brand-accent-hover: #1D4ED8;
-    --brand-border:       rgba(37, 99, 235, 0.12);
+    --brand-surface-2:    #EEF1FB;
+    --brand-accent:       #1A2690;
+    --brand-accent-hover: #000F66;
+    --brand-border:       rgba(26, 38, 144, 0.12);
     --brand-text:         #0F172A;
     --brand-muted:        #64748B;
     --primary-color:      #002366;
-    --secondary-color:    #D32F2F;
+    --secondary-color:    #CC213B;
     --tenant-primary-rgb: 0 35 102;
 
     --background: 0 0% 100%;
@@ -43,7 +43,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
  
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 234 69.4% 33.3%;
     --primary-foreground: 210 40% 98%;
  
     --secondary: 210 40% 96.1%;
@@ -60,7 +60,7 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 234 69.4% 33.3%;
  
     --radius: 0.625rem;
   }
@@ -69,9 +69,9 @@
     --brand-bg:           #05070E;
     --brand-surface:      #0B0D1A;
     --brand-surface-2:    #111425;
-    --brand-accent:       #3B82F6;
-    --brand-accent-hover: #60A5FA;
-    --brand-border:       rgba(59, 130, 246, 0.18);
+    --brand-accent:       #8C9BDB;
+    --brand-accent-hover: #B9C4EC;
+    --brand-border:       rgba(140, 155, 219, 0.18);
     --brand-text:         #F0F4FF;
     --brand-muted:        #8892A8;
 
@@ -84,7 +84,7 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
  
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 229 54% 70.4%;
     --primary-foreground: 222.2 47.4% 11.2%;
  
     --secondary: 217.2 32.6% 17.5%;
@@ -101,7 +101,7 @@
  
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 229 54% 70.4%;
   }
 
   * {
@@ -416,3 +416,20 @@ html, body, #root {
 
 /* Rolagem horizontal com inércia nos wrappers de tabela (touch) */
 .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+
+/* ── Marca d'água Wise Wolf ──
+   O W com o lobo, em azul-marinho a 5%, fixo no canto da área de conteúdo.
+   Fica atrás dos cards (é fundo do <main>) e não intercepta clique nem leitura. */
+.ww-watermark {
+  background-image: url('/assets/brand/wise-wolf-watermark-soft-20261028.png');
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: right 2.5rem bottom 2.5rem;
+  background-size: min(34vw, 440px) auto;
+}
+.dark .ww-watermark {
+  background-image: url('/assets/brand/wise-wolf-watermark-soft-dark-20261028.png');
+}
+@media print {
+  .ww-watermark { background-image: none; }
+}

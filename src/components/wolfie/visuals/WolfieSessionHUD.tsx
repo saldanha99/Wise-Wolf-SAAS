@@ -33,9 +33,9 @@ const STATE_STATUS: Record<WolfieCharacterState, string> = {
 };
 
 const STATE_COLOR: Record<WolfieCharacterState, string> = {
-  IDLE: "#818cf8",
+  IDLE: "#8C9BDB",
   LISTENING: "#fb7185",
-  THINKING: "#c084fc",
+  THINKING: "#8C9BDB",
   SYNTHESIZING: "#fbbf24",
   SPEAKING: "#22d3ee",
   INTERRUPTED: "#cbd5e1",

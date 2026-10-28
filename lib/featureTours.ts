@@ -876,6 +876,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-28-painel-da-direcao',title:'Painel da direção de cara nova',roles:['SCHOOL_ADMIN'],
     steps:[{target:'pending-center',view:'dashboard',title:'Os números são os das telas de origem',text:'O início foi redesenhado. Recebido, a receber e inadimplência saem do Fluxo de Caixa; a folha do mês sai do Repasse a Profs, e a receita dos últimos 6 meses é a mesma do caixa. Antes o painel somava a receita pela data de lançamento e estimava a folha no navegador, e os valores não batiam com as outras telas. Clique em qualquer cartão para abrir a tela de onde ele vem.'}],
   },
+  {
+    id:'2026-10-28-z-identidade-visual',title:'O sistema com as cores da Wise Wolf',roles:['SCHOOL_ADMIN'],
+    steps:[{target:'sidebar-nav',view:'dashboard',title:'Azul-marinho e vermelho da marca',text:'Os tons roxos e rosados saíram: todas as telas passaram a usar o azul-marinho e o vermelho do logo oficial, com o W do lobo como marca d\'água discreta no fundo. O login traz o logo da escola, o ícone da aba é o lobo, e os grupos da Direção, Financeiro, Coordenação, Aulas e Comercial, Atrasos e Origem dos Leads ganharam foto com a marca.'}],
+  },
 
 ];
 

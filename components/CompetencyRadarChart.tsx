@@ -88,9 +88,9 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
                         <Radar
                             name="Mês Atual"
                             dataKey="A"
-                            stroke="#6366f1" // Indigo-500
+                            stroke="#2E3FA8" // Indigo-500
                             strokeWidth={3}
-                            fill="#6366f1"
+                            fill="#2E3FA8"
                             fillOpacity={0.3}
                         />
 

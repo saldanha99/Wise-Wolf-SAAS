@@ -44,12 +44,12 @@ interface Activity {
 }
 
 const CATEGORY_META: Record<string, { icon: React.ElementType; color: string; solid: string; label: string }> = {
-    BUSINESS: { icon: Briefcase, color: 'from-blue-500 to-indigo-600', solid: '#4f46e5', label: 'Business' },
-    TOEFL_IELTS: { icon: GraduationCap, color: 'from-purple-500 to-pink-600', solid: '#9333ea', label: 'TOEFL / IELTS' },
+    BUSINESS: { icon: Briefcase, color: 'from-blue-500 to-indigo-600', solid: '#1A2690', label: 'Business' },
+    TOEFL_IELTS: { icon: GraduationCap, color: 'from-purple-500 to-pink-600', solid: '#1A2690', label: 'TOEFL / IELTS' },
     TRAVEL: { icon: Plane, color: 'from-amber-500 to-orange-600', solid: '#f59e0b', label: 'Viagem' },
-    KIDS: { icon: Heart, color: 'from-pink-500 to-rose-600', solid: '#ec4899', label: 'Inglês para Crianças' },
+    KIDS: { icon: Heart, color: 'from-pink-500 to-rose-600', solid: '#CC213B', label: 'Inglês para Crianças' },
     TECH: { icon: Cpu, color: 'from-emerald-500 to-teal-600', solid: '#10b981', label: 'Tecnologia' },
-    GENERAL: { icon: Globe, color: 'from-violet-500 to-purple-600', solid: '#8b5cf6', label: 'Geral' },
+    GENERAL: { icon: Globe, color: 'from-violet-500 to-purple-600', solid: '#2E3FA8', label: 'Geral' },
     CONVERSATION: { icon: Sparkles, color: 'from-cyan-500 to-blue-600', solid: '#06b6d4', label: 'Conversação' },
 };
 

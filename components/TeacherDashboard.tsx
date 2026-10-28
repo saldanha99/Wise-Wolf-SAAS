@@ -683,10 +683,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                 <Line
                   type="monotone"
                   dataKey="aulas"
-                  stroke="#8b5cf6"
+                  stroke="#2E3FA8"
                   strokeWidth={4}
-                  dot={{ r: 4, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, fill: '#8b5cf6' }}
+                  dot={{ r: 4, fill: '#2E3FA8', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, fill: '#2E3FA8' }}
                 />
               </LineChart>
             </ResponsiveContainer>

@@ -55,7 +55,7 @@ const celebrateLearningResult = (leveledUp: boolean, score: number) => {
     if (leveledUp) {
         confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
     } else if (score >= 80) {
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#2E3FA8'] });
     }
 };
 
@@ -443,9 +443,9 @@ const VictoryScreen: React.FC<{
                     background: leveledUp
                         ? 'linear-gradient(135deg,#fbbf24,#f59e0b)'
                         : passed
-                            ? 'linear-gradient(135deg,#8b5cf6,#6366f1)'
+                            ? 'linear-gradient(135deg,#2E3FA8,#2E3FA8)'
                             : 'linear-gradient(135deg,#fb923c,#f97316)',
-                    boxShadow: leveledUp ? '0 8px 0 #d97706' : passed ? '0 8px 0 #4f46e5' : '0 8px 0 #c2410c',
+                    boxShadow: leveledUp ? '0 8px 0 #d97706' : passed ? '0 8px 0 #1A2690' : '0 8px 0 #c2410c',
                 }}
             >
                 <span className="text-5xl">{emoji}</span>
@@ -514,7 +514,7 @@ const VictoryScreen: React.FC<{
             <button
                 onClick={passed ? onContinue : onRetry}
                 className="mt-8 w-full max-w-xs mx-auto block px-6 py-3.5 rounded-2xl bg-violet-500 text-white font-black text-sm uppercase tracking-wider hover:bg-violet-600 transition-colors"
-                style={{ boxShadow: '0 5px 0 #6d28d9' }}
+                style={{ boxShadow: '0 5px 0 #10197A' }}
             >
                 {passed ? 'Continuar' : 'Tentar novamente'}
             </button>

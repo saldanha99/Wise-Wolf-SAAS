@@ -56,12 +56,12 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
 
     const slides = [
         {
-            icon: <Map size={40} />, cor: '#8b5cf6',
+            icon: <Map size={40} />, cor: '#2E3FA8',
             titulo: `Bem-vindo${nome ? `, ${nome.split(' ')[0]}` : ''}! 🐺`,
             texto: 'Aqui você aprende inglês numa trilha divertida, no seu ritmo. Vamos te mostrar como funciona em 30 segundos.',
         },
         {
-            icon: <Map size={40} />, cor: '#6366f1',
+            icon: <Map size={40} />, cor: '#2E3FA8',
             titulo: 'Siga a trilha',
             texto: 'Cada lição é um passo na sua jornada. Complete uma para desbloquear a próxima — como num jogo.',
         },

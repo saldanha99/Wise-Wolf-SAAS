@@ -1546,7 +1546,7 @@ const App: React.FC = () => {
           tabIndex={-1}
           aria-label="Conteúdo principal"
           className={`
-          app-main-scroll flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-hidden transition-all duration-300 ease-in-out
+          app-main-scroll ww-watermark flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-hidden transition-all duration-300 ease-in-out
           ${isSidebarCollapsed ? 'lg:ml-0' : 'lg:ml-0'} 
         `}>
           {/* Top Header inside main */}

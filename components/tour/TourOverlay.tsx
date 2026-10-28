@@ -113,7 +113,7 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
         {hole && (
           <rect
             x={hole.x} y={hole.y} width={hole.w} height={hole.h} rx="14"
-            fill="none" stroke="#6366f1" strokeWidth="2.5" className="animate-pulse" style={transicao}
+            fill="none" stroke="#2E3FA8" strokeWidth="2.5" className="animate-pulse" style={transicao}
           />
         )}
       </svg>

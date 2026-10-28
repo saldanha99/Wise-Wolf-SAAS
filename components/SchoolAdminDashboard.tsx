@@ -555,7 +555,7 @@ const PresenceRing: React.FC<{ value: number | null; loading: boolean }> = ({ va
         <defs>
           <linearGradient id="presence-grad" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#7c3aed" />
+            <stop offset="100%" stopColor="#1A2690" />
           </linearGradient>
         </defs>
         <circle cx="40" cy="40" r={r} fill="none" stroke="var(--brand-surface-2)" strokeWidth="9" />
