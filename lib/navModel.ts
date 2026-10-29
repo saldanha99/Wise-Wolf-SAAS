@@ -61,6 +61,7 @@ export const teacherMenuItems = (pendingLessonsCount: number): NavItem[] => [
   { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles, section: 'Pedagógico' },
   { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico', short: 'Skills' },
   { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Pedagógico', short: 'Orais' },
+  { id: 'teacher-handbook', label: 'Manual do Professor', icon: Shield, section: 'Pedagógico', short: 'Manual' },
   { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico', short: 'Treinos' },
   { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Pedagógico' },
 

@@ -880,6 +880,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-28-z-identidade-visual',title:'O sistema com as cores da Wise Wolf',roles:['SCHOOL_ADMIN'],
     steps:[{target:'sidebar-nav',view:'dashboard',title:'Azul-marinho e vermelho da marca',text:'Os tons roxos e rosados saíram: todas as telas passaram a usar o azul-marinho e o vermelho do logo oficial, com o W do lobo como marca d\'água discreta no fundo. O login traz o logo da escola, o ícone da aba é o lobo, e os grupos da Direção, Financeiro, Coordenação, Aulas e Comercial, Atrasos e Origem dos Leads ganharam foto com a marca.'}],
   },
+  {
+    id:'2026-10-28-zz-manual-do-professor',title:'Manual do Professor: treinamento obrigatório',roles:['TEACHER'],
+    steps:[{target:'teacher-handbook',view:'teacher-handbook',title:'Leia e confirme o manual',text:'Os pilares da escola em uma tela: seu papel, contrato de prestação de serviços, pagamento e Turbo, Teacher Exchange, gravação, avisos de ausência (mínimo 24 horas), cobertura, feriados nacionais, as 4 reposições obrigatórias, aula experimental com o Guia Gramatical e por que o professor nunca cobra o aluno. Leia tudo e confirme no final; o manual fica no menu em Pedagógico para você consultar sempre que precisar.'}],
+  },
 
 ];
 

@@ -32,6 +32,17 @@ export interface TeacherSupportGuide {
 
 export const TEACHER_SUPPORT_GUIDES: TeacherSupportGuide[] = [
   {
+    id: 'manual',
+    title: 'Regras da escola (Manual do Professor)',
+    summary: 'Teacher Exchange, reposições, feriados, avisos, experimental e pagamento — o treinamento obrigatório.',
+    steps: [
+      'O Manual do Professor reúne todos os pilares da escola, com busca por assunto.',
+      'Ele fica no menu, em Pedagógico → Manual do Professor. Leia uma vez, confirme no final e volte sempre que precisar.',
+    ],
+    keywords: ['manual', 'regras', 'treinamento', 'teacher exchange', 'feriado', 'norma', 'padrão'],
+    actions: [{ kind: 'navigate', tab: 'teacher-handbook', label: 'Abrir o manual' }],
+  },
+  {
     id: 'ausencia',
     title: 'Não vou conseguir dar aula (hoje ou em outro dia)',
     summary: 'Avise o WhatsApp da escola; o bot lista suas aulas e chama os professores livres.',

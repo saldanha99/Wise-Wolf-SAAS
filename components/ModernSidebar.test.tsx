@@ -73,6 +73,7 @@ describe('ModernSidebar do professor', () => {
             'lesson-planner-ai',
             'class_skills',
             'oral-tests',
+            'teacher-handbook',
             'training',
             'wolfie-lab',
             'msg_settings',

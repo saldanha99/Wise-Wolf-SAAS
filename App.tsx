@@ -113,6 +113,7 @@ const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const TeacherSupportCenter = lazy(() => import('./components/TeacherSupportCenter'));
+const TeacherHandbook = lazy(() => import('./components/TeacherHandbook'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
 const PublicTrialConfirmation = lazy(() => import('./components/PublicTrialConfirmation'));
@@ -248,6 +249,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'teacher-financials', label: 'Financeiro', group: 'Professor' },
     { tab: 'reschedules', label: 'Reposições', group: 'Professor' },
     { tab: 'pedagogical', label: 'Pedagógico', group: 'Professor' },
+    { tab: 'teacher-handbook', label: 'Manual do Professor', group: 'Professor', keywords: 'treinamento obrigatório regras reposição feriado teacher exchange' },
     { tab: 'training', label: 'Treinamentos', group: 'Professor' },
     { tab: 'oral-tests', label: 'Testes Orais', group: 'Professor' },
     { tab: 'automation', label: 'Smart', group: 'Professor' },
@@ -1328,6 +1330,7 @@ const App: React.FC = () => {
       'contracts': <ContractManagement tenantId={currentTenant?.id} />,
       'student-payments': <AdminPaymentsList tenantId={currentTenant?.id} />,
       'lesson-history': <LessonHistoryPanel user={user} />,
+      'teacher-handbook': <TeacherHandbook userId={user.id} onNavigate={setActiveTab} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,
       'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,

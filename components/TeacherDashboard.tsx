@@ -18,6 +18,7 @@ import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
 import TeacherPunctualityCard from './TeacherPunctualityCard';
 import TeacherContractAccept from './TeacherContractAccept';
+import { useTeacherHandbookAck } from '../lib/useTeacherHandbookAck';
 
 interface TeacherDashboardProps {
   user: UserType;
@@ -41,6 +42,8 @@ function saoPauloDateTime(value: string): { date: string; time: string } | null 
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onNavigate }) => {
+  // Treinamento obrigatório: lembrete no Início até o professor confirmar a leitura.
+  const { acknowledged: handbookRead } = useTeacherHandbookAck(user?.id);
   // monthlyEarnings é `null` quando o servidor não respondeu: a tela mostra "—"
   // em vez de inventar um número. Valor de aula não se estima no navegador.
   const [stats, setStats] = useState<{
@@ -507,6 +510,26 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             fetchDashboardData();
           }}
         />
+      )}
+
+      {handbookRead === false && (
+        <div className="bg-gradient-to-r from-[#000F66] to-[#1A2690] text-white p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-4 shadow-lg">
+          <div className="p-2 bg-white/10 rounded-xl self-start">
+            <AlertCircle size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold">Treinamento obrigatório pendente</h3>
+            <p className="text-sm text-white/80">
+              Leia o Manual do Professor: Teacher Exchange, reposições, feriados, avisos de ausência, aula experimental e o que não é papel do professor.
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate?.('teacher-handbook')}
+            className="bg-[#E31B23] text-white px-6 py-3 rounded-xl text-xs font-bold hover:brightness-110 transition-all shadow-lg whitespace-nowrap self-start sm:self-auto"
+          >
+            Ler o manual
+          </button>
+        </div>
       )}
 
       {user?.id && <TeacherTurboCard teacherId={user.id} />}
