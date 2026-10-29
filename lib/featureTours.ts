@@ -897,6 +897,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
     steps:[{target:'student-schedule-change',view:'students',title:'Seus alunos num olhar',text:'Cada cartão mostra a frequência dos últimos 90 dias, a última aula, os horários fixos e por que o aluno pede atenção (faltas seguidas, muito tempo sem aula). Use os atalhos do topo para filtrar. Agenda troca o horário combinado; Editar muda os dados pedagógicos. Valores, pausa e encerramento ficam com a direção.'}],
   },
 
+  {
+    id:'2026-10-29-cancelar-experimental',title:'Cancelar uma experimental',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'trial-cancel',view:'trials',title:'Cancelar experimental',text:'Experimental duplicada ou marcada por engano agora se cancela aqui: a aula sai da agenda do professor, ele recebe um aviso no WhatsApp com o motivo e ela não aparece mais para lançar. O aluno não recebe mensagem e o lead continua no funil. E quando alguém da equipe assume a conversa de um lead, o leilão que a IA tinha aberto e ninguém aceitou é encerrado sozinho.'},
+    ],
+  },
 ];
 
 /**

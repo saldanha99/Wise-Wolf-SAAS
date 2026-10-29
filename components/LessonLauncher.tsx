@@ -148,7 +148,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .select('id, start_time, student_name, student_phone, type, status, meeting_link')
         .eq('tenant_id', effectiveTenantId)
         .or(`teacher_id.eq.${user.id},professor_id.eq.${user.id}`)
-        .in('type', ['experimental', 'training']);
+        .in('type', ['experimental', 'training'])
+        // Experimental cancelada não é aula a lançar (nem a pagar).
+        .neq('status', 'cancelled');
       const allTrialAppointments = trialAppts || [];
       const { data: occurrenceRows, error: occurrenceError } = await supabase.rpc('list_teacher_lesson_booking_occurrences', {
         p_from: startStr, p_to: endStr,

@@ -94,7 +94,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
     expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-10-28-zzzz-tela-de-alunos-professor');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-28-zzzz-tela-de-alunos');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-10-29-cancelar-experimental');
     expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-10-27-termo-individual-z-agenda-familia');
     expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
   });
@@ -190,8 +190,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     // "Novidades" também segue o modo.
     expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-10-28-zzzz-tela-de-alunos-professor');
     expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-10-28-zzzz-tela-de-alunos-professor');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-28-zzzz-tela-de-alunos');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-28-zzzz-tela-de-alunos');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-10-29-cancelar-experimental');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-10-29-cancelar-experimental');
   });
 
   it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {

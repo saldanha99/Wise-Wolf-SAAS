@@ -5437,6 +5437,43 @@ async function logMsg(
 // 28 dos 47 leads CONTACTED fora do follow-up para sempre. A regra mora em
 // `_shared/lead-contact.ts` justamente para os dois caminhos não divergirem.
 
+/**
+ * Humano assumiu o lead → o leilão de experimental que a ATENDENTE abriu e
+ * ninguém aceitou ainda morre aqui.
+ *
+ * Caso de 29/10/2026: a IA abriu leilão para 05/11 às 11:38, a equipe
+ * assumiu às 11:39 e marcou outra experimental para o mesmo dia; o leilão da IA
+ * seguiu vivo e uma professora o aceitou às 11:57. Quem conduz agora é gente —
+ * o que a IA prometeu sozinha não pode virar aula na agenda de ninguém.
+ *
+ * Só `origin = 'AI_SDR'` e só `OPEN`: o leilão que o próprio humano abriu pela
+ * plataforma fica, e o já aceito precisa de decisão (cancelar pela tela de
+ * Experimentais). O `lost_reason` impede o `funnel-sweeper` de avisar o lead
+ * que "não achou professor".
+ */
+async function expireAiTrialAuctions(
+  sb: any,
+  tenantId: string,
+  phone: string,
+): Promise<void> {
+  try {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const { data: abertas } = await sb.from("opportunities")
+      .select("id, student_phone").eq("tenant_id", tenantId)
+      .eq("kind", "TRIAL").eq("status", "OPEN").eq("origin", "AI_SDR")
+      .gte("created_at", since);
+    for (const o of (abertas || [])) {
+      if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
+      await sb.from("opportunities").update({
+        status: "EXPIRED",
+        lost_reason: "humano assumiu o atendimento — leilão da IA encerrado",
+      }).eq("id", o.id).eq("status", "OPEN");
+    }
+  } catch (e) {
+    console.error("[handoff] falha ao encerrar leilão da IA", e);
+  }
+}
+
 // HANDOFF HUMANO: quando o humano responde manualmente pela instância (fromMe) para um
 // lead OU candidato, a IA correspondente (SDR/RH) se cala nesse contato (ai_handoff=true).
 // Diferencia o ECO da própria IA (mesmo texto enviado nos últimos ~20min) de um humano.
@@ -5478,6 +5515,7 @@ async function maybeHumanTakeover(
       hasMedia ? "[humano assumiu o contato — mídia]" : text,
       { lead_id: lead.id, kind: "human_takeover" },
     );
+    await expireAiTrialAuctions(sb, tenantId, phone);
   }
   // 3) CANDIDATO (RH/Michelle) → cala a triagem nesse contato.
   const { data: apps } = await sb.from("job_applications")
@@ -6964,6 +7002,9 @@ async function dispatchTrial(
       interests: goal || lead.goal || null,
       user_id: adm.id,
       kind: "TRIAL",
+      // Marca o leilão como da atendente: se um humano assumir o lead, é este
+      // (e só este) que morre — ver `expireAiTrialAuctions`.
+      origin: "AI_SDR",
     }).select("id,claim_generation").single();
     if (!opp) return { dispatched: 0, teachers: [], noTeacher: true };
     oppId = opp.id;

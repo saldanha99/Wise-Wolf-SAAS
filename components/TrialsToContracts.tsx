@@ -3,7 +3,7 @@ import {
     Zap, Users, ArrowRight, Check, X, Star, BookOpen, DollarSign,
     UserPlus, Award, TrendingUp, AlertCircle, Loader2, Phone,
     Mail, ChevronRight, Calendar, ThermometerSun, FileText, XCircle,
-    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw
+    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw, CalendarX
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { buildBroadcastErrorMessage, parseFunctionError } from '../lib/functionInvokeErrors';
@@ -236,6 +236,11 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [lostOpp, setLostOpp] = useState<Opportunity | null>(null);
     const [lostReason, setLostReason] = useState('');
     const [savingLost, setSavingLost] = useState(false);
+    // Cancelar a experimental (duplicada, marcada por engano, aluno desistiu antes):
+    // tira da agenda do professor e o avisa. Diferente de "Perdido", que fala do lead.
+    const [cancelOpp, setCancelOpp] = useState<Opportunity | null>(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [savingCancel, setSavingCancel] = useState(false);
 
     // Reagendamento de experimental (falta de aluno/professor)
     const [reschedOpp, setReschedOpp] = useState<Opportunity | null>(null);
@@ -757,6 +762,35 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         }
     };
 
+    const handleCancelTrial = async () => {
+        if (!cancelOpp || !cancelReason.trim()) return;
+        setSavingCancel(true);
+        try {
+            const { data, error } = await supabase.rpc('cancel_trial_opportunity', {
+                p_opportunity_id: cancelOpp.id,
+                p_reason: cancelReason.trim(),
+                p_notify_teacher: true,
+            });
+            if (error || data?.ok !== true) {
+                const code = data?.error;
+                throw new Error(
+                    code === 'experimental_ja_realizada' ? 'Esta experimental já foi realizada — use Perdido se o aluno não seguiu.'
+                        : code === 'experimental_ja_lancada' ? 'O professor já lançou esta aula. Fale com ele antes de cancelar.'
+                            : code === 'sem_permissao' ? 'Só a direção ou a coordenação da escola cancela experimentais.'
+                                : code === 'motivo_obrigatorio' ? 'Informe o motivo do cancelamento.'
+                                    : error?.message || 'Não foi possível cancelar a experimental.'
+                );
+            }
+            setCancelOpp(null);
+            setCancelReason('');
+            fetchData();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSavingCancel(false);
+        }
+    };
+
     // =============================================================
     // RENDER HELPERS
     // =============================================================
@@ -1068,6 +1102,16 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 >
                                                     <RefreshCw size={16} />
                                                     Reagendar Experimental
+                                                </button>
+                                            )}
+                                            {opp.trial_status !== 'DONE' && (
+                                                <button
+                                                    data-tour="trial-cancel"
+                                                    onClick={() => { setCancelOpp(opp); setCancelReason(''); }}
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-2.5 text-sm font-bold text-brand-muted transition-all hover:bg-slate-200"
+                                                >
+                                                    <CalendarX size={16} />
+                                                    Cancelar experimental
                                                 </button>
                                             )}
                                             {/* Perdido: always visible when OPEN */}
@@ -1534,6 +1578,64 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         <p className="text-[10px] text-brand-muted text-center mt-3">
                             "Reenviar ao grupo" reabre a vaga para outro aceite. Para manter o professor atual, a agenda só muda após a confirmação dele.
                         </p>
+                    </div>
+                </div>
+            )}
+
+            {cancelOpp && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-md w-full p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                                <CalendarX size={24} className="text-slate-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-brand-text">Cancelar experimental</h3>
+                                <p className="text-xs text-brand-muted">
+                                    {cancelOpp.student_name}{getTrialDateTime(cancelOpp) ? ` · ${getTrialDateTime(cancelOpp)}` : ''}
+                                    {cancelOpp.winner_teacher_id ? ` · ${getTeacherName(cancelOpp.winner_teacher_id)}` : ''}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="text-sm text-brand-muted mb-3">
+                            A aula sai da agenda do professor e ele recebe um aviso no WhatsApp com o motivo.
+                            O lead continua no funil — nenhuma mensagem vai para o aluno.
+                        </p>
+                        <div className="grid grid-cols-1 gap-2 mb-2">
+                            {['Duplicada: já existe outra experimental marcada', 'Aluno pediu para cancelar', 'Marcada por engano'].map(reason => (
+                                <button
+                                    key={reason}
+                                    onClick={() => setCancelReason(reason)}
+                                    className={`py-2 px-3 rounded-xl text-sm font-semibold text-left transition-all ${cancelReason === reason
+                                        ? 'bg-slate-700 text-white'
+                                        : 'bg-brand-surface-2 text-brand-muted hover:bg-slate-200'
+                                        }`}
+                                >
+                                    {reason}
+                                </button>
+                            ))}
+                        </div>
+                        <textarea
+                            value={cancelReason}
+                            onChange={e => setCancelReason(e.target.value)}
+                            maxLength={300}
+                            rows={2}
+                            placeholder="Ou escreva o motivo..."
+                            className="w-full px-4 py-3 rounded-xl border border-brand-border text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                        />
+                        <div className="flex gap-2 mt-4">
+                            <button onClick={() => setCancelOpp(null)}
+                                className="flex-1 py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold hover:bg-slate-200 transition-all">
+                                Voltar
+                            </button>
+                            <button
+                                onClick={handleCancelTrial}
+                                disabled={!cancelReason.trim() || savingCancel}
+                                className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {savingCancel ? 'Cancelando...' : 'Cancelar aula'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
