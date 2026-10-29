@@ -1553,8 +1553,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261028150000_feriados_nacionais_sem_aula.sql"
   "supabase/migrations/20261028210000_visao_do_professor_sem_financeiro.sql"
   "supabase/migrations/20261029190000_cancelar_experimental_e_leilao_da_ia.sql"
+  "supabase/migrations/20261029200000_matricula_ate_o_fim_antes_dos_termos.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/matricula_ate_o_fim_antes_dos_termos.sql"
   "supabase/tests/cancelar_experimental.sql"
   "supabase/tests/oral_test_scheduling_lifecycle.sql"
   "supabase/tests/affiliate_net_payment_split.sql"

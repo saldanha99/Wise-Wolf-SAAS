@@ -280,7 +280,11 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    // Matrícula por link vai até o fim antes dos termos individuais: só a
+    // liberação (agenda e conclusão) espera escola e professor assinarem —
+    // `finish_enrollments_after_teacher_terms`. Fora da matrícula a trava fica.
     if (
+      !offer &&
       !await studentBillingTeacherTermsReady(
         authorization.admin,
         authorization.tenantId,

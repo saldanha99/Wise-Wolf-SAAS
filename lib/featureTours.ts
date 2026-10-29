@@ -903,6 +903,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'trial-cancel',view:'trials',title:'Cancelar experimental',text:'Experimental duplicada ou marcada por engano agora se cancela aqui: a aula sai da agenda do professor, ele recebe um aviso no WhatsApp com o motivo e ela não aparece mais para lançar. O aluno não recebe mensagem e o lead continua no funil. E quando alguém da equipe assume a conversa de um lead, o leilão que a IA tinha aberto e ninguém aceitou é encerrado sozinho.'},
     ],
   },
+  {
+    id:'2026-10-29-matricula-ate-o-fim',title:'Matrícula não para mais esperando o termo',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'sidebar-nav',view:'contracts',title:'O aluno vai até o fim',text:'O link de matrícula não para mais esperando o termo individual: o aluno preenche, assina o contrato e paga até o fim, e vê "Matrícula recebida — aguardando liberação". O horário fica segurado para ele. Assim que a direção e o professor assinarem o termo em Contratos → Termos por aluno, a agenda é criada e a matrícula é concluída sozinha, com o aviso de boas-vindas no WhatsApp.'},
+    ],
+  },
 ];
 
 /**

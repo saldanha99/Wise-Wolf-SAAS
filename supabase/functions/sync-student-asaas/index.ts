@@ -113,7 +113,11 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    // Matrícula por link vai até o fim antes dos termos individuais: só a
+    // liberação (agenda e conclusão) espera escola e professor assinarem —
+    // `finish_enrollments_after_teacher_terms`. Fora da matrícula a trava fica.
     if (
+      !offer &&
       !await studentBillingTeacherTermsReady(
         authorization.admin,
         authorization.tenantId,
@@ -186,15 +190,18 @@ serve(async (req) => {
           `schedule_materialization_failed: ${materializationError.message}`,
         );
       }
+      const materializationReason = materialization &&
+          typeof materialization === "object"
+        ? text((materialization as Record<string, unknown>).error)
+        : "";
+      // Termo individual em conferência: o horário continua segurado e a agenda
+      // nasce quando escola e professor assinarem. A cobrança segue.
       if (
-        !materialization ||
-        typeof materialization !== "object" ||
-        (materialization as Record<string, unknown>).success !== true
+        materializationReason !== "TEACHER_TERM_PENDING" &&
+        (!materialization ||
+          typeof materialization !== "object" ||
+          (materialization as Record<string, unknown>).success !== true)
       ) {
-        const materializationReason = materialization &&
-            typeof materialization === "object"
-          ? text((materialization as Record<string, unknown>).error)
-          : "";
         throw new Error(
           `schedule_materialization_failed: ${
             materializationReason || "invalid_result"

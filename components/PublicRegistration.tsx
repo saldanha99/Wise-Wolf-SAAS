@@ -258,6 +258,14 @@ const PublicRegistration: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [processingStage, setProcessingStage] = useState<ProcessingStage>('IDLE');
     const [correlationId, setCorrelationId] = useState<string>('');
+    // Pago e com contrato assinado, mas a escola e o professor ainda não assinaram o
+    // termo individual: a matrícula é liberada sozinha quando eles assinarem.
+    const [awaitingRelease, setAwaitingRelease] = useState(false);
+    const isAwaitingTeacherTerms = async (offerId: unknown): Promise<boolean> => {
+        if (typeof offerId !== 'string') return false;
+        const { data, error: awaitingError } = await supabase.rpc('enrollment_awaiting_teacher_terms', { p_offer_id: offerId });
+        return !awaitingError && data?.ok === true && data.payment_registered === true && data.terms_ready !== true;
+    };
     const [resumeAuthenticated, setResumeAuthenticated] = useState(false);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [contractData, setContractData] = useState<any>(null);
@@ -423,8 +431,11 @@ const PublicRegistration: React.FC = () => {
                 }
 
 
-                const termStatus=await supabase.rpc('teacher_student_terms',{p_action:'enrollment_status',p_id:offerId});
-                if(termStatus.error||termStatus.data?.ready!==true){setError('Sua matrícula está salva e aguarda a conferência dos aceites da escola e do professor. Nenhuma nova cobrança será iniciada enquanto houver essa pendência.');setStep('FORM');return;}
+                if (await isAwaitingTeacherTerms(offerId)) {
+                    setAwaitingRelease(true);
+                    setStep('SUCCESS');
+                    return;
+                }
                 if (progress.status === 'AWAITING_PAYMENT') {
                     try {
                         const pendingKind = getPendingEnrollmentPaymentKind(
@@ -762,11 +773,8 @@ const PublicRegistration: React.FC = () => {
                 termsVersion: offeredContractTermsVersion('STUDENT', contractData),
             });
             setSignedTermsVersion(recordedTermsVersion);
-            const readiness = await supabase.rpc('teacher_student_terms',{p_action:'enrollment_status',p_id:contractData._offerId});
-            if(readiness.error||readiness.data?.ok!==true)throw new Error('Não foi possível conferir os aceites do atendimento. Nenhuma cobrança foi iniciada. Tente novamente.');
-            if(readiness.data.ready!==true){
-                setError('Seu contrato com a escola foi salvo. A matrícula aguarda a assinatura do termo individual pela escola e pelo professor. Nenhuma cobrança foi iniciada nesta etapa. Retorne a este link para continuar após a confirmação.');setStep('FORM');return;
-            }
+            // O termo individual (escola + professor) não para mais o aluno aqui:
+            // ele paga até o fim e a liberação espera as assinaturas.
 
 
             enrollmentData = {
@@ -1129,6 +1137,12 @@ const PublicRegistration: React.FC = () => {
                 if (progressOutcome === 'UNAVAILABLE') {
                     throw new Error('enrollment_progress_unavailable');
                 }
+                if (await isAwaitingTeacherTerms(offerId)) {
+                    setError(null);
+                    setAwaitingRelease(true);
+                    setStep('SUCCESS');
+                    return;
+                }
 
                 setProcessingStage('BILLING');
                 setError(
@@ -1153,6 +1167,10 @@ const PublicRegistration: React.FC = () => {
                 if (session) await sendCompletionNotifications(session.user.id, contractData);
                 setProcessingStage('COMPLETE');
                 setError(null);
+                setStep('SUCCESS');
+            } else if (paymentOutcome === 'SETTLED_AWAITING_COMPLETION' && await isAwaitingTeacherTerms(contractData?._offerId)) {
+                setError(null);
+                setAwaitingRelease(true);
                 setStep('SUCCESS');
             } else if (paymentOutcome === 'SETTLED_AWAITING_COMPLETION') {
                 setProcessingStage('BILLING');
@@ -1543,8 +1561,12 @@ const PublicRegistration: React.FC = () => {
             <EnrollmentShell
                 currentStep={4}
                 isFinished
-                storyTitle={<>Agora é oficial. <em>Bem-vindo à sua jornada.</em></>}
-                storyDescription="Sua matrícula foi concluída e seu acesso já está pronto. O próximo passo acontece dentro do portal."
+                storyTitle={awaitingRelease
+                    ? <>Matrícula recebida. <em>Falta só a liberação.</em></>
+                    : <>Agora é oficial. <em>Bem-vindo à sua jornada.</em></>}
+                storyDescription={awaitingRelease
+                    ? 'Seu contrato e seu pagamento foram registrados. A escola e o professor confirmam o atendimento e a matrícula é liberada sozinha.'
+                    : 'Sua matrícula foi concluída e seu acesso já está pronto. O próximo passo acontece dentro do portal.'}
                 contractData={contractData}
                 quote={quote}
                 school={school}
@@ -1553,14 +1575,18 @@ const PublicRegistration: React.FC = () => {
                     <div className="enrollment-success-icon">
                         <CheckCircle size={36} strokeWidth={1.9} aria-hidden="true" />
                     </div>
-                    <p className="enrollment-panel__eyebrow">Matrícula concluída</p>
+                    <p className="enrollment-panel__eyebrow">{awaitingRelease ? 'Aguardando liberação' : 'Matrícula concluída'}</p>
                     <h2 className="enrollment-panel__title">Tudo certo, {name.split(' ')[0] || 'bem-vindo'}!</h2>
                     <p className="enrollment-panel__description mx-auto">
-                        Seu acesso ao portal foi criado, o contrato foi registrado e o fluxo financeiro foi confirmado.
+                        {awaitingRelease
+                            ? 'Você já fez tudo o que precisava. Agora a escola e o seu professor confirmam o atendimento; quando isso acontecer, sua agenda é liberada automaticamente e você recebe a confirmação no WhatsApp. Não precisa voltar a este link.'
+                            : 'Seu acesso ao portal foi criado, o contrato foi registrado e o fluxo financeiro foi confirmado.'}
                     </p>
 
                     <div className="mx-auto mt-7 grid max-w-md gap-3 text-left">
-                        {['Contrato assinado digitalmente', 'Acesso ao portal liberado', 'Matrícula confirmada pela escola'].map(item => (
+                        {(awaitingRelease
+                            ? ['Contrato assinado digitalmente', 'Pagamento registrado', 'Acesso ao portal criado']
+                            : ['Contrato assinado digitalmente', 'Acesso ao portal liberado', 'Matrícula confirmada pela escola']).map(item => (
                             <div key={item} className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm font-bold text-emerald-900">
                                 <CheckCircle size={17} className="shrink-0 text-emerald-600" aria-hidden="true" />
                                 {item}
