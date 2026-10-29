@@ -4588,3 +4588,29 @@ Migration `20261027201000` (remendo por âncora, marcador
 continua não podendo ser marcada pelo professor
 (`teacher_reschedule_slot_must_be_future`, antifraude): a direção marca a data
 e o professor lança em Pendentes.
+
+### 28/10/2026 — Feriado nacional: sem aula, com aviso automático (preparado)
+
+Regra da direção: feriado NACIONAL não tem aula; ponto facultativo (Carnaval,
+Corpus Christi, Dia do Servidor) tem aula normal. `public.national_holidays` é
+calculada por `private.brazil_national_holidays_for(ano)` (10 datas: fixas da Lei
+662/49, 6.802/80, 14.759/23 + Paixão de Cristo pela Páscoa) e preenchida para o
+ano corrente e o seguinte por `private.ensure_national_holidays()` — data editada
+à mão não é sobrescrita. A tabela da atendente (`whatsapp-inbound/holidays.ts`)
+perdeu Carnaval e Corpus Christi, que bloqueavam experimental à toa.
+
+Cron `wisewolf-national-holiday-notices` (12:00 UTC = 09:00 BRT) →
+`private.queue_national_holiday_notices()`: aluno notificável e professor elegível
+COM aula da agenda fixa no dia (`booking_schedule_on_date`) recebem aviso pela fila
+oficial (`MANAGEMENT_NOTICE`, chave `national-holiday:<data>:<D7|D1>:<pessoa>`).
+D7 vale de 7 a 2 dias antes (sai uma vez, mesmo se o calendário entrou tarde); D1 na
+véspera. Escola só entra com linha em `private.national_holiday_notice_settings`
+(nasce só a Wise Wolf; desligar = `enabled=false`). Quem não tem aula no dia não
+recebe (inclui feriado em domingo) — evita disparo inútil no número da escola.
+No dia do feriado, aula da agenda fixa não gera lembrete de 30 min
+(`prepare-daily-reminders`) nem confirmação de presença (remendo por âncora em
+`enqueue_attendance_confirmations`); reposição/experimental marcada no dia segue.
+Pop-up `NationalHolidayNotice` (RPC `my_upcoming_national_holiday`) na semana do
+feriado; "fechei" fica no localStorage por usuário+data. Migration
+`20261028150000`, teste `feriados_nacionais_sem_aula.sql`, tour da direção.
+Ensaio na VPS com rollback: Finados (02/11) geraria 27 avisos.

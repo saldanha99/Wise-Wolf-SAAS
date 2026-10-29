@@ -12,6 +12,7 @@ import { TourRole } from './lib/tours';
 
 const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
 const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogleConnectionGate'));
+const NationalHolidayNotice = lazy(() => import('./components/NationalHolidayNotice'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
@@ -351,6 +352,8 @@ const App: React.FC = () => {
   const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
   const [hasLinkedAffiliate, setHasLinkedAffiliate] = useState(false);
   const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
+  // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
+  const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -1919,7 +1922,12 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && (
+      {!tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && (
+        <Suspense fallback={null}>
+          <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
+        </Suspense>
+      )}
+      {featureTour && !tourOpen && !teacherGoogleRequired && !holidayNoticeActive && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

@@ -884,6 +884,10 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-28-zz-manual-do-professor',title:'Manual do Professor: treinamento obrigatório',roles:['TEACHER'],
     steps:[{target:'teacher-handbook',view:'teacher-handbook',title:'Leia e confirme o manual',text:'Os pilares da escola em uma tela: seu papel, contrato de prestação de serviços, pagamento e Turbo, Teacher Exchange, gravação, avisos de ausência (mínimo 24 horas), cobertura, feriados nacionais, as 4 reposições obrigatórias, aula experimental com o Guia Gramatical e por que o professor nunca cobra o aluno. Leia tudo e confirme no final; o manual fica no menu em Pedagógico para você consultar sempre que precisar.'}],
   },
+  {
+    id:'2026-10-28-zzz-feriado-nacional',title:'Feriado nacional: aviso automático',roles:['SCHOOL_ADMIN'],
+    steps:[{target:'sidebar-nav',view:'dashboard',title:'Sem aula em feriado nacional, com aviso',text:'Nos feriados nacionais não há aula. A plataforma agora avisa sozinha, pelo WhatsApp da escola, os alunos e professores que têm aula no dia: 7 dias antes e na véspera. Na semana do feriado, quem entra no portal vê um aviso na tela. Nesse dia o lembrete de 30 minutos e a confirmação de presença não saem para as aulas da agenda. Ponto facultativo (Carnaval, Corpus Christi) continua com aula normal.'}],
+  },
 
 ];
 

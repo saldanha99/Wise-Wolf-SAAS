@@ -1,19 +1,17 @@
 /// <reference lib="deno.ns" />
 
 /**
- * Tabela de feriados nacionais brasileiros (fixos e móveis).
- * Utilizada para garantir que o SDR IA e o despachante de experimentais
- * NUNCA ofereçam nem agendem aulas em feriados nacionais.
+ * Feriados nacionais brasileiros — só os FERIADOS, nunca ponto facultativo
+ * (Carnaval, Corpus Christi, Dia do Servidor têm aula normal). Mesma lista de
+ * public.national_holidays no banco. Utilizada para garantir que o SDR IA e o
+ * despachante de experimentais NUNCA ofereçam nem agendem aulas nesses dias.
  */
 export const BRAZILIAN_NATIONAL_HOLIDAYS_MAP: Record<string, string> = {
   // 2026 Móveis e Fixos
   "2026-01-01": "Confraternização Universal",
-  "2026-02-16": "Carnaval",
-  "2026-02-17": "Carnaval",
-  "2026-04-03": "Sexta-feira Santa",
+  "2026-04-03": "Paixão de Cristo",
   "2026-04-21": "Tiradentes",
   "2026-05-01": "Dia do Trabalho",
-  "2026-06-04": "Corpus Christi",
   "2026-09-07": "Independência do Brasil",
   "2026-10-12": "Nossa Senhora Aparecida",
   "2026-11-02": "Finados",
@@ -22,12 +20,9 @@ export const BRAZILIAN_NATIONAL_HOLIDAYS_MAP: Record<string, string> = {
   "2026-12-25": "Natal",
   // 2027 Móveis e Fixos
   "2027-01-01": "Confraternização Universal",
-  "2027-02-08": "Carnaval",
-  "2027-02-09": "Carnaval",
-  "2027-03-26": "Sexta-feira Santa",
+  "2027-03-26": "Paixão de Cristo",
   "2027-04-21": "Tiradentes",
   "2027-05-01": "Dia do Trabalho",
-  "2027-05-27": "Corpus Christi",
   "2027-09-07": "Independência do Brasil",
   "2027-10-12": "Nossa Senhora Aparecida",
   "2027-11-02": "Finados",

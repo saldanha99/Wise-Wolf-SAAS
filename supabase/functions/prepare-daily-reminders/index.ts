@@ -61,8 +61,23 @@ serve(async (req) => {
         let queuedCount = 0;
         const skipped: string[] = [];
 
+        // Feriado nacional não tem aula da agenda fixa: o aluno já foi avisado 7
+        // dias e 1 dia antes, e um "sua aula começa em 30 min" desmentiria o aviso.
+        // Falha na leitura não trava o lembrete (comportamento de antes).
+        const classDates = [...new Set(classes.map((c) => String(c.class_date || '')).filter(Boolean))];
+        const { data: holidayRows, error: holidayErr } = classDates.length
+            ? await supabaseClient.from('national_holidays').select('holiday_date').in('holiday_date', classDates)
+            : { data: [], error: null };
+        if (holidayErr) console.error('[Reminders] feriados indisponíveis:', holidayErr.message);
+        const holidays = new Set((holidayRows ?? []).map((h) => String(h.holiday_date)));
+
         for (const cls of classes) {
             try {
+                if (String(cls.source_type || '').toLowerCase() === 'booking' && holidays.has(String(cls.class_date))) {
+                    skipped.push(`class ${cls.source_id}: feriado nacional`);
+                    continue;
+                }
+
                 if (String(cls.source_type || '').toLowerCase() === 'appointment') {
                     const { data: appointment, error: appointmentError } = await supabaseClient
                         .from('appointments')

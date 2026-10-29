@@ -1550,6 +1550,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261027200000_origem_dos_leads_clara.sql"
   "supabase/migrations/20261027201000_reposicao_por_substituto_sem_termo.sql"
   "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
+  "supabase/migrations/20261028150000_feriados_nacionais_sem_aula.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/oral_test_scheduling_lifecycle.sql"
@@ -1596,6 +1597,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/professor_autonomo_e_cobertura_pontual.sql"
   "supabase/tests/origem_dos_leads_clara.sql"
   "supabase/tests/reposicao_por_substituto_sem_termo.sql"
+  "supabase/tests/feriados_nacionais_sem_aula.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"
