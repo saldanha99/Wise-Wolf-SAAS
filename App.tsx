@@ -12,6 +12,7 @@ import { TourRole } from './lib/tours';
 
 const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
 const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogleConnectionGate'));
+const TeacherStudentTermsGate = lazy(() => import('./components/TeacherStudentTermsGate'));
 const NationalHolidayNotice = lazy(() => import('./components/NationalHolidayNotice'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
@@ -352,6 +353,8 @@ const App: React.FC = () => {
   const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
   const [hasLinkedAffiliate, setHasLinkedAffiliate] = useState(false);
   const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
+  // Termo por aluno pendente do próprio professor: pop-up obrigatório.
+  const [teacherTermsRequired, setTeacherTermsRequired] = useState(false);
   // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
 
@@ -1906,7 +1909,12 @@ const App: React.FC = () => {
           <TeacherGoogleConnectionGate key={user.id} onActiveChange={setTeacherGoogleRequired} onLogout={handleLogout} />
         </Suspense>
       )}
-      {tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
+      {user.role === UserRole.TEACHER && (
+        <Suspense fallback={null}>
+          <TeacherStudentTermsGate key={user.id} blocked={teacherGoogleRequired} onActiveChange={setTeacherTermsRequired} onLogout={handleLogout} />
+        </Suspense>
+      )}
+      {tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
             steps={flattenTour(user.role as TourRole)}
@@ -1922,12 +1930,12 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {!tourOpen && !teacherGoogleRequired && !dossierLink.holdsTours && (
+      {!tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !holidayNoticeActive && !dossierLink.holdsTours && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

@@ -34,3 +34,13 @@ export async function downloadIndividualTermPdf(term:IndividualTerm):Promise<voi
  const total=pdf.getNumberOfPages();for(let i=1;i<=total;i++){pdf.setPage(i);pdf.setFontSize(8);pdf.setTextColor(90);pdf.text(`Via ${term.id} | revisão ${term.version} | página ${i}/${total}`,18,288);}
  pdf.save(`Termo_individual_${term.id}_v${term.version}.pdf`);
 }
+
+/**
+ * Termos em que o PRÓPRIO professor tem algo a fazer agora: os dados de
+ * prestador que faltam (sem eles nem a escola assina) ou a assinatura dele,
+ * depois da escola. "Aguardando a escola" não é pendência dele.
+ */
+export function teacherTermsNeedingAction(data:IndividualTermsData|null):IndividualTerm[]{
+ if(!data||data.role!=='TEACHER')return [];
+ return data.terms.filter(t=>t.status==='PROPOSED'&&!t.retired_at&&(t.phase==='IDENTITY_PENDING'||t.phase==='TEACHER_PENDING'));
+}

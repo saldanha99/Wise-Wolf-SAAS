@@ -909,6 +909,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'sidebar-nav',view:'contracts',title:'O aluno vai até o fim',text:'O link de matrícula não para mais esperando o termo individual: o aluno preenche, assina o contrato e paga até o fim, e vê "Matrícula recebida — aguardando liberação". O horário fica segurado para ele. Assim que a direção e o professor assinarem o termo em Contratos → Termos por aluno, a agenda é criada e a matrícula é concluída sozinha, com o aviso de boas-vindas no WhatsApp.'},
     ],
   },
+  {
+    id:'2026-10-29-termo-obrigatorio-professor',title:'Aluno novo pede o seu termo',roles:['TEACHER'],
+    steps:[
+      {target:'teacher-student-terms',view:'contract_teacher',title:'Termo por aluno virou obrigatório',text:'Quando chega um aluno novo para você, o portal abre um aviso que só fecha depois que você fizer a sua parte: preencher seus dados de prestador (com CNPJ ou como autônomo, uma vez só) e, depois que a escola assinar, assinar o termo daquele aluno. Sem isso as aulas dele não entram na sua agenda. Os termos ficam aqui, em Meu Contrato → Termos por aluno.'},
+    ],
+  },
 ];
 
 /**
