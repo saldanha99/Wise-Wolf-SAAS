@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
+import { Search, Info, RefreshCw, UserPlus, Trash2, Users, AlertCircle, AlertTriangle, LayoutGrid, List as ListIcon, X } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
@@ -11,6 +11,19 @@ import StudentProfileForm from './StudentProfileForm';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import StudentProfileEditor from './StudentProfileEditor';
 import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
+import StudentRosterCard from './students/StudentRosterCard';
+import StudentRosterTable from './students/StudentRosterTable';
+import {
+  isTeacherOf,
+  matchesQuickFilter,
+  quickFilterOptions,
+  rosterPermissions,
+  rosterStage,
+  scheduleSlotsFromBookings,
+  sortRoster,
+  type QuickFilter,
+  type RosterSort,
+} from '../lib/studentRoster';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 import { provisionStudentAccount } from '../lib/studentAccountProvisioning';
 import { changeStudentLifecycle } from '../lib/studentLifecycleRequest';
@@ -49,8 +62,16 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | 'ALL'>('ALL');
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
-  const [financialFilter, setFinancialFilter] = useState<string>('ALL'); // ALL | RISK | OVERDUE
-  const [statusFilter, setStatusFilter] = useState<string>('ALL'); // ALL | ACTIVE | INACTIVE
+  // Abre nos ativos: encerrado e pausado continuam a um clique, sem poluir o dia a dia.
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('ACTIVE');
+  const [sortBy, setSortBy] = useState<RosterSort>('PRIORITY');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
+    try {
+      return window.localStorage.getItem(`wisewolf.studentsView.${user?.id || ''}`) === 'table' ? 'table' : 'cards';
+    } catch {
+      return 'cards';
+    }
+  });
   const [overviewMap, setOverviewMap] = useState<Record<string, any>>({});
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
 
@@ -242,6 +263,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           return {
             id: s.id,
             name: s.full_name || 'Nome Indefinido',
+            scheduleSlots: scheduleSlotsFromBookings(studentBookings),
             levelBadge: s.module?.split(' ')[0] || 'N/A',
             currentModuleStatus: s.current_book_part || s.module || 'Não iniciado',
             interests: s.interests || [],
@@ -686,30 +708,10 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     const msg = makeInactive
       ? `Pausar temporariamente a matrícula de ${student.name}?\n\nPAUSA: é reversível. O acesso e as mensagens automáticas são interrompidos, a assinatura fica inativa no Asaas, a competência atual é preservada e cobranças abertas dos meses seguintes são canceladas. Os horários fixos serão liberados da agenda do professor.\n\nPara uma saída definitiva, use “Encerrar”.`
       : `Reativar a matrícula de ${student.name}?\n\nO acesso, a assinatura e as notificações automáticas voltam ao fluxo ativo. Os horários liberados durante a pausa não voltam automaticamente: será preciso escolher e agendar novos horários.`;
+    // Pausa e reativação passam pelo school-admin, que confere o Asaas; o banco
+    // recusa a troca de status por qualquer outro caminho (20261027114059).
+    if (!isDirector) return;
     if (!window.confirm(msg)) return;
-
-    if (!isDirector) {
-      // Professor responsável: altera status diretamente via RPC segura
-      try {
-        const { error } = await supabase.rpc('set_student_academic_status', {
-          p_student_id: student.id,
-          p_status: makeInactive ? 'Inativo' : 'Ativo',
-          p_reason: makeInactive ? 'Pausado pelo professor responsável' : 'Reativado pelo professor responsável',
-        });
-        if (error) throw error;
-        const newLifecycle = makeInactive ? 'suspended' : 'active';
-        setStudents(prev => prev.map(s => s.id === student.id ? {
-          ...s,
-          status: makeInactive ? 'Inativo' : 'Ativo',
-          lifecycle_status: newLifecycle,
-        } : s));
-        alert(makeInactive ? 'Aluno pausado temporariamente pelo professor.' : 'Aluno reativado com sucesso.');
-        fetchStudents();
-      } catch (err: any) {
-        alert('Erro ao alterar status: ' + (err.message || 'Falha de permissão'));
-      }
-      return;
-    }
 
     try {
       const data = await changeStudentLifecycle(supabase, {
@@ -918,7 +920,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         setOverviewMap(map);
       }
     })();
-  }, [tenantId, students.length]);
+  }, [tenantId, students]);
 
   // Níveis disponíveis para o filtro
   const availableLevels = Array.from(new Set(students.map(s => s.levelBadge).filter((x: string) => x && x !== 'N/A'))).sort();
@@ -930,22 +932,42 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     || ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'].includes(s?.status)
     || s?.status_financial === 'ARCHIVED';
 
-  // Filter Logic
-  const filteredStudents = students.filter(s => {
-    const ov = overviewMap[s.id];
-    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.occupation.toLowerCase().includes(searchTerm.toLowerCase());
+  const isDirectorUser = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const permissionsFor = (student?: any) => rosterPermissions(user?.role, user?.id, student);
+  const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  // Busca, professor e nível recortam a base; os atalhos contam dentro desse recorte.
+  const scopedStudents = students.filter(s => {
+    const term = normalize(searchTerm.trim());
+    const matchesSearch = !term
+      || normalize(s.name).includes(term)
+      || normalize(s.occupation || '').includes(term)
+      || (s.assignedTeachers || []).some((t: string) => normalize(t || '').includes(term));
     const matchesTeacher = selectedTeacherId === 'ALL' || s.assignedTeacherIds.includes(selectedTeacherId);
     const matchesLevel = levelFilter === 'ALL' || s.levelBadge === levelFilter;
-    const matchesFinancial = financialFilter === 'ALL'
-      || (financialFilter === 'RISK' && ov && ov.risk_level !== 'LOW')
-      || (financialFilter === 'OVERDUE' && ov && (ov.overdue_count || 0) > 0)
-      || (financialFilter === 'ORPHAN' && ov && ov.has_activity === false);
-    const matchesStatus = statusFilter === 'ALL'
-      || (statusFilter === 'ACTIVE' && !isInactive(s))
-      || (statusFilter === 'INACTIVE' && isInactive(s));
-    return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial && matchesStatus;
+    return matchesSearch && matchesTeacher && matchesLevel;
   });
+  const quickOptions = quickFilterOptions(scopedStudents, overviewMap, permissionsFor(undefined).canSeeMoney);
+  const filteredStudents = sortRoster(
+    scopedStudents.filter(s => matchesQuickFilter(s, overviewMap[s.id], quickFilter)),
+    overviewMap,
+    sortBy,
+  );
+  // Quantos alunos ativos cada professor tem — mostrado ao lado do nome no filtro.
+  const activeCountByTeacher = students.reduce<Record<string, number>>((acc, s) => {
+    if (rosterStage(s) !== 'active') return acc;
+    for (const id of s.assignedTeacherIds as string[]) acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
+  const hasNarrowing = !!searchTerm.trim() || selectedTeacherId !== 'ALL' || levelFilter !== 'ALL';
+  const changeViewMode = (mode: 'cards' | 'table') => {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(`wisewolf.studentsView.${user?.id || ''}`, mode);
+    } catch {
+      // Preferência de exibição: sem armazenamento, só não é lembrada.
+    }
+  };
 
   const offboardingPeriodStart = /^\d{4}-\d{2}-\d{2}$/.test(offboardingEffectiveDate)
     ? `${offboardingEffectiveDate.slice(0, 7)}-01`
@@ -974,111 +996,200 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     canPreserveCurrentInvoice,
   );
 
-  const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const showSidebar = isDirectorUser && teachers.length > 0;
+  const activeOption = quickOptions.find(o => o.id === quickFilter);
+  const attentionCount = quickOptions.find(o => o.id === 'ATTENTION')?.count || 0;
+  const activeCount = quickOptions.find(o => o.id === 'ACTIVE')?.count || 0;
+  const selectedTeacher = teachers.find(t => t.id === selectedTeacherId);
+  const toneClass: Record<string, string> = {
+    blue: 'data-[on=true]:bg-blue-600 data-[on=true]:border-blue-600 text-blue-700 dark:text-blue-300',
+    rose: 'data-[on=true]:bg-rose-600 data-[on=true]:border-rose-600 text-rose-700 dark:text-rose-300',
+    orange: 'data-[on=true]:bg-orange-500 data-[on=true]:border-orange-500 text-orange-700 dark:text-orange-300',
+    violet: 'data-[on=true]:bg-violet-600 data-[on=true]:border-violet-600 text-violet-700 dark:text-violet-300',
+    red: 'data-[on=true]:bg-red-600 data-[on=true]:border-red-600 text-red-700 dark:text-red-300',
+    amber: 'data-[on=true]:bg-amber-500 data-[on=true]:border-amber-500 text-amber-700 dark:text-amber-300',
+    slate: 'data-[on=true]:bg-slate-600 data-[on=true]:border-slate-600 text-slate-700 dark:text-slate-300',
+  };
 
   return (
     <div data-tour="student-schedule-change" className="flex flex-col xl:flex-row gap-6 h-auto xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
 
-      {/* Sidebar: Teacher Filter (Admins Only) */}
+      {/* Filtro por professor (direção) */}
       {showSidebar && (
-        <div className="w-full xl:w-72 max-h-88 xl:max-h-none min-h-0 bg-brand-surface border border-brand-border rounded-4xl flex flex-col shadow-xs shrink-0">
+        <aside className="hidden xl:flex w-72 min-h-0 bg-brand-surface border border-brand-border rounded-3xl flex-col shrink-0 overflow-hidden">
           <div className="p-5 border-b border-brand-border">
-            <h3 className="font-black text-brand-text dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Users size={14} className="text-tenant-primary" /> Filtrar por Professor
+            <h3 className="font-black text-brand-text text-[11px] uppercase tracking-widest flex items-center gap-2">
+              <Users size={14} className="text-tenant-primary" /> Por professor
             </h3>
-            {/* Optional Search inside sidebar could go here */}
+            <p className="mt-1 text-[11px] text-brand-muted">Alunos ativos na agenda de cada um.</p>
           </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
             <button
+              type="button"
               onClick={() => setSelectedTeacherId('ALL')}
-              className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === 'ALL'
-                ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg'
-                : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-brand-border'
-                }`}
+              data-on={selectedTeacherId === 'ALL'}
+              className="w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-brand-surface-2 data-[on=true]:bg-tenant-primary data-[on=true]:text-white"
             >
-              <div className="w-8 h-8 rounded-lg bg-brand-surface-2 dark:bg-brand-surface-2 flex items-center justify-center">
-                <Users size={14} className={selectedTeacherId === 'ALL' ? 'text-brand-text' : 'text-brand-muted'} />
-              </div>
-              <span className={`text-[10px] font-black uppercase tracking-wide flex-1 ${selectedTeacherId === 'ALL' ? 'text-white' : 'text-brand-muted dark:text-brand-muted'}`}>
-                Todos os Alunos
-              </span>
-              {selectedTeacherId === 'ALL' && <ChevronRight size={12} />}
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-surface-2 text-brand-muted"><Users size={16} /></span>
+              <span className="flex-1 text-xs font-black">Todos os alunos</span>
+              <span className="text-[11px] font-black opacity-80">{students.filter(s => rosterStage(s) === 'active').length}</span>
             </button>
-
-            {teachers.map(teacher => (
+            {[...teachers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(teacher => (
               <button
+                type="button"
                 key={teacher.id}
                 onClick={() => setSelectedTeacherId(teacher.id)}
-                className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === teacher.id
-                  ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
-                  : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-tenant-primary/30'
-                  }`}
+                data-on={selectedTeacherId === teacher.id}
+                className="w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-brand-surface-2 data-[on=true]:bg-tenant-primary data-[on=true]:text-white"
               >
-                <img src={teacher.avatar} className="w-8 h-8 rounded-lg border-2 border-white/20" alt="" />
-                <div className="flex-1 overflow-hidden">
-                  <p className={`text-[10px] font-black truncate leading-tight ${selectedTeacherId === teacher.id ? 'text-white' : 'text-brand-text dark:text-slate-300'}`}>
-                    {teacher.name}
-                  </p>
-                </div>
-                {selectedTeacherId === teacher.id && <ChevronRight size={12} />}
+                <img src={teacher.avatar} className="h-9 w-9 rounded-xl object-cover" alt="" />
+                <span className="flex-1 min-w-0 truncate text-xs font-bold">{teacher.name}</span>
+                <span className={`min-w-6 rounded-full px-1.5 py-0.5 text-center text-[11px] font-black ${activeCountByTeacher[teacher.id] ? 'bg-brand-surface-2 text-brand-text' : 'text-brand-muted'}`}>
+                  {activeCountByTeacher[teacher.id] || 0}
+                </span>
               </button>
             ))}
           </div>
-        </div>
+        </aside>
       )}
 
-      {/* Main Content */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-6 overflow-visible xl:overflow-hidden">
-        {/* Header Search */}
-        <div className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap justify-between items-stretch md:items-center gap-3 md:gap-4 bg-brand-surface p-4 rounded-4xl border border-brand-border shrink-0">
-          <div className="flex items-center gap-4 w-full md:min-w-[18rem] md:flex-1">
-            <div className="p-3 bg-brand-surface-2 rounded-full">
-              <Search size={20} className="text-brand-muted" />
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4 overflow-visible xl:overflow-hidden">
+        {/* Cabeçalho */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0b1f4d] via-[#14306e] to-[#2a1f6b] p-5 text-white shadow-[0_30px_60px_-36px_rgba(30,58,138,0.9)] shrink-0 md:p-6">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-200">
+                {isDirectorUser ? 'Alunos da escola' : 'Meus alunos'}
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">
+                {activeCount} ativo{activeCount === 1 ? '' : 's'}
+                {attentionCount > 0 && <span className="text-rose-300"> · {attentionCount} pedem atenção</span>}
+              </h2>
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-blue-100/80">
+                {isDirectorUser
+                  ? 'Toque num atalho para ver só quem precisa de você. Pausar e encerrar conferem a assinatura no Asaas antes de valer.'
+                  : 'Aqui ficam os alunos com aula na sua agenda. Você edita o pedagógico e troca horário em Agenda; valores e matrícula ficam com a direção.'}
+              </p>
             </div>
+            {permissionsFor(undefined).canCreate && (
+              <button
+                type="button"
+                onClick={() => setEditingStudent({} as any)} // Objeto vazio = criação
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-xs font-black uppercase tracking-wide text-[#0b1f4d] shadow-lg transition-transform hover:scale-[1.03]"
+                aria-label="Adicionar novo aluno"
+              >
+                <UserPlus size={17} /> Novo aluno
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Busca e ordenação */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
+          <label className="flex min-h-11 flex-1 items-center gap-3 rounded-2xl border border-brand-border bg-brand-surface px-4 focus-within:ring-2 focus-within:ring-tenant-primary/30">
+            <Search size={17} className="text-brand-muted" />
             <input
-              className="flex-1 bg-transparent outline-hidden text-sm font-bold text-brand-text dark:text-slate-200 placeholder:text-brand-muted"
-              placeholder="Buscar aluno por nome, profissão..."
+              className="flex-1 bg-transparent text-sm font-semibold text-brand-text outline-hidden placeholder:text-brand-muted"
+              placeholder={isDirectorUser ? 'Buscar por aluno, professor ou profissão' : 'Buscar aluno'}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
+              aria-label="Buscar aluno"
             />
+            {searchTerm && (
+              <button type="button" onClick={() => setSearchTerm('')} aria-label="Limpar busca" className="text-brand-muted hover:text-brand-text"><X size={16} /></button>
+            )}
+          </label>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            {showSidebar && (
+              <select
+                value={selectedTeacherId}
+                onChange={e => setSelectedTeacherId(e.target.value)}
+                className="xl:hidden col-span-2 min-h-11 rounded-2xl border border-brand-border bg-brand-surface px-3 text-xs font-bold text-brand-text"
+                aria-label="Filtrar por professor"
+              >
+                <option value="ALL">Todos os professores</option>
+                {teachers.map(t => <option key={t.id} value={t.id}>{t.name} ({activeCountByTeacher[t.id] || 0})</option>)}
+              </select>
+            )}
+            <select
+              value={levelFilter}
+              onChange={e => setLevelFilter(e.target.value)}
+              className="min-h-11 rounded-2xl border border-brand-border bg-brand-surface px-3 text-xs font-bold text-brand-text"
+              aria-label="Filtrar por nível"
+            >
+              <option value="ALL">Todos os níveis</option>
+              {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as RosterSort)}
+              className="min-h-11 rounded-2xl border border-brand-border bg-brand-surface px-3 text-xs font-bold text-brand-text"
+              aria-label="Ordenar alunos"
+            >
+              <option value="PRIORITY">Prioridade</option>
+              <option value="LAST_CLASS">Mais tempo sem aula</option>
+              <option value="NAME">Nome (A–Z)</option>
+            </select>
+            <div className="col-span-2 flex rounded-2xl border border-brand-border bg-brand-surface p-1" role="group" aria-label="Modo de exibição">
+              {([['cards', LayoutGrid, 'Cartões'], ['table', ListIcon, 'Lista']] as const).map(([mode, Icon, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => changeViewMode(mode)}
+                  aria-pressed={viewMode === mode}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-black transition-colors ${viewMode === mode ? 'bg-tenant-primary text-white' : 'text-brand-muted hover:text-brand-text'}`}
+                >
+                  <Icon size={14} /> {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-surface-2 rounded-full shrink-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-black uppercase text-brand-muted tracking-widest">{filteredStudents.length} Alunos</span>
-          </div>
+        </div>
 
-          {/* Filtros avançados */}
-          <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
-            <option value="ALL">Todos os níveis</option>
-            {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
-          </select>
-          <select value={financialFilter} onChange={e => setFinancialFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
-            <option value="ALL">Situação: todas</option>
-            <option value="RISK">⚠ Em risco</option>
-            <option value="OVERDUE">Inadimplentes</option>
-            <option value="ORPHAN">Sem matrícula (testes)</option>
-          </select>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-hidden border border-brand-border shrink-0">
-            <option value="ALL">Status: todos</option>
-            <option value="ACTIVE">Ativos</option>
-            <option value="INACTIVE">Inativos</option>
-          </select>
-
-          {/* ADD BUTTON */}
+        {/* Atalhos: cada um é um filtro com a contagem */}
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Situação dos alunos">
+          {quickOptions.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              role="tab"
+              aria-selected={quickFilter === option.id}
+              data-on={quickFilter === option.id}
+              onClick={() => setQuickFilter(option.id)}
+              title={option.hint}
+              className={`group flex shrink-0 items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-3.5 py-2 transition-all hover:-translate-y-0.5 data-[on=true]:text-white data-[on=true]:shadow-lg ${toneClass[option.tone]}`}
+            >
+              <span className="text-lg font-black leading-none">{option.count}</span>
+              <span className="text-[11px] font-bold leading-tight text-brand-text group-data-[on=true]:text-white">{option.label}</span>
+            </button>
+          ))}
           <button
-            onClick={() => setEditingStudent({} as any)} // Empty object signals creation
-            className="w-full md:w-auto p-3 bg-[#002366] bg-tenant-primary text-white rounded-xl md:rounded-full hover:scale-[1.02] md:hover:scale-110 transition-transform shadow-lg shadow-tenant-primary/20 flex items-center justify-center gap-2 shrink-0"
-            title="Adicionar Novo Aluno"
-            aria-label="Adicionar novo aluno"
+            type="button"
+            role="tab"
+            aria-selected={quickFilter === 'ALL'}
+            data-on={quickFilter === 'ALL'}
+            onClick={() => setQuickFilter('ALL')}
+            className="flex shrink-0 items-center gap-2 rounded-2xl border border-dashed border-brand-border px-3.5 py-2 text-[11px] font-bold text-brand-muted transition-colors hover:text-brand-text data-[on=true]:border-solid data-[on=true]:bg-brand-surface-2 data-[on=true]:text-brand-text"
           >
-            <UserPlus size={20} />
-            <span className="md:hidden text-xs font-black uppercase tracking-widest">Adicionar aluno</span>
+            Todos · {scopedStudents.length}
           </button>
         </div>
+
+        {(hasNarrowing || selectedTeacher) && (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-brand-muted shrink-0">
+            <span>Mostrando {filteredStudents.length} de {scopedStudents.length}</span>
+            {selectedTeacher && <span className="rounded-full bg-brand-surface-2 px-2 py-1 text-brand-text">{selectedTeacher.name}</span>}
+            {levelFilter !== 'ALL' && <span className="rounded-full bg-brand-surface-2 px-2 py-1 text-brand-text">{levelFilter}</span>}
+            <button
+              type="button"
+              onClick={() => { setSearchTerm(''); setSelectedTeacherId('ALL'); setLevelFilter('ALL'); }}
+              className="text-tenant-primary underline-offset-2 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        )}
 
         {loadError && (
           <div
@@ -1103,252 +1214,59 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           </div>
         )}
 
-        {/* Grid */}
-        <div className="flex-1 min-h-0 overflow-visible xl:overflow-y-auto pr-0 xl:pr-2 custom-scrollbar">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
-            {loading ? (
-              <div className="col-span-full py-20 flex flex-col items-center justify-center text-brand-muted">
-                <RefreshCw className="animate-spin mb-4" size={32} />
-                <p className="text-xs font-black uppercase tracking-widest">Carregando Alunos...</p>
-              </div>
-            ) : filteredStudents.map((student, i) => {
-              const ov = overviewMap[student.id];
-              const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
-              const isTeacher = user?.role === UserRole.TEACHER;
-              const activeTeacherIds = student.assignedTeacherIds || [];
-              const isMyStudent = isTeacher && !!user?.id && (
-                activeTeacherIds.includes(user.id)
-                || (activeTeacherIds.length === 0 && student.professor_id === user.id)
-              );
-              const canEdit = isDirector || isMyStudent;
-              const inactive = isInactive(student);
-              const lifecycleStatus = String(student.lifecycle_status || '').trim().toLowerCase();
-              const isSuspended = lifecycleStatus === 'suspended';
-              const isOffboarded = lifecycleStatus === 'offboarded';
-              return (
-              <div key={i} className={`group bg-brand-surface rounded-4xl border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit ${inactive ? 'border-slate-300 dark:border-slate-700' : 'border-brand-border'}`}>
-
-                {/* Header: Name & Edit */}
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1 pr-4">
-                    <h3 className="font-black text-brand-text text-lg leading-tight tracking-tight mb-1">{student.name}</h3>
-                    {ov && ov.risk_level !== 'LOW' && (
-                      <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${ov.risk_level === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}
-                        title={(ov.risk_reasons || []).join(' · ')}>
-                        <AlertTriangle size={10} /> {ov.risk_level === 'HIGH' ? 'ALTO RISCO' : 'ATENÇÃO'}
-                      </span>
-                    )}
-                    {inactive && (
-                      <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full mt-1 ${isOffboarded ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' : isSuspended ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}
-                        title={isOffboarded ? 'Matrícula encerrada definitivamente' : isSuspended ? 'Pausa temporária e reversível' : 'Aluno inativo'}>
-                        <UserX size={10} /> {isOffboarded ? 'MATRÍCULA ENCERRADA' : isSuspended ? 'PAUSA TEMPORÁRIA' : 'INATIVO'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-black text-xs">
-                      {student.levelBadge}
-                    </div>
-                    {canEdit && (
-                      <button
-                        onClick={() => void openStudentEditor(student)}
-                        className="min-w-11 min-h-11 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-xs"
-                        title="Editar Perfil"
-                        aria-label={`Editar perfil de ${student.name}`}
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Frequência + risco (chips) */}
-                {ov && (
-                  <div className="flex flex-wrap gap-2 mb-4 text-[10px] font-bold">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-surface-2 text-brand-muted">
-                      <CalendarCheck size={11} /> Freq. {ov.attendance_rate != null ? `${ov.attendance_rate}%` : '—'}
-                    </span>
-                    {(ov.overdue_count || 0) > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-600 dark:bg-red-900/20">
-                        <CreditCard size={11} /> {ov.overdue_count} em atraso
-                      </span>
-                    )}
-                    {ov.days_since_last != null && ov.days_since_last > 30 && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-900/20">
-                        {ov.days_since_last}d sem aula
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Content Sections */}
-                <div className="space-y-5">
-
-                  {/* Module & Progress */}
-                  <div>
-                    <div className="flex justify-between items-end mb-1.5">
-                      <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest">Progresso do Módulo</h4>
-                      <span className="text-[10px] font-bold text-brand-muted dark:text-brand-muted">{student.currentModuleStatus}</span>
-                    </div>
-                    {/* Fake Progress Bar - Visual Only for now */}
-                    <div className="w-full h-1.5 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full overflow-hidden">
-                      <div className="h-full bg-linear-to-r from-blue-500 to-purple-500 w-[45%]" />
-                    </div>
-                  </div>
-
-                  {/* Fixed Schedule */}
-                  <div>
-                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-1.5 flex items-center gap-1.5">
-                      <Calendar size={12} /> Horário Fixo
-                    </h4>
-                    {student.fixed_schedule ? (
-                      <div className="px-3 py-2 bg-brand-surface-2 border border-brand-border dark:border-brand-border rounded-xl text-xs font-black text-brand-text dark:text-slate-300">
-                        {student.fixed_schedule}
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2 border border-dashed border-brand-border dark:border-brand-border rounded-xl text-[10px] font-bold text-brand-muted uppercase tracking-widest">
-                        -- Não definido --
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Interests */}
-                  <div>
-                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-2 flex items-center gap-1.5">
-                      <BookOpen size={12} /> Interesses
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {student.interests.map((interest: string, idx: number) => (
-                        <span key={idx} className="px-2.5 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-md text-[9px] font-bold uppercase tracking-wider">
-                          {interest}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Occupation */}
-                  <div>
-                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-1.5 flex items-center gap-1.5">
-                      <Briefcase size={12} /> Ocupação
-                    </h4>
-                    <p className="text-xs font-bold text-brand-text dark:text-slate-300 uppercase">{student.occupation}</p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className={`grid grid-cols-2 gap-2 pt-2 ${user?.role === UserRole.TEACHER ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
-                    {/* WhatsApp */}
-                    <button
-                      onClick={() => {
-                        const message = encodeURIComponent(`Olá *${student.name.split(' ')[0]}*! 🐺\n\nSegue o link da sua sala de aula: ${student.meetingLink}\n\nBons estudos! 🚀`);
-                        const phone = student.phone?.replace(/\D/g, '') || '';
-                        window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
-                      }}
-                      className="flex flex-col items-center justify-center gap-1 p-2 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 border border-green-100 dark:border-green-900/30 rounded-xl transition-colors group"
-                      title="Enviar Link via WhatsApp Manualmente"
-                    >
-                      <MessageCircle size={18} className="text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
-                      <span className="text-[9px] font-black text-green-700 dark:text-green-300 uppercase tracking-wide">WhatsApp</span>
-                    </button>
-
-                    {/* Meet */}
-                    <button
-                      onClick={() => window.open(student.meetingLink, '_blank')}
-                      disabled={!student.meetingLink}
-                      className="flex flex-col items-center justify-center gap-1 p-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 border border-blue-100 dark:border-blue-900/30 rounded-xl transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Link da Aula"
-                    >
-                      <Video size={18} className="text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
-                      <span className="text-[9px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-wide">Sala Aula</span>
-                    </button>
-
-                    {/* Materials */}
-                    <button
-                      onClick={() => setPedagogicalStudent(student)}
-                      className="flex flex-col items-center justify-center gap-1 p-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 border border-purple-100 dark:border-purple-900/30 rounded-xl transition-colors group"
-                      title="Materiais do Aluno"
-                    >
-                      <Folder size={18} className="text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
-                      <span className="text-[9px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-wide">Materiais</span>
-                    </button>
-
-                    {/* Wolf Intelligence */}
-                    <button
-                      onClick={() => setWolfProfileStudent(student)}
-                      className="flex flex-col items-center justify-center gap-1 p-2 bg-violet-50 hover:bg-violet-100 dark:bg-violet-900/20 dark:hover:bg-violet-900/30 border border-violet-100 dark:border-violet-900/30 rounded-xl transition-colors group"
-                      title="Perfil Wolf Intelligence"
-                    >
-                      <Brain size={18} className="text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform" />
-                      <span className="text-[9px] font-black text-violet-700 dark:text-violet-300 uppercase tracking-wide">Wolf AI</span>
-                    </button>
-
-                    {user?.role === UserRole.TEACHER && (
-                      <button
-                        onClick={() => setScheduleStudent(student)}
-                        className="flex flex-col items-center justify-center gap-1 p-2 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 border border-cyan-100 dark:border-cyan-900/30 rounded-xl transition-colors group"
-                        title="Trocar dia ou horário combinado com o aluno"
-                      >
-                        <CalendarCheck size={18} className="text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform" />
-                        <span className="text-[9px] font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">Agenda</span>
-                      </button>
-                    )}
-                  </div>
-
-                </div>
-
-                {/* Footer */}
-                <div className="mt-8 pt-6 border-t border-brand-border grid grid-cols-2 gap-2">
-                  <button
-                    className="col-span-2 min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-tenant-primary/10 text-tenant-primary text-xs font-black uppercase hover:bg-tenant-primary hover:text-white transition-colors"
-                    onClick={() => setViewStudentId(student.id)}
-                    aria-label={`Ver ficha completa de ${student.name}`}
-                  >
-                    <Eye size={14} /> Ver Ficha 360°
-                  </button>
-                  {isDirector && !isOffboarded && (
-                    <button
-                      className={`${isDirector ? '' : 'col-span-2 '}min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border text-[11px] font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/20'}`}
-                      onClick={() => handleToggleStatus(student)}
-                      title={inactive ? 'Reativar matrícula e assinatura' : 'Pausar temporariamente; ação reversível'}
-                      aria-label={inactive ? `Reativar matrícula de ${student.name}` : `Pausar temporariamente a matrícula de ${student.name}`}
-                    >
-                      {inactive ? <UserCheck size={14} /> : <UserX size={14} />}
-                      {inactive ? 'Reativar' : 'Pausar'}
-                    </button>
-                  )}
-                  {isDirector && !isOffboarded && (
-                    <button
-                      className="min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20 text-[11px] font-black uppercase transition-colors"
-                      onClick={() => handleOffboard(student)}
-                      title="Encerrar matrícula definitivamente"
-                      aria-label={`Encerrar definitivamente a matrícula de ${student.name}`}
-                    >
-                      <AlertTriangle size={14} />
-                      Encerrar
-                    </button>
-                  )}
-                  {canEdit && (
-                    <button
-                      className="col-span-2 min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 transition-colors"
-                      onClick={() => void openStudentEditor(student)}
-                      title="Editar Perfil Completo"
-                      aria-label={`Editar perfil completo de ${student.name}`}
-                    >
-                      <Edit3 size={14} /> Editar perfil
-                    </button>
-                  )}
-                </div>
-
-              </div>
-              );
-            })}
-          </div>
+        <div className="flex-1 min-h-0 overflow-visible xl:overflow-y-auto pr-0 xl:pr-2 pb-20 custom-scrollbar">
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4" aria-busy="true" aria-label="Carregando alunos">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-80 animate-pulse rounded-3xl border border-brand-border bg-brand-surface" />
+              ))}
+            </div>
+          ) : viewMode === 'table' ? (
+            <StudentRosterTable
+              students={filteredStudents}
+              overviewMap={overviewMap}
+              showTeachers={isDirectorUser}
+              canSeeMoney={permissionsFor(undefined).canSeeMoney}
+              onOpenProfile={(s) => setViewStudentId(s.id)}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+              {filteredStudents.map(student => (
+                <StudentRosterCard
+                  key={student.id}
+                  student={student}
+                  overview={overviewMap[student.id]}
+                  permissions={permissionsFor(student)}
+                  showTeachers={isDirectorUser || !isTeacherOf(student, user?.id)}
+                  onOpenProfile={() => setViewStudentId(student.id)}
+                  onEdit={() => void openStudentEditor(student)}
+                  onMaterials={() => setPedagogicalStudent(student)}
+                  onWolf={() => setWolfProfileStudent(student)}
+                  onSchedule={() => setScheduleStudent(student)}
+                  onToggleStatus={() => handleToggleStatus(student)}
+                  onOffboard={() => handleOffboard(student)}
+                />
+              ))}
+            </div>
+          )}
 
           {!loading && !loadError && filteredStudents.length === 0 && (
-            <div className="py-24 text-center bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
+            <div className="py-20 text-center bg-brand-surface rounded-3xl border border-dashed border-brand-border">
               <div className="inline-block p-4 rounded-full bg-brand-surface-2 mb-4">
-                <Search size={24} className="text-slate-300" />
+                <Search size={24} className="text-brand-muted" />
               </div>
-              <p className="text-brand-muted dark:text-brand-muted font-black uppercase text-xs tracking-widest">Nenhum aluno encontrado para "{searchTerm}"</p>
+              <p className="text-brand-text font-black text-sm">
+                {students.length === 0
+                  ? (isDirectorUser ? 'Nenhum aluno cadastrado ainda.' : 'Nenhum aluno com aula na sua agenda.')
+                  : searchTerm.trim()
+                    ? `Nenhum aluno encontrado para “${searchTerm.trim()}”.`
+                    : `Nenhum aluno em “${activeOption?.label || 'Todos'}” por aqui.`}
+              </p>
+              {students.length > 0 && quickFilter !== 'ALL' && (
+                <button type="button" onClick={() => setQuickFilter('ALL')} className="mt-3 text-xs font-black text-tenant-primary hover:underline">
+                  Ver todos os alunos
+                </button>
+              )}
             </div>
           )}
         </div>

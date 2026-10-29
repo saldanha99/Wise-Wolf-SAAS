@@ -888,6 +888,14 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-10-28-zzz-feriado-nacional',title:'Feriado nacional: aviso automático',roles:['SCHOOL_ADMIN'],
     steps:[{target:'sidebar-nav',view:'dashboard',title:'Sem aula em feriado nacional, com aviso',text:'Nos feriados nacionais não há aula. A plataforma agora avisa sozinha, pelo WhatsApp da escola, os alunos e professores que têm aula no dia: 7 dias antes e na véspera. Na semana do feriado, quem entra no portal vê um aviso na tela. Nesse dia o lembrete de 30 minutos e a confirmação de presença não saem para as aulas da agenda. Ponto facultativo (Carnaval, Corpus Christi) continua com aula normal.'}],
   },
+  {
+    id:'2026-10-28-zzzz-tela-de-alunos',title:'Alunos: atalhos, saúde e lista',roles:['SCHOOL_ADMIN'],
+    steps:[{target:'student-schedule-change',view:'students',title:'Encontre quem precisa de você',text:'A tela de Alunos abre nos ativos. Os atalhos do topo filtram e contam: precisam de atenção, sem aula há 30+ dias, sem horário fixo, com atraso, em pausa e encerrados. Cada cartão mostra a frequência dos últimos 90 dias, a última aula, os horários fixos e o motivo do alerta. Use Lista para ver a escola inteira numa tabela, filtre por professor e busque também pelo nome do professor. Pausar e Encerrar continuam conferindo o Asaas.'}],
+  },
+  {
+    id:'2026-10-28-zzzz-tela-de-alunos-professor',title:'Meus alunos de cara nova',roles:['TEACHER'],
+    steps:[{target:'student-schedule-change',view:'students',title:'Seus alunos num olhar',text:'Cada cartão mostra a frequência dos últimos 90 dias, a última aula, os horários fixos e por que o aluno pede atenção (faltas seguidas, muito tempo sem aula). Use os atalhos do topo para filtrar. Agenda troca o horário combinado; Editar muda os dados pedagógicos. Valores, pausa e encerramento ficam com a direção.'}],
+  },
 
 ];
 
