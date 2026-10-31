@@ -84,6 +84,8 @@
   },
   "overrides": {
     "zod": "4.6.7",
-    "html2canvas": "npm:html2canvas-pro@2.5.2"
+    "html2canvas": "npm:html2canvas-pro@2.5.2",
+    "glob": "14.0.3",
+    "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0"
   }
 }
