@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import SDRQualityPanel from './SDRQualityPanel';
+import { CrmPulseStrip, CrmReports } from './CRMInsights';
+import { formatBrazilPhone } from '../lib/trialPipeline';
 import {
     Kanban, User, Phone, Mail, MessageCircle, Search, Filter, Plus,
     X, Clock, DollarSign, MoreHorizontal, Edit2, Tag, ChevronDown,
-    TrendingUp, Users, Target, AlertCircle, Check, Trash2, RefreshCw, Bot, BotOff
+    TrendingUp, Users, Target, AlertCircle, Check, Trash2, RefreshCw, Bot, BotOff, BarChart3, Sparkles
 } from 'lucide-react';
 
 interface CRMPageProps {
@@ -36,8 +38,8 @@ type ManualStatusType = Extract<StatusType, 'NEW' | 'CONTACTED' | 'LOST'>;
 const COLUMN_CONFIG: Record<string, { label: string; color: string; text: string; dot: string; border: string }> = {
     NEW:       { label: 'Novos Leads',    color: 'from-blue-500/10',    text: 'text-blue-500',    dot: 'bg-blue-500',    border: 'border-blue-500/30' },
     CONTACTED: { label: 'Em Contato',     color: 'from-amber-500/10',   text: 'text-amber-500',   dot: 'bg-amber-500',   border: 'border-amber-500/30' },
-    TRIAL:     { label: 'Aula Agendada',  color: 'from-violet-500/10',  text: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30' },
-    SCHEDULED: { label: 'Aula Agendada',  color: 'from-violet-500/10',  text: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30' },
+    TRIAL:     { label: 'Aula Agendada',  color: 'from-cyan-500/10',    text: 'text-cyan-600 dark:text-cyan-400',  dot: 'bg-cyan-500',  border: 'border-cyan-500/30' },
+    SCHEDULED: { label: 'Aula Agendada',  color: 'from-cyan-500/10',    text: 'text-cyan-600 dark:text-cyan-400',  dot: 'bg-cyan-500',  border: 'border-cyan-500/30' },
     TRIAL_DONE:{ label: 'Pós-aula',       color: 'from-orange-500/10',  text: 'text-orange-500',  dot: 'bg-orange-500',   border: 'border-orange-500/30' },
     WON:       { label: 'Matriculados',   color: 'from-emerald-500/10', text: 'text-emerald-500', dot: 'bg-emerald-500', border: 'border-emerald-500/30' },
 };
@@ -398,7 +400,13 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
 // COMPONENTE PRINCIPAL
 // ===========================================================
 const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
-    const [view, setView] = useState<'pipeline' | 'quality'>('pipeline');
+    const [view, setView] = useState<'pipeline' | 'reports' | 'quality'>('pipeline');
+    // Relógio da tela: "parado há X dias" e os relatórios dependem da hora.
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(new Date()), 60_000);
+        return () => window.clearInterval(timer);
+    }, []);
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
@@ -657,96 +665,104 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     // ---------------------------------------------------------
     return (
         <div className="flex flex-col h-full min-h-0 bg-brand-bg font-sans">
-            {/* ── TOP BAR ── */}
-            <header className="shrink-0 bg-brand-surface border-b border-brand-border px-6 py-4 flex items-center justify-between z-10 shadow-xs">
-                {/* Título + KPIs */}
-                <div className="flex items-center gap-6 flex-wrap">
-                    <h1 className="text-lg font-extrabold text-brand-text flex items-center gap-2 whitespace-nowrap">
-                        <Kanban size={20} className="text-brand-accent" />
-                        Pipeline de Vendas
-                    </h1>
-
-                    <div className="hidden sm:block h-8 w-px bg-brand-border" />
-
-                    <div className="flex gap-6 flex-wrap">
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Oportunidades</p>
-                            <p className="text-lg font-extrabold text-brand-text">{metrics.opportunities}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Pipeline Total</p>
-                            <p className="text-lg font-extrabold text-emerald-500">
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(metrics.pipelineValue)}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Conversão</p>
-                            <p className="text-lg font-extrabold text-brand-accent">{metrics.conversion}%</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Total Leads</p>
-                            <p className="text-lg font-extrabold text-brand-text">{metrics.totalLeads}</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Ações */}
-                <div className="flex items-center gap-2 shrink-0">
-                    <div className="relative hidden md:block">
-                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" />
-                        <input
-                            type="text"
-                            placeholder="Buscar leads..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-9 pr-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm outline-hidden focus:border-brand-accent w-52 transition-colors text-brand-text placeholder-brand-muted"
-                        />
+            {/* ── TOPO: título, busca e ações ── */}
+            <header className="shrink-0 space-y-4 border-b border-brand-border bg-brand-surface px-4 py-4 sm:px-6 sm:py-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h1 className="flex items-center gap-2 text-xl font-black tracking-tight text-brand-text sm:text-2xl">
+                            <Kanban size={22} className="text-brand-accent" />
+                            CRM & Funil de vendas
+                        </h1>
+                        <p className="mt-0.5 text-sm text-brand-muted">Todos os leads, da primeira mensagem à matrícula.</p>
                     </div>
 
-                    <button
-                        onClick={() => { setActionError(''); setShowNewModal(true); }}
-                        className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-xs transition-colors whitespace-nowrap"
-                    >
-                        <Plus size={15} /> Nova Oportunidade
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="relative min-w-0 flex-1 lg:w-64 lg:flex-none">
+                            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                            <input
+                                type="text"
+                                placeholder="Buscar nome, e-mail ou telefone"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2.5 pl-9 pr-3 text-sm text-brand-text outline-hidden transition-colors placeholder:text-brand-muted focus:border-brand-accent"
+                            />
+                        </div>
 
-                    {/* Botão Filtro com badge */}
-                    <div ref={filterBtnRef} className="relative">
-                        <button
-                            onClick={() => setShowFilters(f => !f)}
-                            className={`relative p-2 border rounded-xl transition-colors ${activeFiltersCount > 0 ? 'border-brand-accent text-brand-accent bg-brand-accent/10' : 'border-brand-border text-brand-muted hover:text-brand-text hover:bg-brand-surface-2'}`}
-                        >
-                            <Filter size={18} />
-                            {activeFiltersCount > 0 && (
-                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-brand-accent text-white text-[10px] font-bold flex items-center justify-center">
-                                    {activeFiltersCount}
-                                </span>
+                        {/* Botão Filtro com badge */}
+                        <div ref={filterBtnRef} className="relative">
+                            <button
+                                onClick={() => setShowFilters(f => !f)}
+                                aria-label="Filtros"
+                                className={`relative rounded-xl border p-2.5 transition-colors ${activeFiltersCount > 0 ? 'border-brand-accent bg-brand-accent/10 text-brand-accent' : 'border-brand-border text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text'}`}
+                            >
+                                <Filter size={18} />
+                                {activeFiltersCount > 0 && (
+                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-accent text-[10px] font-bold text-white dark:text-brand-bg">
+                                        {activeFiltersCount}
+                                    </span>
+                                )}
+                            </button>
+
+                            {showFilters && (
+                                <FilterPanel
+                                    filters={filters}
+                                    onChange={f => { setFilters(f); }}
+                                    onClose={() => setShowFilters(false)}
+                                />
                             )}
+                        </div>
+
+                        <button
+                            onClick={fetchLeads}
+                            className="rounded-xl border border-brand-border p-2.5 text-brand-muted transition-colors hover:bg-brand-surface-2 hover:text-brand-text"
+                            title="Atualizar"
+                            aria-label="Atualizar"
+                        >
+                            <RefreshCw size={18} />
                         </button>
 
-                        {showFilters && (
-                            <FilterPanel
-                                filters={filters}
-                                onChange={f => { setFilters(f); }}
-                                onClose={() => setShowFilters(false)}
-                            />
-                        )}
+                        <button
+                            onClick={() => { setActionError(''); setShowNewModal(true); }}
+                            className="flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand-accent px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-colors hover:bg-brand-accent-hover dark:text-brand-bg"
+                        >
+                            <Plus size={16} /> <span className="hidden sm:inline">Nova Oportunidade</span><span className="sr-only sm:hidden">Nova Oportunidade</span>
+                        </button>
                     </div>
-
-                    <button
-                        onClick={fetchLeads}
-                        className="p-2 border border-brand-border text-brand-muted hover:text-brand-text hover:bg-brand-surface-2 rounded-xl transition-colors"
-                        title="Atualizar"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
                 </div>
-            </header>
 
-            <nav className="shrink-0 flex gap-2 px-4 pt-3" aria-label="Visão do atendimento">
-                <button type="button" aria-pressed={view === 'pipeline'} onClick={() => setView('pipeline')} className={`px-4 py-2 rounded-xl text-sm font-bold ${view === 'pipeline' ? 'bg-brand-accent text-white' : 'text-brand-muted border border-brand-border'}`}>Pipeline de vendas</button>
-                <button type="button" aria-pressed={view === 'quality'} onClick={() => setView('quality')} className={`px-4 py-2 rounded-xl text-sm font-bold ${view === 'quality' ? 'bg-brand-accent text-white' : 'text-brand-muted border border-brand-border'}`}>Qualidade da IA</button>
-            </nav>
+                {!loading && !loadError && view !== 'quality' && (
+                    <CrmPulseStrip
+                        leads={leads}
+                        now={now}
+                        staleFilterOn={filters.minDays > 3}
+                        onShowStale={() => {
+                            setView('pipeline');
+                            setFilters(f => ({ ...f, minDays: f.minDays > 3 ? 0 : 4 }));
+                        }}
+                    />
+                )}
+
+                <nav data-tour="crm-tabs" className="flex gap-1 overflow-x-auto rounded-2xl bg-brand-surface-2 p-1 [scrollbar-width:none] sm:w-fit [&::-webkit-scrollbar]:hidden" aria-label="Visão do atendimento">
+                    {([
+                        { id: 'pipeline', label: 'Pipeline de vendas', icon: Kanban },
+                        { id: 'reports', label: 'Relatórios', icon: BarChart3 },
+                        { id: 'quality', label: 'Qualidade da IA', icon: Sparkles },
+                    ] as const).map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            aria-pressed={view === tab.id}
+                            onClick={() => setView(tab.id)}
+                            className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold transition-all ${view === tab.id
+                                ? 'bg-brand-surface text-brand-text shadow-sm'
+                                : 'text-brand-muted hover:text-brand-text'
+                                }`}
+                        >
+                            <tab.icon size={15} /> {tab.label}
+                        </button>
+                    ))}
+                </nav>
+            </header>
 
             {actionError && !showNewModal && !editLead && (
                 <div role="alert" className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-600">
@@ -757,7 +773,9 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
             )}
 
             {/* ── BOARD ── */}
-            {view === 'quality' ? <SDRQualityPanel key={tenantId} tenantId={tenantId} onLeadChange={() => void fetchLeads()} /> : <main className="flex-1 min-h-0 p-4 overflow-x-auto overflow-y-hidden">
+            {view === 'quality' ? <SDRQualityPanel key={tenantId} tenantId={tenantId} onLeadChange={() => void fetchLeads()} /> : view === 'reports' && !loading && !loadError ? (
+                <main className="flex-1 overflow-y-auto p-4 sm:p-6"><CrmReports leads={leads} now={now} /></main>
+            ) : <main className="min-h-[560px] flex-1 overflow-x-auto overflow-y-hidden p-4 sm:p-6 snap-x">
                 {loading ? (
                     <div className="flex items-center justify-center h-full text-brand-muted">
                         <RefreshCw size={24} className="animate-spin mr-2" /> Carregando leads...
@@ -778,7 +796,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                         </div>
                     </div>
                 ) : (
-                    <div className="flex gap-4 h-full min-w-[900px]">
+                    <div className="flex h-full gap-4">
                         {VISIBLE_COLUMNS.map(status => {
                             const col = filteredLeads.filter(l => l.status === status);
                             const colValue = col.reduce((a, l) => a + (l.value || 0), 0);
@@ -792,7 +810,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                     onDragOver={e => handleDragOver(e, status)}
                                     onDragLeave={handleDragLeave}
                                     onDrop={e => handleDrop(e, status)}
-                                    className={`flex flex-col flex-1 min-w-[220px] rounded-2xl border transition-all duration-150 ${isDragTarget ? 'border-brand-accent bg-brand-accent/5 scale-[1.01]' : 'border-brand-border bg-brand-surface'}`}
+                                    className={`flex w-[82vw] max-w-[320px] shrink-0 snap-start flex-col rounded-2xl border transition-all duration-150 sm:w-auto sm:min-w-[240px] sm:max-w-none sm:flex-1 sm:shrink ${isDragTarget ? 'scale-[1.01] border-brand-accent bg-brand-accent/5' : 'border-brand-border bg-brand-surface'}`}
                                 >
                                     {/* Cabeçalho da coluna */}
                                     <div className={`shrink-0 p-4 rounded-t-2xl border-b border-brand-border bg-linear-to-b ${cfg.color} to-transparent`}>
@@ -865,7 +883,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                             onClick={() => toggleLeadHandoff(lead)}
                                                             className={`p-1 rounded-lg transition-all ${leadHandoffAtivo(lead)
                                                                 ? 'text-amber-500 hover:bg-amber-500/10'
-                                                                : 'opacity-0 group-hover:opacity-100 text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10'}`}
+                                                                : 'text-brand-muted hover:bg-brand-accent/10 hover:text-brand-accent md:opacity-0 md:group-hover:opacity-100'}`}
                                                             title={leadHandoffAtivo(lead)
                                                                 ? 'Atendimento humano: a Bia não responde este lead. Clique para devolver à IA.'
                                                                 : 'Silenciar a Bia neste lead (assumir o atendimento)'}
@@ -874,7 +892,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                         </button>
                                                         <button
                                                             onClick={() => { setActionError(''); setEditLead(lead); }}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-all"
+                                                            className="rounded-lg p-1 text-brand-muted transition-all hover:bg-brand-accent/10 hover:text-brand-accent md:opacity-0 md:group-hover:opacity-100"
                                                             title="Editar lead"
                                                         >
                                                             <Edit2 size={13} />
@@ -908,8 +926,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
                                                     {/* Alerta de estagnação */}
                                                     {stagnant && (
-                                                        <div className="flex items-center gap-1 text-amber-500 text-[10px] font-bold bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-lg w-fit mb-2">
-                                                            <Clock size={11} /> {days}d nessa etapa
+                                                        <div className="mb-2 flex w-fit items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                                                            <Clock size={11} /> parado há {days} dias
+                                                        </div>
+                                                    )}
+                                                    {leadHandoffAtivo(lead) && (
+                                                        <div className="mb-2 flex w-fit items-center gap-1 rounded-lg bg-brand-accent/10 px-2 py-0.5 text-[11px] font-bold text-brand-accent">
+                                                            <BotOff size={11} /> com a equipe
                                                         </div>
                                                     )}
 
@@ -939,8 +962,8 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                                 </a>
                                                             )}
                                                         </div>
-                                                        <span className="text-[10px] text-brand-muted/70 font-medium">
-                                                            {new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                                        <span className="truncate text-[11px] font-medium text-brand-muted" title={`Entrou em ${new Date(lead.created_at).toLocaleDateString('pt-BR')}`}>
+                                                            {lead.phone ? formatBrazilPhone(lead.phone) : `entrou ${new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
                                                         </span>
                                                     </div>
                                                 </div>

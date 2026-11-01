@@ -980,6 +980,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'pedagogy-module-filter',view:'pedagogical',title:'Alunos por módulo',text:'A lista de alunos virou cartões com o módulo e a parte do livro de cada um. Filtre pelo módulo (A1 a C2, ou quem está sem módulo) e use Gerenciar para atribuir material, como antes.'},
     ],
   },
+  {
+    id:'2026-11-01-zzz-v-crm-em-um-olhar',title:'CRM em um olhar',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'crm-pulse',view:'crm',title:'O pulso do funil',text:'No topo do CRM ficam os números que importam: leads dos últimos 30 dias (com o gráfico de cada dia), quantos estão em andamento, matrículas, conversão, quantos estão parados há mais de 3 dias e quantos estão com a equipe (a Bia pausada). Toque em Parados para ver só esses leads no quadro.'},
+      {target:'crm-tabs',view:'crm',title:'Relatórios',text:'Na aba Relatórios você vê o funil de conversão etapa por etapa, os leads por dia, de onde vêm os leads (com a conversão de cada origem) e em que etapa eles estão parando. Tudo calculado dos mesmos leads do quadro. O quadro de arrastar continua igual, com as mesmas travas.'},
+    ],
+  },
 ];
 
 /**
