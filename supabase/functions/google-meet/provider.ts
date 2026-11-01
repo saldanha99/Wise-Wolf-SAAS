@@ -130,7 +130,9 @@ export class GoogleMeetProvider {
     return result;
   }
   async createSpace(
-    options: { attendanceReport?: boolean } = {},
+    // artifacts: false = sala da aula experimental (lead sem termo): só o
+    // relatório de presença, nunca transcrição nem anotações do Gemini.
+    options: { attendanceReport?: boolean; artifacts?: boolean } = {},
   ): Promise<{ space_name: string; meeting_uri: string }> {
     let result: Record<string, unknown>;
     try {
@@ -155,8 +157,9 @@ export class GoogleMeetProvider {
   }
   private postSpace(
     accessType: "RESTRICTED" | "TRUSTED",
-    options: { attendanceReport?: boolean },
+    options: { attendanceReport?: boolean; artifacts?: boolean },
   ): Promise<Record<string, unknown>> {
+    const artifacts = options.artifacts === false ? "OFF" : "ON";
     return this.json("https://meet.googleapis.com/v2/spaces", {
       method: "POST",
       body: JSON.stringify({
@@ -170,8 +173,8 @@ export class GoogleMeetProvider {
             : "DO_NOT_GENERATE",
           artifactConfig: {
             recordingConfig: { autoRecordingGeneration: "OFF" },
-            transcriptionConfig: { autoTranscriptionGeneration: "ON" },
-            smartNotesConfig: { autoSmartNotesGeneration: "ON" },
+            transcriptionConfig: { autoTranscriptionGeneration: artifacts },
+            smartNotesConfig: { autoSmartNotesGeneration: artifacts },
           },
         },
       }),

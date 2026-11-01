@@ -516,6 +516,7 @@ import {
   formatPhoneBr,
   studentPostTrialOpener,
   teacherTrialBriefing,
+  trialMeetLinkMessage,
 } from "./trial-closing.ts";
 
 Deno.test("a abertura do pós-aula pergunta como foi, sem tabela nem formulário", () => {
@@ -595,4 +596,34 @@ Deno.test("briefing usa o link fixo do professor quando existe; telefone estranh
     ),
     "",
   );
+});
+
+Deno.test("link da sala da experimental para o lead diz o que é registrado", () => {
+  const msg = trialMeetLinkMessage({
+    leadName: "Ana Exemplo",
+    teacherName: "Clara Exemplo",
+    whenText: "05/11 às 16:00",
+    link: "https://meet.google.com/abc-defg-hij",
+  });
+  if (!msg.includes("Oi, Ana!")) throw new Error(msg);
+  if (!msg.includes("teacher Clara")) throw new Error(msg);
+  if (!msg.includes("https://meet.google.com/abc-defg-hij")) {
+    throw new Error(msg);
+  }
+  if (!msg.includes("não gravamos áudio, vídeo nem a conversa")) {
+    throw new Error(msg);
+  }
+});
+
+Deno.test("briefing com sala do Meet explica como admitir o aluno", () => {
+  const msg = teacherTrialBriefing({
+    teacherName: "Clara",
+    whenText: "05/11 às 16:00",
+    leadName: "Ana",
+    leadPhone: null,
+    meetingLink: "https://meet.google.com/abc-defg-hij",
+  });
+  if (!msg.includes("aceite o aluno quando ele pedir para entrar")) {
+    throw new Error(msg);
+  }
 });

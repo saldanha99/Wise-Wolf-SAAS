@@ -27,6 +27,8 @@ interface PayrollPreviewRow {
     adjustments: number | string | null;
     received: { count: number; amount: number | string; pending?: number };
     ceded: { count: number };
+    /** Parte do valor que veio do Turbo (payroll_month_rows_with_turbo). */
+    turbo?: { aulas: number; extra: number | string };
 }
 
 const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
@@ -470,6 +472,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                             const pending = Number(row.received?.pending || 0);
                             const ceded = Number(row.ceded?.count || 0);
                             const adjustments = Number(row.adjustments || 0);
+                            const turbo = Number(row.turbo?.extra || 0);
                             return (
                                 <div
                                     key={row.teacher_id}
@@ -509,6 +512,9 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                         <span className="font-black text-brand-text tracking-tight">{money(row.amount)}</span>
                                         {adjustments !== 0 && (
                                             <span className="block text-[10px] font-bold text-brand-muted">inclui {money(adjustments)} de ajuste</span>
+                                        )}
+                                        {turbo > 0 && (
+                                            <span data-tour="payroll-turbo" className="block text-[10px] font-black text-amber-600">🔥 +{money(turbo)} de Turbo ({row.turbo?.aulas} aula{row.turbo?.aulas === 1 ? '' : 's'})</span>
                                         )}
                                     </div>
                                     <div className="col-span-2 flex justify-end gap-2">

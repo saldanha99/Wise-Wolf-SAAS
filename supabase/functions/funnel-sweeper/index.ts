@@ -33,6 +33,7 @@ import {
   teacherOutcomeQuestion,
   teacherRecurringSlotsQuestion,
   teacherTrialBriefing,
+  trialMeetLinkMessage,
 } from "../whatsapp-inbound/trial-closing.ts";
 import type { RenewalSlot as Slot } from "../whatsapp-inbound/renewal-negotiation.ts";
 import {
@@ -293,6 +294,7 @@ serve(async (req) => {
       closing_counterproposals: 0,
       closing_offers: 0,
       teacher_briefings: 0,
+      trial_meet_links: 0,
       closing_overdue: 0,
       failures: [] as string[],
     };
@@ -1613,6 +1615,53 @@ serve(async (req) => {
         else {
           await marca.undo();
           result.failures.push(`teacher_briefing ${row.appointment_id}`);
+        }
+      }
+
+      // ── H) LINK DA SALA DA EXPERIMENTAL PARA O LEAD ──
+      // A experimental acontece na sala da escola no Meet (31/10/2026): é a
+      // presença lá que confirma a aula. O lead recebe o link uma vez, até 6 h
+      // antes; sem ele o lead entraria pelo link pessoal e nada seria visto.
+      const { data: meetLinks, error: meetLinkError } = await sb.rpc(
+        "trial_meet_link_notices",
+        { p_limit: 20 },
+      );
+      if (meetLinkError) throw new Error(meetLinkError.message);
+      for (const row of (meetLinks || [])) {
+        const t = byTenant[row.tenant_id];
+        if (!t?.studentInstance) continue;
+        const phone = cleanPhone(row.lead_phone || "");
+        if (phone.length < 12) continue;
+        const marca = await claim(
+          sb,
+          "TRIAL_MEET_LINK",
+          String(row.appointment_id),
+          String(row.class_date || todayBRT()),
+        );
+        if (!marca.ok) continue;
+        const msg = trialMeetLinkMessage({
+          leadName: row.lead_name,
+          teacherName: row.teacher_name,
+          whenText: String(row.when_text || ""),
+          link: String(row.meeting_uri || ""),
+        });
+        const delivered = await sendWhats(t.studentInstance, phone, msg);
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "trial_closing",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_meet_link",
+            appointment_id: row.appointment_id,
+            entregue: delivered,
+          },
+        });
+        if (delivered) result.trial_meet_links++;
+        else {
+          await marca.undo();
+          result.failures.push(`trial_meet_link ${row.appointment_id}`);
         }
       }
 

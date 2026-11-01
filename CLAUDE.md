@@ -4650,3 +4650,20 @@ injustificada = 2× por unidade; sempre após manifestação de 5 dias úteis. `
 usa o modelo mais recente; termo já assinado não muda (texto só é remontado antes da 1ª
 assinatura). Migration `20261101010000`, teste `termo_individual_por_link.sql`, tours
 `2026-11-01-termo-por-link-*`.
+
+### 01/11/2026 — Turbo em reais e experimental conferida pelo Meet
+
+O quanto o Turbo rende aparece em R$: extra = tarifa paga − tarifa sem Turbo,
+só em aula paga pela régua das faixas com o Turbo ligado no dia
+(`private.turbo_lessons`). Card do professor (`teacher_turbo_earnings`), prévia
+do Repasse e folha do grupo (`payroll_month_rows_with_turbo` embrulha
+`payroll_month_rows`, que não mudou). O Balancete segue contando como Turbo
+qualquer aula acima da faixa 1 (inclui valor de cobertura oferecido).
+Experimental ganha sala da escola no Meet SEM transcrição (só presença), criada
+pelo cron do `google-meet` até 24 h antes, com o professor coanfitrião; o link
+vira `appointments.meeting_link` e vai ao lead pelo `funnel-sweeper`. 40 min
+depois, professor e lead ≥ 10 min juntos → aula lançada e paga; lead ausente →
+`no_show`; o resto fica no painel Liquidar com o motivo. Liga por escola em
+`private.trial_meet_settings` (Wise Wolf ligada). Migration `20261101020000`,
+teste SQL e `google-meet/trial-rooms.test.ts` no release. Fluxo:
+[runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).

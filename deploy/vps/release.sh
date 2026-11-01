@@ -464,6 +464,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/google-meet/summary.test.ts \
   supabase/functions/google-meet/originals.ts \
   supabase/functions/google-meet/originals.test.ts \
+  supabase/functions/google-meet/trial-rooms.ts \
+  supabase/functions/google-meet/trial-rooms.test.ts \
   supabase/functions/google-meet/index.ts \
   supabase/functions/lesson-recording-code/core.ts \
   supabase/functions/lesson-recording-code/core.test.ts \
@@ -763,6 +765,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/google-meet/provider.test.ts \
   supabase/functions/google-meet/summary.test.ts \
   supabase/functions/google-meet/originals.test.ts \
+  supabase/functions/google-meet/trial-rooms.test.ts \
   supabase/functions/lesson-recording-code/core.test.ts \
   supabase/functions/lesson-planner/teacher-card.test.ts \
   supabase/functions/lesson-planner/approved-lessons.test.ts \
@@ -1555,9 +1558,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261029190000_cancelar_experimental_e_leilao_da_ia.sql"
   "supabase/migrations/20261029200000_matricula_ate_o_fim_antes_dos_termos.sql"
   "supabase/migrations/20261101010000_termo_individual_por_link.sql"
+  "supabase/migrations/20261101020000_turbo_visivel_e_experimental_pelo_meet.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/termo_individual_por_link.sql"
+  "supabase/tests/turbo_visivel_e_experimental_pelo_meet.sql"
   "supabase/tests/matricula_ate_o_fim_antes_dos_termos.sql"
   "supabase/tests/cancelar_experimental.sql"
   "supabase/tests/oral_test_scheduling_lifecycle.sql"

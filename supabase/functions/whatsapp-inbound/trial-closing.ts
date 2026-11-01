@@ -704,12 +704,42 @@ export function teacherTrialBriefing(input: {
       ? `🔗 Link da aula: ${link}`
       : `🔗 O link da aula está na plataforma, em *Aulas de Hoje*.`,
   );
+  if (/^https:\/\/meet\.google\.com\//.test(link)) {
+    // Sala da escola: o aluno pede para entrar e quem admite é o professor.
+    lines.push(
+      `Entre com a conta Google que você confirmou na plataforma e aceite o aluno quando ele pedir para entrar. ` +
+        `A presença nesta sala confirma a aula sozinha.`,
+    );
+  }
   lines.push(
     `Antes da aula: mande uma mensagem para o aluno se apresentando e confirmando horário e link. ` +
       `Use o material *Trial Class* da plataforma e o fundo oficial da escola.\n` +
       `Depois da aula eu te pergunto por aqui se ela aconteceu — é isso que lança a aula e libera a matrícula.`,
   );
   return lines.join("\n\n");
+}
+
+/**
+ * Link da sala da escola no Meet para o lead da experimental (31/10/2026).
+ * A presença na sala confirma a aula; por isso o texto diz o que é registrado
+ * (só entrada e saída) e o que NÃO é (áudio, vídeo, conversa).
+ */
+export function trialMeetLinkMessage(input: {
+  leadName: string | null;
+  teacherName: string | null;
+  whenText: string;
+  link: string;
+}): string {
+  const lead = firstName(input.leadName);
+  const teacher = firstName(input.teacherName);
+  return [
+    `Oi${lead ? `, ${lead}` : ""}! Sua aula experimental${
+      teacher ? ` com a teacher ${teacher}` : ""
+    } é *${input.whenText}*. 🐺`,
+    `Entre por este link, na sala da escola no Google Meet:\n${input.link}`,
+    `Na hora, toque em "Pedir para participar" e a teacher te deixa entrar. ` +
+    `Registramos só o horário de entrada e saída para confirmar a aula — não gravamos áudio, vídeo nem a conversa.`,
+  ].join("\n\n");
 }
 
 /** "5571900000456" → "(71) 90000-0456"; número fora do padrão sai como veio. */

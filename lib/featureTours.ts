@@ -933,6 +933,30 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'teacher-student-terms',view:'contract_teacher',title:'Aceite em 1 minuto pelo celular',text:'Quando chega um aluno novo para você, a escola manda um link no seu WhatsApp. Abra, confira o aluno, os dias e o seu valor, e assine digitando o seu nome — não precisa entrar no portal. Você pode assinar antes ou depois da escola. Ao aceitar, você assume o aluno nesses horários: falta sem justificativa, aula lançada sem ter sido dada e saída sem os 30 dias de aviso têm multa, sempre depois de você ser ouvido(a). A via fica aqui, em Termos por aluno.'},
     ],
   },
+  {
+    id:'2026-11-01-zz-experimental-pelo-meet',title:'Experimental conferida pelo Meet',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'trial-meet-settlement',view:'trial-settlement',title:'Você não precisa mais aprovar cada experimental',text:'A experimental agora acontece numa sala da escola no Google Meet, criada sozinha quando o professor aceita a aula (sem transcrição: só o relatório de presença). O aluno recebe o link no WhatsApp até 6 horas antes. Depois da aula, se professor e aluno ficaram juntos pelo menos 10 minutos, a aula é lançada e paga sozinha; se o professor esperou e o aluno não entrou, fica como "não veio". Aqui só aparece o que o Google não conseguiu comprovar, com o motivo.'},
+    ],
+  },
+  {
+    id:'2026-11-01-zz-experimental-pelo-meet-professor',title:'Experimental na sala da escola',roles:['TEACHER'],
+    steps:[
+      {target:'sidebar-nav',view:'dashboard',title:'A presença na sala confirma a experimental',text:'Quando você aceita uma experimental, a escola cria uma sala no Google Meet e manda o link para você (no aviso antes da aula) e para o aluno. Entre com a conta Google que você confirmou na plataforma e aceite o aluno quando ele pedir para entrar. Se vocês ficarem juntos pelo menos 10 minutos, a aula é lançada e paga sozinha. Use sempre esse link: aula por outro link não é vista e volta para a direção conferir.'},
+    ],
+  },
+  {
+    id:'2026-11-01-zz-turbo-em-reais-direcao',title:'Quanto o Turbo custa, por professor',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'payroll-preview',view:'payments',title:'O Turbo aparece em reais',text:'Na prévia do mês, cada professor com Turbo ligado mostra quanto do valor veio dele: as aulas do 7º aluno em diante pagas com a tarifa de Turbo, menos o que elas pagariam sem ele. A folha que chega no grupo do Financeiro traz a mesma linha e o total do Turbo no mês. O número sai da mesma conta do pagamento, não de estimativa.'},
+    ],
+  },
+  {
+    id:'2026-11-01-zz-turbo-em-reais-professor',title:'Quanto o Turbo te rendeu',roles:['TEACHER'],
+    steps:[
+      {target:'teacher-turbo-earnings',view:'dashboard',title:'Turbo neste mês: +R$',text:'No card do Turbo você vê agora quanto recebeu a mais por ter o Turbo ligado: quantas aulas foram pagas com a tarifa de Turbo, de quais alunos e quanto isso somou. Esse valor já está dentro do total lançado — não é um pagamento à parte. Uma falta sua reinicia a contagem de 30 dias; falta do aluno não interfere.'},
+    ],
+  },
 ];
 
 /**

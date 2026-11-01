@@ -35,6 +35,8 @@ export interface PayrollTeacherRow {
     items?: PayrollCoverageItem[];
   };
   ceded?: { count: number; items?: PayrollCoverageItem[] };
+  /** Quanto do valor veio do Turbo (aulas do 7º aluno em diante com Turbo ligado). */
+  turbo?: { aulas: number; extra: number | string };
 }
 
 export interface PayrollSummary {
@@ -45,6 +47,8 @@ export interface PayrollSummary {
   total_lessons: number;
   /** Algum professor sem fechamento no mês (prévia em vez de folha oficial). */
   previa?: boolean;
+  /** Soma do Turbo de todos os professores no mês. */
+  total_turbo?: number | string;
 }
 
 const MESES = [
@@ -119,6 +123,15 @@ export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
       }${money(Math.abs(delta)).replace("R$ ", "R$ ")}`;
     }
     linhas.push(cabecalho);
+    const turbo = Number(t.turbo?.extra ?? 0);
+    if (turbo > 0) {
+      const n = Number(t.turbo?.aulas ?? 0);
+      linhas.push(
+        `   🔥 Turbo: *+${money(turbo)}* (${n} aula${
+          n === 1 ? "" : "s"
+        } com tarifa de Turbo)`,
+      );
+    }
     for (const it of t.received?.items || []) {
       // Cobertura confirmada mas sem aula lançada ainda não paga ninguém —
       // dizer "+R$ 0,00" leria como aula de graça.
@@ -143,6 +156,13 @@ export function montarMensagemFolha(brand: string, s: PayrollSummary): string {
   linhas.push(
     `Total da folha: *${money(s.total_amount)}* em ${s.total_lessons} aulas.`,
   );
+  if (Number(s.total_turbo ?? 0) > 0) {
+    linhas.push(
+      `Desse total, *${
+        money(s.total_turbo)
+      }* é Turbo (o que os professores recebem a mais por terem o Turbo ligado).`,
+    );
+  }
   linhas.push(
     previa
       ? "Prévia = aulas já lançadas (a mesma conta do Financeiro de cada professor) + ajustes combinados; o fechamento oficial sai no dia 1º. Cobertura muda o dono da aula, não a tarifa de quem a deu."

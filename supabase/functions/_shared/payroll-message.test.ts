@@ -173,3 +173,36 @@ Deno.test("mês em aberto vira prévia: aulas lançadas + ajuste, e cobertura se
   assertEquals(txt.includes("+R$ 0,00"), false);
   assertStringIncludes(txt, "o fechamento oficial sai no dia 1º");
 });
+
+Deno.test("folha mostra o Turbo de cada professor e do mês", () => {
+  const txt = montarMensagemFolha("Wise Wolf", {
+    month: "2026-09",
+    total_amount: 1062,
+    total_lessons: 126,
+    total_turbo: 70,
+    teachers: [
+      {
+        name: "Mateus Ebenezer",
+        lessons: 126,
+        amount: 1062,
+        status: "PREVIA",
+        previa: true,
+        turbo: { aulas: 28, extra: 70 },
+      },
+      {
+        name: "Bruna Barros",
+        lessons: 10,
+        amount: 80,
+        status: "PREVIA",
+        previa: true,
+        turbo: { aulas: 0, extra: 0 },
+      },
+    ],
+  });
+  assertStringIncludes(
+    txt,
+    "🔥 Turbo: *+R$ 70,00* (28 aulas com tarifa de Turbo)",
+  );
+  assertStringIncludes(txt, "Desse total, *R$ 70,00* é Turbo");
+  assertEquals(txt.split("🔥 Turbo").length, 2);
+});

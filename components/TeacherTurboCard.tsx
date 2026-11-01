@@ -9,15 +9,30 @@ import { describePayTiers, brl } from '../lib/payTiers';
 
 interface Props { teacherId: string; }
 
+// Quanto o Turbo rendeu no mês (teacher_turbo_earnings): a diferença entre o
+// que cada aula pagou e o que pagaria sem o Turbo. Mesma fonte da folha.
+interface TurboEarnings {
+  extra: number | string;
+  aulas_turbo: number;
+  base_rate: number | string;
+  students: { name: string; aulas_turbo: number; tarifa: number | string; extra: number | string }[];
+}
+
 const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const [p, setP] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [earnings, setEarnings] = useState<TurboEarnings | null>(null);
 
   useEffect(() => {
     if (!teacherId) return;
     (async () => {
-      const { data } = await supabase.rpc('teacher_pay_projection', { p_teacher: teacherId });
-      setP(data);
+      const [projection, turbo] = await Promise.all([
+        supabase.rpc('teacher_pay_projection', { p_teacher: teacherId }),
+        supabase.rpc('teacher_turbo_earnings', { p_teacher: teacherId, p_month: null }),
+      ]);
+      setP(projection.data);
+      // Sem resposta do servidor o bloco do Turbo não aparece (nunca estimado aqui).
+      setEarnings(turbo.error ? null : (turbo.data as TurboEarnings));
       setLoading(false);
     })();
   }, [teacherId]);
@@ -48,7 +63,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const motivo = bloqueio[String(turbo.blocked_by || '')] || null;
 
   return (
-    <div className={`relative overflow-hidden rounded-3xl p-6 border ${active
+    <div data-tour="teacher-turbo-earnings" className={`relative overflow-hidden rounded-3xl p-6 border ${active
       ? 'border-orange-300 dark:border-orange-700 bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 text-white shadow-xl shadow-orange-500/30'
       : 'border-brand-border bg-brand-surface'}`}>
 
@@ -92,6 +107,29 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
             </p>
           </div>
         </div>
+
+        {earnings && Number(earnings.extra) > 0 && (
+          <div
+            className={`rounded-2xl px-4 py-3 mb-3 ${active ? 'bg-white/15' : 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'}`}
+          >
+            <p className={`text-[10px] font-black uppercase tracking-widest ${active ? 'text-white/80' : 'text-amber-700 dark:text-amber-300'}`}>
+              <Flame size={12} className="inline mr-1" />Turbo neste mês
+            </p>
+            <p className={`text-2xl font-black ${active ? 'text-white' : 'text-amber-700 dark:text-amber-300'}`}>+{brl(Number(earnings.extra))}</p>
+            <p className={`text-xs font-bold ${active ? 'text-white/90' : 'text-brand-muted'}`}>
+              {earnings.aulas_turbo} aula{earnings.aulas_turbo === 1 ? '' : 's'} pagas com tarifa de Turbo em vez de {brl(Number(earnings.base_rate))}. Já está no valor lançado acima.
+            </p>
+            {earnings.students.length > 0 && (
+              <ul className={`mt-2 space-y-0.5 text-[11px] font-bold ${active ? 'text-white/85' : 'text-brand-muted'}`}>
+                {earnings.students.map((s, i) => (
+                  <li key={`${s.name}-${i}`}>
+                    {s.name}: {s.aulas_turbo} aula{s.aulas_turbo === 1 ? '' : 's'} a {brl(Number(s.tarifa))} · +{brl(Number(s.extra))}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {leftOnTable > 0 && (
           <div className={`text-xs font-bold rounded-xl px-3 py-2 mb-3 ${active ? 'bg-white/15' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600'}`}>

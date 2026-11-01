@@ -63,6 +63,10 @@ import {
   summarizeAttendance,
 } from "./attendance.ts";
 import {
+  trialAttendanceOutcome,
+  trialConferenceWindow,
+} from "./trial-rooms.ts";
+import {
   importClosesOriginalsList,
   originalFilesFromArtifacts,
   type OriginalsBackend,
@@ -1284,6 +1288,221 @@ async function setRoomArtifacts(
   return { ok: true, artifacts_state: saved.artifacts_state };
 }
 
+type TrialPrepare = {
+  appointment_id: string;
+  tenant_id: string;
+  actor_id: string;
+  teacher_id: string;
+  cohost_email: string;
+};
+type TrialEvaluate = {
+  appointment_id: string;
+  tenant_id: string;
+  actor_id: string;
+  space_name: string;
+  meeting_uri: string;
+  cohost_email: string;
+  organizer_email: string | null;
+  start_time: string;
+  min_minutes: number;
+  final: boolean;
+};
+
+async function trialBackend(
+  db: SupabaseClient,
+  action: string,
+  payload: Record<string, unknown> = {},
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  const { data, error } = await db.rpc("trial_meet_backend", {
+    p_action: action,
+    p_payload: payload,
+  });
+  if (error) throw new Error(error.message || "trial_meet_storage_unavailable");
+  return data;
+}
+
+/**
+ * Aula experimental na sala da escola (31/10/2026). Duas etapas por rodada:
+ * cria a sala (sem transcrição nem anotações — só o relatório de presença)
+ * para a experimental aceita nas próximas 24 h, com o professor como
+ * coanfitrião; e, 40 min depois do início, lê a presença e manda o banco
+ * liquidar. Só o link salvo depois do coanfitrião chega a alguém.
+ */
+async function runTrialRooms(
+  db: SupabaseClient,
+  cfg: Config,
+  tokens: TokenCache,
+  deadline: number,
+): Promise<Record<string, unknown>> {
+  const due: { prepare: TrialPrepare[]; evaluate: TrialEvaluate[] } =
+    await trialBackend(db, "due");
+  const results: Record<string, unknown>[] = [];
+  for (const row of due.prepare || []) {
+    if (Date.now() > deadline) break;
+    try {
+      const { token } = await tokenFor(
+        db,
+        cfg,
+        row.tenant_id,
+        row.actor_id,
+        tokens,
+      );
+      const claim = await trialBackend(db, "room_claim", row);
+      if (!claim?.claimed) continue;
+      const provider = new GoogleMeetProvider(token);
+      let space = text(claim.space_name, 250);
+      let uri = "";
+      if (claim.state !== "READY") {
+        try {
+          const created = await provider.createSpace({
+            attendanceReport: true,
+            artifacts: false,
+          });
+          space = created.space_name;
+          uri = created.meeting_uri;
+          await provider.ensureCohost(space, row.cohost_email);
+        } catch (error) {
+          await trialBackend(db, "room_save", {
+            appointment_id: row.appointment_id,
+            claim_id: claim.claim_id,
+            state: "FAILED",
+            error_code: roomCreationErrorCode(error),
+          });
+          throw error;
+        }
+      } else {
+        // Sala pronta e o professor confirmou outra conta Google.
+        await provider.ensureCohost(space, row.cohost_email);
+      }
+      await trialBackend(db, "room_save", {
+        appointment_id: row.appointment_id,
+        claim_id: claim.claim_id,
+        state: "READY",
+        space_name: space,
+        meeting_uri: uri || null,
+      });
+      results.push({
+        appointment_id: row.appointment_id,
+        step: "room",
+        ok: true,
+      });
+    } catch (error) {
+      results.push({
+        appointment_id: row.appointment_id,
+        step: "room",
+        ok: false,
+        error: providerErrorCode(error, "trial_room_failed"),
+      });
+    }
+  }
+  for (const row of due.evaluate || []) {
+    if (Date.now() > deadline) break;
+    try {
+      const { token } = await tokenFor(
+        db,
+        cfg,
+        row.tenant_id,
+        row.actor_id,
+        tokens,
+      );
+      const provider = new GoogleMeetProvider(token);
+      const conferences = await provider.conferences(
+        row.space_name,
+        trialConferenceWindow(row.start_time),
+      );
+      const conferenceOpen = conferences.some((c) => !c.endTime);
+      let reportFound = false, parseError = false;
+      let summary: ReturnType<typeof summarizeAttendance> | null = null;
+      if (conferences.length && !conferenceOpen) {
+        const starts = conferences.map((c) => c.startTime).filter(Boolean)
+          .sort();
+        const ends = conferences.map((c) => c.endTime || c.startTime)
+          .filter(Boolean).sort();
+        const first = starts[0] || row.start_time;
+        const last = ends[ends.length - 1] || first;
+        const candidates = await provider.attendanceReportCandidates(
+          new Date(Date.parse(first) - 2 * 60000).toISOString(),
+          new Date(Date.parse(last) + 3 * 3600000).toISOString(),
+        );
+        const sources: AttendanceSource[] = [];
+        for (
+          const candidate of pickAttendanceReports(
+            candidates,
+            meetingCodeFromUri(row.meeting_uri),
+            null,
+          )
+        ) {
+          if (sources.length >= 10) break;
+          sources.push({
+            ...candidate,
+            csv: await provider.spreadsheetCsv(candidate.id),
+          });
+        }
+        if (sources.length) {
+          const combined = combineAttendanceReports(sources, first);
+          reportFound = true;
+          parseError = !!combined.parseError;
+          if (!parseError) {
+            summary = summarizeAttendance(combined.rows, {
+              teacherEmails: [row.cohost_email],
+              organizerEmail: row.organizer_email || null,
+            });
+          }
+        }
+      }
+      const outcome = trialAttendanceOutcome({
+        conferenceCount: conferences.length,
+        conferenceOpen,
+        reportFound,
+        parseError,
+        teacherSeconds: summary?.teacherSeconds || 0,
+        leadSeconds: summary?.studentSeconds || 0,
+        minMinutes: Number(row.min_minutes) || 10,
+        final: row.final === true,
+      });
+      if (!outcome) {
+        results.push({
+          appointment_id: row.appointment_id,
+          step: "check",
+          ok: true,
+          waiting: true,
+        });
+        continue;
+      }
+      // Só números: nem planilha, nem nome, nem e-mail do lead.
+      const saved = await trialBackend(db, "evaluate_save", {
+        appointment_id: row.appointment_id,
+        outcome,
+        evidence: {
+          conference_count: conferences.length,
+          report_found: reportFound,
+          teacher_seconds: summary?.teacherSeconds ?? null,
+          lead_seconds: summary?.studentSeconds ?? null,
+          teacher_first_join_at: summary?.teacherFirstJoinAt ?? null,
+          lead_first_join_at: summary?.studentFirstJoinAt ?? null,
+          participants: summary?.participants.length ?? null,
+        },
+      });
+      results.push({
+        appointment_id: row.appointment_id,
+        step: "check",
+        ok: true,
+        outcome: saved?.outcome ?? outcome,
+        settle: saved?.settle ?? null,
+      });
+    } catch (error) {
+      results.push({
+        appointment_id: row.appointment_id,
+        step: "check",
+        ok: false,
+        error: providerErrorCode(error, "trial_attendance_failed"),
+      });
+    }
+  }
+  return { ok: results.every((r) => r.ok === true), results };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const cfg = config();
@@ -1476,7 +1695,20 @@ serve(async (req: Request) => {
           }
         },
       );
-      return json(result);
+      // Experimental na sala da escola: depois da fila das aulas, com o
+      // tempo que sobrou (a experimental nunca atrasa a documentação).
+      let trial: Record<string, unknown> = { skipped: true };
+      if (cfg.enabled && !cfg.missing.length && cfg.attendanceEnabled) {
+        try {
+          trial = await runTrialRooms(db, cfg, tokens, Date.now() + 25000);
+        } catch (error) {
+          trial = {
+            ok: false,
+            error: providerErrorCode(error, "trial_rooms_failed"),
+          };
+        }
+      }
+      return json({ ...result, trial });
     }
     if (!tenantId || !hasTenantAccess(auth, tenantId)) {
       return json({ error: "tenant_scope_required" }, 403);
