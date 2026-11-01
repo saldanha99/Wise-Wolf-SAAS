@@ -957,6 +957,15 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'teacher-turbo-earnings',view:'dashboard',title:'Turbo neste mês: +R$',text:'No card do Turbo você vê agora quanto recebeu a mais por ter o Turbo ligado: quantas aulas foram pagas com a tarifa de Turbo, de quais alunos e quanto isso somou. Esse valor já está dentro do total lançado — não é um pagamento à parte. Uma falta sua reinicia a contagem de 30 dias; falta do aluno não interfere.'},
     ],
   },
+  {
+    id:'2026-11-01-zzz-funil-das-experimentais',title:'Experimentais em forma de funil',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'trial-funnel',view:'trials',title:'Cada etapa é um filtro',text:'As experimentais agora aparecem como um funil: agendada, aula feita, link enviado, matrícula ou perdido. O número de cada etapa é quantos leads estão nela agora; toque numa etapa para ver só ela e toque de novo para voltar a todos. O anel mostra a conversão de quem fez a aula.'},
+      {target:'trial-attention',view:'trials',title:'Precisa de você',text:'Aqui ficam os leads parados: aula que passou há mais de 2 horas sem resultado, falta sem remarcação, aula feita há mais de um dia sem link e link enviado há 3 dias sem matrícula. Eles também sobem para o topo da lista com um aviso amarelo.'},
+      {target:'trial-next-action',view:'trials',title:'Uma ação por lead',text:'Cada lead mostra só o próximo passo da etapa dele: marcar a aula como realizada, remarcar, gerar ou reenviar o link de matrícula. Antes da aula, o botão é remarcar — o resultado só é marcado depois dela.'},
+      {target:'trial-more-actions',view:'trials',title:'O resto está em Mais ações',text:'Aluno faltou, professor faltou, cancelar a experimental, copiar o link e marcar como perdido continuam todos aqui, no botão Mais ações de cada lead. Nada mudou nas regras: só a arrumação da tela.'},
+    ],
+  },
 ];
 
 /**

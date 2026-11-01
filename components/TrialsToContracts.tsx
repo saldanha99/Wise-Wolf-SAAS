@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Zap, Users, ArrowRight, Check, X, Star, BookOpen, DollarSign,
     UserPlus, Award, TrendingUp, AlertCircle, Loader2, Phone,
-    Mail, ChevronRight, Calendar, ThermometerSun, FileText, XCircle,
-    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw, CalendarX
+    Mail, ChevronRight, Calendar, FileText, XCircle,
+    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw, CalendarX,
+    MoreHorizontal, AlertTriangle, UserX
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { buildBroadcastErrorMessage, parseFunctionError } from '../lib/functionInvokeErrors';
 import { APP_BASE_URL } from '../constants';
@@ -19,6 +21,17 @@ import {
     normalizeEnrollmentTime,
     weekdayIndex,
 } from '../lib/enrollmentOffer';
+import {
+    STAGE_ORDER,
+    TrialNextAction,
+    TrialStage,
+    formatBrazilPhone,
+    relativeTrialLabel,
+    trialAttention,
+    trialNextAction,
+    trialStage,
+    whatsappHref,
+} from '../lib/trialPipeline';
 
 const WEEKDAY_OPTIONS = [
     { value: 'monday', label: 'Segunda' },
@@ -185,6 +198,173 @@ const slotToEnWeekday = (s: any): string | null => {
 };
 
 // =============================================================
+// FUNIL — apresentação (cores, rótulos e peças da lista)
+// =============================================================
+type StageFilter = 'all' | 'open' | 'attention' | TrialStage;
+
+interface PipelineRow {
+    opp: Opportunity;
+    link: EnrollmentLink | undefined;
+    start: Date | null;
+    stage: TrialStage;
+    action: TrialNextAction;
+    attention: string | null;
+}
+
+interface LeadAction {
+    key: string;
+    label: string;
+    icon: LucideIcon;
+    tone?: 'danger' | 'warning';
+    onSelect: () => void;
+}
+
+// Cores com transparência: funcionam no tema claro e no escuro.
+const STAGE_META: Record<TrialStage, { label: string; badge: string; hint: string; dot: string; soft: string; ring: string }> = {
+    SCHEDULED: { label: 'Agendada', badge: 'Agendada', hint: 'esperando a aula', dot: 'bg-blue-500', soft: 'bg-blue-500/10 text-blue-700 dark:text-blue-300', ring: 'ring-blue-500/50' },
+    DONE: { label: 'Aula feita', badge: 'Aula feita', hint: 'falta o link', dot: 'bg-cyan-500', soft: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300', ring: 'ring-cyan-500/50' },
+    LINK_SENT: { label: 'Link enviado', badge: 'Link enviado', hint: 'esperando o aluno', dot: 'bg-brand-accent', soft: 'bg-brand-accent/10 text-brand-accent', ring: 'ring-brand-accent/50' },
+    WON: { label: 'Convertidos', badge: 'Matriculado', hint: 'viraram alunos', dot: 'bg-emerald-500', soft: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', ring: 'ring-emerald-500/50' },
+    LOST: { label: 'Perdidos', badge: 'Perdido', hint: 'não seguiram', dot: 'bg-rose-500', soft: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', ring: 'ring-rose-500/50' },
+};
+
+// Situação da aula que merece aviso ao lado da etapa (o "Agendada" já diz o resto).
+const TRIAL_NOTE: Record<string, string> = {
+    NO_SHOW_STUDENT: 'Aluno faltou',
+    NO_SHOW_TEACHER: 'Professor faltou',
+    RESCHEDULED: 'Em remarcação',
+    CANCELLED: 'Cancelada',
+};
+
+const PRIMARY_ACTION_KEY: Record<TrialNextAction, string | null> = {
+    MARK_DONE: 'done',
+    AWAIT: 'reschedule',
+    RESCHEDULE: 'reschedule',
+    GENERATE_LINK: 'link',
+    RESEND_LINK: 'link',
+    NONE: null,
+};
+
+const PRIMARY_TONE: Record<TrialNextAction, string> = {
+    MARK_DONE: 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700',
+    AWAIT: '',
+    RESCHEDULE: 'bg-amber-500 text-white shadow-sm hover:bg-amber-600',
+    GENERATE_LINK: 'bg-brand-accent text-white shadow-sm hover:bg-brand-accent-hover dark:text-brand-bg',
+    RESEND_LINK: 'border border-brand-accent/40 bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20',
+    NONE: '',
+};
+
+/** Anel de conversão (matrículas ÷ aulas feitas). */
+const ConversionRing: React.FC<{ rate: number }> = ({ rate }) => {
+    const radius = 18;
+    const circumference = 2 * Math.PI * radius;
+    const filled = Math.min(100, Math.max(0, rate)) / 100 * circumference;
+    return (
+        <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden className="shrink-0 -rotate-90">
+            <circle cx="22" cy="22" r={radius} fill="none" strokeWidth="5" className="stroke-brand-border" />
+            <circle
+                cx="22" cy="22" r={radius} fill="none" strokeWidth="5" strokeLinecap="round"
+                className="stroke-emerald-500"
+                strokeDasharray={`${filled} ${circumference}`}
+            />
+        </svg>
+    );
+};
+
+/** Trilha de 4 passos no cartão: mostra onde o lead está no caminho até a matrícula. */
+const FunnelSteps: React.FC<{ stage: TrialStage }> = ({ stage }) => {
+    const steps: { key: TrialStage; label: string }[] = [
+        { key: 'SCHEDULED', label: 'Agendada' },
+        { key: 'DONE', label: 'Aula' },
+        { key: 'LINK_SENT', label: 'Link' },
+        { key: 'WON', label: 'Matrícula' },
+    ];
+    const reached = stage === 'LOST' ? -1 : steps.findIndex(step => step.key === stage);
+    return (
+        <ol className="mt-2 flex items-center gap-1" aria-label="Etapa no funil">
+            {steps.map((step, index) => {
+                const done = index <= reached;
+                return (
+                    <li key={step.key} className="flex items-center gap-1">
+                        <span
+                            className={`h-1.5 w-8 rounded-full sm:w-10 ${done ? STAGE_META[stage].dot : 'bg-brand-surface-2'} ${stage === 'LOST' ? 'opacity-50' : ''}`}
+                            title={step.label}
+                            aria-hidden
+                        />
+                        <span className="sr-only">{step.label}{done ? ' (feito)' : ''}</span>
+                    </li>
+                );
+            })}
+            <li className="ml-1 text-[11px] font-semibold text-brand-muted">
+                {stage === 'LOST' ? 'saiu do funil' : `${reached + 1} de 4`}
+            </li>
+        </ol>
+    );
+};
+
+/** Menu ⋯ com as ações secundárias do lead. */
+const LeadActionsMenu: React.FC<{ leadName: string; items: LeadAction[] }> = ({ leadName, items }) => {
+    const [open, setOpen] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onPointer = (event: MouseEvent) => {
+            if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+        };
+        const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+        document.addEventListener('mousedown', onPointer);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onPointer);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    if (items.length === 0) return null;
+    return (
+        <div ref={wrapperRef} data-tour="trial-more-actions" className="relative">
+            <button
+                type="button"
+                data-tour="trial-cancel"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-label={`Mais ações para ${leadName}`}
+                onClick={() => setOpen(value => !value)}
+                className="flex h-full items-center justify-center gap-1.5 rounded-xl border border-brand-border px-3 py-2.5 text-sm font-bold text-brand-muted transition-colors hover:bg-brand-surface-2 hover:text-brand-text sm:py-2"
+            >
+                <MoreHorizontal size={16} />
+                <span className="hidden sm:inline">Mais ações</span>
+            </button>
+            {open && (
+                <div
+                    role="menu"
+                    className="absolute right-0 top-full z-30 mt-2 w-60 overflow-hidden rounded-2xl border border-brand-border bg-brand-bg p-1.5 shadow-xl"
+                >
+                    {items.map(item => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => { setOpen(false); item.onSelect(); }}
+                            className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors hover:bg-brand-surface-2 ${item.tone === 'danger'
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : item.tone === 'warning'
+                                    ? 'text-orange-600 dark:text-orange-400'
+                                    : 'text-brand-text'
+                                }`}
+                        >
+                            <item.icon size={16} className="shrink-0" />
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// =============================================================
 // MAIN COMPONENT
 // =============================================================
 const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user }) => {
@@ -248,8 +428,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [reschedTime, setReschedTime] = useState('');
     const [reschedSaving, setReschedSaving] = useState(false);
 
-    // Filter
-    const [filter, setFilter] = useState<'all' | 'OPEN' | 'WON' | 'LOST'>('all');
+    // Filtro por etapa do funil ('open' = ainda em andamento; 'attention' = parado)
+    const [stageFilter, setStageFilter] = useState<StageFilter>('all');
+    // Relógio da tela: "hoje às", "aula passou há" e o que está parado dependem da hora.
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(new Date()), 60_000);
+        return () => window.clearInterval(timer);
+    }, []);
     // Filtro por professor: a escola usa a experimental também para COBRIR aluno
     // de outro teacher, então o diretor precisa ver o que rolou por professor.
     const [teacherFilter, setTeacherFilter] = useState<string>('all');
@@ -543,33 +729,72 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     };
 
     // =============================================================
-    // COMPUTED KPIs
+    // FUNIL: etapa, próxima ação e o que está parado (lib/trialPipeline)
     // =============================================================
-    const kpis = useMemo(() => {
-        const total = opportunities.length;
-        const won = opportunities.filter(o => o.conversion_status === 'WON').length;
-        const lost = opportunities.filter(o => o.conversion_status === 'LOST').length;
-        const open = opportunities.filter(o => o.conversion_status === 'OPEN').length;
-        const done = opportunities.filter(o => o.trial_status === 'DONE').length;
-        const linksSent = Object.keys(enrollmentLinks).length;
-        const conversionRate = done > 0 ? Math.round((won / done) * 100) : 0;
-        return { total, won, lost, open, done, linksSent, conversionRate };
-    }, [opportunities, enrollmentLinks]);
-
-    // =============================================================
-    // FILTERED LIST
-    // =============================================================
-    const filtered = useMemo(() => {
-        let list = opportunities;
-        if (filter !== 'all') list = list.filter(o => o.conversion_status === filter);
-        if (teacherFilter !== 'all') {
-            list = teacherFilter === 'none'
-                ? list.filter(o => !o.winner_teacher_id)
-                : list.filter(o => o.winner_teacher_id === teacherFilter);
+    /** Início da experimental: agendamento real; senão, o horário proposto no disparo (BRT). */
+    const trialStartOf = (opp: Opportunity): Date | null => {
+        const appointmentStart = opp.trial_appointment_id ? appointments[opp.trial_appointment_id]?.start_time : null;
+        if (appointmentStart) {
+            const parsed = new Date(appointmentStart);
+            return Number.isFinite(parsed.getTime()) ? parsed : null;
         }
-        return list;
-    }, [opportunities, filter, teacherFilter]);
+        const slot = Array.isArray(opp.slots_proposed) ? opp.slots_proposed[0] : null;
+        if (slot?.date && slot?.time && /^\d{4}-\d{2}-\d{2}$/.test(slot.date) && /^\d{2}:\d{2}/.test(slot.time)) {
+            const parsed = new Date(`${slot.date}T${String(slot.time).slice(0, 5)}:00-03:00`);
+            return Number.isFinite(parsed.getTime()) ? parsed : null;
+        }
+        return null;
+    };
 
+    const scopedRows = useMemo<PipelineRow[]>(() => {
+        const scoped = teacherFilter === 'all'
+            ? opportunities
+            : teacherFilter === 'none'
+                ? opportunities.filter(o => !o.winner_teacher_id)
+                : opportunities.filter(o => o.winner_teacher_id === teacherFilter);
+        return scoped.map(opp => {
+            const link = enrollmentLinks[opp.id];
+            const hasLink = Boolean(link);
+            const start = trialStartOf(opp);
+            const linkCreated = link?.created_at ? new Date(link.created_at) : null;
+            return {
+                opp,
+                link,
+                start,
+                stage: trialStage(opp, hasLink),
+                action: trialNextAction(opp, hasLink, start, now),
+                attention: trialAttention(opp, hasLink, start, linkCreated, now),
+            };
+        });
+    }, [opportunities, enrollmentLinks, appointments, teacherFilter, now]);
+
+    const stageCounts = useMemo(() => {
+        const counts: Record<TrialStage, number> = { SCHEDULED: 0, DONE: 0, LINK_SENT: 0, WON: 0, LOST: 0 };
+        scopedRows.forEach(row => { counts[row.stage] += 1; });
+        return counts;
+    }, [scopedRows]);
+
+    // Mesma conta dos antigos cartões: conversão = matrículas ÷ aulas feitas.
+    const summary = useMemo(() => {
+        const done = scopedRows.filter(row => row.opp.trial_status === 'DONE').length;
+        const won = scopedRows.filter(row => row.stage === 'WON').length;
+        return { done, conversionRate: done > 0 ? Math.round((won / done) * 100) : 0 };
+    }, [scopedRows]);
+
+    const attentionCount = useMemo(() => scopedRows.filter(row => row.attention).length, [scopedRows]);
+
+    // Parados primeiro; dentro de cada grupo, a ordem de sempre (mais recentes no topo).
+    const filtered = useMemo(() => {
+        const list = scopedRows.filter(row => {
+            if (stageFilter === 'all') return true;
+            if (stageFilter === 'open') return row.stage === 'SCHEDULED' || row.stage === 'DONE' || row.stage === 'LINK_SENT';
+            if (stageFilter === 'attention') return Boolean(row.attention);
+            return row.stage === stageFilter;
+        });
+        return [...list.filter(row => row.attention), ...list.filter(row => !row.attention)];
+    }, [scopedRows, stageFilter]);
+
+    // =============================================================
     // Quantas experimentais cada professor pegou — some no seletor para o diretor
     // enxergar a distribuição sem precisar filtrar um por um.
     const countByTeacher = useMemo(() => {
@@ -797,32 +1022,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const getTeacherName = (id: string) => teachers.find(t => t.id === id)?.full_name || 'N/A';
 
     const getInterestBadge = (score: number) => {
-        if (score >= 4) return { label: '🔥 Quente', color: 'bg-emerald-100 text-emerald-700' };
-        if (score >= 3) return { label: '🤔 Morno', color: 'bg-amber-100 text-amber-700' };
-        return { label: '🥶 Frio', color: 'bg-blue-100 text-blue-700' };
-    };
-
-    const getStatusBadge = (opp: Opportunity) => {
-        const link = enrollmentLinks[opp.id];
-        switch (opp.conversion_status) {
-            case 'WON': return { label: '✅ Convertido', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
-            case 'LOST': return { label: '❌ Perdido', color: 'bg-red-100 text-red-700 border-red-200' };
-            default:
-                if (link && link.status === 'PENDING') return { label: '📨 Link Enviado', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' };
-                return { label: '⏳ Aberto', color: 'bg-amber-100 text-amber-700 border-amber-200' };
-        }
-    };
-
-    const getTrialBadge = (status: string) => {
-        switch (status) {
-            case 'DONE': return { label: '✅ Aula Feita', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' };
-            case 'SCHEDULED': return { label: '📅 Agendada', color: 'bg-blue-50 text-blue-600 border border-blue-200' };
-            case 'NO_SHOW_STUDENT': return { label: '🔴 Aluno Faltou', color: 'bg-red-50 text-red-600 border border-red-200' };
-            case 'NO_SHOW_TEACHER': return { label: '🟠 Prof. Faltou', color: 'bg-orange-50 text-orange-600 border border-orange-200' };
-            case 'RESCHEDULED': return { label: '🔄 Em remarcação', color: 'bg-amber-50 text-amber-700 border border-amber-200' };
-            case 'CANCELLED': return { label: '⚫ Cancelada', color: 'bg-slate-100 text-slate-500 border border-slate-200' };
-            default: return { label: '⏳ Pendente', color: 'bg-brand-surface-2 text-brand-muted border border-brand-border' };
-        }
+        if (score >= 4) return { label: '🔥 Quente', color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' };
+        if (score >= 3) return { label: '🤔 Morno', color: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' };
+        return { label: '🥶 Frio', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' };
     };
 
     /** Extract exact trial date/time for display */
@@ -842,6 +1044,61 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             }
         }
         return null;
+    };
+
+    /**
+     * Todas as ações que o lead aberto já tinha — nenhuma nova, nenhuma a menos.
+     * A tela destaca UMA (a próxima da etapa) e põe o resto no menu ⋯.
+     */
+    const setTrialStatus = async (opp: Opportunity, trialStatus: 'NO_SHOW_STUDENT' | 'NO_SHOW_TEACHER', fallback: string) => {
+        try {
+            await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus });
+            fetchData();
+        } catch (err: any) {
+            alert(err.message || fallback);
+        }
+    };
+
+    const buildLeadActions = (opp: Opportunity, link: EnrollmentLink | undefined): LeadAction[] => {
+        const lost: LeadAction = {
+            key: 'lost', label: 'Marcar como perdido', icon: XCircle, tone: 'danger',
+            onSelect: () => { setLostOpp(opp); setLostReason(''); },
+        };
+        if (opp.trial_status === 'DONE') {
+            const list: LeadAction[] = [{
+                key: 'link',
+                label: link ? 'Reenviar link de matrícula' : 'Gerar link de matrícula',
+                icon: LinkIcon,
+                onSelect: () => openWizard(opp),
+            }];
+            if (link) {
+                list.push({
+                    key: 'copy', label: 'Copiar link enviado', icon: Copy,
+                    onSelect: () => { void navigator.clipboard.writeText(link.link_url); },
+                });
+            }
+            return [...list, lost];
+        }
+        return [
+            { key: 'done', label: 'Aula realizada', icon: Check, onSelect: () => { void markTrialRealized(opp); } },
+            {
+                key: 'reschedule', label: 'Reagendar experimental', icon: RefreshCw,
+                onSelect: () => openReschedule(opp),
+            },
+            {
+                key: 'noShowStudent', label: 'Aluno faltou', icon: UserX, tone: 'warning',
+                onSelect: () => { void setTrialStatus(opp, 'NO_SHOW_STUDENT', 'Erro ao registrar a falta do aluno.'); },
+            },
+            {
+                key: 'noShowTeacher', label: 'Professor faltou', icon: UserX, tone: 'warning',
+                onSelect: () => { void setTrialStatus(opp, 'NO_SHOW_TEACHER', 'Erro ao registrar a falta do professor.'); },
+            },
+            {
+                key: 'cancel', label: 'Cancelar experimental', icon: CalendarX,
+                onSelect: () => { setCancelOpp(opp); setCancelReason(''); },
+            },
+            lost,
+        ];
     };
 
     // =============================================================
@@ -877,255 +1134,285 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // =============================================================
     // MAIN RENDER
     // =============================================================
+    const openCount = stageCounts.SCHEDULED + stageCounts.DONE + stageCounts.LINK_SENT;
+    const filterChips: { key: StageFilter; label: string; count: number }[] = [
+        { key: 'all', label: 'Todos', count: scopedRows.length },
+        { key: 'open', label: 'Em andamento', count: openCount },
+    ];
+    const emptyMessage = stageFilter === 'attention'
+        ? 'Nada parado. Todos os leads estão em dia. 🎉'
+        : 'Nenhuma experimental nesta etapa.';
+
     return (
         <div className="space-y-6">
-            {/* KPI BAR */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                {[
-                    { label: 'Total', value: kpis.total, icon: Users, color: 'text-brand-muted', bg: 'bg-brand-surface-2' },
-                    { label: 'Aula Feita', value: kpis.done, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-                    { label: 'Links Enviados', value: kpis.linksSent, icon: LinkIcon, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                    { label: 'Convertidos', value: kpis.won, icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Perdidos', value: kpis.lost, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
-                    { label: 'Taxa Conv.', value: `${kpis.conversionRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
-                ].map((kpi, i) => (
-                    <div key={i} className={`${kpi.bg} rounded-2xl p-4 border border-white/50`}>
-                        <div className="flex items-center gap-2 mb-1">
-                            <kpi.icon size={16} className={kpi.color} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">{kpi.label}</span>
-                        </div>
-                        <p className={`text-2xl font-black ${kpi.color}`}>{kpi.value}</p>
+            {/* FUNIL: cada etapa é um filtro, com quantos leads estão nela agora */}
+            <section
+                data-tour="trial-funnel"
+                className="rounded-3xl border border-brand-border bg-brand-surface p-4 sm:p-6"
+                aria-label="Funil das aulas experimentais"
+            >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 className="text-lg font-black tracking-tight text-brand-text sm:text-xl">Funil das experimentais</h2>
+                        <p className="mt-1 text-sm text-brand-muted">
+                            <strong className="text-brand-text">{scopedRows.length}</strong> experimentais ·{' '}
+                            <strong className="text-brand-text">{summary.done}</strong> aulas feitas ·{' '}
+                            <strong className="text-brand-text">{stageCounts.WON}</strong> matrículas
+                        </p>
                     </div>
-                ))}
-            </div>
-
-            {/* FILTER BAR */}
-            <div className="flex gap-2 flex-wrap">
-                {(['all', 'OPEN', 'WON', 'LOST'] as const).map(f => (
-                    <button
-                        key={f}
-                        onClick={() => setFilter(f)}
-                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === f
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                            : 'bg-brand-surface text-brand-muted border border-brand-border hover:bg-brand-surface-2'
-                            }`}
-                    >
-                        {f === 'all' ? 'Todos' : f === 'OPEN' ? '⏳ Abertos' : f === 'WON' ? '✅ Ganhos' : '❌ Perdidos'}
-                    </button>
-                ))}
-
-                <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-                    <label htmlFor="trial-teacher-filter" className="text-xs font-bold uppercase tracking-widest text-brand-muted">
-                        Professor
-                    </label>
-                    <select
-                        id="trial-teacher-filter"
-                        value={teacherFilter}
-                        onChange={(e) => setTeacherFilter(e.target.value)}
-                        className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500/30 sm:flex-none"
-                    >
-                        <option value="all">Todos os professores ({opportunities.length})</option>
-                        {teachers
-                            .filter(t => countByTeacher.get(t.id))
-                            .sort((a, b) => (countByTeacher.get(b.id) || 0) - (countByTeacher.get(a.id) || 0))
-                            .map(t => (
-                                <option key={t.id} value={t.id}>
-                                    {t.full_name} ({countByTeacher.get(t.id)})
-                                </option>
-                            ))}
-                        {countByTeacher.get('none') && (
-                            <option value="none">Sem professor definido ({countByTeacher.get('none')})</option>
-                        )}
-                    </select>
+                    <div className="flex items-center gap-3 self-start rounded-2xl bg-brand-surface-2 px-3 py-2 sm:self-auto sm:px-4 sm:py-3">
+                        <ConversionRing rate={summary.conversionRate} />
+                        <div>
+                            <p className="text-2xl font-black leading-none text-brand-text">{summary.conversionRate}%</p>
+                            <p className="mt-1 text-[11px] font-semibold text-brand-muted">de conversão de quem fez a aula</p>
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            {/* PIPELINE LIST */}
+                <div className="-mx-4 mt-5 flex snap-x gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-5 lg:gap-3">
+                    {STAGE_ORDER.map((stage, index) => {
+                        const meta = STAGE_META[stage];
+                        const count = stageCounts[stage];
+                        const share = scopedRows.length > 0 ? Math.round((count / scopedRows.length) * 100) : 0;
+                        const selected = stageFilter === stage;
+                        return (
+                            <button
+                                key={stage}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => setStageFilter(selected ? 'all' : stage)}
+                                className={`relative flex min-w-[128px] shrink-0 snap-start flex-col items-start rounded-2xl border p-3 text-left transition-all sm:min-w-0 ${selected
+                                    ? `${meta.soft} ${meta.ring} border-transparent ring-2`
+                                    : 'border-brand-border hover:bg-brand-surface-2'
+                                    }`}
+                            >
+                                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-muted">
+                                    <span className={`h-2 w-2 rounded-full ${meta.dot}`} aria-hidden />
+                                    {meta.label}
+                                </span>
+                                <span className="mt-1 text-2xl font-black leading-none text-brand-text sm:text-3xl">{count}</span>
+                                <span className="mt-1 text-[11px] font-medium text-brand-muted">{meta.hint}</span>
+                                <span className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-brand-surface-2" aria-hidden>
+                                    <span className={`block h-full rounded-full ${meta.dot}`} style={{ width: `${share}%` }} />
+                                </span>
+                                {index < 2 && (
+                                    <ChevronRight
+                                        size={18}
+                                        className="absolute -right-[15px] top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-brand-surface text-brand-muted lg:block"
+                                        aria-hidden
+                                    />
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 border-t border-brand-border pt-4 sm:flex-row sm:items-center">
+                    <div className="flex flex-wrap gap-2">
+                        {filterChips.map(chip => (
+                            <button
+                                key={chip.key}
+                                type="button"
+                                aria-pressed={stageFilter === chip.key}
+                                onClick={() => setStageFilter(chip.key)}
+                                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${stageFilter === chip.key
+                                    ? 'bg-brand-accent text-white dark:text-brand-bg'
+                                    : 'bg-brand-surface-2 text-brand-muted hover:text-brand-text'
+                                    }`}
+                            >
+                                {chip.label} <span className="opacity-70">{chip.count}</span>
+                            </button>
+                        ))}
+                        <button
+                            type="button"
+                            data-tour="trial-attention"
+                            aria-pressed={stageFilter === 'attention'}
+                            onClick={() => setStageFilter(stageFilter === 'attention' ? 'all' : 'attention')}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${stageFilter === 'attention'
+                                ? 'bg-amber-500 text-white'
+                                : attentionCount > 0
+                                    ? 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-300'
+                                    : 'bg-brand-surface-2 text-brand-muted'
+                                }`}
+                        >
+                            <AlertTriangle size={13} />
+                            Precisa de você <span className="opacity-70">{attentionCount}</span>
+                        </button>
+                    </div>
+
+                    <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+                        <label htmlFor="trial-teacher-filter" className="text-xs font-bold uppercase tracking-widest text-brand-muted">
+                            Professor
+                        </label>
+                        <select
+                            id="trial-teacher-filter"
+                            value={teacherFilter}
+                            onChange={(e) => setTeacherFilter(e.target.value)}
+                            className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500/30 sm:flex-none"
+                        >
+                            <option value="all">Todos os professores ({opportunities.length})</option>
+                            {teachers
+                                .filter(t => countByTeacher.get(t.id))
+                                .sort((a, b) => (countByTeacher.get(b.id) || 0) - (countByTeacher.get(a.id) || 0))
+                                .map(t => (
+                                    <option key={t.id} value={t.id}>
+                                        {t.full_name} ({countByTeacher.get(t.id)})
+                                    </option>
+                                ))}
+                            {countByTeacher.get('none') && (
+                                <option value="none">Sem professor definido ({countByTeacher.get('none')})</option>
+                            )}
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            {/* LISTA: um lead por linha, uma ação principal, o resto no menu ⋯ */}
             {filtered.length === 0 ? (
-                <div className="text-center py-16 bg-brand-surface rounded-2xl border border-brand-border">
-                    <Zap className="mx-auto text-slate-300 mb-3" size={48} />
-                    <p className="text-brand-muted font-medium">Nenhuma experimental encontrada.</p>
+                <div className="rounded-3xl border border-dashed border-brand-border bg-brand-surface py-16 text-center">
+                    <Zap className="mx-auto mb-3 text-brand-muted opacity-40" size={44} />
+                    <p className="font-medium text-brand-muted">{emptyMessage}</p>
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {filtered.map(opp => {
+                    {filtered.map(row => {
+                        const { opp, link, start, stage, action, attention } = row;
                         const fb = feedbacks[opp.id];
-                        const link = enrollmentLinks[opp.id];
-                        const sBadge = getStatusBadge(opp);
-                        const tBadge = getTrialBadge(opp.trial_status);
+                        const meta = STAGE_META[stage];
                         const interest = fb ? getInterestBadge(fb.interest_score) : null;
+                        const trialNote = TRIAL_NOTE[opp.trial_status];
                         const feedbackPending = opp.feedback_required === true
                             && !isCompleteTrialFeedback(opp, fb);
+                        const isOpen = opp.conversion_status !== 'WON' && opp.conversion_status !== 'LOST';
+                        const wa = whatsappHref(opp.student_phone);
+                        const fallbackDate = getTrialDateTime(opp);
+                        const items = isOpen ? buildLeadActions(opp, link) : [];
+                        const primaryKey = PRIMARY_ACTION_KEY[action];
+                        const primary = items.find(item => item.key === primaryKey) || null;
+                        const secondary = items.filter(item => item !== primary);
 
                         return (
-                            <div key={opp.id} className="bg-brand-surface rounded-2xl border border-brand-border p-5 hover:shadow-lg transition-shadow">
-                                <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                            <h3 className="text-lg font-bold text-brand-text truncate">{opp.student_name}</h3>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sBadge.color}`}>{sBadge.label}</span>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tBadge.color}`}>{tBadge.label}</span>
-                                        </div>
-
-                                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-muted">
-                                            <span className="flex items-center gap-1">
-                                                <Users size={12} /> {getTeacherName(opp.winner_teacher_id)}
-                                            </span>
-                                            {/* Exact trial datetime */}
-                                            {(() => {
-                                                const trialDt = getTrialDateTime(opp);
-                                                return trialDt ? (
-                                                    <span className="flex items-center gap-1 font-semibold text-indigo-600">
-                                                        <Clock size={12} /> {trialDt}
-                                                    </span>
-                                                ) : (
-                                                    <span className="flex items-center gap-1">
-                                                        <Calendar size={12} /> {new Date(opp.created_at).toLocaleDateString('pt-BR')}
-                                                    </span>
-                                                );
-                                            })()}
-                                            {opp.student_phone && (
-                                                <span className="flex items-center gap-1">
-                                                    <Phone size={12} /> {opp.student_phone}
-                                                </span>
+                            <article
+                                key={opp.id}
+                                className={`relative rounded-2xl border border-brand-border bg-brand-surface p-4 transition-shadow hover:shadow-md sm:p-5 ${attention ? 'ring-1 ring-amber-500/40' : ''}`}
+                            >
+                                <span className={`absolute inset-y-4 left-0 w-1 rounded-r-full ${meta.dot}`} aria-hidden />
+                                <div className="flex flex-col gap-4 pl-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="truncate text-base font-black text-brand-text sm:text-lg">{opp.student_name}</h3>
+                                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${meta.soft}`}>{meta.badge}</span>
+                                            {trialNote && (
+                                                <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-bold text-orange-700 dark:text-orange-300">{trialNote}</span>
+                                            )}
+                                            {interest && (
+                                                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${interest.color}`}>{interest.label}</span>
                                             )}
                                         </div>
 
-                                        {/* Feedback Summary */}
-                                        {fb && (
-                                            <div className="flex gap-2 mt-3 flex-wrap">
-                                                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">
-                                                    🎓 {fb.recommended_level}
+                                        <FunnelSteps stage={stage} />
+
+                                        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                                            <span className="flex items-center gap-1.5 text-brand-muted">
+                                                <Users size={14} className="shrink-0" />
+                                                <span className="font-semibold text-brand-text">{getTeacherName(opp.winner_teacher_id)}</span>
+                                            </span>
+                                            {start ? (
+                                                <span className="flex items-center gap-1.5 text-brand-muted" title={fallbackDate || undefined}>
+                                                    <Clock size={14} className="shrink-0" />
+                                                    <span className="font-semibold text-brand-text">{relativeTrialLabel(start, now)}</span>
                                                 </span>
-                                                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-brand-surface-2 text-brand-muted">
+                                            ) : (
+                                                <span className="flex items-center gap-1.5 text-brand-muted">
+                                                    <Calendar size={14} className="shrink-0" />
+                                                    {fallbackDate || `pedido em ${new Date(opp.created_at).toLocaleDateString('pt-BR')}`}
+                                                </span>
+                                            )}
+                                            {opp.student_phone && (wa ? (
+                                                <a
+                                                    href={wa}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="flex items-center gap-1.5 text-brand-muted hover:text-emerald-600 dark:hover:text-emerald-400"
+                                                    title="Abrir conversa no WhatsApp"
+                                                >
+                                                    <Phone size={14} className="shrink-0" /> {formatBrazilPhone(opp.student_phone)}
+                                                </a>
+                                            ) : (
+                                                <span className="flex items-center gap-1.5 text-brand-muted">
+                                                    <Phone size={14} className="shrink-0" /> {opp.student_phone}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        {attention && (
+                                            <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+                                                <AlertTriangle size={13} /> {attention}
+                                            </p>
+                                        )}
+
+                                        {fb && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <span className="rounded-lg bg-brand-surface-2 px-2 py-1 text-[11px] font-bold text-brand-text">
+                                                    🎓 Nível {fb.recommended_level}
+                                                </span>
+                                                <span className="rounded-lg bg-brand-surface-2 px-2 py-1 text-[11px] font-bold text-brand-muted">
                                                     📋 {fb.recommended_plan}
                                                 </span>
-                                                {interest && (
-                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${interest.color}`}>
-                                                        {interest.label}
-                                                    </span>
-                                                )}
                                             </div>
                                         )}
 
                                         {feedbackPending && opp.trial_status === 'DONE' && (
-                                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                            <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
                                                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                                                 <span>Feedback do professor pendente. A matrícula já está liberada.</span>
                                             </div>
                                         )}
 
-                                        {/* Enrollment Link Status */}
-                                        {link && opp.conversion_status === 'OPEN' && (
-                                            <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-                                                <div className="flex-1 bg-brand-surface rounded-xl px-3 py-2 flex items-center gap-2 overflow-hidden">
-                                                    <LinkIcon size={12} className="text-emerald-400 shrink-0" />
-                                                    <span className="text-[10px] font-mono text-emerald-400 truncate">{link.link_url}</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => { navigator.clipboard.writeText(link.link_url); }}
-                                                    className="flex w-full items-center justify-center gap-1 rounded-xl bg-brand-surface-2 px-3 py-2 text-xs font-bold text-brand-muted transition-all hover:bg-slate-200 sm:w-auto"
-                                                >
-                                                    <Copy size={12} /> Copiar
-                                                </button>
+                                        {link && isOpen && (
+                                            <div className="mt-3 flex max-w-xl items-center gap-2 overflow-hidden rounded-xl bg-brand-surface-2 px-3 py-2">
+                                                <LinkIcon size={13} className="shrink-0 text-brand-accent" />
+                                                <span className="truncate font-mono text-[11px] text-brand-muted">{link.link_url}</span>
+                                                <span className="ml-auto shrink-0 text-[11px] font-semibold text-brand-muted">
+                                                    enviado {new Date(link.created_at).toLocaleDateString('pt-BR')}
+                                                </span>
                                             </div>
                                         )}
 
                                         {opp.conversion_status === 'LOST' && opp.lost_reason && (
-                                            <p className="text-xs text-red-500 mt-2 italic">Motivo: {opp.lost_reason}</p>
+                                            <p className="mt-2 text-xs italic text-rose-600 dark:text-rose-400">Motivo: {opp.lost_reason}</p>
                                         )}
                                     </div>
 
-                                    {/* Action Buttons */}
-                                    {opp.conversion_status === 'OPEN' && (
-                                        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto">
-                                            {/* Trial status actions: when NOT yet DONE */}
-                                            {opp.trial_status !== 'DONE' && (
-                                                <>
-                                                    <button
-                                                        onClick={() => markTrialRealized(opp)}
-                                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:shadow-emerald-300 active:scale-95"
-                                                    >
-                                                        <Check size={16} />
-                                                        Aula Realizada
-                                                    </button>
-                                                    <div className="flex gap-1.5">
-                                                        <button
-                                                            onClick={async () => {
-                                                                try {
-                                                                    await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus: 'NO_SHOW_STUDENT' });
-                                                                    fetchData();
-                                                                } catch (err: any) {
-                                                                    alert(err.message || 'Erro ao registrar a falta do aluno.');
-                                                                }
-                                                            }}
-                                                            className="flex-1 px-2 py-2 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-bold hover:bg-orange-100 transition-all border border-orange-100"
-                                                        >
-                                                            Aluno Faltou
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                try {
-                                                                    await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus: 'NO_SHOW_TEACHER' });
-                                                                    fetchData();
-                                                                } catch (err: any) {
-                                                                    alert(err.message || 'Erro ao registrar a falta do professor.');
-                                                                }
-                                                            }}
-                                                            className="flex-1 px-2 py-2 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-bold hover:bg-orange-100 transition-all border border-orange-100"
-                                                        >
-                                                            Prof. Faltou
-                                                        </button>
-                                                    </div>
-                                                </>
-                                            )}
-                                            {/* Gerar Link: only when trial DONE */}
-                                            {opp.trial_status === 'DONE' && (
+                                    {isOpen && (
+                                        <div className="flex w-full shrink-0 items-stretch gap-2 sm:w-auto sm:flex-col sm:items-end">
+                                            {primary && (
                                                 <button
-                                                    onClick={() => openWizard(opp)}
-                                                    title={feedbackPending ? 'Feedback pendente — a matrícula continua liberada' : undefined}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95"
+                                                    type="button"
+                                                    data-tour="trial-next-action"
+                                                    onClick={primary.onSelect}
+                                                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95 sm:min-w-[220px] sm:flex-none ${action === 'AWAIT'
+                                                        ? 'border border-brand-border bg-brand-surface-2 text-brand-text hover:bg-brand-border'
+                                                        : PRIMARY_TONE[action]
+                                                        }`}
                                                 >
-                                                    <LinkIcon size={16} />
-                                                    {enrollmentLinks[opp.id]
-                                                        ? 'Reenviar Link'
-                                                        : 'Gerar Link Matrícula'}
+                                                    <primary.icon size={16} />
+                                                    {action === 'AWAIT' ? 'Remarcar experimental' : primary.label}
                                                 </button>
                                             )}
-                                            {/* Reagendar: o lead remarca ANTES da aula — era o caso que a
-                                                escola resolvia na mão, porque o botão só existia depois de
-                                                uma falta. Agora vale em qualquer estado aberto. */}
-                                            {opp.trial_status !== 'DONE' && (
-                                                <button
-                                                    onClick={() => openReschedule(opp)}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:shadow-amber-300 active:scale-95"
-                                                >
-                                                    <RefreshCw size={16} />
-                                                    Reagendar Experimental
-                                                </button>
+                                            {action === 'AWAIT' && (
+                                                <p className="hidden text-right text-[11px] font-semibold text-brand-muted sm:block">
+                                                    Aguardando a aula · o resultado é marcado depois dela
+                                                </p>
                                             )}
-                                            {opp.trial_status !== 'DONE' && (
-                                                <button
-                                                    data-tour="trial-cancel"
-                                                    onClick={() => { setCancelOpp(opp); setCancelReason(''); }}
-                                                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-2.5 text-sm font-bold text-brand-muted transition-all hover:bg-slate-200"
-                                                >
-                                                    <CalendarX size={16} />
-                                                    Cancelar experimental
-                                                </button>
-                                            )}
-                                            {/* Perdido: always visible when OPEN */}
-                                            <button
-                                                onClick={() => { setLostOpp(opp); setLostReason(''); }}
-                                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 transition-all hover:bg-red-100"
-                                            >
-                                                <XCircle size={16} />
-                                                Perdido
-                                            </button>
+                                            <LeadActionsMenu
+                                                leadName={opp.student_name}
+                                                items={secondary}
+                                            />
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            </article>
                         );
                     })}
                 </div>
