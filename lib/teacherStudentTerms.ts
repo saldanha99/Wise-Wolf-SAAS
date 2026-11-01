@@ -13,7 +13,9 @@ export function termAgenda(slots:TermSlot[]):string {
  return slots.map(s=>`${s.date?s.date.split('-').reverse().join('/'):days[s.day]} às ${s.time} (30 min)`).join(' · ');
 }
 export function termCanSign(role:string,term:IndividualTerm):boolean{
- return term.status==='PROPOSED' && Boolean(term.content_hash) && !term.retired_at && (role==='SCHOOL_ADMIN'?term.phase==='SCHOOL_PENDING':role==='TEACHER'&&term.phase==='TEACHER_PENDING');
+ // Escola e professor assinam em qualquer ordem (01/11/2026): o professor
+ // também assina enquanto a escola não assinou.
+ return term.status==='PROPOSED' && Boolean(term.content_hash) && !term.retired_at && (role==='SCHOOL_ADMIN'?term.phase==='SCHOOL_PENDING':role==='TEACHER'&&!term.teacher_signed_at&&(term.phase==='TEACHER_PENDING'||term.phase==='SCHOOL_PENDING'));
 }
 export async function downloadIndividualTermPdf(term:IndividualTerm):Promise<void>{
  if(!term.body||!term.content_hash)throw new Error('A via integral não está disponível para esta conta.');
@@ -37,10 +39,10 @@ export async function downloadIndividualTermPdf(term:IndividualTerm):Promise<voi
 
 /**
  * Termos em que o PRÓPRIO professor tem algo a fazer agora: os dados de
- * prestador que faltam (sem eles nem a escola assina) ou a assinatura dele,
- * depois da escola. "Aguardando a escola" não é pendência dele.
+ * prestador que faltam ou a assinatura dele — que, desde 01/11/2026, pode vir
+ * antes da escola. Termo que ele já assinou não é pendência dele.
  */
 export function teacherTermsNeedingAction(data:IndividualTermsData|null):IndividualTerm[]{
  if(!data||data.role!=='TEACHER')return [];
- return data.terms.filter(t=>t.status==='PROPOSED'&&!t.retired_at&&(t.phase==='IDENTITY_PENDING'||t.phase==='TEACHER_PENDING'));
+ return data.terms.filter(t=>t.status==='PROPOSED'&&!t.retired_at&&!t.teacher_signed_at&&(t.phase==='IDENTITY_PENDING'||t.phase==='TEACHER_PENDING'||t.phase==='SCHOOL_PENDING'));
 }

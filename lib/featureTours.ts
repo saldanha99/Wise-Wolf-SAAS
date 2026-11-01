@@ -921,6 +921,18 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'enrollment-link-tab',view:'dashboard',title:'O aluno não digita mais cupom',text:'A página de matrícula não tem mais campo de cupom: quem não tem um não fica achando que pagou a mais. Se o aluno veio por um afiliado, informe o cupom ou o nome de quem indicou aqui em "Link Matrícula" ao gerar o link — a taxa sai isenta e a comissão fica vinculada, como antes. E se o aluno recarregar a página no meio da matrícula, o que ele já digitou volta sozinho (menos senha e cartão).'},
     ],
   },
+  {
+    id:'2026-11-01-termo-por-link-direcao',title:'Termo por aluno pelo WhatsApp',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'sidebar-nav',view:'contracts',title:'Ninguém mais precisa entrar no portal para assinar',text:'Quando nasce um termo por aluno, o professor e o diretor recebem cada um um link pessoal no WhatsApp e assinam em qualquer ordem, digitando o nome. Sem assinatura em 24 h sai um lembrete; parado há 2 dias, a coordenação é avisada. Os termos novos usam a versão 2: multa de 10 vezes por aula lançada sem ter sido dada (mais devolução e fim dos atendimentos), 2 meses de honorários por abandono sem o aviso de 30 dias e 2 aulas por falta sem justificativa.'},
+    ],
+  },
+  {
+    id:'2026-11-01-termo-por-link-professor',title:'Aluno novo: aceite pelo WhatsApp',roles:['TEACHER'],
+    steps:[
+      {target:'teacher-student-terms',view:'contract_teacher',title:'Aceite em 1 minuto pelo celular',text:'Quando chega um aluno novo para você, a escola manda um link no seu WhatsApp. Abra, confira o aluno, os dias e o seu valor, e assine digitando o seu nome — não precisa entrar no portal. Você pode assinar antes ou depois da escola. Ao aceitar, você assume o aluno nesses horários: falta sem justificativa, aula lançada sem ter sido dada e saída sem os 30 dias de aviso têm multa, sempre depois de você ser ouvido(a). A via fica aqui, em Termos por aluno.'},
+    ],
+  },
 ];
 
 /**

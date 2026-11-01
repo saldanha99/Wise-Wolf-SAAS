@@ -28,7 +28,7 @@ begin
  r:=public.teacher_student_terms('identity',null,identity);
  select content_hash,body into old_hash,old_body from private.teacher_student_terms where id=term;
  perform pg_temp.term_assert(old_hash=encode(extensions.digest(old_body,'sha256'),'hex') and position('Empresa Fixture Ltda' in old_body)>0,'content hash or company wrong');
- begin perform public.teacher_student_terms('sign',term,jsonb_build_object('content_hash',old_hash,'typed_name','Professor Fixture','accepted',true,'has_authority',true));raise exception 'teacher signed before school';exception when raise_exception then if sqlerrm='teacher signed before school' then raise;end if;end;
+ -- Desde 01/11/2026 escola e professor assinam em qualquer ordem (termo_individual_por_link.sql).
  perform set_config('request.jwt.claims',jsonb_build_object('sub',coordinator,'role','authenticated')::text,true);
  begin perform public.teacher_student_terms('sign',term,jsonb_build_object('content_hash',old_hash,'typed_name','Coordenador Fixture','accepted',true,'has_authority',true));raise exception 'coordinator signed for school';exception when insufficient_privilege then null;end;
  perform set_config('request.jwt.claims',jsonb_build_object('sub',director,'role','authenticated')::text,true);

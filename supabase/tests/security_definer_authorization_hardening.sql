@@ -340,6 +340,11 @@ select pg_temp.assert_true(
           -- que a página mostrou (20260927100000, termo_v3_versao_e_retencao.sql).
           'public.get_lesson_recording_consent_public(text)',
           'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)',
+          -- Termo individual por link no WhatsApp: token de 64 hex, uso único, 7
+          -- dias, só o hash no banco; age apenas como quem recebeu o link pela
+          -- RPC do portal (migration 20261101010000, termo_individual_por_link.sql).
+          'public.student_term_link_view(text)',
+          'public.student_term_link_act(text,text,jsonb)',
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
@@ -370,7 +375,9 @@ begin
     'public.hub_get_public_settings()',
     'public.hub_learner_invite_preview(text)',
     'public.get_lesson_recording_consent_public(text)',
-    'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)'
+    'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)',
+    'public.student_term_link_view(text)',
+    'public.student_term_link_act(text,text,jsonb)'
   ]
   loop
     perform pg_temp.assert_true(

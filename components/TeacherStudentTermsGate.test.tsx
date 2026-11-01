@@ -21,7 +21,11 @@ describe('pendência do termo por aluno do professor', () => {
   it('só conta o que o próprio professor tem a fazer', () => {
     expect(teacherTermsNeedingAction(data('IDENTITY_PENDING'))).toHaveLength(1);
     expect(teacherTermsNeedingAction(data('TEACHER_PENDING'))).toHaveLength(1);
-    expect(teacherTermsNeedingAction(data('SCHOOL_PENDING'))).toHaveLength(0);
+    // Desde 01/11/2026 o professor assina antes da escola, se quiser.
+    expect(teacherTermsNeedingAction(data('SCHOOL_PENDING'))).toHaveLength(1);
+    const signed = data('SCHOOL_PENDING');
+    signed.terms[0] = { ...signed.terms[0], teacher_signed_at: '2026-11-01T12:00:00Z' };
+    expect(teacherTermsNeedingAction(signed)).toHaveLength(0);
     expect(teacherTermsNeedingAction(data('IDENTITY_PENDING', 'SCHOOL_ADMIN'))).toHaveLength(0);
     expect(teacherTermsNeedingAction(null)).toHaveLength(0);
   });
@@ -35,8 +39,10 @@ describe('pendência do termo por aluno do professor', () => {
     await waitFor(() => expect(onActive).toHaveBeenLastCalledWith(true));
   });
 
-  it('não abre enquanto só falta a escola, nem quando a leitura falha', async () => {
-    rpc.mockResolvedValue({ data: data('SCHOOL_PENDING'), error: null });
+  it('não abre depois que o professor já assinou, nem quando a leitura falha', async () => {
+    const signed = data('SCHOOL_PENDING');
+    signed.terms[0] = { ...signed.terms[0], teacher_signed_at: '2026-11-01T12:00:00Z' };
+    rpc.mockResolvedValue({ data: signed, error: null });
     const { unmount } = render(<TeacherStudentTermsGate blocked={false} onActiveChange={() => {}} onLogout={() => {}} />);
     await waitFor(() => expect(rpc).toHaveBeenCalled());
     expect(screen.queryByText(/aluno novo/)).not.toBeInTheDocument();

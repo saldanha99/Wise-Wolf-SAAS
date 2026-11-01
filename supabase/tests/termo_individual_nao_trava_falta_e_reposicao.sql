@@ -49,17 +49,17 @@ begin
  begin insert into public.bookings(tenant_id,teacher_id,student_id,day_of_week,time_slot,start_date) values(tenant,other_teacher,old_student,'Quarta','18:00',today+3);raise exception 'agenda com outro professor sem termo';exception when sqlstate 'PT412' then null;end;
  perform pg_temp.fix_assert(private.student_term_legacy_relationship(tenant,old_student,teacher) and not private.student_term_legacy_relationship(tenant,old_student,other_teacher) and not private.student_term_legacy_relationship(tenant,new_student,teacher),'regra do vinculo antigo');
 
- -- 5. Proposta avisa a direção; assinatura da escola avisa o professor.
+ -- 5. Desde 01/11/2026 os avisos são links pessoais (termo_individual_por_link.sql).
+ --    Escola sem portal: nenhuma mensagem sem link, e a proposta não cai.
  perform set_config('request.jwt.claims',jsonb_build_object('sub',director,'role','authenticated')::text,true);
  r:=public.teacher_student_terms('prepare',gen_random_uuid(),jsonb_build_object('student_id',new_student,'teacher_id',teacher,'mode','RECURRING','starts_on',today+3,'slots','[{"day":1,"time":"18:00"}]'::jsonb));term:=(r->>'id')::uuid;
- perform pg_temp.fix_assert(exists(select 1 from public.notification_queue where tenant_id=tenant and idempotency_key='student-term:'||term||':proposed' and student_phone=group_jid and status='pending'),'aviso a direcao ausente');
+ perform pg_temp.fix_assert(term is not null and not exists(select 1 from public.notification_queue where tenant_id=tenant and idempotency_key like 'student-term%'),'aviso sem link enfileirado');
  perform set_config('request.jwt.claims',jsonb_build_object('sub',teacher,'role','authenticated')::text,true);
  perform public.teacher_student_terms('identity',null,'{"companyName":"Empresa Fixture Ltda","cnpj":"12.ABC.345/01DE-35","companyAddress":"Rua Fixture, 1","representativeCpf":"52998224725","representativeHasAuthority":true}'::jsonb);
  select content_hash into v_hash from private.teacher_student_terms where id=term;
  perform set_config('request.jwt.claims',jsonb_build_object('sub',director,'role','authenticated')::text,true);
  perform public.teacher_student_terms('sign',term,jsonb_build_object('content_hash',v_hash,'typed_name','Diretor Fixture','accepted',true,'has_authority',true));
- perform pg_temp.fix_assert(exists(select 1 from public.notification_queue where tenant_id=tenant and idempotency_key='student-term:'||term||':school-signed' and student_phone like '5511988887777%'),'aviso ao professor ausente');
- perform pg_temp.fix_assert((select count(*)=2 from public.notification_queue where tenant_id=tenant and idempotency_key like 'student-term:%'),'aviso duplicado');
+ perform pg_temp.fix_assert((select school_signed_at is not null from private.teacher_student_terms where id=term) and not exists(select 1 from public.notification_queue where tenant_id=tenant and idempotency_key like 'student-term%'),'assinatura da escola gerou aviso sem link');
 
  -- 6. Fachada antiga não muda status sem o financeiro.
  begin perform public.set_student_status(old_student,'Inativo');raise exception 'set_student_status mudou status';exception when insufficient_privilege then null;end;

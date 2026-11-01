@@ -105,6 +105,7 @@ const LessonRecordingConsentsPanel = lazy(() => import('./components/LessonRecor
 const LessonRecordingConsentPage = lazy(() => import('./components/LessonRecordingConsentPage'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
+const StudentTermSign = lazy(() => import('./components/StudentTermSign'));
 const CourseRenewalSign = lazy(() => import('./components/CourseRenewalSign'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
@@ -1089,6 +1090,13 @@ const App: React.FC = () => {
   if (path === '/mudar-plano' || path.startsWith('/mudar-plano')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
       <PlanChangeSign />
+    </Suspense>;
+  }
+
+  // Termo individual pelo link do WhatsApp (professor ou direção, sem login).
+  if (path === '/aceitar-termo' || path.startsWith('/aceitar-termo')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-100"><Loader2 className="animate-spin text-[#002366]" size={32} /></div>}>
+      <StudentTermSign />
     </Suspense>;
   }
 

@@ -4627,3 +4627,26 @@ release troca o hash. Página de matrícula sem campo de cupom (ver Afiliados). 
 digitou (nome, e-mail, telefone, CPF, CEP, endereço, número, forma de pagamento — nunca senha
 nem cartão) fica em `localStorage` por oferta (`lib/enrollmentDraft.ts`), volta no F5, some ao
 concluir ou em 7 dias. Tour `2026-10-31-cupom-so-pela-escola`.
+
+### 01/11/2026 — Termo por aluno pelo link do WhatsApp + modelo jurídico 2
+
+Decisão da direção (31/10): assinar pelo portal era lento (o termo da Amábile levou 3 dias só
+na escola). Na proposta (`PROPOSED`), professor e diretor recebem cada um um **link pessoal**
+(`/aceitar-termo?t=<64 hex>`, `components/StudentTermSign.tsx`): uso único, 7 dias, só o hash
+em `private.student_term_links`, enviado ao telefone do próprio perfil pela fila oficial
+(`student-term-link:<termo>:<parte>:<n>`). A página age como quem recebeu o link pela MESMA
+`teacher_student_terms` do portal (`trial_closing_act_as`) e grava o meio num evento à parte
+(`SIGNED_VIA_WHATSAPP_LINK`, IP e navegador). **Escola e professor assinam em qualquer ordem**
+(remendo por âncora). Link da escola só sai com os dados do prestador preenchidos (gatilho em
+`provider_identity`). Lembrete em 24 h (link novo) e aviso à coordenação em 48 h
+(`wisewolf-student-term-link-reminders`, 9h–21h). Escola sem endereço de portal
+(`lesson_recording_portal_url` nulo) não recebe link — nunca mensagem sem link. ⚠️ Página e
+mensagens nunca mostram valor pago pelo aluno, só o valor do professor por 30 min.
+**Modelo jurídico 2** (`docs/legal/termo-individual-professor-aluno-v2.md`, aprovado pela
+direção, recomendado revisar com advogado): aula registrada sem ter sido dada = devolução +
+multa de 10× por unidade + encerramento de todos os atendimentos; abandono sem o aviso de 30
+dias = 2 meses de honorários do atendimento (+ diferença do substituto comprovada); falta
+injustificada = 2× por unidade; sempre após manifestação de 5 dias úteis. `student_term_render`
+usa o modelo mais recente; termo já assinado não muda (texto só é remontado antes da 1ª
+assinatura). Migration `20261101010000`, teste `termo_individual_por_link.sql`, tours
+`2026-11-01-termo-por-link-*`.
