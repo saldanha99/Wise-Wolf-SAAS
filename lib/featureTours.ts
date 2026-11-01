@@ -973,6 +973,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'paths-breadcrumb',view:'learning_paths_builder',title:'Onde você está',text:'No topo aparece o caminho: todas as trilhas, a trilha, a unidade e a atividade. Toque em qualquer nível para voltar direto a ele. Dentro da trilha, as unidades aparecem numeradas na ordem em que o aluno percorre; arraste para reordenar enquanto ninguém começou a trilha.'},
     ],
   },
+  {
+    id:'2026-11-01-zzz-u-pedagogico-em-numeros',title:'Pedagógico em números',roles:['SCHOOL_ADMIN','TEACHER'],
+    steps:[
+      {target:'pedagogy-overview',view:'pedagogical',title:'O retrato da biblioteca',text:'No topo da Gestão Pedagógica ficam quantos alunos, materiais e livros a escola tem, e logo abaixo quantos materiais existem em cada nível. Nível sem material aparece em amarelo: é onde vale subir conteúdo ou gerar um livro.'},
+      {target:'pedagogy-module-filter',view:'pedagogical',title:'Alunos por módulo',text:'A lista de alunos virou cartões com o módulo e a parte do livro de cada um. Filtre pelo módulo (A1 a C2, ou quem está sem módulo) e use Gerenciar para atribuir material, como antes.'},
+    ],
+  },
 ];
 
 /**

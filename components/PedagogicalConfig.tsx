@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Upload, FileText, Trash2, Users, ChevronRight, BookOpen } from 'lucide-react';
+import { Search, RefreshCw, Upload, FileText, Trash2, Users, ChevronRight, BookOpen, Library, Sparkles, Layers, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import confetti from 'canvas-confetti';
@@ -22,6 +22,8 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   const [teachers, setTeachers] = useState<any[]>([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | 'ALL'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  // Filtro de módulo da lista de alunos (só na tela)
+  const [moduleFilter, setModuleFilter] = useState<string>('ALL');
   const [pedagogicalStudent, setPedagogicalStudent] = useState<any | null>(null);
 
   // Materials State
@@ -479,53 +481,163 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   const editingApprovalBlocked = editingConsentChanged
     || editingMaterial?.hub_publication_requested_by === user.id;
 
+  // Retrato da biblioteca e da turma, calculado do que já foi carregado
+  const studentsByModule = modulesList.map(level => ({ level, count: students.filter(st => st.currentModule === level).length }));
+  const studentsWithoutModule = students.filter(st => !modulesList.includes(st.currentModule)).length;
+  const materialsByLevel = modulesList.map(level => ({ level, count: materials.filter(m => m.level_tag === level).length }));
+  const maxMaterialsByLevel = Math.max(1, ...materialsByLevel.map(item => item.count));
+  const pendingMine = materials.filter(m => m.uploaded_by === user.id && m.approval_status === 'PENDING').length;
+  const visibleStudents = filteredStudents.filter(st =>
+    moduleFilter === 'ALL'
+      || (moduleFilter === 'NONE' ? !modulesList.includes(st.currentModule) : st.currentModule === moduleFilter),
+  );
+  const initialsOf = (name: string) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('');
+
+  const tabs: { id: 'allocation' | 'materials' | 'book-generator'; label: string; icon: typeof Users; count?: number; show: boolean }[] = [
+    { id: 'allocation', label: 'Alunos', icon: Users, count: students.length, show: true },
+    { id: 'materials', label: 'Biblioteca', icon: Library, count: materials.length, show: true },
+    { id: 'book-generator', label: 'Gerar livro', icon: Sparkles, show: canGenerateBook },
+  ];
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-[calc(100vh-8rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
-        <div>
-          <h2 className="text-3xl font-black text-brand-text tracking-tight">Gestão Pedagógica</h2>
-          <p className="text-brand-muted text-sm">Biblioteca Master e Currículo.</p>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Cabeçalho com o retrato pedagógico da escola */}
+      <div className="rounded-3xl border border-brand-border bg-brand-surface p-4 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-brand-text sm:text-3xl">Gestão Pedagógica</h2>
+            <p className="mt-1 text-sm text-brand-muted">Biblioteca de materiais, livros e o que cada aluno está estudando.</p>
+          </div>
+          <div data-tour="pedagogy-overview" className="grid grid-cols-3 gap-2 sm:flex sm:gap-3">
+            {[
+              { label: 'alunos', value: students.length, icon: Users },
+              { label: 'materiais', value: materials.length, icon: FileText },
+              { label: 'livros', value: collections.length, icon: Layers },
+            ].map(stat => (
+              <div key={stat.label} className="rounded-2xl bg-brand-surface-2 px-3 py-2.5 sm:min-w-[104px] sm:px-4">
+                <stat.icon size={15} className="text-brand-muted" />
+                <p className="mt-1 text-2xl font-black leading-none text-brand-text">{stat.value}</p>
+                <p className="mt-0.5 text-[11px] font-semibold text-brand-muted">{stat.label}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex overflow-x-auto gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
-          <button onClick={() => setActiveTab('allocation')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
-          <button onClick={() => setActiveTab('materials')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
-          {canGenerateBook && <button onClick={() => setActiveTab('book-generator')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'book-generator' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Gerar livro</button>}
+
+        {/* Materiais por nível: onde a biblioteca está cheia e onde falta conteúdo */}
+        <div className="mt-5 grid grid-cols-6 gap-2" aria-label="Materiais por nível">
+          {materialsByLevel.map(({ level, count }) => (
+            <div key={level} className="rounded-xl bg-brand-surface-2 p-2 text-center">
+              <div className="flex h-10 items-end justify-center">
+                <span
+                  className={`w-full max-w-10 rounded-md ${count === 0 ? 'bg-amber-500/30' : 'bg-brand-accent/70'}`}
+                  style={{ height: `${count === 0 ? 8 : Math.max(16, (count / maxMaterialsByLevel) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs font-black text-brand-text">{level}</p>
+              <p className={`text-[10px] font-semibold ${count === 0 ? 'text-amber-700 dark:text-amber-300' : 'text-brand-muted'}`}>
+                <span className="sm:hidden">{count}</span>
+                <span className="hidden sm:inline">{count === 0 ? 'sem material' : `${count} ${count === 1 ? 'material' : 'materiais'}`}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {isTeacher && pendingMine > 0 && (
+          <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+            <Clock size={13} /> {pendingMine} material(is) seu(s) aguardando aprovação do diretor
+          </p>
+        )}
+
+        <div role="tablist" className="mt-5 flex gap-1 overflow-x-auto rounded-2xl bg-brand-surface-2 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tabs.filter(tab => tab.show).map(tab => {
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex shrink-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${selected
+                  ? 'bg-brand-surface text-brand-text shadow-sm'
+                  : 'text-brand-muted hover:text-brand-text'
+                  }`}
+              >
+                <tab.icon size={16} />
+                {tab.label}
+                {typeof tab.count === 'number' && (
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-brand-accent/10 text-brand-accent' : 'bg-brand-surface text-brand-muted'}`}>{tab.count}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {activeTab === 'allocation' && (
-        <div className="flex-1 flex gap-6 overflow-hidden">
-          {/* Allocation Table */}
-          <div className="flex-1 bg-brand-surface border border-brand-border rounded-4xl flex flex-col overflow-hidden shadow-xs p-4">
-            <div className="mb-4 flex gap-4">
-              <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar aluno..." className="p-2 border rounded-lg flex-1 bg-transparent" />
-            </div>
-            <div className="overflow-y-auto overflow-x-auto flex-1">
-              <table className="w-full text-left min-w-[400px]">
-                <thead className="bg-brand-surface-2 text-[10px] uppercase font-black text-brand-muted">
-                  <tr><th className="p-3">Aluno</th><th className="p-3">Módulo</th><th className="p-3">Progresso</th><th className="p-3 text-right">Ações</th></tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map(s => (
-                    <tr key={s.id} className="border-b border-brand-border hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-colors group">
-                      <td className="p-3 font-bold text-xs">{s.name}</td>
-                      <td className="p-3 text-xs">{s.currentModule}</td>
-                      <td className="p-3 text-xs">{s.currentBookPart}</td>
-                      <td className="p-3 text-right">
-                        <button
-                          onClick={() => setPedagogicalStudent(s)}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition-colors"
-                        >
-                          Atribuir / Gerenciar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="rounded-3xl border border-brand-border bg-brand-surface p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="relative flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+              <input
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Buscar aluno pelo nome"
+                className="w-full rounded-xl border border-brand-border bg-brand-surface py-2.5 pl-9 pr-3 text-sm text-brand-text placeholder:text-brand-muted focus:outline-hidden focus:ring-2 focus:ring-brand-accent/30"
+              />
+            </label>
           </div>
+          <div data-tour="pedagogy-module-filter" className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
+            {[
+              { id: 'ALL', label: 'Todos', count: students.length },
+              ...studentsByModule.map(item => ({ id: item.level, label: item.level, count: item.count })),
+              ...(studentsWithoutModule > 0 ? [{ id: 'NONE', label: 'Sem módulo', count: studentsWithoutModule }] : []),
+            ].map(chip => (
+              <button
+                key={chip.id}
+                type="button"
+                aria-pressed={moduleFilter === chip.id}
+                onClick={() => setModuleFilter(chip.id)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${moduleFilter === chip.id
+                  ? 'bg-brand-accent text-white dark:text-brand-bg'
+                  : 'bg-brand-surface-2 text-brand-muted hover:text-brand-text'
+                  }`}
+              >
+                {chip.label} <span className="opacity-70">{chip.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {visibleStudents.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-brand-border py-12 text-center text-sm text-brand-muted">
+              Nenhum aluno com esses filtros.
+            </div>
+          ) : (
+            <ul className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {visibleStudents.map(s => (
+                <li key={s.id} className="flex items-center gap-3 rounded-2xl border border-brand-border p-3 transition-colors hover:bg-brand-surface-2">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-accent/10 text-sm font-black text-brand-accent">
+                    {initialsOf(s.name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-brand-text">{s.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-brand-muted">
+                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${modulesList.includes(s.currentModule) ? 'bg-brand-surface-2 text-brand-text' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
+                        {modulesList.includes(s.currentModule) ? s.currentModule : 'sem módulo'}
+                      </span>
+                      <BookOpen size={12} className="shrink-0" />
+                      <span className="truncate">{s.currentBookPart}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setPedagogicalStudent(s)}
+                    className="flex shrink-0 items-center gap-1 rounded-xl bg-brand-surface-2 px-3 py-2 text-xs font-bold text-brand-text transition-colors hover:bg-brand-accent hover:text-white dark:hover:text-brand-bg"
+                  >
+                    Gerenciar <ChevronRight size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -537,9 +649,9 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       )}
 
       {activeTab === 'materials' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-full min-h-0">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {canUpload && (
-            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 h-fit">
+            <div className="h-fit rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-6 lg:sticky lg:top-4">
               <h3 className="text-xl font-black mb-2 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
               {isTeacher && <p className="text-[11px] text-amber-600 mb-4">📋 Seu material fica privado e passa pela aprovação pedagógica do diretor.</p>}
               <div className="space-y-4">
@@ -561,7 +673,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                     <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                       {nicheOptions.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
                     </select>
-                    <button type="button" onClick={() => setShowNewNiche(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo nicho">+ Nicho</button>
+                    <button type="button" onClick={() => setShowNewNiche(s => !s)} className="shrink-0 whitespace-nowrap px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo nicho">+ Nicho</button>
                   </div>
                 </div>
                 {showNewNiche && (
@@ -579,7 +691,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                       <option value="">— Avulso (sem livro) —</option>
                       {collections.map(c => <option key={c.id} value={c.id}>{(nicheLabelMap[c.niche] ? nicheLabelMap[c.niche].replace(/^[^\s\w]+\s*/, '') + ' · ' : '')}{c.level_tag ? c.level_tag + ' · ' : ''}{c.title}</option>)}
                     </select>
-                    <button type="button" onClick={() => setShowNewCollection(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo livro">+ Livro</button>
+                    <button type="button" onClick={() => setShowNewCollection(s => !s)} className="shrink-0 whitespace-nowrap px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo livro">+ Livro</button>
                   </div>
                   {newMaterial.collection_id && (
                     <input type="number" min={1} value={newMaterial.part_number} onChange={e => setNewMaterial({ ...newMaterial, part_number: e.target.value })} placeholder="Nº da parte (1, 2, 3...)" className="w-full mt-2 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold" />
@@ -654,9 +766,12 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             </div>
           )}
 
-          <div className={`${canUpload ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
-            <h3 className="text-xl font-black mb-6">Biblioteca Master</h3>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className={`${canUpload ? 'lg:col-span-2' : 'lg:col-span-3'} flex flex-col rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-6`}>
+            <div className="mb-5 flex items-baseline justify-between gap-3">
+              <h3 className="text-xl font-black text-brand-text">Biblioteca da escola</h3>
+              <span className="text-sm font-semibold text-brand-muted">{materials.length} materiais · {collections.length} livros</span>
+            </div>
+            <div className="flex-1">
               <MaterialsLibrary
                 materials={materials}
                 collections={collections}
