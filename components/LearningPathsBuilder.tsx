@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Plus, Edit2, Trash2, Save, X, ChevronRight, ChevronLeft, Loader2, Sparkles,
     BookOpen, Briefcase, GraduationCap, Plane, Cpu, Heart, Globe, Target,
-    Layers, FileText, Mic, HelpCircle, Pen, Check, GripVertical, UserPlus, Archive, AlertCircle
+    Layers, FileText, Mic, HelpCircle, Pen, Check, GripVertical, UserPlus, Archive, AlertCircle, Search, Home
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateUnitActivityContent } from '../services/geminiService';
@@ -13,14 +13,15 @@ interface Props {
     tenantId?: string;
 }
 
+// `tone`: cor da categoria nos cartões — transparência funciona nos dois temas.
 const CATEGORIES = [
-    { id: 'BUSINESS', label: 'Business', icon: Briefcase },
-    { id: 'TOEFL_IELTS', label: 'TOEFL/IELTS', icon: GraduationCap },
-    { id: 'TRAVEL', label: 'Viagem', icon: Plane },
-    { id: 'KIDS', label: 'Crianças', icon: Heart },
-    { id: 'TECH', label: 'Tecnologia', icon: Cpu },
-    { id: 'GENERAL', label: 'Geral', icon: Globe },
-    { id: 'CONVERSATION', label: 'Conversação', icon: Sparkles },
+    { id: 'BUSINESS', label: 'Business', icon: Briefcase, tone: 'bg-blue-500/10 text-blue-700 dark:text-blue-300', bar: 'bg-blue-500' },
+    { id: 'TOEFL_IELTS', label: 'TOEFL/IELTS', icon: GraduationCap, tone: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', bar: 'bg-amber-500' },
+    { id: 'TRAVEL', label: 'Viagem', icon: Plane, tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300', bar: 'bg-sky-500' },
+    { id: 'KIDS', label: 'Crianças', icon: Heart, tone: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', bar: 'bg-rose-500' },
+    { id: 'TECH', label: 'Tecnologia', icon: Cpu, tone: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300', bar: 'bg-cyan-500' },
+    { id: 'GENERAL', label: 'Geral', icon: Globe, tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', bar: 'bg-emerald-500' },
+    { id: 'CONVERSATION', label: 'Conversação', icon: Sparkles, tone: 'bg-orange-500/10 text-orange-700 dark:text-orange-300', bar: 'bg-orange-500' },
 ];
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -45,28 +46,49 @@ const LearningPathsBuilder: React.FC<Props> = ({ user, tenantId }) => {
     const triggerRefresh = () => setRefreshKey(k => k + 1);
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="overflow-hidden rounded-3xl border border-brand-border bg-brand-surface">
+            <div className="flex flex-col gap-3 border-b border-brand-border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
-                        <Target size={20} className="text-violet-600 dark:text-violet-400" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-accent/10">
+                        <Target size={20} className="text-brand-accent" />
                     </div>
                     <div>
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm">Trilhas Didáticas</h3>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">Builder pedagógico</p>
+                        <h3 className="text-lg font-black tracking-tight text-brand-text">Trilhas Didáticas</h3>
+                        <p className="text-xs text-brand-muted">Trilha → unidades → atividades que o aluno faz no portal</p>
                     </div>
                 </div>
-                {view.type !== 'list' && (
-                    <button
-                        onClick={() => setView({ type: 'list' })}
-                        className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-1"
-                    >
-                        <ChevronLeft size={14} /> Voltar para lista
-                    </button>
-                )}
+                {/* Onde estou: cada nível volta para ele com um clique */}
+                <nav data-tour="paths-breadcrumb" aria-label="Onde você está" className="flex flex-wrap items-center gap-1 text-xs font-bold">
+                    {([
+                        { key: 'list', label: 'Todas as trilhas', icon: Home, go: () => setView({ type: 'list' }), show: true },
+                        { key: 'path', label: 'Trilha', icon: Target, go: () => view.type !== 'list' && setView({ type: 'path', pathId: view.pathId }), show: view.type !== 'list' },
+                        { key: 'unit', label: 'Unidade', icon: Layers, go: () => (view.type === 'unit' || view.type === 'activity') && setView({ type: 'unit', pathId: view.pathId, unitId: view.unitId }), show: view.type === 'unit' || view.type === 'activity' },
+                        { key: 'activity', label: 'Atividade', icon: FileText, go: () => undefined, show: view.type === 'activity' },
+                    ] as const).filter(step => step.show).map((step, index, list) => {
+                        const current = index === list.length - 1;
+                        const StepIcon = step.icon;
+                        return (
+                            <React.Fragment key={step.key}>
+                                {index > 0 && <ChevronRight size={13} className="text-brand-muted" aria-hidden />}
+                                <button
+                                    type="button"
+                                    onClick={step.go}
+                                    disabled={current}
+                                    aria-current={current ? 'page' : undefined}
+                                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${current
+                                        ? 'bg-brand-accent/10 text-brand-accent'
+                                        : 'text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text'
+                                        }`}
+                                >
+                                    <StepIcon size={13} /> {step.label}
+                                </button>
+                            </React.Fragment>
+                        );
+                    })}
+                </nav>
             </div>
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
                 {view.type === 'list' && <PathList user={user} tenantId={tenantId} onOpen={(id) => setView({ type: 'path', pathId: id })} refreshKey={refreshKey} onRefresh={triggerRefresh} />}
                 {view.type === 'path' && <PathDetail pathId={view.pathId} user={user} tenantId={tenantId} onOpenUnit={(uid) => setView({ type: 'unit', pathId: view.pathId, unitId: uid })} onPathDeleted={() => setView({ type: 'list' })} />}
                 {view.type === 'unit' && <UnitDetail unitId={view.unitId} user={user} tenantId={tenantId} onOpenActivity={(aid) => setView({ type: 'activity', pathId: view.pathId, unitId: view.unitId, activityId: aid })} onBack={() => setView({ type: 'path', pathId: view.pathId })} />}
@@ -85,6 +107,11 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
     const [creating, setCreating] = useState(false);
     const [archivingId, setArchivingId] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+    // Filtros só na tela: a consulta ao banco é a mesma de sempre.
+    const [search, setSearch] = useState('');
+    const [levelFilter, setLevelFilter] = useState<string>('all');
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    const [showArchived, setShowArchived] = useState(false);
 
     useEffect(() => {
         load();
@@ -151,71 +178,171 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
         }
     };
 
+    const visiblePaths = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        return paths.filter(p =>
+            (showArchived || p.active)
+            && (levelFilter === 'all' || p.target_level === levelFilter)
+            && (categoryFilter === 'all' || p.category === categoryFilter)
+            && (!term || `${p.name} ${p.description || ''}`.toLowerCase().includes(term)),
+        );
+    }, [paths, search, levelFilter, categoryFilter, showArchived]);
+
+    const activeCount = paths.filter(p => p.active).length;
+    const archivedCount = paths.length - activeCount;
+    const levelCounts = LEVELS.map(level => ({ level, count: paths.filter(p => p.active && p.target_level === level).length }));
+    const maxLevel = Math.max(1, ...levelCounts.map(item => item.count));
+
     if (loading) return <Loader />;
 
     return (
-        <div>
-            <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{paths.length} trilhas</p>
+        <div className="space-y-5">
+            {/* Retrato do acervo: quantas trilhas e como se espalham pelos níveis */}
+            <div className="grid gap-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                <div className="flex gap-6">
+                    <div>
+                        <p className="text-3xl font-black leading-none text-brand-text">{activeCount}</p>
+                        <p className="mt-1 text-xs font-semibold text-brand-muted">trilhas ativas</p>
+                    </div>
+                    {archivedCount > 0 && (
+                        <div>
+                            <p className="text-3xl font-black leading-none text-brand-muted">{archivedCount}</p>
+                            <p className="mt-1 text-xs font-semibold text-brand-muted">arquivadas</p>
+                        </div>
+                    )}
+                </div>
+                <div data-tour="paths-levels" className="flex items-end gap-2 rounded-2xl bg-brand-surface-2 px-4 py-3" aria-label="Trilhas ativas por nível">
+                    {levelCounts.map(({ level, count }) => (
+                        <button
+                            key={level}
+                            type="button"
+                            onClick={() => setLevelFilter(levelFilter === level ? 'all' : level)}
+                            aria-pressed={levelFilter === level}
+                            className="group flex flex-1 flex-col items-center gap-1"
+                            title={`${count} trilha(s) ${level}`}
+                        >
+                            <span className="text-[11px] font-black text-brand-text">{count}</span>
+                            <span className="flex h-10 w-full items-end overflow-hidden rounded-md bg-brand-surface">
+                                <span
+                                    className={`w-full rounded-md transition-all ${levelFilter === level ? 'bg-brand-accent' : 'bg-brand-accent/40 group-hover:bg-brand-accent/70'}`}
+                                    style={{ height: `${Math.max(count > 0 ? 12 : 0, (count / maxLevel) * 100)}%` }}
+                                />
+                            </span>
+                            <span className={`text-[11px] font-bold ${levelFilter === level ? 'text-brand-accent' : 'text-brand-muted'}`}>{level}</span>
+                        </button>
+                    ))}
+                </div>
                 <button
                     onClick={() => setCreating(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-brand-accent-hover dark:text-brand-bg"
                 >
-                    <Plus size={14} /> Nova Trilha
+                    <Plus size={16} /> Nova trilha
                 </button>
             </div>
 
             {creating && <PathForm onSubmit={createPath} onCancel={() => setCreating(false)} />}
 
             {actionMessage && (
-                <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs font-bold ${actionMessage.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-100' : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100'}`} role={actionMessage.tone === 'error' ? 'alert' : 'status'}>
+                <div className={`flex items-start gap-2 rounded-xl border p-3 text-xs font-bold ${actionMessage.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-100' : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100'}`} role={actionMessage.tone === 'error' ? 'alert' : 'status'}>
                     {actionMessage.tone === 'error' ? <AlertCircle size={15} className="shrink-0" /> : <Check size={15} className="shrink-0" />}
                     <span>{actionMessage.text}</span>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-                {paths.map(p => {
-                    const meta = CATEGORIES.find(c => c.id === p.category) || CATEGORIES[5];
-                    const Icon = meta.icon;
-                    return (
-                        <div key={p.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 hover:border-violet-300 dark:hover:border-violet-700 transition-colors">
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                                <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-                                    <Icon size={16} className="text-violet-600" />
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    {!p.tenant_id && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">Global</span>}
-                                    {!p.active && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300">Arquivada</span>}
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-violet-500">{p.target_level}</span>
-                                </div>
-                            </div>
-                            <p className="text-sm font-black text-slate-800 dark:text-white">{p.name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 min-h-8">{p.description}</p>
-                            <div className="flex items-center justify-between mt-3">
-                                <button
-                                    onClick={() => onOpen(p.id)}
-                                    className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1"
-                                >
-                                    Editar <ChevronRight size={12} />
-                                </button>
-                                {p.tenant_id && p.active && (
-                                    <button
-                                        type="button"
-                                        onClick={() => void archivePath(p.id)}
-                                        disabled={archivingId === p.id}
-                                        className="rounded-lg p-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-wait disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
-                                        title="Arquivar sem apagar histórico"
-                                        aria-label={`Arquivar ${p.name}`}
-                                    >
-                                        {archivingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
+            {/* Busca e filtros */}
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <label className="relative flex-1">
+                    <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                    <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Buscar trilha pelo nome ou descrição"
+                        className="w-full rounded-xl border border-brand-border bg-brand-surface py-2.5 pl-9 pr-3 text-sm text-brand-text placeholder:text-brand-muted focus:outline-hidden focus:ring-2 focus:ring-brand-accent/30"
+                    />
+                </label>
+                {archivedCount > 0 && (
+                    <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-brand-muted">
+                        <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="accent-current" />
+                        Mostrar arquivadas
+                    </label>
+                )}
+                </div>
+                <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
+                    {[{ id: 'all', label: 'Todas' }, ...CATEGORIES].map(c => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            aria-pressed={categoryFilter === c.id}
+                            onClick={() => setCategoryFilter(c.id)}
+                            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${categoryFilter === c.id
+                                ? 'bg-brand-accent text-white dark:text-brand-bg'
+                                : 'bg-brand-surface-2 text-brand-muted hover:text-brand-text'
+                                }`}
+                        >
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
             </div>
+
+            {visiblePaths.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-brand-border py-14 text-center">
+                    <Target className="mx-auto mb-2 text-brand-muted opacity-40" size={36} />
+                    <p className="text-sm font-medium text-brand-muted">
+                        {paths.length === 0 ? 'Nenhuma trilha ainda. Crie a primeira em “Nova trilha”.' : 'Nenhuma trilha com esses filtros.'}
+                    </p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {visiblePaths.map(p => {
+                        const meta = CATEGORIES.find(c => c.id === p.category) || CATEGORIES[5];
+                        const Icon = meta.icon;
+                        return (
+                            <div
+                                key={p.id}
+                                className={`group relative flex flex-col overflow-hidden rounded-2xl border border-brand-border bg-brand-surface transition-all hover:-translate-y-0.5 hover:shadow-lg ${p.active ? '' : 'opacity-70'}`}
+                            >
+                                <span className={`h-1.5 w-full ${meta.bar}`} aria-hidden />
+                                <div className="flex flex-1 flex-col p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${meta.tone}`}>
+                                            <Icon size={13} /> {meta.label}
+                                        </span>
+                                        <span className="rounded-xl bg-brand-surface-2 px-2.5 py-1 text-sm font-black text-brand-text">{p.target_level}</span>
+                                    </div>
+                                    <p className="mt-3 text-base font-black leading-snug text-brand-text">{p.name}</p>
+                                    <p className="mt-1 line-clamp-2 min-h-10 text-sm text-brand-muted">{p.description || 'Sem descrição.'}</p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {!p.tenant_id && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">Global</span>}
+                                        {!p.active && <span className="rounded-full bg-brand-surface-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-muted">Arquivada</span>}
+                                    </div>
+                                    <div className="mt-auto flex items-center justify-between gap-2 pt-4">
+                                        <button
+                                            onClick={() => onOpen(p.id)}
+                                            className="flex items-center gap-1.5 rounded-xl bg-brand-surface-2 px-3.5 py-2 text-sm font-bold text-brand-text transition-colors hover:bg-brand-accent hover:text-white dark:hover:text-brand-bg"
+                                        >
+                                            Abrir trilha <ChevronRight size={14} />
+                                        </button>
+                                        {p.tenant_id && p.active && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void archivePath(p.id)}
+                                                disabled={archivingId === p.id}
+                                                className="rounded-lg p-2 text-xs text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text disabled:cursor-wait disabled:opacity-50"
+                                                title="Arquivar sem apagar histórico"
+                                                aria-label={`Arquivar ${p.name}`}
+                                            >
+                                                {archivingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };
@@ -243,7 +370,7 @@ const PathForm: React.FC<{ initial?: any; onSubmit: (form: any) => void; onCance
             </div>
             <div className="flex gap-2 justify-end">
                 <button onClick={onCancel} className="text-xs font-bold text-slate-500 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>
-                <button onClick={() => onSubmit(form)} disabled={!form.name} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+                <button onClick={() => onSubmit(form)} disabled={!form.name} className="text-xs font-black uppercase tracking-widest text-white bg-brand-accent dark:text-brand-bg px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                     <Save size={12} /> Salvar
                 </button>
             </div>
@@ -351,26 +478,26 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
             {editing ? (
                 <PathForm initial={path} onSubmit={savePath} onCancel={() => setEditing(false)} />
             ) : (
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4">
+                <div className="rounded-2xl bg-brand-surface-2 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">{path.target_level}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 text-brand-accent dark:bg-violet-900/30 dark:text-violet-300">{path.target_level}</span>
                                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{CATEGORIES.find(c => c.id === path.category)?.label}</span>
                                 <span className="text-[9px] text-slate-400">~{path.estimated_hours}h</span>
                             </div>
-                            <h4 className="text-lg font-black text-slate-800 dark:text-white">{path.name}</h4>
-                            <p className="text-xs text-slate-500 mt-1">{path.description}</p>
+                            <h4 className="text-xl font-black text-brand-text">{path.name}</h4>
+                            <p className="mt-1 text-sm text-brand-muted">{path.description}</p>
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                             <button
                                 onClick={() => setAssigning(true)}
-                                className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-3 py-1.5 rounded-lg hover:brightness-110 flex items-center gap-1"
+                                className="text-xs font-black uppercase tracking-widest text-white bg-brand-accent dark:text-brand-bg px-3 py-1.5 rounded-lg hover:brightness-110 flex items-center gap-1"
                             >
                                 <UserPlus size={12} /> Atribuir
                             </button>
                             {path.tenant_id && !frozen && (
-                                <button onClick={() => setEditing(true)} className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"><Edit2 size={12} /> Editar</button>
+                                <button onClick={() => setEditing(true)} className="text-xs text-brand-accent hover:underline flex items-center gap-1"><Edit2 size={12} /> Editar</button>
                             )}
                         </div>
                     </div>
@@ -397,9 +524,9 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
             )}
 
             <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Unidades ({units.length})</p>
+                <p className="text-sm font-black text-brand-text">Unidades <span className="font-bold text-brand-muted">{units.length}</span></p>
                 {!frozen && (
-                    <button onClick={() => setCreatingUnit(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
+                    <button onClick={() => setCreatingUnit(true)} className="flex items-center gap-2 px-3 py-1.5 bg-brand-accent dark:text-brand-bg text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
                         <Plus size={12} /> Nova Unit
                     </button>
                 )}
@@ -407,31 +534,49 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
 
             {creatingUnit && <UnitForm onSubmit={createUnit} onCancel={() => setCreatingUnit(false)} />}
 
-            <div className="space-y-2">
+            {/* Unidades como linha do tempo: a ordem é a ordem em que o aluno percorre a trilha */}
+            {units.length === 0 && !creatingUnit && (
+                <div className="rounded-2xl border border-dashed border-brand-border py-10 text-center text-sm text-brand-muted">
+                    Nenhuma unidade ainda.
+                </div>
+            )}
+            <ol data-tour="paths-units-timeline" className="relative space-y-3 before:absolute before:bottom-6 before:left-[27px] before:top-6 before:w-0.5 before:bg-brand-border">
                 {units.map((u, i) => (
-                    <div
+                    <li
                         key={u.id}
                         draggable={!frozen}
                         onDragStart={frozen ? undefined : () => handleDragStart(i)}
                         onDragOver={frozen ? undefined : handleDragOver}
                         onDrop={frozen ? undefined : () => handleDrop(i)}
-                        className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
-                            dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
+                        className={`relative flex items-center gap-3 rounded-2xl border bg-brand-surface p-3 transition-all ${
+                            dragIndex === i ? 'opacity-40' : 'border-brand-border hover:border-brand-accent/40 hover:shadow-sm'
                         }`}
                     >
-                        <GripVertical size={14} className={`shrink-0 text-slate-300 ${frozen ? 'opacity-40' : 'cursor-grab active:cursor-grabbing'}`} />
-                        <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 font-black text-sm shrink-0">{i + 1}</div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-black text-slate-800 dark:text-white">{u.title}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{u.description}</p>
+                        <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-accent text-sm font-black text-white ring-4 ring-brand-surface dark:text-brand-bg">{i + 1}</div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-black text-brand-text">{u.title}</p>
+                            <p className="truncate text-xs text-brand-muted">{u.description}</p>
+                            {(u.estimated_minutes || (Array.isArray(u.skill_focus) && u.skill_focus.length > 0)) && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {u.estimated_minutes ? <span className="rounded-full bg-brand-surface-2 px-2 py-0.5 text-[10px] font-bold text-brand-muted">{u.estimated_minutes} min</span> : null}
+                                    {Array.isArray(u.skill_focus) && u.skill_focus.slice(0, 3).map((skill: string) => (
+                                        <span key={skill} className="rounded-full bg-brand-accent/10 px-2 py-0.5 text-[10px] font-bold text-brand-accent">{skill}</span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                        <button onClick={() => onOpenUnit(u.id)} className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1">
+                        <button onClick={() => onOpenUnit(u.id)} className="flex shrink-0 items-center gap-1 rounded-xl bg-brand-surface-2 px-3 py-2 text-xs font-bold text-brand-text hover:bg-brand-accent hover:text-white dark:hover:text-brand-bg">
                             Atividades <ChevronRight size={12} />
                         </button>
-                        {!frozen && <button onClick={() => deleteUnit(u.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>}
-                    </div>
+                        {!frozen && (
+                            <>
+                                <GripVertical size={14} className="hidden shrink-0 cursor-grab text-brand-muted active:cursor-grabbing sm:block" aria-label="Arrastar para reordenar" />
+                                <button onClick={() => deleteUnit(u.id)} className="shrink-0 rounded-lg p-1.5 text-rose-500 hover:bg-rose-500/10" aria-label={`Excluir ${u.title}`}><Trash2 size={14} /></button>
+                            </>
+                        )}
+                    </li>
                 ))}
-            </div>
+            </ol>
         </div>
     );
 };
@@ -453,7 +598,7 @@ const UnitForm: React.FC<{ initial?: any; onSubmit: (form: any) => void; onCance
             </div>
             <div className="flex gap-2 justify-end">
                 <button onClick={onCancel} className="text-xs font-bold text-slate-500 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>
-                <button onClick={() => onSubmit(form)} disabled={!form.title} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2"><Save size={12} /> Salvar</button>
+                <button onClick={() => onSubmit(form)} disabled={!form.title} className="text-xs font-black uppercase tracking-widest text-white bg-brand-accent dark:text-brand-bg px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2"><Save size={12} /> Salvar</button>
             </div>
         </div>
     );
@@ -554,12 +699,12 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
 
     return (
         <div className="space-y-4">
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4">
+            <div className="rounded-2xl bg-brand-surface-2 p-4 sm:p-5">
                 <button onClick={onBack} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-1 mb-2">
                     <ChevronLeft size={12} /> Voltar para a trilha
                 </button>
-                <h4 className="text-lg font-black text-slate-800 dark:text-white">{unit.title}</h4>
-                <p className="text-xs text-slate-500 mt-1">{unit.description}</p>
+                <h4 className="text-xl font-black text-brand-text">{unit.title}</h4>
+                <p className="mt-1 text-sm text-brand-muted">{unit.description}</p>
                 {path && <p className="text-[10px] uppercase tracking-widest text-slate-400 mt-2">{path.name} · {path.target_level}</p>}
             </div>
 
@@ -574,9 +719,9 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
             )}
 
             <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Atividades ({activities.length})</p>
+                <p className="text-sm font-black text-brand-text">Atividades <span className="font-bold text-brand-muted">{activities.length}</span></p>
                 {!frozen && (
-                    <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
+                    <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-1.5 bg-brand-accent dark:text-brand-bg text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
                         <Plus size={12} /> Nova Atividade
                     </button>
                 )}
@@ -602,22 +747,22 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
                             onDragStart={frozen ? undefined : () => handleDragStart(i)}
                             onDragOver={frozen ? undefined : handleDragOver}
                             onDrop={frozen ? undefined : () => handleDrop(i)}
-                            className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
-                                dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
+                            className={`flex items-center gap-3 rounded-2xl border bg-brand-surface p-3 transition-all ${
+                                dragIndex === i ? 'opacity-40' : 'border-brand-border hover:border-brand-accent/40 hover:shadow-sm'
                             }`}
                         >
                             <GripVertical size={14} className={`shrink-0 text-slate-300 ${frozen ? 'opacity-40' : 'cursor-grab active:cursor-grabbing'}`} />
-                            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 shrink-0">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-accent/10 text-brand-accent">
                                 <Icon size={14} />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <p className="text-sm font-black text-slate-800 dark:text-white">{a.title}</p>
+                                    <p className="text-sm font-black text-brand-text">{a.title}</p>
                                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{meta?.label}</span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 mt-0.5">{a.estimated_minutes}min · {a.xp_reward} XP</p>
                             </div>
-                            <button onClick={() => onOpenActivity(a.id)} className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1">
+                            <button onClick={() => onOpenActivity(a.id)} className="text-xs font-bold text-brand-accent hover:underline flex items-center gap-1">
                                 {frozen ? 'Visualizar' : 'Editar'} <ChevronRight size={12} />
                             </button>
                             {!frozen && <button onClick={() => deleteActivity(a.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>}
@@ -745,7 +890,7 @@ const NewActivityWizard: React.FC<{ unit: any; path: any; onCancel: () => void; 
 
             <div className="flex gap-2 justify-end">
                 <button onClick={onCancel} className="text-xs font-bold text-slate-500 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>
-                <button onClick={submit} disabled={!title} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2"><Save size={12} /> Criar Atividade</button>
+                <button onClick={submit} disabled={!title} className="text-xs font-black uppercase tracking-widest text-white bg-brand-accent dark:text-brand-bg px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2"><Save size={12} /> Criar Atividade</button>
             </div>
         </div>
     );
@@ -853,7 +998,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
             </button>
 
             <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">{meta?.label}</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 text-brand-accent dark:bg-violet-900/30 dark:text-violet-300">{meta?.label}</span>
                 {unit && <span className="text-[10px] text-slate-400">em {unit.title}</span>}
             </div>
 
@@ -897,7 +1042,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
 
             {!frozen && (
                 <div className="flex gap-2 justify-end">
-                    <button onClick={save} disabled={saving} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+                    <button onClick={save} disabled={saving} className="text-xs font-black uppercase tracking-widest text-white bg-brand-accent dark:text-brand-bg px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                         {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar Alterações
                     </button>
                 </div>

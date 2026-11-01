@@ -966,6 +966,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'trial-more-actions',view:'trials',title:'O resto está em Mais ações',text:'Aluno faltou, professor faltou, cancelar a experimental, copiar o link e marcar como perdido continuam todos aqui, no botão Mais ações de cada lead. Nada mudou nas regras: só a arrumação da tela.'},
     ],
   },
+  {
+    id:'2026-11-01-zzz-trilhas-com-mapa',title:'Trilhas mais fáceis de achar',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'paths-levels',view:'learning_paths_builder',title:'Trilhas por nível',text:'O gráfico mostra quantas trilhas ativas existem em cada nível, de A1 a C2 — dá para ver na hora onde falta conteúdo. Toque num nível para ver só as trilhas dele; toque de novo para voltar a todas. Abaixo, a busca e as categorias filtram a lista.'},
+      {target:'paths-breadcrumb',view:'learning_paths_builder',title:'Onde você está',text:'No topo aparece o caminho: todas as trilhas, a trilha, a unidade e a atividade. Toque em qualquer nível para voltar direto a ele. Dentro da trilha, as unidades aparecem numeradas na ordem em que o aluno percorre; arraste para reordenar enquanto ninguém começou a trilha.'},
+    ],
+  },
 ];
 
 /**
