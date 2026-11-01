@@ -45,7 +45,11 @@ describe('lista de antecipações', () => {
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'student' } });
     await screen.findByText('Teacher teste');
     rpc.mockReturnValue(new Promise(() => {}));
-    fireEvent.change(screen.getByDisplayValue(/^\d{4}-\d{2}$/), { target: { value: '2026-12' } });
+    // Um mês diferente do que a tela abriu (ela abre no mês seguinte ao de hoje).
+    const monthInput = screen.getByDisplayValue(/^\d{4}-\d{2}$/) as HTMLInputElement;
+    const [year, month] = monthInput.value.split('-').map(Number);
+    const other = new Date(Date.UTC(year, month, 1));
+    fireEvent.change(monthInput, { target: { value: `${other.getUTCFullYear()}-${String(other.getUTCMonth() + 1).padStart(2, '0')}` } });
     await screen.findByRole('status');
     expect(screen.queryByText('Teacher teste')).not.toBeInTheDocument();
     expect(screen.queryByText(/Não há aulas futuras/)).not.toBeInTheDocument();
