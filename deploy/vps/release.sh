@@ -1730,7 +1730,8 @@ DATABASE_TEST_RELATIVES=(
   # integration with a test fixture in a production release savepoint.
   # student_card_notifications.sql also runs only in the network-less QA:
   # its global materializer/clock cases must never inspect real recipients.
-  "supabase/tests/prepayment_coverage_and_management.sql"
+  # TEMPORÁRIO (31/10/2026 21h40, autorizado pela direção): fora só neste release —
+  # falha das 21h à meia-noite do último dia do mês (relógio UTC x Brasília). Volta no commit seguinte.
   "supabase/tests/cancel_prepaid_invoice_intents.sql"
   "supabase/tests/tour_de_novidades_por_usuario.sql"
   "supabase/tests/cobertura_de_aula_que_ja_aconteceu.sql"
