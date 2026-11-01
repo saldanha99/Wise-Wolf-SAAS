@@ -49,12 +49,16 @@ begin
  perform pg_temp.tl_assert(public.student_term_link_view('abc')->>'reason'='invalid','token malformado aceito');
 
  -- 3. Professor assina primeiro; nome errado recusa; link vira uso único.
+ -- A família já confirmou a agenda (matrícula nova): mesmo assim o termo não
+ -- executa sem a escola (Teacher Maria, 01/11/2026).
+ update private.teacher_student_terms set family_confirmed_at=now(),family_confirmation='{"kind":"FIXTURE"}' where id=term;
  hash:=v->>'content_hash';
  r:=public.student_term_link_act(t_tok,'sign',jsonb_build_object('typed_name','Outra Pessoa','content_hash',hash,'accepted',true,'has_authority',true));
  perform pg_temp.tl_assert(r->>'ok'='false','nome errado assinou');
  perform pg_temp.tl_assert(public.student_term_link_act(s_tok,'decline','{}')->>'error'='acao_invalida','escola recusou pelo link do professor');
  r:=public.student_term_link_act(t_tok,'sign',jsonb_build_object('typed_name','professora link','content_hash',hash,'accepted',true,'has_authority',true));
  perform pg_temp.tl_assert(r->>'ok'='true' and r->>'phase'='SCHOOL_PENDING','professor nao assinou antes da escola: '||r::text);
+ perform pg_temp.tl_assert((select status='PROPOSED' from private.teacher_student_terms where id=term),'termo executou sem a assinatura da escola');
  perform pg_temp.tl_assert((select teacher_signed_by=teacher and school_signed_at is null from private.teacher_student_terms where id=term),'assinatura atribuida a outra pessoa');
  perform pg_temp.tl_assert(exists(select 1 from private.teacher_student_term_events where term_id=term and event='SIGNED_VIA_WHATSAPP_LINK' and actor_id=teacher and details->>'signer'='TEACHER'),'evento do link ausente');
  perform pg_temp.tl_assert(public.student_term_link_act(t_tok,'sign',jsonb_build_object('typed_name','Professora Link','content_hash',hash,'accepted',true,'has_authority',true))->>'error'='link_invalido','link usado duas vezes');
@@ -62,7 +66,6 @@ begin
  perform pg_temp.tl_assert(coalesce(current_setting('request.jwt.claims',true),'')='','identidade do link vazou da funcao');
 
  -- 4. Escola assina por último com a família já confirmada: termo executa.
- update private.teacher_student_terms set family_confirmed_at=now(),family_confirmation='{"kind":"FIXTURE"}' where id=term;
  r:=public.student_term_link_act(s_tok,'sign',jsonb_build_object('typed_name','Diretor Link','content_hash',hash,'accepted',true,'has_authority',true));
  perform pg_temp.tl_assert(r->>'ok'='true' and r->>'status'='EXECUTED','escola por ultimo nao executou: '||r::text);
 
