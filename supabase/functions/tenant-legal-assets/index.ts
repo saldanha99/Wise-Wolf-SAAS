@@ -350,40 +350,6 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
   });
 }
 
-async function applyAffiliateCoupon(
-  body: Record<string, unknown>,
-): Promise<Response> {
-  if (!hasOnlyKeys(body, ["action", "offerId", "couponCode"])) {
-    throw new ApiError(400, "INVALID_REQUEST", "Unexpected request fields");
-  }
-  const offerId = uuid(body.offerId, "offerId");
-  const couponCode = normalizeAffiliateCouponInput(body.couponCode);
-  const admin = serviceClient();
-  const { data, error } = await admin.rpc("apply_affiliate_coupon", {
-    p_offer_id: offerId,
-    p_coupon_code: couponCode,
-  });
-  if (error) {
-    throw new ApiError(503, "COUPON_UNAVAILABLE", "Cupom indisponível");
-  }
-  if (!isRecord(data) || data.ok !== true) {
-    const code = isRecord(data) && typeof data.error === "string"
-      ? data.error
-      : "INVALID_COUPON";
-    // Domain rejections stay HTTP 200 so supabase-js preserves the structured
-    // code for the registration UI. Transport/auth failures still use non-2xx.
-    return json({ error: code });
-  }
-
-  // Return the same materialized offer contract used by the registration page,
-  // now with the authoritative fee set to zero.
-  return await resolveOffer({
-    action: "offer",
-    offerId,
-    offerType: "enrollment",
-  });
-}
-
 async function resolveCurrent(
   body: Record<string, unknown>,
   context: RequestAuthContext,
@@ -511,9 +477,8 @@ export async function handleRequest(req: Request): Promise<Response> {
   try {
     const body = await requestBody(req);
     if (body.action === "offer") return await resolveOffer(body);
-    if (body.action === "applyAffiliateCoupon") {
-      return await applyAffiliateCoupon(body);
-    }
+    // Cupom de afiliado é interno da escola (aplicado ao gerar o link): a
+    // página pública não oferece mais esse caminho.
     if (body.action !== "current" && body.action !== "contract") {
       throw new ApiError(400, "INVALID_ACTION", "Unsupported action");
     }

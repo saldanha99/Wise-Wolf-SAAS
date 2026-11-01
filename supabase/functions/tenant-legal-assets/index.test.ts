@@ -1,4 +1,5 @@
 import {
+  handleRequest,
   normalizeAffiliateCouponInput,
   offeredContractTermsVersion,
   offerKindMatches,
@@ -117,4 +118,21 @@ Deno.test("copia do aceite pelo app mostra o valor por aula sem mudar a regua de
     teacherContractRateUnit({ displayRateUnit: "PER_HOUR" }) === undefined,
     "unidade de exibicao desconhecida aceita",
   );
+});
+
+Deno.test("a pagina publica nao aplica cupom de afiliado: o cupom e interno da escola", async () => {
+  const response = await handleRequest(
+    new Request("http://local/tenant-legal-assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "applyAffiliateCoupon",
+        offerId: "00000000-0000-4000-8000-000000000000",
+        couponCode: "WW-INDICA",
+      }),
+    }),
+  );
+  assert(response.status === 400, `status ${response.status}`);
+  const text = await response.text();
+  assert(text.includes("INVALID_ACTION"), text);
 });

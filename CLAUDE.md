@@ -1255,8 +1255,10 @@ onClick texto → sendMessage() → unlockAudio()
   e é esse que a conclusão mostra.
 - **Atribuição — três portas, um benefício** (`private.grant_affiliate_benefit`: taxa 0 +
   comissão congelada em `offers.metadata.affiliate_commission_cents`):
-  1. o aluno digita o cupom na página de matrícula (`apply_affiliate_coupon`, service role
-     via `tenant-legal-assets`, 10 chutes/hora por oferta);
+  1. ~~o aluno digita o cupom na página de matrícula~~ — **removido em 31/10/2026** (decisão
+     da direção: quem não tem cupom sentia que pagava a mais). Sem campo na página e a ação
+     `applyAffiliateCoupon` saiu da `tenant-legal-assets`; a RPC `apply_affiliate_coupon`
+     segue só para service_role. Cupom é interno: a escola aplica no link manual;
   2. a escola põe o cupom no **link manual** (`RegistrationLinkGenerator` →
      `create_enrollment_offer_with_affiliate(payload, cupom)`, que chama a porta pública e
      aplica o benefício no mesmo commit; cupom inválido desfaz o link inteiro). O campo
@@ -4614,3 +4616,14 @@ Pop-up `NationalHolidayNotice` (RPC `my_upcoming_national_holiday`) na semana do
 feriado; "fechei" fica no localStorage por usuário+data. Migration
 `20261028150000`, teste `feriados_nacionais_sem_aula.sql`, tour da direção.
 Ensaio na VPS com rollback: Finados (02/11) geraria 27 avisos.
+
+### 31/10/2026 — Contrato rola no computador; cupom só pela escola; rascunho da matrícula
+
+Na tela do contrato (>980 px, duas colunas) a folha (`.enrollment-contract-document > div`,
+`overflow: hidden`) encolhia até a altura da coluna e cortava o texto: só a coluna da assinatura
+rolava. `flex-shrink: 0` na folha. ⚠️ O PWA serve o CSS do precache do service worker: hotfix
+no arquivo da VPS NÃO chega a quem já abriu o portal (caso Ivone, Firefox/Windows) — só o
+release troca o hash. Página de matrícula sem campo de cupom (ver Afiliados). O que o aluno
+digitou (nome, e-mail, telefone, CPF, CEP, endereço, número, forma de pagamento — nunca senha
+nem cartão) fica em `localStorage` por oferta (`lib/enrollmentDraft.ts`), volta no F5, some ao
+concluir ou em 7 dias. Tour `2026-10-31-cupom-so-pela-escola`.

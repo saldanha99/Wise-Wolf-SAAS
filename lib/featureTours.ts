@@ -915,6 +915,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'teacher-student-terms',view:'contract_teacher',title:'Termo por aluno virou obrigatório',text:'Quando chega um aluno novo para você, o portal abre um aviso que só fecha depois que você fizer a sua parte: preencher seus dados de prestador (com CNPJ ou como autônomo, uma vez só) e, depois que a escola assinar, assinar o termo daquele aluno. Sem isso as aulas dele não entram na sua agenda. Os termos ficam aqui, em Meu Contrato → Termos por aluno.'},
     ],
   },
+  {
+    id:'2026-10-31-cupom-so-pela-escola',title:'Cupom de afiliado é só pela escola',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'enrollment-link-tab',view:'dashboard',title:'O aluno não digita mais cupom',text:'A página de matrícula não tem mais campo de cupom: quem não tem um não fica achando que pagou a mais. Se o aluno veio por um afiliado, informe o cupom ou o nome de quem indicou aqui em "Link Matrícula" ao gerar o link — a taxa sai isenta e a comissão fica vinculada, como antes. E se o aluno recarregar a página no meio da matrícula, o que ele já digitou volta sozinho (menos senha e cartão).'},
+    ],
+  },
 ];
 
 /**

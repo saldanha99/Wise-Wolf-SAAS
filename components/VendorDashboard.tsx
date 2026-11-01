@@ -222,7 +222,7 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, onNavigate }) =
                 </div>
                 <p className="mt-3 text-xs text-slate-300">
                     Quem se matricula com este cupom fica isento da taxa de matrícula. A pessoa informa o cupom
-                    na conversa com a escola — ou diz que foi você quem indicou — ou digita na página de matrícula.
+                    na conversa com a escola — ou diz que foi você quem indicou — e a escola aplica na matrícula.
                 </p>
                 {code ? (
                     <div className="mt-4 flex flex-wrap gap-2">

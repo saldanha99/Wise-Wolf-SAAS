@@ -2,10 +2,10 @@
  * Programa de afiliados — regras e textos compartilhados pelas telas.
  *
  * Modelo híbrido (decisão da direção, 25/09/2026): o afiliado não gera link.
- * A indicação é o CUPOM dele, que o aluno digita na página de matrícula ou a
- * escola põe no link manual (pelo cupom, ou pelo nome quando só existe um
- * afiliado com aquele nome). Quem se matricula com cupom fica isento da taxa de
- * matrícula; a comissão (valor fixo por matrícula) fica reservada quando a
+ * A indicação é o CUPOM dele, que o aluno informa à escola e a escola põe no
+ * link manual (pelo cupom, ou pelo nome quando só existe um afiliado com aquele
+ * nome). Desde 31/10/2026 a página de matrícula não tem campo de cupom.
+ * Quem se matricula com cupom fica isento da taxa de matrícula; a comissão (valor fixo por matrícula) fica reservada quando a
  * matrícula começa e é liberada quando a PRIMEIRA mensalidade é liquidada.
  *
  * A etapa de cada indicação vem pronta do servidor (`get_my_affiliate_panel`,
@@ -166,7 +166,7 @@ export function affiliateGuideSteps(commissionCents?: number | null, couponCode?
         {
             id: 'ISENCAO',
             title: 'Quem você indica não paga a taxa de matrícula',
-            text: 'Na conversa com a escola, a pessoa informa o seu cupom — ou diz que foi você quem indicou. Ela também pode digitar o cupom na página de matrícula. A mensalidade não muda.',
+            text: 'Na conversa com a escola, a pessoa informa o seu cupom — ou diz que foi você quem indicou. A escola aplica o cupom no link de matrícula dela. A mensalidade não muda.',
         },
         {
             id: 'RESERVA',
@@ -312,7 +312,7 @@ export function withdrawalStatusLabel(status: string): string {
 export function affiliateShareMessage(code: string, schoolName?: string | null): string {
     const school = schoolName?.trim() ? `a ${schoolName.trim()}` : 'a minha escola de inglês';
     return `Oi! Estou te indicando ${school}. `
-        + `Na matrícula, informe o meu cupom *${code}* e você fica isento da taxa de matrícula. `
+        + `Ao falar com a escola, informe o meu cupom *${code}* e você fica isento da taxa de matrícula. `
         + 'É só falar com a escola e passar o cupom 😉';
 }
 
