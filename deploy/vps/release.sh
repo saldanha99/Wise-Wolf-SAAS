@@ -1559,6 +1559,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261029200000_matricula_ate_o_fim_antes_dos_termos.sql"
   "supabase/migrations/20261101010000_termo_individual_por_link.sql"
   "supabase/migrations/20261101020000_turbo_visivel_e_experimental_pelo_meet.sql"
+  "supabase/migrations/20261101030000_termo_por_link_espera_as_8h.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/termo_individual_por_link.sql"

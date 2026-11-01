@@ -33,6 +33,11 @@ begin
  perform pg_temp.tl_assert((select student_phone from public.notification_queue where idempotency_key=format('student-term-link:%s:teacher:1',term))='5511988887771','link do professor fora do WhatsApp dele');
  perform pg_temp.tl_assert(exists(select 1 from public.notification_queue where idempotency_key=format('student-term-link:%s:teacher:1',term) and message_body like '%Terça 18:00 (1h)%'),'agenda ilegivel na mensagem');
  perform pg_temp.tl_assert(not exists(select 1 from private.student_term_links where token_hash in(t_tok,s_tok)),'token guardado em claro');
+ -- Link criado entre 21h e 8h espera as 8h (Brasília); de dia sai na hora.
+ perform pg_temp.tl_assert(private.student_term_send_at('2026-11-01 23:10-03')='2026-11-02 08:00-03','link das 23h nao espera as 8h');
+ perform pg_temp.tl_assert(private.student_term_send_at('2026-11-02 03:00-03')='2026-11-02 08:00-03','link da madrugada nao espera as 8h');
+ perform pg_temp.tl_assert(private.student_term_send_at('2026-11-02 14:00-03')='2026-11-02 14:00-03','link de dia atrasado');
+ perform pg_temp.tl_assert((select scheduled_for=private.student_term_send_at(now()) and next_attempt_at=scheduled_for from public.notification_queue where idempotency_key=format('student-term-link:%s:teacher:1',term)),'link fora do horario de envio');
 
  -- Termo novo nasce no modelo jurídico 2, com as multas aprovadas em 31/10.
  perform pg_temp.tl_assert((select position('Modelo jurídico: 2' in body)>0 and position('dez vezes o valor de referência' in body)>0 and position('dois meses de honorários' in body)>0 and position('duas vezes o valor de referência' in body)>0 from private.teacher_student_terms where id=term),'termo novo fora do modelo 2');
