@@ -10,8 +10,12 @@ import {
   Zap,
   Check,
   RefreshCw,
-  Plus
+  Plus,
+  Copy,
+  Eraser,
 } from 'lucide-react';
+import { Kpi3D, PageHero3D, Towers3D, type Tone } from './depth/Depth3D';
+import { compactRows, currentSlot, dayLoads, formatSlots, slotProgress, type GridRow, type SlotReader } from '../lib/scheduleInsights';
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
@@ -28,6 +32,13 @@ const TIMES = Array.from({ length: 37 }, (_, i) => {
   if (hour === 24) return '00:00';
   return `${hour < 10 ? '0' + hour : hour}:${minutes}`;
 });
+const LegendItem: React.FC<{ cls: string; label: string }> = ({ cls, label }) => (
+  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-muted">
+    <span aria-hidden="true" className={`h-3.5 w-5 rounded-md ${cls}`} />
+    {label}
+  </span>
+);
+
 interface TeacherAvailabilityEditorProps {
   teacherId?: string;
   tenantId?: string;
@@ -41,6 +52,14 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
   const [isPublishing, setIsPublishing] = useState(false);
   const [editingProfile, setEditingProfile] = useState<any | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Grade como está no banco — base para mostrar o que ainda não foi salvo.
+  const [savedSlots, setSavedSlots] = useState<Set<string>>(new Set());
+  const [onlyMyHours, setOnlyMyHours] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const loadData = async () => {
     if (!teacherId) return;
@@ -74,6 +93,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         }
       });
       setAvailableSlots(loaded);
+      setSavedSlots(new Set(loaded));
     }
 
     // 2. Load Bookings (Fixed Students)
@@ -347,6 +367,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         throw new Error((data as any).error || 'Não foi possível publicar a agenda.');
       }
 
+      setSavedSlots(new Set(availableSlots));
       alert("Agenda publicada com sucesso!");
     } catch (err: any) {
       alert("Erro ao publicar agenda: " + err.message);
@@ -418,24 +439,117 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
   // Cobertura/reposição datada é aula da semana, não ocupação da grade fixa.
   const bookedCount = Object.values(bookings).filter((b: any) => !b?.readOnly).length;
   const availableCount = availableSlots.size;
-  const totalHours = bookedCount + availableCount;
   const occupancyRate = Math.round((bookedCount / (bookedCount + availableCount || 1)) * 100);
 
-  return (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 font-sans">
+  // O que mudou desde a última leitura/publicação. Sem isso o professor não
+  // sabia se ainda precisava clicar em Salvar.
+  const pendingChanges = React.useMemo(() => {
+    let added = 0;
+    let removed = 0;
+    availableSlots.forEach(k => { if (!savedSlots.has(k)) added++; });
+    savedSlots.forEach(k => { if (!availableSlots.has(k)) removed++; });
+    return { added, removed, dirty: added + removed > 0 };
+  }, [availableSlots, savedSlots]);
 
-      {/* Header & Stats */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 bg-brand-surface border border-brand-border p-6 rounded-3xl shadow-xs">
-        <div>
-          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text">Gestão de Horários</h2>
-          <p className="text-brand-muted text-sm mt-1 font-medium">
-            Defina sua disponibilidade semanal para receber novos alunos.
-          </p>
-        </div>
-      </div>
+  const readSlot = React.useCallback<SlotReader>((dIdx, time) => {
+    const key = `${dIdx}-${time}`;
+    const b = bookings[key];
+    if (b) return b.readOnly || b.isExperimental ? 'event' : 'booked';
+    return availableSlots.has(key) ? 'free' : 'off';
+  }, [bookings, availableSlots]);
+
+  const loads = React.useMemo(() => dayLoads(TIMES, DAYS.length, readSlot), [readSlot]);
+  // O professor precisa da grade inteira para ABRIR horário novo; recolher é
+  // opção dele ("só o meu horário").
+  const gridRows = React.useMemo<GridRow[]>(
+    () => (onlyMyHours ? compactRows(TIMES, DAYS.length, readSlot) : TIMES.map(time => ({ kind: 'time' as const, time }))),
+    [onlyMyHours, readSlot],
+  );
+  const todayIdx = (() => { const d = now.getDay(); return d === 0 ? -1 : d - 1; })();
+  const nowSlot = currentSlot(TIMES, now);
+
+  // Próxima aula a partir de agora (semana corrente da grade).
+  const nextLesson = React.useMemo(() => {
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const candidates = Object.entries(bookings)
+      .map(([key, b]: [string, any]) => {
+        const dash = key.indexOf('-');
+        const dIdx = Number(key.slice(0, dash));
+        const time = key.slice(dash + 1);
+        const [h, m] = time.split(':').map(Number);
+        let dayDelta = dIdx - todayIdx;
+        if (todayIdx < 0) dayDelta = dIdx + 1;
+        if (dayDelta < 0 || (dayDelta === 0 && h * 60 + m < nowMinutes)) dayDelta += 7;
+        return { b, dIdx, time, order: dayDelta * 1440 + h * 60 + m, dayDelta };
+      })
+      .filter(c => c.b.type !== 'RESERVA')
+      .sort((a, b) => a.order - b.order);
+    return candidates[0] || null;
+  }, [bookings, now, todayIdx]);
+
+  // Repete a grade do dia escolhido nos outros dias úteis — quem trabalha no
+  // mesmo horário de segunda a sexta não precisa clicar 60 células.
+  const copyDayToWeekdays = (fromIdx: number) => {
+    const fromTimes = TIMES.filter(t => availableSlots.has(`${fromIdx}-${t}`));
+    if (fromTimes.length === 0) {
+      alert(`${DAYS[fromIdx]} ainda não tem horário livre marcado para copiar.`);
+      return;
+    }
+    if (!confirm(`Repetir os ${fromTimes.length} horários de ${DAYS[fromIdx]} em todos os dias de segunda a sexta? Horários com aula não mudam. Nada é publicado até você clicar em Salvar agenda.`)) return;
+    const next = new Set(availableSlots);
+    for (let d = 0; d < 5; d++) {
+      if (d === fromIdx) continue;
+      TIMES.forEach(t => {
+        const key = `${d}-${t}`;
+        if (bookings[key]) return;
+        if (fromTimes.includes(t)) next.add(key); else next.delete(key);
+      });
+    }
+    setAvailableSlots(next);
+  };
+
+  const clearDay = (dIdx: number) => {
+    const next = new Set(availableSlots);
+    TIMES.forEach(t => next.delete(`${dIdx}-${t}`));
+    setAvailableSlots(next);
+  };
+
+  const toneFor = (booking: any): Tone => booking.isExperimental
+    ? 'violet'
+    : booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA'
+      ? 'amber'
+      : booking.type === 'RESERVA'
+        ? 'teal'
+        : 'brand';
+  const badgeFor = (booking: any): string | null => booking.isExperimental
+    ? (booking.type === 'TESTE ORAL' ? 'ORAL' : 'EXP')
+    : booking.type === 'REPOSIÇÃO' ? 'REPO'
+      : booking.type === 'COBERTURA' ? 'COB'
+        : booking.type === 'RESERVA' ? 'RES'
+          : null;
+
+  return (
+    <div className="ww-stage space-y-5 md:space-y-6 animate-in fade-in duration-700 font-sans">
+
+      <PageHero3D
+        icon={<CalendarIcon size={26} />}
+        eyebrow="Minha agenda"
+        title="Gestão de horários"
+        subtitle="Toque nos horários em que você pode dar aula. A escola só oferece aluno novo dentro deles."
+        actions={
+          <button
+            onClick={handlePublish}
+            disabled={isPublishing}
+            className="ww-block tone-brand px-6 py-3 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isPublishing ? <RefreshCw className="relative animate-spin" size={16} /> : <Save className="relative" size={16} />}
+            <span className="relative">Salvar agenda{pendingChanges.dirty ? ` (${pendingChanges.added + pendingChanges.removed})` : ''}</span>
+          </button>
+        }
+      />
 
       {loadError && (
-        <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm font-semibold text-red-200">
+        <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm font-semibold text-red-700 dark:text-red-200">
           <span>{loadError}</span>
           <button
             type="button"
@@ -448,155 +562,228 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 px-2">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-brand-accent shadow-[0_0_8px_rgba(var(--brand-accent),0.8)]" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Ocupado / Aula</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Livre (Disponível)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-brand-border" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Indisponível</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Experimental</span>
-        </div>
-        <div className="flex items-center gap-2" data-tour="agenda-coverage-legend">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Cobertura / Reposição (com a data)</span>
-        </div>
-        <div className="flex items-center gap-2" data-tour="agenda-future-start-hold-legend">
-          <div className="w-2.5 h-2.5 rounded-full border border-dashed border-teal-500 bg-teal-500/30" />
-          <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Reservado (aluno começa na data)</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <Kpi3D
+          icon={<TrendingUp size={20} />}
+          tone="emerald"
+          label="Ocupação da grade"
+          value={`${occupancyRate}%`}
+          hint={`${bookedCount} aulas fixas em ${bookedCount + availableCount} horários oferecidos`}
+          ring={occupancyRate}
+        />
+        <Kpi3D
+          icon={<Clock size={20} />}
+          tone="sky"
+          label="Horários livres"
+          value={formatSlots(availableCount)}
+          hint={`${availableCount} horários de 30 min abertos para aluno novo`}
+        />
+        <Kpi3D
+          icon={<Zap size={20} />}
+          tone="violet"
+          label="Próxima aula"
+          value={nextLesson ? nextLesson.b.student.split(' ')[0] : '—'}
+          hint={nextLesson
+            ? `${nextLesson.dayDelta === 0 ? 'Hoje' : nextLesson.dayDelta === 1 ? 'Amanhã' : DAYS[nextLesson.dIdx]} às ${nextLesson.time}${nextLesson.b.dateLabel ? ` (${nextLesson.b.dateLabel})` : ''}`
+            : 'Nenhuma aula marcada'}
+        />
+        <Kpi3D
+          icon={pendingChanges.dirty ? <Sparkles size={20} /> : <Check size={20} />}
+          tone={pendingChanges.dirty ? 'amber' : 'teal'}
+          label="Alterações"
+          value={pendingChanges.dirty ? 'Não salvas' : 'Tudo salvo'}
+          hint={pendingChanges.dirty
+            ? `${pendingChanges.added} aberto${pendingChanges.added === 1 ? '' : 's'} · ${pendingChanges.removed} fechado${pendingChanges.removed === 1 ? '' : 's'}`
+            : 'A escola já vê sua disponibilidade'}
+        />
+      </div>
+
+      <div data-tour="agenda-week-towers" className="ww-slab p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-muted">Sua semana</p>
+            <Towers3D
+              height={56}
+              ariaLabel="Aulas por dia da semana"
+              data={loads.map(l => ({
+                key: String(l.dayIdx),
+                label: DAYS[l.dayIdx].slice(0, 3),
+                sublabel: `${l.free} livre${l.free === 1 ? '' : 's'}`,
+                value: l.booked + l.events,
+                tone: l.dayIdx === todayIdx ? 'brand' : 'emerald',
+                highlight: l.dayIdx === todayIdx,
+                caption: `${DAYS[l.dayIdx]}: ${l.booked} aulas fixas, ${l.events} com data, ${l.free} horários livres`,
+              }))}
+            />
+          </div>
+          <div className="lg:w-72 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-muted">Atalhos do dia escolhido</p>
+            <select
+              value={selectedDay}
+              onChange={e => setSelectedDay(Number(e.target.value))}
+              aria-label="Dia para os atalhos"
+              className="w-full px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-xs font-bold text-brand-text"
+            >
+              {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => copyDayToWeekdays(selectedDay)} className="ww-lift rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-1.5">
+                <Copy size={13} /> Repetir seg–sex
+              </button>
+              <button type="button" onClick={() => clearDay(selectedDay)} className="ww-lift rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-[10px] font-black uppercase tracking-wider text-brand-muted flex items-center justify-center gap-1.5">
+                <Eraser size={13} /> Fechar o dia
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Main Calendar Container */}
-      <div className="bg-brand-surface rounded-[32px] border border-brand-border shadow-[0px_4px_20px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col h-[calc(100vh-250px)]">
+      {/* Legenda */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+        <LegendItem cls="ww-block tone-brand" label="Aula fixa" />
+        <LegendItem cls="ww-well" label="Livre (disponível)" />
+        <LegendItem cls="ww-off border border-brand-border" label="Indisponível" />
+        <LegendItem cls="ww-ghost tone-violet" label="Experimental" />
+        <span data-tour="agenda-coverage-legend"><LegendItem cls="ww-ghost tone-amber" label="Cobertura / Reposição (com a data)" /></span>
+        <span data-tour="agenda-future-start-hold-legend"><LegendItem cls="ww-ghost tone-teal" label="Reservado (aluno começa na data)" /></span>
+        <label className="ml-auto inline-flex items-center gap-2 text-[11px] font-bold text-brand-muted cursor-pointer select-none">
+          <input type="checkbox" checked={onlyMyHours} onChange={e => setOnlyMyHours(e.target.checked)} className="h-4 w-4 rounded" />
+          Só o meu horário
+        </label>
+      </div>
 
-        {/* Mobile Day Selector */}
-        <div className="lg:hidden flex overflow-x-auto gap-2 p-4 border-b border-brand-border custom-scrollbar snap-x">
+      {/* Grade */}
+      <div className="ww-slab overflow-hidden flex flex-col h-[calc(100dvh-250px)] min-h-[28rem]">
+
+        {/* Seletor de dia no celular */}
+        <div className="lg:hidden flex overflow-x-auto gap-2 p-3 border-b border-brand-border custom-scrollbar snap-x">
           {DAYS.map((day, idx) => (
             <button
               key={day}
               onClick={() => setSelectedDay(idx)}
-              className={`snap-center shrink-0 px-6 py-2 rounded-xl text-xs font-bold transition-all ${selectedDay === idx
-                ? 'bg-brand-accent text-white shadow-[0_0_15px_rgba(var(--brand-accent),0.4)]'
-                : 'bg-brand-surface-2 text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text transition-colors'
+              className={`snap-center shrink-0 px-4 py-2 rounded-xl text-xs font-black transition-all ${selectedDay === idx
+                ? 'ww-block tone-brand'
+                : 'bg-brand-surface-2 text-brand-muted hover:text-brand-text'
                 }`}
             >
-              {day}
+              <span className="relative">{day}{idx === todayIdx ? ' · hoje' : ''}</span>
             </button>
           ))}
         </div>
 
-        {/* Scrollable Table Area */}
-        <div className="flex-1 overflow-auto custom-scrollbar relative">
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-40 bg-brand-surface/95 backdrop-blur-md border-b border-brand-border shadow-xs">
+        <div className="flex-1 overflow-auto custom-scrollbar relative p-2">
+          {gridRows.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-2 text-center text-brand-muted p-6">
+              <span className="ww-orb tone-sky h-14 w-14"><Clock size={22} /></span>
+              <p className="text-sm font-black text-brand-text">Nenhum horário marcado ainda</p>
+              <p className="text-xs max-w-xs">Desmarque "Só o meu horário" para ver a grade inteira e tocar nos horários em que você pode dar aula.</p>
+            </div>
+          ) : (
+          <table className="w-full border-separate border-spacing-1.5">
+            <thead className="sticky top-0 z-40">
               <tr>
-                <th className="p-4 w-20 text-center border-r border-brand-border">
-                  <Clock size={16} className="text-brand-muted mx-auto" />
+                <th className="w-16 rounded-xl bg-brand-surface/90 backdrop-blur-md">
+                  <Clock size={15} className="text-brand-muted mx-auto" />
                 </th>
                 {DAYS.map((day, idx) => (
                   <th
                     key={day}
-                    className={`p-4 min-w-[140px] text-center transition-all border-l border-brand-border/50 ${selectedDay !== idx ? 'hidden lg:table-cell' : 'table-cell'
-                      }`}
+                    className={`p-2.5 min-w-[130px] rounded-xl backdrop-blur-md ${selectedDay !== idx ? 'hidden lg:table-cell' : 'table-cell'} ${idx === todayIdx ? 'ww-block tone-brand' : 'bg-brand-surface/90 border border-brand-border'}`}
                   >
-                    <span className="text-xs font-black text-brand-text uppercase tracking-widest">{day}</span>
+                    <span className={`relative block text-[11px] font-black uppercase tracking-[0.16em] ${idx === todayIdx ? 'text-white' : 'text-brand-text'}`}>{day}</span>
+                    <span className={`relative block text-[9px] font-bold ${idx === todayIdx ? 'text-white/80' : 'text-brand-muted'}`}>
+                      {loads[idx].booked + loads[idx].events} aulas · {loads[idx].free} livres
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-brand-border/50 bg-brand-bg/30">
-              {TIMES.map((time) => (
-                <tr key={time} className="group hover:bg-brand-surface-2 transition-colors">
-                  <td className="sticky left-0 bg-brand-surface z-10 p-2 w-20 text-center text-[10px] font-bold text-brand-muted border-r border-brand-border group-hover:bg-brand-surface-2 transition-colors font-mono">
-                    {time}
-                  </td>
-                  {DAYS.map((_, dayIdx) => {
-                    const key = `${dayIdx}-${time}`;
-                    const booking = bookings[key];
-                    const isAvailable = availableSlots.has(key);
-
-                    return (
-                      <td
-                        key={dayIdx}
-                        className={`p-1 transition-all h-14 align-top border-l border-brand-border/50 ${selectedDay !== dayIdx ? 'hidden lg:table-cell' : 'table-cell'
-                          }`}
-                      >
-                        {booking ? (
-                          <div
-                            onClick={() => { if (!booking.readOnly) setEditingProfile(booking); }}
-                            title={booking.caption || undefined}
-                            className={`w-full h-full rounded-lg px-2 flex items-center justify-between ${booking.readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-[1.02]'} transition-transform shadow-xs relative overflow-hidden group/card ${booking.isExperimental
-                              ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                              : booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA'
-                                ? 'bg-amber-400/20 text-amber-500 border border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
-                                : booking.type === 'RESERVA'
-                                  ? 'bg-teal-500/15 text-teal-500 border border-dashed border-teal-500/60'
-                                  : 'bg-brand-accent/20 text-brand-text border border-brand-accent shadow-[0_0_10px_rgba(var(--brand-accent),0.3)]'
-                              }`}
-                          >
-                            {/* Glass highlight effect */}
-                            <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
-                            <div className="flex items-center gap-1.5 overflow-hidden relative z-10">
-                              <div className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-[10px] font-black ${booking.type === 'REPOSIÇÃO' || booking.type === 'COBERTURA' ? 'bg-amber-500 text-amber-950' : booking.type === 'RESERVA' ? 'bg-teal-500 text-white' : booking.isExperimental ? 'bg-indigo-500 text-white' : 'bg-brand-accent text-white'
-                                }`}>
-                                {booking.student[0]}
-                              </div>
-                              <span className="text-[10px] font-bold truncate uppercase tracking-wide">
-                                {booking.student.split(' ')[0]}
-                              </span>
-                              {booking.dateLabel && (
-                                <span className="text-[8px] opacity-70 font-medium ml-1">{booking.dateLabel}</span>
-                              )}
-                            </div>
-                            {/* Only show badge if space permits or on hover */}
-                            {booking.isExperimental && <span className="text-[8px] font-black opacity-80 relative z-10">{booking.type === 'TESTE ORAL' ? 'ORAL' : 'EXP'}</span>}
-                            {!booking.isExperimental && booking.type === 'REPOSIÇÃO' && <span className="text-[8px] font-black opacity-80 relative z-10">REPO</span>}
-                            {!booking.isExperimental && booking.type === 'COBERTURA' && <span className="text-[8px] font-black opacity-80 relative z-10">COB</span>}
-                            {booking.type === 'RESERVA' && <span className="text-[8px] font-black opacity-80 relative z-10">RES</span>}
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => toggleSlot(dayIdx, time)}
-                            className={`w-full h-full rounded-lg border border-dashed transition-all flex flex-col items-center justify-center gap-1 ${isAvailable
-                              ? 'bg-emerald-500/10 border-emerald-500/50 hover:bg-emerald-500/20' 
-                              : 'bg-transparent border-transparent hover:border-brand-border hover:bg-brand-surface-2' 
-                              }`}
-                          >
-                            {isAvailable && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]" />}
-                          </button>
-                        )}
+            <tbody>
+              {gridRows.map(row => {
+                if (row.kind === 'gap') {
+                  return (
+                    <tr key={`gap-${row.from}`}>
+                      <td className="text-center text-[10px] font-bold text-brand-muted font-mono">{row.from}</td>
+                      <td colSpan={DAYS.length}>
+                        <button type="button" onClick={() => setOnlyMyHours(false)} className="ww-off w-full py-1.5 text-[10px] font-bold text-brand-muted hover:text-brand-text">
+                          {row.from} – {row.to} · {formatSlots(row.count)} fora do seu horário — tocar para abrir
+                        </button>
                       </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                    </tr>
+                  );
+                }
+                const { time } = row;
+                const isNowRow = nowSlot === time;
+                return (
+                  <tr key={time} className="group">
+                    <td className={`sticky left-0 z-10 w-16 text-center text-[10px] font-bold font-mono rounded-lg bg-brand-surface/90 ${isNowRow ? 'text-rose-500' : 'text-brand-muted'}`}>
+                      {time}
+                    </td>
+                    {DAYS.map((_, dayIdx) => {
+                      const key = `${dayIdx}-${time}`;
+                      const booking = bookings[key];
+                      const isAvailable = availableSlots.has(key);
+                      const isNow = isNowRow && dayIdx === todayIdx;
+
+                      return (
+                        <td
+                          key={dayIdx}
+                          className={`relative h-12 align-top ${selectedDay !== dayIdx ? 'hidden lg:table-cell' : 'table-cell'} ${dayIdx === todayIdx ? 'bg-tenant-primary/[0.04] rounded-xl' : ''}`}
+                        >
+                          {isNow && <div className="ww-now" style={{ top: `${Math.round(slotProgress(now) * 100)}%` }} aria-hidden="true" />}
+                          {booking ? (
+                            <div
+                              onClick={() => { if (!booking.readOnly) setEditingProfile(booking); }}
+                              title={booking.caption || undefined}
+                              className={`w-full h-full px-2 flex items-center justify-between gap-1 ${booking.readOnly ? 'cursor-default' : 'cursor-pointer'} ${(booking.isExperimental || booking.readOnly) ? `ww-ghost tone-${toneFor(booking)}` : `ww-block tone-${toneFor(booking)}`}`}
+                            >
+                              <div className="relative flex items-center gap-1.5 overflow-hidden">
+                                <span className={`w-6 h-6 rounded-md shrink-0 grid place-items-center text-[10px] font-black ${(booking.isExperimental || booking.readOnly) ? 'bg-current/15' : 'bg-white/25'}`}>
+                                  {booking.student[0]}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-[10px] font-black truncate uppercase tracking-wide leading-tight">{booking.student.split(' ')[0]}</span>
+                                  {booking.dateLabel && <span className="block text-[8px] opacity-75 font-bold">{booking.dateLabel}</span>}
+                                </span>
+                              </div>
+                              {badgeFor(booking) && <span className="relative text-[8px] font-black opacity-80">{badgeFor(booking)}</span>}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => toggleSlot(dayIdx, time)}
+                              aria-pressed={isAvailable}
+                              aria-label={`${isAvailable ? 'Fechar' : 'Abrir'} ${DAYS[dayIdx]} às ${time}`}
+                              className={`w-full h-full flex items-center justify-center ${isAvailable ? 'ww-well' : 'ww-off hover:outline hover:outline-1 hover:outline-dashed hover:outline-emerald-500/50'}`}
+                            >
+                              {isAvailable
+                                ? <span className="text-[8px] font-black text-emerald-600/80 dark:text-emerald-400/80 uppercase tracking-[0.18em]">livre</span>
+                                : <Plus size={12} className="text-brand-muted opacity-0 group-hover:opacity-40" />}
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          )}
         </div>
 
-        {/* Action Footer */}
-        <div className="p-4 border-t border-brand-border bg-brand-surface sticky bottom-0 z-30 flex justify-between items-center rounded-b-[32px]">
-          <div className="flex items-center gap-2 text-xs text-brand-muted">
+        {/* Rodapé */}
+        <div className="p-4 border-t border-brand-border bg-brand-surface/80 backdrop-blur-md flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+          <div className={`flex items-center gap-2 text-xs font-semibold ${pendingChanges.dirty ? 'text-amber-600 dark:text-amber-400' : 'text-brand-muted'}`}>
             <RefreshCw size={12} />
-            <span>Alterações não salvas são perdidas ao sair.</span>
+            <span>{pendingChanges.dirty ? 'Você tem alterações não salvas — elas se perdem ao sair.' : 'Alterações não salvas são perdidas ao sair.'}</span>
           </div>
           <button
             onClick={handlePublish}
             disabled={isPublishing}
-            className="bg-brand-accent text-white px-8 py-3 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-brand-accent-hover transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(var(--brand-accent),0.4)] disabled:opacity-50"
+            className="ww-block tone-brand px-8 py-3 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {isPublishing ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-            Salvar Agenda
+            {isPublishing ? <RefreshCw className="relative animate-spin" size={16} /> : <Save className="relative" size={16} />}
+            <span className="relative">Salvar Agenda</span>
           </button>
         </div>
       </div>

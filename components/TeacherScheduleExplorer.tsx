@@ -13,8 +13,22 @@ import {
   Clock,
   RefreshCw,
   Plus,
-  Zap
+  Zap,
+  ChevronLeft,
+  Sparkles,
 } from 'lucide-react';
+import { Ring3D, Towers3D, type Tone } from './depth/Depth3D';
+import {
+  compactRows,
+  currentSlot,
+  dayLoads,
+  formatSlots,
+  freeWindows,
+  slotProgress,
+  type FreeWindow,
+  type GridRow,
+  type SlotReader,
+} from '../lib/scheduleInsights';
 import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../constants';
 import { Teacher, Reschedule } from '../types';
 import {
@@ -43,6 +57,22 @@ const TIMES = Array.from({ length: 37 }, (_, i) => {
   return `${hour < 10 ? '0' + hour : hour}:${minutes}`;
 });
 
+type TeacherSort = 'name' | 'free' | 'busy';
+
+// Aulas fixas e horários livres de cada professor, para a lista lateral mostrar
+// quem está cheio e quem tem espaço sem precisar abrir agenda por agenda.
+interface TeacherLoad { booked: number; free: number }
+
+const Legend: React.FC<{ label: string; tone?: Tone; ghost?: boolean; well?: boolean; off?: boolean }> = ({ label, tone, ghost, well, off }) => (
+  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-brand-muted">
+    <span
+      aria-hidden="true"
+      className={`h-3.5 w-5 ${well ? 'ww-well' : off ? 'ww-off border border-brand-border rounded-md' : ghost ? `ww-ghost tone-${tone}` : `ww-block tone-${tone}`}`}
+    />
+    {label}
+  </span>
+);
+
 interface TeacherScheduleExplorerProps {
   user?: any; // Added user prop
   teachers: Teacher[];
@@ -70,6 +100,16 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   // horário para sempre. `weekOffset` em semanas a partir da atual.
   const [weekOffset, setWeekOffset] = useState(0);
   const [trials, setTrials] = useState<GridTrial[]>([]);
+  const [compactGrid, setCompactGrid] = useState(true);
+  const [focusWindow, setFocusWindow] = useState<FreeWindow | null>(null);
+  const [teacherSort, setTeacherSort] = useState<TeacherSort>('name');
+  const [teacherLoads, setTeacherLoads] = useState<Record<string, TeacherLoad>>({});
+  // Relógio da linha "agora": anda de minuto em minuto, não a cada render.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const canManageAssignments = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const weekStart = React.useMemo(() => {
@@ -90,6 +130,44 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       }
     }
   }, [teachers, initialTeacherName]);
+
+  // Uma consulta para todos: aulas fixas e grade declarada de cada professor.
+  // Livre = horário declarado que não tem aula fixa (o mesmo critério da
+  // ocupação mostrada na agenda aberta).
+  const teacherIdsKey = (teachers || []).map(t => t.id).sort().join(',');
+  useEffect(() => {
+    const ids = teacherIdsKey ? teacherIdsKey.split(',') : [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const [bk, av] = await Promise.all([
+        supabase.from('bookings').select('teacher_id, day_of_week, time_slot').in('teacher_id', ids).in('status', ['SCHEDULED', 'scheduled']),
+        supabase.from('teacher_availability').select('teacher_id, day_of_week, start_time').in('teacher_id', ids),
+      ]);
+      if (cancelled || bk.error || av.error) return;
+      const slotKey = (day: unknown, time: unknown) => {
+        const d = normalizeWeekdayToIndex(day as string);
+        return d >= 0 && typeof time === 'string' ? `${d}-${time.slice(0, 5)}` : null;
+      };
+      const booked = new Map<string, Set<string>>();
+      for (const row of (bk.data || []) as { teacher_id: string; day_of_week: unknown; time_slot: unknown }[]) {
+        const k = slotKey(row.day_of_week, row.time_slot);
+        if (!k) continue;
+        if (!booked.has(row.teacher_id)) booked.set(row.teacher_id, new Set());
+        booked.get(row.teacher_id)!.add(k);
+      }
+      const free = new Map<string, number>();
+      for (const row of (av.data || []) as { teacher_id: string; day_of_week: unknown; start_time: unknown }[]) {
+        const k = slotKey(row.day_of_week, row.start_time);
+        if (!k || booked.get(row.teacher_id)?.has(k)) continue;
+        free.set(row.teacher_id, (free.get(row.teacher_id) || 0) + 1);
+      }
+      const next: Record<string, TeacherLoad> = {};
+      for (const id of ids) next[id] = { booked: booked.get(id)?.size || 0, free: free.get(id) || 0 };
+      setTeacherLoads(next);
+    })();
+    return () => { cancelled = true; };
+  }, [teacherIdsKey]);
 
   const fetchDetailData = async () => {
     if (!selectedTeacher) return;
@@ -703,173 +781,316 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     return `${fmt(dateForDayIndex(weekStart, 0))} – ${fmt(dateForDayIndex(weekStart, 5))}`;
   }, [weekStart]);
 
-  const filteredTeachers = (teachers || []).filter(t => {
-    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSpec = !specFilter || (t.specializations || []).includes(specFilter);
-    return matchesSearch && matchesSpec;
-  });
+  // Estado de cada célula, na mesma precedência que a grade desenha: aula fixa,
+  // depois evento de um dia, depois horário livre declarado.
+  const readSlot = React.useCallback<SlotReader>((dIdx, time) => {
+    const key = `${dIdx}-${time}`;
+    if (bookings[key]) return 'booked';
+    if (findRescheduleForSlot(teacherReschedules, dIdx, time, weekStart) || findTrialForSlot(weekTrials, dIdx, time, weekStart)) return 'event';
+    if (availableSlots.has(key)) return 'free';
+    return 'off';
+  }, [bookings, availableSlots, teacherReschedules, weekTrials, weekStart]);
+
+  const gridRows = React.useMemo<GridRow[]>(
+    () => (compactGrid ? compactRows(TIMES, DAYS.length, readSlot) : TIMES.map(time => ({ kind: 'time' as const, time }))),
+    [compactGrid, readSlot],
+  );
+  const loads = React.useMemo(() => dayLoads(TIMES, DAYS.length, readSlot), [readSlot]);
+  const windows = React.useMemo(() => freeWindows(TIMES, DAYS.length, readSlot).slice(0, 4), [readSlot]);
+  const todayYMD = localYMD(now);
+  const nowSlot = weekOffset === 0 ? currentSlot(TIMES, now) : null;
+  const inFocusWindow = (dIdx: number, time: string) =>
+    !!focusWindow && focusWindow.dayIdx === dIdx && time >= focusWindow.start && time < focusWindow.end;
+
+  const stats = React.useMemo(() => {
+    const occupied = Object.keys(bookings).length;
+    const free = Array.from(availableSlots).filter(k => !bookings[k]).length;
+    const denom = occupied + free;
+    return {
+      occupied,
+      free,
+      pct: denom > 0 ? Math.round(100 * occupied / denom) : 0,
+      distinct: new Set(Object.values(bookings).map((b: any) => b.studentId || b.student)).size,
+    };
+  }, [bookings, availableSlots]);
+
+  const filteredTeachers = (teachers || [])
+    .filter(t => {
+      const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSpec = !specFilter || (t.specializations || []).includes(specFilter);
+      return matchesSearch && matchesSpec;
+    })
+    .sort((a, b) => {
+      if (teacherSort === 'name') return a.name.localeCompare(b.name, 'pt-BR');
+      const la = teacherLoads[a.id];
+      const lb = teacherLoads[b.id];
+      if (teacherSort === 'free') return (lb?.free ?? -1) - (la?.free ?? -1) || a.name.localeCompare(b.name, 'pt-BR');
+      return (lb?.booked ?? -1) - (la?.booked ?? -1) || a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+  const initials = (name?: string) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  const ddmm = (ymd: string) => ymd.split('-').slice(1).reverse().join('/');
 
   return (
-    <div data-tour="director-schedule-change" className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
-      {/* Sidebar: Teacher Selection */}
-      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl flex flex-col shadow-xs shrink-0">
-        <div className="p-5 border-b dark:border-brand-border">
-          <h3 className="font-black text-gray-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Users size={14} className="text-tenant-primary" /> Corpo Docente
-          </h3>
+    <div data-tour="director-schedule-change" className="ww-stage flex flex-col xl:flex-row gap-5 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
+      {/* Corpo docente: cada professor com o quanto da agenda dele está ocupado */}
+      <aside data-tour="schedule-teacher-loads" className="ww-slab w-full xl:w-80 flex flex-col shrink-0 overflow-hidden">
+        <div className="p-5 pb-4 border-b border-brand-border/60">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="font-black text-brand-text text-[11px] uppercase tracking-[0.18em] flex items-center gap-2">
+              <span className="ww-orb tone-brand h-7 w-7 rounded-lg"><Users size={14} /></span> Corpo docente
+            </h3>
+            <span className="text-[10px] font-black text-brand-muted">{filteredTeachers.length}</span>
+          </div>
           <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={13} />
             <input
               type="text"
               placeholder="Buscar por nome..."
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-hidden font-medium"
+              className="w-full pl-9 pr-4 py-2.5 bg-brand-surface-2/70 border border-brand-border rounded-xl text-xs focus:ring-2 focus:ring-tenant-primary outline-hidden font-semibold text-brand-text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <select
-            value={specFilter}
-            onChange={e => setSpecFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-hidden"
-          >
-            <option value="">Todas as especialidades</option>
-            {TEACHER_SPECIALIZATIONS.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="max-h-60 xl:max-h-none xl:flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
-          {filteredTeachers.map((teacher) => (
-            <button
-              key={teacher.id}
-              onClick={() => setSelectedTeacher(teacher)}
-              className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacher?.id === teacher.id
-                ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
-                : 'bg-brand-surface border-gray-50 dark:border-brand-border hover:border-tenant-primary/30'
-                }`}
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={specFilter}
+              onChange={e => setSpecFilter(e.target.value)}
+              aria-label="Filtrar por especialidade"
+              className="w-full px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
             >
-              <img src={teacher.avatar} className="w-8 h-8 rounded-lg border-2 border-white/20" alt="" />
-              <div className="flex-1 overflow-hidden">
-                <p className={`text-[10px] font-black truncate leading-tight ${selectedTeacher?.id === teacher.id ? 'text-white' : 'text-gray-800 dark:text-slate-200'}`}>
-                  {teacher.name}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`text-[8px] font-bold ${selectedTeacher?.id === teacher.id ? 'text-white/80' : 'text-gray-400'}`}>
-                    {teacher.module}
-                  </span>
-                </div>
-              </div>
-              <ChevronRight size={12} className={selectedTeacher?.id === teacher.id ? 'text-white' : 'text-gray-300'} />
-            </button>
-          ))}
+              <option value="">Todas as especialidades</option>
+              {TEACHER_SPECIALIZATIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select
+              value={teacherSort}
+              onChange={e => setTeacherSort(e.target.value as TeacherSort)}
+              aria-label="Ordenar professores"
+              className="w-full px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
+            >
+              <option value="name">Nome (A–Z)</option>
+              <option value="free">Mais horários livres</option>
+              <option value="busy">Mais aulas</option>
+            </select>
+          </div>
         </div>
-      </div>
 
-      {/* Main Area: Detailed Schedule Explorer */}
-      <div className="flex-1 min-h-[70vh] xl:min-h-0 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-4xl flex flex-col shadow-xs overflow-hidden">
+        <div className="max-h-72 xl:max-h-none xl:flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
+          {filteredTeachers.map((teacher) => {
+            const active = selectedTeacher?.id === teacher.id;
+            const load = teacherLoads[teacher.id];
+            const fill = load && load.booked + load.free > 0 ? Math.round(100 * load.booked / (load.booked + load.free)) : 0;
+            return (
+              <button
+                key={teacher.id}
+                onClick={() => { setSelectedTeacher(teacher); setFocusWindow(null); }}
+                aria-pressed={active}
+                className={`ww-lift w-full p-3 rounded-2xl border flex items-center gap-3 text-left ${active
+                  ? 'ww-block tone-brand border-transparent'
+                  : 'bg-brand-surface/70 border-brand-border hover:border-tenant-primary/40'
+                  }`}
+              >
+                {teacher.avatar
+                  ? <img src={teacher.avatar} className={`w-10 h-10 rounded-xl object-cover shrink-0 ${active ? 'ring-2 ring-white/40' : 'shadow-md'}`} alt="" />
+                  : <span className="ww-orb tone-brand w-10 h-10 shrink-0 text-xs font-black">{initials(teacher.name)}</span>}
+                <div className="flex-1 min-w-0 relative">
+                  <p className={`text-xs font-black truncate leading-tight ${active ? 'text-white' : 'text-brand-text'}`}>{teacher.name}</p>
+                  <p className={`text-[10px] font-semibold truncate mt-0.5 ${active ? 'text-white/75' : 'text-brand-muted'}`}>
+                    {load ? `${load.booked} aulas · ${load.free} livres` : teacher.module}
+                  </p>
+                  {load && (
+                    <div className={`mt-1.5 h-1.5 rounded-full overflow-hidden ${active ? 'bg-white/25' : 'bg-brand-surface-2'}`}>
+                      <div className={`h-full rounded-full ${active ? 'bg-white' : 'bg-linear-to-r from-emerald-400 to-emerald-600'}`} style={{ width: `${fill}%` }} />
+                    </div>
+                  )}
+                </div>
+                <ChevronRight size={14} className={`shrink-0 relative ${active ? 'text-white' : 'text-brand-muted'}`} />
+              </button>
+            );
+          })}
+          {filteredTeachers.length === 0 && (
+            <p className="py-8 text-center text-xs font-bold text-brand-muted">Nenhum professor com esse filtro.</p>
+          )}
+        </div>
+      </aside>
+
+      {/* Agenda do professor selecionado */}
+      <section className="ww-slab flex-1 min-h-[70vh] xl:min-h-0 flex flex-col overflow-hidden">
         {selectedTeacher ? (
           <>
-            {/* Detail Header - Compact */}
-            <div className="px-4 sm:px-6 py-4 border-b dark:border-brand-border flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-gray-50/30 dark:bg-brand-surface-2/20">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-brand-border shrink-0" alt="" />
-                <div className="min-w-0">
-                  <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-tight truncate">{selectedTeacher.name}</h2>
-                  <p className="text-[10px] text-gray-500 dark:text-brand-muted mt-1 font-bold">
-                    {selectedTeacher.module}
-                  </p>
-                  {(selectedTeacher.specializations || []).length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
+            <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-brand-border/60 space-y-4">
+              <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
+                  {selectedTeacher.avatar
+                    ? <img src={selectedTeacher.avatar} className="w-14 h-14 rounded-2xl object-cover shadow-xl ring-4 ring-white/70 dark:ring-white/10 shrink-0" alt="" />
+                    : <span className="ww-orb tone-brand w-14 h-14 shrink-0 text-base font-black">{initials(selectedTeacher.name)}</span>}
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-muted">Agenda de</p>
+                    <h2 className="text-lg sm:text-xl font-black text-brand-text tracking-tight leading-tight truncate">{selectedTeacher.name}</h2>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className="text-[10px] font-bold text-brand-muted">{selectedTeacher.module}</span>
                       {(selectedTeacher.specializations || []).map(s => (
-                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[8px] font-black rounded-full border border-amber-100 dark:border-amber-800 whitespace-nowrap">
+                        <span key={s} className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-500/25 whitespace-nowrap">
                           {s}
                         </span>
                       ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  {/* Navegação de semana: a grade mostra UMA semana concreta. */}
+                  <div className="w-full sm:w-auto flex items-center justify-between gap-1 rounded-2xl border border-brand-border bg-brand-surface-2/70 p-1 shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset(w => w - 1)}
+                      aria-label="Semana anterior"
+                      className="h-8 w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset(0)}
+                      title="Voltar para a semana atual"
+                      className="min-w-[7.5rem] px-2 text-center"
+                    >
+                      <span className="block text-[9px] font-black uppercase tracking-wider text-brand-muted">
+                        {weekOffset === 0 ? 'Esta semana' : weekOffset > 0 ? `+${weekOffset} semana${weekOffset > 1 ? 's' : ''}` : `${weekOffset} semana${weekOffset < -1 ? 's' : ''}`}
+                      </span>
+                      <span className="block text-xs font-black leading-none text-brand-text whitespace-nowrap">{weekLabel}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset(w => w + 1)}
+                      aria-label="Próxima semana"
+                      className="h-8 w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                  <div className="relative w-full sm:w-auto">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={13} />
+                    <input
+                      value={slotSearch}
+                      onChange={e => setSlotSearch(e.target.value)}
+                      placeholder="Localizar aluno na grade…"
+                      className="pl-8 pr-3 py-2.5 text-xs font-bold bg-brand-surface-2/70 border border-brand-border rounded-xl outline-hidden text-brand-text w-full sm:w-52 min-w-0 focus:ring-2 focus:ring-tenant-primary"
+                    />
+                  </div>
+                  {canManageAssignments && (
+                    <button
+                      onClick={() => setIsAssignmentModalOpen(true)}
+                      className="ww-block tone-brand w-full sm:w-auto px-4 py-2.5 font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 whitespace-nowrap"
+                    >
+                      <UserPlus size={15} className="relative" /> <span className="relative">Atribuir aluno</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Retrato da semana: números, carga por dia e onde cabe aluno novo */}
+              <div data-tour="schedule-week-portrait" className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)] gap-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-brand-border bg-brand-surface/60 p-3 flex items-center gap-3 col-span-2">
+                    <Ring3D value={stats.pct} tone="emerald" size={52} label={`Ocupação de ${stats.pct}%`} />
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-brand-muted">Ocupação da grade</p>
+                      <p className="text-sm font-black text-brand-text">{stats.occupied} aulas · {stats.distinct} alunos</p>
+                      <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">{formatSlots(stats.free)} livres na semana</p>
+                    </div>
+                  </div>
+                  {conflicts.size > 0 && (
+                    <div className="col-span-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 flex items-center gap-2" title="Horários com mais de um aluno">
+                      <AlertCircle size={16} className="text-rose-500 shrink-0" />
+                      <p className="text-[11px] font-black text-rose-600 dark:text-rose-400">
+                        {conflicts.size} conflito{conflicts.size > 1 ? 's' : ''} — dois alunos no mesmo horário
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-brand-border bg-brand-surface/60 px-3 pt-2 pb-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-brand-muted">Carga por dia</p>
+                  <Towers3D
+                    height={52}
+                    ariaLabel="Aulas por dia da semana"
+                    data={loads.map(l => {
+                      const ymd = dateForDayIndex(weekStart, l.dayIdx);
+                      return {
+                        key: String(l.dayIdx),
+                        label: DAYS[l.dayIdx].slice(0, 3),
+                        sublabel: `${l.free} livre${l.free === 1 ? '' : 's'}`,
+                        value: l.booked + l.events,
+                        tone: l.fill >= 0.85 ? 'rose' : l.fill >= 0.5 ? 'amber' : 'emerald',
+                        highlight: ymd === todayYMD,
+                        caption: `${DAYS[l.dayIdx]} ${ddmm(ymd)}: ${l.booked} aulas fixas, ${l.events} eventos, ${l.free} horários livres`,
+                      };
+                    })}
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-brand-border bg-brand-surface/60 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-brand-muted flex items-center gap-1.5">
+                    <Sparkles size={11} className="text-violet-500" /> Onde cabe aluno novo
+                  </p>
+                  {windows.length === 0 ? (
+                    <p className="mt-2 text-[11px] font-semibold text-brand-muted">Nenhum bloco de 1 h livre nesta semana.</p>
+                  ) : (
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {windows.map(w => {
+                        const selected = focusWindow?.dayIdx === w.dayIdx && focusWindow.start === w.start;
+                        return (
+                          <button
+                            key={`${w.dayIdx}-${w.start}`}
+                            type="button"
+                            onClick={() => setFocusWindow(selected ? null : w)}
+                            aria-pressed={selected}
+                            className={`ww-lift rounded-xl px-2.5 py-1.5 text-left border ${selected ? 'border-emerald-500 bg-emerald-500/15' : 'border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/10'}`}
+                          >
+                            <span className="block text-[10px] font-black text-brand-text">{DAYS[w.dayIdx].slice(0, 3)} {w.start}–{w.end}</span>
+                            <span className="block text-[9px] font-bold text-emerald-600 dark:text-emerald-400">{formatSlots(w.slots)} seguidas</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="w-full lg:w-auto grid grid-cols-2 sm:grid-cols-3 lg:flex items-stretch lg:items-center gap-3 lg:flex-wrap lg:justify-end">
-                {/* Ocupação + alunos distintos + conflitos */}
-                {(() => {
-                  const occupied = Object.keys(bookings).length;
-                  const free = Array.from(availableSlots).filter(k => !bookings[k]).length;
-                  const denom = occupied + free;
-                  const pct = denom > 0 ? Math.round(100 * occupied / denom) : 0;
-                  const distinct = new Set(Object.values(bookings).map((b: any) => b.studentId || b.student)).size;
-                  return (
-                    <>
-                      <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-lg text-center min-w-0">
-                        <p className="text-[8px] font-black text-emerald-600 uppercase tracking-wide">Ocupação</p>
-                        <p className="text-sm font-black text-emerald-700 dark:text-emerald-400 leading-none">{pct}%</p>
-                      </div>
-                      <div className="px-3 py-1.5 bg-brand-surface-2 border border-brand-border rounded-lg text-center min-w-0">
-                        <p className="text-[8px] font-black text-brand-muted uppercase tracking-wide">Aulas · Alunos</p>
-                        <p className="text-sm font-black text-brand-text leading-none">{occupied} · {distinct}</p>
-                      </div>
-                      {conflicts.size > 0 && (
-                        <div className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg text-center min-w-0" title="Horários com mais de um aluno">
-                          <p className="text-[8px] font-black text-red-600 uppercase tracking-wide">Conflitos</p>
-                          <p className="text-sm font-black text-red-600 leading-none">{conflicts.size}</p>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-                {/* Navegação de semana: a grade mostra UMA semana concreta. */}
-                <div className="col-span-2 sm:col-span-3 lg:col-span-1 flex items-center gap-1 rounded-lg border border-brand-border bg-brand-surface-2 px-1 py-1">
-                  <button
-                    type="button"
-                    onClick={() => setWeekOffset(w => w - 1)}
-                    aria-label="Semana anterior"
-                    className="px-2 py-1 rounded-md text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors font-black text-xs"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWeekOffset(0)}
-                    title="Voltar para a semana atual"
-                    className="flex-1 min-w-0 px-2 text-center"
-                  >
-                    <span className="block text-[8px] font-black uppercase tracking-wide text-brand-muted">
-                      {weekOffset === 0 ? 'Esta semana' : 'Semana'}
-                    </span>
-                    <span className="block text-[11px] font-black leading-none text-brand-text whitespace-nowrap">{weekLabel}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWeekOffset(w => w + 1)}
-                    aria-label="Próxima semana"
-                    className="px-2 py-1 rounded-md text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors font-black text-xs"
-                  >
-                    ›
-                  </button>
-                </div>
-                <input
-                  value={slotSearch}
-                  onChange={e => setSlotSearch(e.target.value)}
-                  placeholder="Localizar aluno na grade…"
-                  className="col-span-2 sm:col-span-3 lg:col-span-1 px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-hidden text-brand-text w-full lg:w-44 min-w-0"
-                />
-                {canManageAssignments && (
-                  <button
-                    onClick={() => setIsAssignmentModalOpen(true)}
-                    className="col-span-2 sm:col-span-3 lg:col-span-1 w-full lg:w-auto px-4 py-2.5 bg-[#002366] bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.02] lg:hover:scale-[1.05] transition-all flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
-                  >
-                    <UserPlus size={14} /> Atribuir Aluno
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <Legend tone="emerald" label="Aula fixa" />
+                <Legend tone="amber" label="Reposição" ghost />
+                <Legend tone="violet" label="Experimental / teste oral" ghost />
+                <Legend well label="Livre" />
+                <Legend off label="Fora da grade" />
+                <label className="ml-auto inline-flex items-center gap-2 text-[11px] font-bold text-brand-muted cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={compactGrid}
+                    onChange={e => setCompactGrid(e.target.checked)}
+                    className="h-4 w-4 rounded accent-[rgb(var(--tenant-primary-rgb))]"
+                  />
+                  Esconder horas sem agenda
+                </label>
               </div>
             </div>
 
-            {/* Grid Content */}
+            {/* Grade */}
             <div className="flex-1 overflow-auto p-3 sm:p-4 scrollbar-hide relative">
-              {/* MOBILE: lista por dia (a grade larga é inviável no celular) */}
+              {gridRows.length === 0 && (
+                <div className="h-full min-h-60 flex flex-col items-center justify-center text-center gap-2 text-brand-muted">
+                  <span className="ww-orb tone-slate h-14 w-14"><Clock size={22} /></span>
+                  <p className="text-sm font-black text-brand-text">Agenda vazia nesta semana</p>
+                  <p className="text-xs max-w-xs">Este professor ainda não declarou horários livres nem tem aulas marcadas.</p>
+                </div>
+              )}
+
+              {/* CELULAR: lista por dia (a grade larga é inviável no celular) */}
               <div className="md:hidden space-y-3">
-                {DAYS.map((day, dIdx) => {
+                {gridRows.length > 0 && DAYS.map((day, dIdx) => {
                   const daySlots = TIMES
                     .map(time => ({
                       time,
@@ -887,15 +1108,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                       && !entry.trial
                     ))
                     .map(entry => entry.time);
-                  const dayDate = dateForDayIndex(weekStart, dIdx).split('-').slice(1).reverse().join('/');
+                  const ymd = dateForDayIndex(weekStart, dIdx);
+                  const isToday = ymd === todayYMD;
                   return (
-                    <div key={day} className="bg-brand-surface-2/40 border border-brand-border rounded-xl p-3">
+                    <div key={day} className={`rounded-2xl border p-3 ${isToday ? 'border-tenant-primary/50 bg-tenant-primary/5' : 'border-brand-border bg-brand-surface/60'}`}>
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest">
-                          {day} {dayDate} · {dayEntries.length} compromisso(s)
+                        <p className="text-[11px] font-black text-brand-text uppercase tracking-widest">
+                          {day} <span className="text-brand-muted">{ddmm(ymd)}</span>
+                          {isToday && <span className="ml-1.5 rounded-full bg-tenant-primary px-1.5 py-0.5 text-[8px] text-white">hoje</span>}
                         </p>
                         <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">
-                          {freeTimes.length} livre{freeTimes.length === 1 ? '' : 's'}
+                          {dayEntries.length} aula{dayEntries.length === 1 ? '' : 's'} · {freeTimes.length} livre{freeTimes.length === 1 ? '' : 's'}
                         </span>
                       </div>
                       {dayEntries.length === 0 ? (
@@ -914,7 +1137,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                             return (
                               <div key={time} className={`space-y-1 ${dim ? 'opacity-30' : ''}`}>
                                 {reschedule && (
-                                  <div className={`flex items-center gap-2 rounded-lg border border-dashed border-yellow-400 bg-yellow-100 px-2.5 py-2 text-yellow-900 dark:border-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-100 ${match ? 'ring-2 ring-yellow-400' : ''}`}>
+                                  <div className={`ww-ghost tone-amber flex items-center gap-2 px-2.5 py-2 ${match ? 'ring-2 ring-amber-400' : ''}`}>
                                     <Clock size={13} aria-hidden="true" className="shrink-0" />
                                     <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
                                     <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{reschedule.studentName}</span>
@@ -922,7 +1145,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                   </div>
                                 )}
                                 {trial && (
-                                  <div className={`flex items-center gap-2 rounded-lg border border-dashed border-purple-400 bg-purple-100 px-2.5 py-2 text-purple-900 dark:border-purple-600 dark:bg-purple-900/30 dark:text-purple-100 ${match ? 'ring-2 ring-purple-400' : ''}`}>
+                                  <div className={`ww-ghost tone-violet flex items-center gap-2 px-2.5 py-2 ${match ? 'ring-2 ring-violet-400' : ''}`}>
                                     <Zap size={13} aria-hidden="true" className="shrink-0" />
                                     <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
                                     <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{trial.studentName}</span>
@@ -934,11 +1157,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                     type="button"
                                     onClick={() => void openBookingEditor(booking)}
                                     aria-label={`Editar aula de ${booking.student}, ${day} às ${time}`}
-                                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left cursor-pointer bg-emerald-500 text-white ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''}`}
+                                    className={`ww-block tone-emerald flex w-full items-center gap-2 px-2.5 py-2 text-left cursor-pointer ${conflict ? 'ring-2 ring-rose-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''}`}
                                   >
-                                    <span className="text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
-                                    <span className="text-[11px] font-black uppercase truncate flex-1">{booking.student}</span>
-                                    <span className="text-[9px] font-bold opacity-80">{booking.module}</span>
+                                    <span className="relative text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
+                                    <span className="relative text-[11px] font-black uppercase truncate flex-1">{booking.student}</span>
+                                    <span className="relative text-[9px] font-bold opacity-80">{booking.module}</span>
                                   </button>
                                 )}
                               </div>
@@ -947,7 +1170,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                         </div>
                       )}
                       {freeTimes.length > 0 && (
-                        <details className="group mt-2 rounded-lg border border-emerald-500/25 bg-brand-surface">
+                        <details className="group mt-2 rounded-xl border border-emerald-500/25 bg-brand-surface">
                           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-600 marker:hidden dark:text-emerald-400">
                             <span>Horários livres</span>
                             <span className="text-[9px] text-brand-muted group-open:hidden">Ver horários</span>
@@ -957,7 +1180,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                             {freeTimes.map(time => (
                               <span
                                 key={time}
-                                className="rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-center font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+                                className="ww-well px-2 py-1.5 text-center font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
                               >
                                 {time}
                               </span>
@@ -970,109 +1193,139 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 })}
               </div>
 
-              {/* DESKTOP: grade completa */}
-              <div className="hidden md:block min-w-[700px]">
-                <table className="w-full border-separate border-spacing-1">
-                  <thead>
+              {/* COMPUTADOR: grade completa */}
+              {gridRows.length > 0 && (
+              <div className="hidden md:block min-w-[760px]">
+                <table className="w-full table-fixed border-separate border-spacing-1.5">
+                  <thead className="sticky top-0 z-40">
                     <tr>
-                      <th className="w-14"></th>
+                      <th className="w-14 bg-brand-surface/90 backdrop-blur-md rounded-xl" aria-label="Horário"></th>
                       {DAYS.map((day, dIdx) => {
                         const ymd = dateForDayIndex(weekStart, dIdx);
-                        const isToday = ymd === localYMD(new Date());
+                        const isToday = ymd === todayYMD;
+                        const load = loads[dIdx];
                         return (
-                          <th key={day} className={`p-2 text-[9px] font-black uppercase tracking-widest ${isToday ? 'text-tenant-primary' : 'text-gray-400 dark:text-brand-muted'}`}>
-                            {day}
-                            <span className="block text-[8px] font-bold opacity-70">{ymd.split('-').slice(1).reverse().join('/')}</span>
+                          <th key={day} className={`p-2 rounded-xl backdrop-blur-md ${isToday ? 'ww-block tone-brand' : 'bg-brand-surface/90 border border-brand-border'}`}>
+                            <span className={`relative block text-[10px] font-black uppercase tracking-[0.16em] ${isToday ? 'text-white' : 'text-brand-text'}`}>{day}</span>
+                            <span className={`relative block text-[10px] font-bold ${isToday ? 'text-white/80' : 'text-brand-muted'}`}>
+                              {ddmm(ymd)}{isToday ? ' · hoje' : ''}
+                            </span>
+                            <span className={`relative mx-auto mt-1.5 block h-1 w-16 rounded-full overflow-hidden ${isToday ? 'bg-white/25' : 'bg-brand-surface-2'}`}>
+                              <span className={`block h-full rounded-full ${isToday ? 'bg-white' : 'bg-emerald-500'}`} style={{ width: `${Math.round(load.fill * 100)}%` }} />
+                            </span>
                           </th>
                         );
                       })}
                     </tr>
                   </thead>
                   <tbody>
-                    {TIMES.map((time, tIdx) => (
-                      <tr key={time}>
-                        <td className="text-center align-middle">
-                          <span className="text-[9px] font-bold text-gray-400 font-mono">{time}</span>
-                        </td>
-                        {DAYS.map((_, dIdx) => {
-                          const key = `${dIdx}-${time}`;
-                          const booking = bookings[key];
-                          const isAvailable = availableSlots.has(key);
-                          const reschedule = getRescheduleForSlot(dIdx, time);
-                          const trial = getTrialForSlot(dIdx, time);
-                          const isConflict = conflicts.has(key);
-                          const hitName = (name?: string) =>
-                            slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
-                          const matchSearch = hitName(booking?.student) || hitName(reschedule?.studentName) || hitName(trial?.studentName);
-                          const dimmed = slotSearch.trim() !== '' && (booking || reschedule || trial) && !matchSearch;
-                          // O evento de UM dia (reposição/experimental) é uma
-                          // faixa POR CIMA da célula, não a célula inteira: a
-                          // aula fixa daquele horário continua visível embaixo.
-                          const overlay = reschedule
-                            ? { label: 'Reposição', name: reschedule.studentName, tone: 'yellow' as const }
-                            : trial
-                              ? { label: trial.type === 'oral_test' ? 'Teste oral' : 'Experimental', name: trial.studentName, tone: 'purple' as const }
-                              : null;
-
-                          return (
-                            <td key={dIdx} className="h-8 relative">
-                              {overlay && (
-                                <div
-                                  className={`absolute inset-x-0 top-0 z-20 m-0.5 flex items-center gap-1 rounded-t-md border border-dashed px-1 py-px shadow-xs cursor-help ${overlay.tone === 'yellow'
-                                    ? 'bg-yellow-100 border-yellow-500 dark:bg-yellow-900/70 dark:border-yellow-500'
-                                    : 'bg-purple-100 border-purple-500 dark:bg-purple-900/70 dark:border-purple-500'}`}
-                                  title={`${overlay.label} de ${overlay.name} — só em ${dateForDayIndex(weekStart, dIdx).split('-').reverse().join('/')}, não ocupa este horário nas outras semanas`}
-                                >
-                                  {overlay.tone === 'yellow'
-                                    ? <Clock size={7} className="shrink-0 text-yellow-700 dark:text-yellow-300" />
-                                    : <Zap size={7} className="shrink-0 text-purple-700 dark:text-purple-300" />}
-                                  <span className={`truncate text-[6px] font-black uppercase tracking-wider ${overlay.tone === 'yellow' ? 'text-yellow-800 dark:text-yellow-200' : 'text-purple-800 dark:text-purple-200'}`}>
-                                    {overlay.name}
-                                  </span>
-                                </div>
-                              )}
-                              {booking ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void openBookingEditor(booking)}
-                                  aria-label={`Editar aula de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
-                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02] ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
-                                >
-                                  <div className="flex items-center gap-1 overflow-hidden">
-                                     <p className="text-[7px] font-black text-white uppercase truncate leading-tight">{booking.student}</p>
-                                  </div>
-                                  <div className="flex justify-between items-center mt-0.5">
-                                    <p className="text-[6px] font-bold text-emerald-100 uppercase">{booking.module}</p>
-                                  </div>
-                                </button>
-                              ) : overlay ? (
-                                <div className="w-full h-full rounded-md border border-dashed border-brand-border bg-brand-surface" />
-                              ) : isAvailable ? (
-                                <div className="w-full h-full bg-brand-surface border border-dashed border-emerald-500/50 rounded-md flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors cursor-default">
-                                  <span className="text-[7px] font-bold text-emerald-500/70 uppercase tracking-wider">LIVRE</span>
-                                </div>
-                              ) : (
-                                <div className="w-full h-full bg-slate-950 dark:bg-black rounded-md flex items-center justify-center opacity-80">
-                                  {/* Black for Occupied/Blocked */}
-                                </div>
-                              )}
+                    {gridRows.map(row => {
+                      if (row.kind === 'gap') {
+                        return (
+                          <tr key={`gap-${row.from}`}>
+                            <td className="text-center align-middle">
+                              <span className="text-[9px] font-bold text-brand-muted font-mono">{row.from}</span>
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                            <td colSpan={DAYS.length}>
+                              <button
+                                type="button"
+                                onClick={() => setCompactGrid(false)}
+                                className="ww-off w-full py-1.5 text-[10px] font-bold text-brand-muted hover:text-brand-text"
+                                title="Mostrar todos os horários"
+                              >
+                                {row.from} – {row.to} · {formatSlots(row.count)} sem agenda em nenhum dia
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const { time } = row;
+                      const isNowRow = nowSlot === time;
+                      return (
+                        <tr key={time}>
+                          <td className="text-center align-middle">
+                            <span className={`text-[10px] font-bold font-mono ${isNowRow ? 'text-rose-500' : 'text-brand-muted'}`}>{time}</span>
+                          </td>
+                          {DAYS.map((_, dIdx) => {
+                            const key = `${dIdx}-${time}`;
+                            const booking = bookings[key];
+                            const isAvailable = availableSlots.has(key);
+                            const reschedule = getRescheduleForSlot(dIdx, time);
+                            const trial = getTrialForSlot(dIdx, time);
+                            const isConflict = conflicts.has(key);
+                            const hitName = (name?: string) =>
+                              slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
+                            const matchSearch = hitName(booking?.student) || hitName(reschedule?.studentName) || hitName(trial?.studentName);
+                            const dimmed = slotSearch.trim() !== '' && (booking || reschedule || trial) && !matchSearch;
+                            const isTodayCol = dateForDayIndex(weekStart, dIdx) === todayYMD;
+                            const focused = inFocusWindow(dIdx, time);
+                            // O evento de UM dia (reposição/experimental) é uma
+                            // faixa POR CIMA da célula, não a célula inteira: a
+                            // aula fixa daquele horário continua visível embaixo.
+                            const overlay = reschedule
+                              ? { label: 'Reposição', name: reschedule.studentName, tone: 'amber' as const }
+                              : trial
+                                ? { label: trial.type === 'oral_test' ? 'Teste oral' : 'Experimental', name: trial.studentName, tone: 'violet' as const }
+                                : null;
+
+                            return (
+                              <td key={dIdx} className={`h-11 relative ${isTodayCol ? 'bg-tenant-primary/[0.04] rounded-xl' : ''}`}>
+                                {isNowRow && isTodayCol && (
+                                  <div className="ww-now" style={{ top: `${Math.round(slotProgress(now) * 100)}%` }} aria-hidden="true" />
+                                )}
+                                {overlay && (
+                                  <div
+                                    className={`ww-ghost tone-${overlay.tone} absolute inset-x-0 top-0 z-20 m-0.5 flex items-center gap-1 px-1.5 py-0.5 cursor-help bg-brand-surface`}
+                                    title={`${overlay.label} de ${overlay.name} — só em ${dateForDayIndex(weekStart, dIdx).split('-').reverse().join('/')}, não ocupa este horário nas outras semanas`}
+                                  >
+                                    {overlay.tone === 'amber' ? <Clock size={9} className="shrink-0" /> : <Zap size={9} className="shrink-0" />}
+                                    <span className="truncate text-[8px] font-black uppercase tracking-wider">
+                                      {overlay.label} · {overlay.name}
+                                    </span>
+                                  </div>
+                                )}
+                                {booking ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openBookingEditor(booking)}
+                                    aria-label={`Editar aula de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
+                                    title={`${booking.student} · ${booking.module}`}
+                                    className={`ww-block tone-emerald w-full h-full px-1.5 flex items-center gap-1.5 text-left cursor-pointer ${isConflict ? 'tone-rose ring-2 ring-rose-400' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
+                                  >
+                                    <span className="relative hidden lg:grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/20 text-[9px] font-black">{initials(booking.student)}</span>
+                                    <span className="relative min-w-0">
+                                      <span className="block text-[9px] font-black uppercase truncate leading-tight">{booking.student}</span>
+                                      <span className="block text-[8px] font-bold text-white/75 uppercase truncate">{booking.module}</span>
+                                    </span>
+                                  </button>
+                                ) : overlay ? (
+                                  <div className="w-full h-full ww-off" />
+                                ) : isAvailable ? (
+                                  <div className={`ww-well w-full h-full flex items-center justify-center ${focused ? 'ring-2 ring-emerald-500 bg-emerald-500/20' : ''}`}>
+                                    <span className="text-[8px] font-black text-emerald-600/70 dark:text-emerald-400/70 uppercase tracking-[0.18em]">livre</span>
+                                  </div>
+                                ) : (
+                                  <div className="ww-off w-full h-full" title="Fora da grade de horários deste professor" />
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-brand-muted">
-            <Users size={32} className="mb-3 opacity-50" />
-            <p className="text-xs font-bold">Selecione um professor</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-brand-muted gap-3">
+            <span className="ww-orb tone-brand h-16 w-16"><Users size={26} /></span>
+            <p className="text-sm font-black text-brand-text">Selecione um professor</p>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Assignment Modal */}
       {isAssignmentModalOpen && (

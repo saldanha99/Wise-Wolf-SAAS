@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, Scale, Wallet,
 } from 'lucide-react';
 import { User as UserType } from '../types';
+import { Kpi3D, PageHero3D, Towers3D } from './depth/Depth3D';
 import RecurringExpensesManager from './RecurringExpensesManager';
 import DreCategorizer from './DreCategorizer';
 import DreReportSettings from './DreReportSettings';
@@ -95,6 +96,25 @@ const DreGerencialPanel: React.FC<Props> = () => {
 
   useEffect(() => { void load(month); }, [month, load]);
 
+  // Tendência: resultado dos 6 meses que terminam no mês escolhido. Carrega à
+  // parte — o demonstrativo do mês não espera por ela.
+  const [trend, setTrend] = useState<{ month: string; resultado: number; receita: number }[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const months = recentMonths(12).filter(m => m <= month).sort().slice(-6);
+    setTrend(null);
+    void Promise.all(months.map(m => supabase.rpc('dre_gerencial', { p_month: m })))
+      .then(results => {
+        if (cancelled) return;
+        setTrend(results.map((r, i) => {
+          const d = r.data as Dre | null;
+          return { month: months[i], resultado: d && !d.error ? Number(d.resultado || 0) : 0, receita: d && !d.error ? Number(d.receita_liquida || 0) : 0 };
+        }));
+      })
+      .catch(() => { if (!cancelled) setTrend([]); });
+    return () => { cancelled = true; };
+  }, [month]);
+
   const monthOpts = recentMonths(12);
   const linhas = dre?.linhas || [];
   const linhasDe = (k: Kind) => linhas.filter(l => l.kind === k && Number(l.valor) !== 0);
@@ -104,27 +124,33 @@ const DreGerencialPanel: React.FC<Props> = () => {
   const divergeRegime = Math.abs(custoCaixa - custoCompetencia) >= 0.01;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600"><FileBarChart size={24} /></div>
-        <div>
-          <h2 className="text-xl font-bold text-brand-text">Resultado Gerencial (DRE)</h2>
-          <p className="text-sm text-brand-muted">Por competência — o custo da aula pertence ao mês em que ela aconteceu</p>
-        </div>
-        <select
-          value={month}
-          onChange={e => setMonth(e.target.value)}
-          className="ml-auto text-sm font-bold bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
-        >
-          {monthOpts.map(m => <option key={m} value={m}>{monthShort(m)}</option>)}
-        </select>
-        <button
-          onClick={() => void load(month)}
-          className="p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"
-        >
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
+    <div className="ww-stage space-y-6">
+      <PageHero3D
+        icon={<FileBarChart size={26} />}
+        eyebrow="Relatórios"
+        title="Resultado Gerencial (DRE)"
+        subtitle="Por competência — o custo da aula pertence ao mês em que ela aconteceu"
+        tone="violet"
+        actions={
+          <div className="flex items-center gap-2">
+            <select
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+              aria-label="Mês do resultado"
+              className="flex-1 sm:flex-none text-sm font-bold bg-brand-surface text-brand-text rounded-xl px-3 py-2.5 border border-brand-border shadow-sm"
+            >
+              {monthOpts.map(m => <option key={m} value={m}>{monthShort(m)}</option>)}
+            </select>
+            <button
+              onClick={() => void load(month)}
+              aria-label="Atualizar resultado"
+              className="ww-lift p-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-muted hover:text-brand-text shadow-sm"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        }
+      />
 
       {loading ? (
         <div className="py-16 text-center text-brand-muted"><RefreshCw size={24} className="animate-spin mx-auto" /></div>
@@ -142,37 +168,86 @@ const DreGerencialPanel: React.FC<Props> = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi
-              icon={<TrendingUp size={16} className="text-emerald-500" />}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <Kpi3D
+              icon={<TrendingUp size={20} />}
+              tone="emerald"
               label="Receita líquida"
               value={money(dre.receita_liquida)}
+              hint={`${dre.indicadores.alunos_atendidos} alunos · ${money(dre.indicadores.receita_por_aluno)}/aluno`}
             />
-            <Kpi
-              icon={<TrendingDown size={16} className="text-red-500" />}
+            <Kpi3D
+              icon={<TrendingDown size={20} />}
+              tone="rose"
               label="Custo dos serviços"
               value={money(dre.custo_servicos)}
               hint={`${dre.indicadores.aulas} aulas · ${money(dre.indicadores.custo_por_aula)}/aula`}
             />
-            <Kpi
-              icon={<Scale size={16} className="text-sky-500" />}
+            <Kpi3D
+              icon={<Scale size={20} />}
+              tone="sky"
               label="Lucro bruto"
               value={money(dre.lucro_bruto)}
               hint={`margem ${pct(dre.margem_bruta_pct)}`}
-              accent={dre.lucro_bruto >= 0 ? 'text-brand-text' : 'text-red-600'}
+              valueClassName={dre.lucro_bruto >= 0 ? '' : 'text-red-600'}
+              ring={dre.margem_bruta_pct !== null && dre.margem_bruta_pct >= 0 ? dre.margem_bruta_pct : null}
             />
-            <Kpi
-              icon={<Wallet size={16} className="text-indigo-500" />}
+            <Kpi3D
+              icon={<Wallet size={20} />}
+              tone={dre.resultado >= 0 ? 'violet' : 'rose'}
               label="Resultado do mês"
               value={money(dre.resultado)}
               hint={`margem ${pct(dre.margem_liquida_pct)}`}
-              accent={dre.resultado >= 0 ? 'text-emerald-600' : 'text-red-600'}
+              valueClassName={dre.resultado >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'}
             />
+          </div>
+
+          <div data-tour="dre-cascade" className="grid lg:grid-cols-2 gap-6">
+            <div className="ww-slab p-5">
+              <h3 className="text-sm font-black text-brand-text">Do faturamento ao resultado</h3>
+              <p className="text-[11px] text-brand-muted">Quanto sobra de cada etapa em {monthLabel(month)}.</p>
+              <Towers3D
+                height={130}
+                ariaLabel={`Cascata do resultado de ${monthLabel(month)}`}
+                format={v => money(v).replace(',00', '')}
+                data={[
+                  { key: 'rec', label: 'Receita', sublabel: 'líquida', value: dre.receita_liquida, tone: 'emerald', caption: 'Receita líquida' },
+                  { key: 'cus', label: 'Professores', sublabel: 'custo', value: dre.custo_servicos, tone: 'rose', caption: 'Custo dos serviços prestados' },
+                  { key: 'bru', label: 'Lucro', sublabel: 'bruto', value: dre.lucro_bruto, tone: 'sky', caption: 'Lucro bruto' },
+                  { key: 'des', label: 'Despesas', sublabel: 'operacionais', value: dre.despesas_operacionais, tone: 'amber', caption: 'Despesas operacionais' },
+                  { key: 'res', label: 'Resultado', sublabel: dre.resultado >= 0 ? 'positivo' : 'negativo', value: dre.resultado, tone: dre.resultado >= 0 ? 'violet' : 'rose', highlight: true, caption: 'Resultado do mês' },
+                ]}
+              />
+            </div>
+            <div className="ww-slab p-5">
+              <h3 className="text-sm font-black text-brand-text">Resultado nos últimos 6 meses</h3>
+              <p className="text-[11px] text-brand-muted">Mesma conta do mês, mês a mês. Torre vermelha = mês no prejuízo.</p>
+              {trend === null ? (
+                <div className="h-[190px] grid place-items-center text-brand-muted"><RefreshCw size={18} className="animate-spin" /></div>
+              ) : trend.length === 0 ? (
+                <p className="py-16 text-center text-xs text-brand-muted">Não foi possível montar a tendência.</p>
+              ) : (
+                <Towers3D
+                  height={130}
+                  ariaLabel="Resultado dos últimos seis meses"
+                  format={v => money(v).replace(',00', '')}
+                  data={trend.map(t => ({
+                    key: t.month,
+                    label: monthShort(t.month),
+                    sublabel: `receita ${money(t.receita).replace(',00', '')}`,
+                    value: t.resultado,
+                    tone: t.resultado >= 0 ? (t.month === month ? 'violet' : 'emerald') : 'rose',
+                    highlight: t.month === month,
+                    caption: `${monthLabel(t.month)}: resultado ${money(t.resultado)}`,
+                  }))}
+                />
+              )}
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-5 gap-6">
             {/* Demonstrativo em cascata */}
-            <div className="lg:col-span-3 bg-brand-surface border border-brand-border rounded-2xl p-5">
+            <div className="lg:col-span-3 ww-slab p-5">
               <h3 className="text-sm font-bold text-brand-text mb-1">Demonstrativo de {monthLabel(month)}</h3>
               <p className="text-[11px] text-brand-muted mb-4">Cada linha mostra de onde o número veio.</p>
 
@@ -202,7 +277,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
 
             <div className="lg:col-span-2 space-y-4">
               {/* Indicadores da operação */}
-              <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+              <div className="ww-slab p-5">
                 <h3 className="text-sm font-bold text-brand-text mb-3">Indicadores da operação</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <Indicador label="Aulas no mês" valor={String(dre.indicadores.aulas)} />
@@ -214,7 +289,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
 
               {/* Reconciliação com o caixa */}
               {caixa && (
-                <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+                <div className="ww-slab p-5">
                   <h3 className="text-sm font-bold text-brand-text mb-3">Por que difere do Fluxo de Caixa</h3>
                   <div className="space-y-1.5 text-sm">
                     <div className="flex justify-between gap-2">
@@ -275,15 +350,6 @@ const AlertaBox: React.FC<{ alerta: Alerta }> = ({ alerta }) => {
     </div>
   );
 };
-
-const Kpi: React.FC<{ icon: React.ReactNode; label: string; value: string; hint?: string; accent?: string }> =
-  ({ icon, label, value, hint, accent }) => (
-    <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
-      <div className="flex items-center gap-2 text-brand-muted text-[10px] font-bold uppercase mb-1">{icon}{label}</div>
-      <p className={`text-lg font-black ${accent || 'text-brand-text'}`}>{value}</p>
-      {hint && <p className="text-[10px] text-brand-muted mt-0.5">{hint}</p>}
-    </div>
-  );
 
 const Grupo: React.FC<{ titulo: string }> = ({ titulo }) => (
   <p className="text-[10px] font-black uppercase text-brand-muted pt-4 pb-1">{titulo}</p>

@@ -987,6 +987,22 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'crm-tabs',view:'crm',title:'Relatórios',text:'Na aba Relatórios você vê o funil de conversão etapa por etapa, os leads por dia, de onde vêm os leads (com a conversão de cada origem) e em que etapa eles estão parando. Tudo calculado dos mesmos leads do quadro. O quadro de arrastar continua igual, com as mesmas travas.'},
     ],
   },
+  {
+    id:'2026-11-01-zzz-w-agenda-e-dinheiro-em-3d',title:'Agenda, dinheiro e professores de cara nova',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'schedule-teacher-loads',view:'schedule_explorer',title:'Quem tem espaço',text:'Na lista de professores do Mapa de Aulas, cada um mostra quantas aulas fixas tem e quantos horários livres sobram, com a barra de ocupação. Ordene por "Mais horários livres" para achar rápido quem pode receber aluno novo.'},
+      {target:'schedule-week-portrait',view:'schedule_explorer',title:'O retrato da semana',text:'Em cima da grade ficam a ocupação, as aulas de cada dia (torre vermelha = dia quase cheio) e "Onde cabe aluno novo": os blocos de 1 h ou mais livres. Toque num bloco para ele acender na grade. As horas em que ninguém trabalha ficam recolhidas — desmarque "Esconder horas sem agenda" para ver tudo. A linha vermelha marca o horário de agora.'},
+      {target:'payments-month-portrait',view:'student-payments',title:'O mês em quatro números',text:'Em Mensalidades você vê o que já entrou no caixa, o cartão aprovado que ainda não caiu, o que vence nos próximos 7 dias e o que está atrasado. Os botões abaixo filtram a lista sem recarregar, e cada cobrança em aberto diz em quantos dias vence ou há quantos dias está atrasada.'},
+      {target:'dre-cascade',view:'dre',title:'Do faturamento ao resultado',text:'No DRE, as torres mostram quanto sobra em cada etapa do mês — receita, custo com professores, lucro bruto, despesas e resultado — e, ao lado, o resultado dos últimos 6 meses. A conta é a mesma do demonstrativo logo abaixo.'},
+      {target:'teachers-cards',view:'teachers',title:'Professores em cartões',text:'Cada professor virou um cartão com alunos, ofensiva e situação do Turbo. Esses números agora vêm da mesma regra da Ofensiva do Turbo — antes o topo contava professores "em Turbo" que a regra oficial não reconhecia. As ações (agenda, editar, financeiro, ausência, suspender) continuam no pé do cartão.'},
+    ],
+  },
+  {
+    id:'2026-11-01-zzz-x-minha-agenda-nova',title:'Sua agenda de cara nova',roles:['TEACHER'],
+    steps:[
+      {target:'agenda-week-towers',view:'schedule',title:'Sua semana num olhar',text:'Em Gestão de horários as torres mostram quantas aulas você tem em cada dia e quantos horários livres sobram. Ao lado, "Repetir seg–sex" copia os horários do dia escolhido para os outros dias úteis, e "Fechar o dia" limpa um dia inteiro. Nada vale até você tocar em Salvar agenda — o cartão Alterações avisa quando falta salvar.'},
+    ],
+  },
 ];
 
 /**
