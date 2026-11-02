@@ -4,6 +4,7 @@ import { Video, Search, ExternalLink, Copy, CheckCircle, Smartphone, Monitor, Sh
 import { supabase } from '../lib/supabase';
 import { safeMeetingLink } from '../lib/meetingLink';
 import { User as UserType, UserRole } from '../types';
+import MyLessonLinks from './lessonLinks/MyLessonLinks';
 
 interface MeetingLinksViewProps {
     user: UserType;
@@ -149,11 +150,14 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
             <header>
                 <h2 className="text-3xl font-black text-brand-text tracking-tight">Central de Acessos</h2>
                 <p className="text-brand-muted mt-1">
-                    {user.role === UserRole.TEACHER
-                        ? 'Acesse e gerencie as salas virtuais dos seus alunos.'
-                        : 'Sua sala de aula fixa para todos os encontros virtuais.'}
+                    Cada aula tem a sua sala da escola no Google Meet, com o mesmo link para aluno e professor.
+                    O link reserva abaixo só vale quando a aula não tem sala da escola.
                 </p>
             </header>
+
+            {(user.role === UserRole.TEACHER || user.role === UserRole.STUDENT) && (
+                <MyLessonLinks role={user.role === UserRole.TEACHER ? 'TEACHER' : 'STUDENT'} />
+            )}
 
             {user.role === UserRole.STUDENT && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -164,9 +168,9 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             <div className="p-4 bg-white/10 rounded-2xl w-fit mb-6 sm:mb-8 backdrop-blur-md border border-white/20">
                                 <Video size={32} className="text-white" />
                             </div>
-                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Sua Sala Virtual</h3>
+                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Seu link reserva</h3>
                             <p className="text-blue-100 text-base sm:text-lg mb-7 sm:mb-10 max-w-md leading-relaxed">
-                                Este é o seu link permanente. Utilize-o para todas as suas aulas com qualquer professor da nossa rede.
+                                Use só quando a aula não tiver sala da escola (a lista acima diz qual link vale para cada aula).
                             </p>
 
                             {studentLink ? (
@@ -234,7 +238,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             />
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 px-6 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30 font-bold text-xs flex items-center gap-3">
-                            <Zap size={16} fill="currentColor" /> Alunos vinculados à sua conta
+                            <Zap size={16} fill="currentColor" /> Link reserva de cada aluno (vale só sem sala da escola)
                         </div>
                     </div>
 

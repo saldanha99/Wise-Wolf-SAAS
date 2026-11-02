@@ -64,6 +64,8 @@ const TeacherReschedules = lazy(() => import('./components/TeacherReschedules'))
 const TeacherManagement = lazy(() => import('./components/TeacherManagement'));
 const OralTestsPanel = lazy(() => import('./components/OralTestsPanel'));
 const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
+const LiveLessonsBoard = lazy(() => import('./components/lessonLinks/LiveLessonsBoard'));
+const LessonStartingSoon = lazy(() => import('./components/lessonLinks/LessonStartingSoon'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
@@ -193,6 +195,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'recruiting', label: 'Recrutamento', group: 'Pessoas' },
     { tab: 'hr', label: 'Recursos Humanos', group: 'Pessoas', keywords: 'rh' },
     { tab: 'schedule_explorer', label: 'Mapa de Aulas', group: 'Aulas', keywords: 'agenda horários' },
+    { tab: 'live-lessons', label: 'Ao vivo', group: 'Aulas', keywords: 'link meet sala entrar agora' },
     { tab: 'lesson-advances', label: 'Antecipações', group: 'Aulas', keywords: 'adiantamento viagem competência' },
     { tab: 'attendance-disputes', label: 'Verificar Presença', group: 'Aulas' },
     { tab: 'trials', label: 'Agendar Experimental', group: 'Aulas' },
@@ -358,6 +361,7 @@ const App: React.FC = () => {
   const [teacherTermsRequired, setTeacherTermsRequired] = useState(false);
   // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
+  const [lessonSoonActive, setLessonSoonActive] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -1439,6 +1443,7 @@ const App: React.FC = () => {
       'lesson-records': user.role === UserRole.STUDENT ? <StudentLessonRecords /> : null,
       'profile': <TeacherProfile />,
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
+      'live-lessons': <LiveLessonsBoard />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'attendance-disputes': <AttendanceDisputes user={user} tenantId={currentTenant?.id} />,
       'lesson-quality': <LessonQualityCenter />,
@@ -1624,6 +1629,7 @@ const App: React.FC = () => {
                       'teachers': 'Professores',
                       'oral-tests': 'Testes Orais',
                       'schedule_explorer': 'Explorador de Agenda',
+                      'live-lessons': 'Ao vivo',
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'margin': 'Custo e Margem',
@@ -1943,7 +1949,13 @@ const App: React.FC = () => {
           <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && (
+      {/* Aula começando: aviso 10 min antes, com o link da aula (aluno e professor). */}
+      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && (
+        <Suspense fallback={null}>
+          <LessonStartingSoon key={user.id} userId={user.id} role={user.role === UserRole.STUDENT ? 'STUDENT' : 'TEACHER'} onActiveChange={setLessonSoonActive} />
+        </Suspense>
+      )}
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

@@ -2,7 +2,7 @@ import type { ElementType } from 'react';
 import {
   LayoutDashboard, CalendarClock, GraduationCap, Users, DollarSign, FileBarChart,
   ShieldAlert, Zap, CalendarOff, Mic, Book, Target, Brain, Globe, Gift, Settings,
-  MessageCircle,
+  MessageCircle, Radio,
 } from 'lucide-react';
 
 /**
@@ -49,6 +49,8 @@ export const ADMIN_NAV: NavGroup[] = [
   // ── Dia a dia ─────────────────────────────────────────────────────────────
   { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Dia a dia', primary: true, tabs: [] },
   { id: 'schedule_explorer', label: 'Mapa de Aulas', icon: CalendarClock, section: 'Dia a dia', primary: true, tabs: [] },
+  // As aulas de hoje com o link de cada uma; a direção entra pela conta central.
+  { id: 'live-lessons', label: 'Ao vivo', icon: Radio, section: 'Dia a dia', tabs: [] },
   {
     id: 'students', label: 'Alunos', icon: GraduationCap, section: 'Dia a dia', primary: true,
     tabs: [

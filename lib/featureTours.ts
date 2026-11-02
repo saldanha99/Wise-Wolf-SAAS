@@ -1003,6 +1003,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'agenda-week-towers',view:'schedule',title:'Sua semana num olhar',text:'Em Gestão de horários as torres mostram quantas aulas você tem em cada dia e quantos horários livres sobram. Ao lado, "Repetir seg–sex" copia os horários do dia escolhido para os outros dias úteis, e "Fechar o dia" limpa um dia inteiro. Nada vale até você tocar em Salvar agenda — o cartão Alterações avisa quando falta salvar.'},
     ],
   },
+  {
+    id:'2026-11-02-ao-vivo-e-links-das-aulas',title:'Ao vivo: as aulas de hoje com o link',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'live-lessons-kpis',view:'live-lessons',title:'Quem está em aula agora',text:'Em Ao vivo aparecem as aulas de hoje: as que estão acontecendo, as dos próximos 30 minutos e as de mais tarde, com professor, aluno e o link de cada uma — o mesmo que professor e aluno recebem. As experimentais entram também.'},
+      {target:'live-lessons-list',view:'live-lessons',title:'Entrar sem atrapalhar',text:'Na sala da escola, "Entrar agora" abre o Meet na conta central, dona da sala: você entra direto, sem pedir para participar. Desligue câmera e microfone ao abrir. O Meet não tem participante invisível: seu nome aparece na lista. Em link pessoal é preciso ser admitido.'},
+    ],
+  },
+  {
+    id:'2026-11-02-links-das-aulas-e-aviso',title:'O link de cada aula, e um aviso 10 minutos antes',roles:['TEACHER','STUDENT'],
+    steps:[
+      {target:'lesson-links-today',view:'meeting_links',title:'O link certo de cada aula',text:'Em Links aparecem as aulas de hoje e amanhã com o link de cada uma. Na sala da escola, aluno e professor usam o mesmo link. Se a sala ainda está sendo preparada, o link aparece ali sozinho — não use outro. Dez minutos antes da aula, a plataforma abre um aviso com o botão para entrar.'},
+    ],
+  },
 ];
 
 /**

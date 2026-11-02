@@ -40,7 +40,8 @@ escopo `drive` (leitura da planilha de presença).
 
 **Fluxo (cron do `google-meet`, a cada 15 min, depois da fila das aulas):**
 
-1. **Sala:** experimental `CLAIMED` nas próximas 24 h, professor com conta
+1. **Sala:** experimental `CLAIMED` nos próximos 30 dias (antes de
+   `20261102140000` eram 24 h: a sala só nascia na véspera), professor com conta
    Google confirmada e sem link registrado no appointment →
    `createSpace({ attendanceReport: true, artifacts: false })` (transcrição e
    anotações do Gemini **desligadas**: o lead não aceitou termo), professor como
@@ -48,7 +49,7 @@ escopo `drive` (leitura da planilha de presença).
    tenta de novo (15 min × tentativas, até 5). Sem coanfitrião, nenhum link sai.
 2. **Link:** o briefing do professor (`trial_teacher_briefings`) usa o link do
    appointment antes do link pessoal; o `funnel-sweeper` (bloco H) manda o link
-   ao lead uma vez, até 6 h antes (`automation_sent` kind `TRIAL_MEET_LINK`),
+   ao lead uma vez, assim que a sala fica pronta (antes: só 6 h antes) (`automation_sent` kind `TRIAL_MEET_LINK`),
    dizendo que só entrada e saída são registradas. O atendimento ("qual o
    link?") já lia `appointments.meeting_link`.
 3. **Conferência:** 40 min depois do início, até 6 h. Conferência aberta
@@ -81,3 +82,30 @@ select appointment_id, state, outcome, evidence, error_code, attempts
 
 e `docker logs supabase-edge-functions --since 1h | grep trial` na VPS.
 Treinamento não entra (o appointment é da trainer); continua manual.
+
+## 3. Links das aulas num lugar só (02/11/2026)
+
+Migration `20261102140000_links_das_aulas_e_experimental_no_aceite.sql`, teste
+`supabase/tests/links_das_aulas_e_experimental_no_aceite.sql`.
+
+`public.my_lesson_links(p_from, p_to)` (logado; até 14 dias) devolve as aulas
+do período com o link que vale, pela mesma regra de `lib/lessonRooms.ts`:
+sala da escola pronta → `escola`; sala prevista e ainda não pronta (com aceite,
+mais de 15 min antes) → `preparando`, sem link; senão o link pessoal do aluno →
+`pessoal`; nada → `sem_link`. Experimental entra para o professor e a direção.
+Aluno vê só as dele; professor, as dele; direção e coordenação, todas, mais o
+e-mail da conta central.
+
+Usam essa resposta: a aba **Links** (aluno e professor), o **aviso de 10
+minutos** (`LessonStartingSoon`, aberto para aluno e professor logados, de 10
+min antes a 10 min depois do início; fechar vale para aquela aula no
+aparelho) e o **Ao vivo** da direção (menu Dia a dia → Ao vivo).
+
+**Ao vivo / "entrar fantasma":** a sala da escola é da conta central; o link
+abre com `?authuser=<conta central>` e entra direto, sem pedir para
+participar. O Google Meet não tem participante invisível — o nome aparece na
+lista. Link pessoal exige ser admitido.
+
+⚠️ Professor que pediu para não registrar as aulas (Mateus, 28/09) não ganha
+sala da escola: as aulas dele seguem no link pessoal do aluno ou ficam
+`sem_link` quando o aluno não tem link cadastrado.

@@ -4667,3 +4667,14 @@ depois, professor e lead ≥ 10 min juntos → aula lançada e paga; lead ausent
 `private.trial_meet_settings` (Wise Wolf ligada). Migration `20261101020000`,
 teste SQL e `google-meet/trial-rooms.test.ts` no release. Fluxo:
 [runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).
+
+### 02/11/2026 — Links das aulas, aviso de 10 min e Ao vivo da direção
+
+Sala do Meet da experimental nasce no aceite (janela 24 h → 30 dias em
+`trial_meet_backend`) e o link vai ao lead logo que fica pronta.
+`my_lesson_links` é a fonte única dos links para a aba Links, o pop-up de
+10 minutos antes (aluno e professor) e a tela "Ao vivo" (direção entra pela
+conta central com `authuser`; Meet não tem participante invisível). Professor
+com pedido para não registrar não tem sala da escola. Migration
+`20261102140000`, teste SQL e tours no release:
+[runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).
