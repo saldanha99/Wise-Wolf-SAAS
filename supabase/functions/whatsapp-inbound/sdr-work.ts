@@ -1,10 +1,14 @@
 /** One database lease per tenant/contact, shared by webhook and recovery worker. */
+import type { WhatsappEntry } from "./lead-entry.ts";
+
 export interface SdrInput {
   instance: string;
   text: string;
   pushName: string;
   isMedia: boolean;
   msgId: string;
+  // Pista de origem da 1ª mensagem; o banco a preserva nas seguintes.
+  entry?: WhatsappEntry | null;
 }
 
 export async function enqueueSdrInput(

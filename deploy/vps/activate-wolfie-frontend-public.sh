@@ -35,7 +35,7 @@ set +a
 DEPLOY_WOLFIE_APP_DIR="${DEPLOY_WOLFIE_APP_DIR:-/opt/wisewolf/wolfie-frontend}"
 DEPLOY_WOLFIE_PUBLIC_URL="${DEPLOY_WOLFIE_PUBLIC_URL:-https://wolfie.wisewolflanguage.com.br}"
 DEPLOY_WOLFIE_HOSTNAME="${DEPLOY_WOLFIE_HOSTNAME:-wolfie.wisewolflanguage.com.br}"
-[[ "$DEPLOY_HOST" = "187.127.46.251" ]]
+[[ "$DEPLOY_HOST" = "179.236.255.4" ]]
 [[ "$DEPLOY_WOLFIE_APP_DIR" = "/opt/wisewolf/wolfie-frontend" ]]
 [[ "$DEPLOY_WOLFIE_HOSTNAME" = "wolfie.wisewolflanguage.com.br" ]]
 [[ "$DEPLOY_WOLFIE_PUBLIC_URL" = "https://$DEPLOY_WOLFIE_HOSTNAME" ]]

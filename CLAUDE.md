@@ -1,4 +1,129 @@
+## 02/10/2026 — Retomada das cobranças diárias adiadas por cadência
+
+A rotina diária tem um cron privado de retomada a cada dois minutos entre 09h
+e 19h58 Brasília. Ele seleciona somente intenções WhatsApp do dia em CLAIMED,
+lease vencida, zero POSTs e motivo throttled_*. Revalida a elegibilidade local e
+chama o endpoint oficial, que revalida Asaas e a cerca durável. Nunca retoma
+SENT/SUBMITTING/UNKNOWN, dias anteriores, aluno que pagou ou escola sem opt-in.
+Migration `20261002195356_retry_daily_student_collections.sql`, teste SQL com
+rollback e runbook `docs/runbooks/daily-student-collections.md` registrados no
+release. É conclusão de envio pendente; não é uma segunda cobrança no dia.
+
 # Wise Wolf SAAS — CLAUDE.md
+
+### 02/10/2026 — Boas-vindas com acesso pela fila da matrícula
+
+Conclusão não exige mais feedback pedagógico da experimental (a emissão já não
+exigia); mantém as guardas financeiras e do CRM. `ENROLLMENT_STUDENT_CONFIRMED`
+leva login, portal verificado e orientação de senha pela fila durável. Worker e
+cerca revalidam identidade e origem; recibo aceito marca `wa_welcome_sent` sem
+reescrever `contract_sent_at`. A página não envia em paralelo com a fila.
+Sem backfill de avisos antigos. Migrations `20261002195026`/`20261002195728`,
+testes SQL e tour da direção no release. Rastreio e reparos autorizados de Maria
+Izabela/André/Cleice, atribuição retroativa da Maria à Gabriela com R$109 pendentes
+até a PRIMEIRA MENSALIDADE (nunca taxa), e acompanhamento de liquidação:
+[runbook](docs/runbooks/enrollment-welcome-and-access.md).
+
+### 02/10/2026 — Cobrança diária em WhatsApp e e-mail
+
+A direção autorizou cobrança diária por ambos os canais. O opt-in em
+`daily_payment_collection_settings` troca os marcos da escola pelo fluxo
+`notify-payment-due/daily.ts`, no cron existente às 09h Brasília, todos os dias.
+Cada dia usa o calendário local. Revalida pagamento não excluído e OVERDUE no
+Asaas, cliente/assinatura do aluno, vínculo e atividade atuais, sem fixture ou
+encerramento em andamento. Não muda status financeiro para autorizar envio.
+Dependente usa responsável financeiro; e-mail autenticado e endereço coincidente.
+WhatsApp e e-mail independentes e duráveis por fatura/dia; resultado incerto não
+autoriza um segundo POST naquele dia. Faturas antigas sem vínculo ativo não
+entram na rotina. Texto firme, com link, regularização/negociação, sem ameaça
+inventada. Migration `20261002192214` e teste transacional registrados no release,
+teste Deno de identidade/cancelamento/dia/canais/idempotência. Tour da direção.
+Fluxo e execução pontual: [runbook](docs/runbooks/daily-student-collections.md).
+
+### 01/10/2026 — Confirmação privada de repasses pagos
+
+A direção faz o PIX do professor e usa **Confirmar PIX feito**, pela RPC
+`confirm_teacher_payout`: grava `paid_at` e `PIX_MANUAL`, preserva NF/isentos e
+prepara o aviso privado. Não inicia transferência. Tentativa Asaas vinculada
+exige conciliação; no caminho integrado, só `COMPLETED` com identidade correta
+preenche a data e prepara a confirmação. Fechamento do mês e aprovação de NF
+não equivalem a pagamento. No saque, `set_vendor_withdrawal_status(...,'PAID')`
+prepara o aviso ao afiliado depois de registrar a baixa.
+
+Dois tipos na fila oficial: `TEACHER_PAYOUT_CONFIRMED` e
+`AFFILIATE_PAYOUT_CONFIRMED`, sempre pela instância central para o telefone do
+próprio perfil do tenant. Valor/competência/data saem da fonte financeira. Uma
+intenção por repasse; revalidação imediatamente antes do envio bloqueia telefone,
+tenant, valor ou pagamento alterados. Fixtures suprimidos; contato ausente é
+mostrado à direção na confirmação. Sem backfill de pagamentos históricos.
+
+Migration `20261001202946` e teste transacional `payout_confirmation_notifications.sql`
+registrados no release; testes do botão manual e de roteamento. Tours da direção,
+professor, afiliado e aluno com conta afiliada vinculada. O motor de novidades
+agora atende SALESPERSON sem inventar tour de boas-vindas para esse papel.
+PIX Asaas permanece sujeito às três flags de homologação/habilitação existentes.
+
+### 01/10/2026 — Saques de afiliados e rateio com comissão/Turbo
+
+Novo pedido de saque entra na fila oficial para o canal Financeiro, com fallback
+Direção/Gestão. O envio revalida pedido, tenant, destino e texto; fixtures não
+entram na fila. Aprovação continua manual e **não transfere dinheiro**: conferir
+o PIX na ficha, efetuar o repasse e só depois marcar pago. Não há reenvio ou
+backfill de pedidos anteriores.
+
+A base operacional do rateio desconta salário previsto pela régua canônica,
+incluindo Turbo, **e a comissão confirmada/paga da matrícula uma única vez**, no
+primeiro pagamento mensal vinculado à oferta. Taxa de matrícula e mensalidades
+seguintes não repetem essa comissão. Atribuição retroativa só entra com vendor e
+autorização registrados na metadata da oferta. Resultado negativo implica base
+e dízimo zero; o déficit aparece no aviso. Essa prévia não substitui o lucro
+final do DRE, que considera as demais despesas/taxas e a folha realizada.
+
+O contexto do bot da gestão, avisos individuais, fechamento mensal e tela de
+rateio usam essa base. O custo docente já seguia `teacher_student_rate`; agora
+os avisos explicitam Turbo e as tarifas aplicadas ao aluno. A regra vigente é
+`rolling_30_days` (não mês fechado): 30 dias sem falta confirmada do professor,
+carteira mínima e sem contestação aberta. Na Wise Wolf, desde 09/09, as posições
+1–6 têm R$ 8/aula e 7+ R$ 10,50/aula quando elegíveis; Turbo ativo não eleva toda
+a carteira. Preservar eventuais pisos contratuais por aula.
+
+Migration `20261001164903`, teste transacional
+`supabase/tests/affiliate_net_payment_split.sql` e tour da direção registrados
+no release. O fixture de integridade de antecipação usa o mês da data original
+(`today-7`) para escolher uma competência anterior, inclusive na virada do mês.
+Fluxo detalhado: [runbook](docs/runbooks/affiliate-withdrawals-and-net-split.md).
+
+### 30/09/2026 — Encaminhamento do acompanhamento e experimental concluída
+
+`care_begin_handoff` faz a tomada única do encaminhamento; o trigger ativa a
+trava canônica com `handoff_requires_release`. O prazo visual de 72 h não libera
+essa trava: a direção usa Devolver para IA. A inbox mostra esse estado mesmo após
+o prazo. Mensagens fragmentadas aguardam 8 s; somente a última pode responder,
+com releitura após o modelo e antes de marcar reposição. HANDOFF não cai no
+recado genérico. Falha de consulta interrompe o atendimento automático.
+
+`reconcile_completed_trial_lead` (somente service_role) liga CRM a uma única
+experimental concluída, no mesmo tenant e telefone, sem fixture nem conflito,
+com auditoria e preservando handoff/estado terminal. Existência de aula concluída
+bloqueia novo agendamento mesmo quando o contexto de fechamento envelhece. O
+treinamento de novos leads deixa de entrar no fechamento; pergunta sobre o
+período da Wise Wolf recebe 7h–22h30, sujeito à confirmação do professor, sem
+confundir esse período com slots livres da experimental. Migration
+`20260930203752` e teste transacional `care_handoff_completed_trial.sql` no
+release; testes de fragmentação e política comercial. Reparos exatos: vínculo
+de Marcelo à aula de 22/09 e trava do encaminhamento de Verônica, sem mensagens,
+contratos, reservas ou alteração do pedido de cancelamento. Backup prévio:
+`/opt/wisewolf/backups/care-trial-before-20260930.sql`.
+
+### 28/09/2026 — Número de confirmação não cai no acompanhamento semanal
+
+`routeLessonQualityReply` intercepta 1/2/3 sem citação quando há auditoria canônica
+recente, enviada à mesma escola/instância/destino, e pede link ou RESPONDER; nunca
+grava presença por inferência nem afrouxa contato verificado. Sem auditoria, o
+número continua disponível aos demais menus. Consulta falhou → interrompe, não
+cai na IA. `careReplySpeaksAsStudent` veta inversão de papéis e entrega a humano
+sem enviar resposta/resumo inventado. Regressões nos testes já registrados dos
+dois módulos. Histórico e confirmações existentes permanecem intactos.
 
 Guia técnico para o Claude Code neste projeto.
 
@@ -7,9 +132,18 @@ Guia técnico para o Claude Code neste projeto.
 ## Stack do Projeto
 
 > ⚠️ **NÃO usamos a nuvem da Supabase.** Tudo roda na VPS própria
-> (`187.127.46.251`, host SSH `wisewolf-vps`). O que roda lá é a **stack Supabase
+> (`179.236.255.4`, host SSH `wisewolf-vps`). O que roda lá é a **stack Supabase
 > self-hosted** — não é PostgreSQL puro. Confundir as duas coisas leva a desligar
 > container achando que é sobra, ou a tentar deploy pelo caminho errado.
+>
+> 🚚 **Desde 16/10/2026 a VPS é a da Everglades** (antes: `187.127.46.251`, a VPS
+> da Forza Motos, que não hospeda mais o Wise Wolf). Mesmas pastas em
+> `/opt/wisewolf`. O que mudou: quem publica os domínios é o **Caddy da
+> Everglades** (`/opt/everglades/Caddyfile`, bloco "Wise Wolf"), não mais o
+> Traefik — os labels `traefik.*` dos composes não têm efeito lá. Domínio novo
+> ou mudança de header = editar esse bloco, `caddy validate` e `caddy reload`
+> no container `everglades-proxy`. A VPS é compartilhada com o site da Everglades
+> e o Edital Lei Seca: nada de `docker system prune`/restart geral.
 
 - **Frontend:** **Vite** + React + TypeScript + Tailwind CSS (`vite build`).
   Não é Next.js — não existe `next.config.*` nem App Router. `App.tsx` na raiz.
@@ -80,6 +214,688 @@ curto, sem seções). Celular não muda: gaveta + barra inferior.
   porque no layout de topo a sidebar (e o rodapé dela) some no desktop.
 - ⚠️ Preferência de layout **não é dado de negócio** — não vai para `profiles` (coluna
   nova ali exige `profileColumns.ts` + auditoria).
+
+---
+
+## Wise Wolf Hub — a Biblioteca é o produto de entrada para o professor autônomo ✅
+
+> **Decisão da direção (17/09/2026):** o Hub vende **estrutura de materiais por nicho × nível**
+> para o professor autônomo usar com os alunos dele (Professor Essencial R$59 = só biblioteca);
+> Educador IA/Wolfie são expansão e o **tenant (Professor Negócio) é o upsell**. Todo o acervo
+> é de autoria da Wise Wolf, liberado para licenciamento por assinatura.
+
+**Estado medido antes:** catálogo "aberto" desde 26/08 com **1 item** (e a prévia dele era outro
+PDF); 2 contas de QA, 0 trials, 0 checkouts, 0 leads na história. Estava no ar sem estoque.
+
+**O trilho de publicação (não invente outro):** `pedagogical_materials` → consentimento do diretor
+(`hub_catalog_opt_in`, `hub_rights_basis`, `hub_rights_declaration`, `hub_preview_source_path`) →
+verificação por **outro** ator (`hub_commercial_approved`, `hub_rights_verified_by`, SUPER_ADMIN)
+→ edge `sync-hub-material` copia FULL e PREVIEW para o bucket privado `hub-library` → trigger
+`hub_sync_pedagogical_material_catalog` espelha em `hub_content_items` (ativo/publicado). Guardas:
+`hub_material_object_has_provenance` (o arquivo tem de estar em `materials` sob
+`<tenant>/<uid>/<uuid>.pdf` com `storage.objects.owner_id` de perfil do tenant),
+`hub_validate_material_publication_sources`, e `private.hub_catalog_is_ready()` (fail-closed).
+
+- ✅ **35 materiais da escola publicados em 17/09/2026** pelo trilho acima, com prévia GERADA
+  (2–3 páginas iniciais, marca d'água "AMOSTRA · WISE WOLF HUB" + rodapé; script em sessão, não
+  no repo). Curadoria feita por SQL com `auth.uid()` nulo (caminho previsto para service jobs),
+  `requested_by` = diretor, `verified_by` = SUPER_ADMIN, declaração cita a autorização da direção.
+- ⚠️ **Upload com service role não carrega `owner_id`** — a provenance falha. Depois de subir a
+  prévia, `update storage.objects set owner_id = <uid do diretor>` para os objetos novos.
+- ⚠️ **`sync-hub-material` processa 10 por chamada** e o worker morre em 150 s: chame com
+  `materialIds` em lotes de ≤5 (35 itens = 7 chamadas, todas < 10 s).
+- ⚠️ **Nicho NÃO carrega nível.** `B2_GERAL`, `BUSINESS_ENGLISH_B2`, `TOEFL_TRIAL_LESSON_B1B2` e
+  `B1_TOEFL` foram remapeados para `GENERAL`/`BUSINESS`/`TOEFL_IELTS` (e apagados de
+  `tenant_niches`); o Hub só tem rótulo para os nichos base (`NICHE_META` do
+  `MaterialsLibrary`) — chave custom apareceria crua no catálogo.
+- **Livros no Hub** (`hub_collections`) não nascem sozinhos: espelhar `pedagogical_collections`
+  por título e gravar `collection_id`/`part_number` nos itens, senão o modo "Pastas" não agrupa.
+  Hoje: BOOK A1 (5), BOOK A2 (3), BOOK B2 (5), Business English B2 (8), KIDS A1 (5 — o "PART 5"
+  da escola é o mesmo arquivo do PART 4, ficou fora), TOEFL B1 (6) + avulsos.
+- **Fora do catálogo de propósito:** "Teste" (é o onboarding interno de professores),
+  "COMO MONTAR AULA?" (metodologia interna) e o KIDS PART 5 duplicado.
+- **Órfãos recuperados (17/09, a pedido da direção):** dos 18 itens inativos sem fonte (material
+  apagado da escola depois do espelho de julho), **6 eram únicos** e foram ativados direto em
+  `hub_content_items` — FULL continua em `hub-library/pedagogical/<id antigo>/material.pdf`,
+  prévia gerada em `pedagogical/<item id>/preview.pdf` (`metadata.source =
+  curated_recovery_20260917`): English for Travelers A1 (2), Cyber Wolf IT A1, Wise Wolf Part 3
+  A2 TI Edition, BOOK B1 WISE WOLF Part 1 (livro B1 criado no Hub), TOEFL Trial Lesson B1/B2.
+  Os outros 12: 10 eram **cópias byte a byte ou de conteúdo** de itens já publicados (TOEFL
+  módulos, Business Units 1,2 e 17-20), "Onboarding do Professor" é MATERIAL INTERNO. ⚠️ Esses 6
+  **não existem na biblioteca da escola** — editar título/nicho é SQL no Hub, não a tela.
+- **Item órfão "English for IT Students"** (fonte apagada) foi mantido: prévia própria em
+  `pedagogical/b727e699…/preview.pdf`, nicho TECH. Total no ar: **42 itens, 7 livros**.
+- **Lacunas de estoque** (o que a promessa "por nicho e nível" ainda não cobre): Kids acima de
+  A1, Business abaixo de B2, Viagem/Tech só A1–A2, Medicina vazio, C1/C2, Geral B1 com uma
+  parte só. O que cobre isso é o **gerador de material** abaixo.
+
+**Gerador de material (Educador IA, desde 18/09/2026):** aba Educador IA do portal tem dois
+modos — *Gerar material* (default) e *Planner de aula*. O gerador não precisa de perfil de
+aluno: tipo (`worksheet | quiz | vocab_cards | grammar_drill | reading | conversation`) ×
+nicho × nível × tema → `pedagogical-content` com `hubMode: true, action: "material"`
+(`components/hub/HubMaterialGenerator.tsx`).
+- **Servidor:** `pedagogical-content/hub-material.ts` (puro, testado) tem o prompt, o
+  **schema estrito por tipo** (structured output, `strict: true` — todo objeto com
+  `additionalProperties: false` e `required` completo, sem `minItems`) e a normalização, que
+  passa cada questão de múltipla escolha pela **auditoria de gabarito do `wolfie-activity`**
+  e descarta a reprovada (`dropped_items`). Reprovou o material inteiro → retry no modelo de
+  mais precisão; ainda assim → 502 e **a reserva é liberada, não cobra**.
+- **Cota:** a mesma `educator_ai.generate` do planner (Descoberta 2, **Essencial 3/mês**
+  — migration `20260918030000`, decisão da direção de 18/09; Pro 40/mês, Studio 120/mês).
+  Plano com limite 0 vê a tela de bloqueio. Reserva → geração → `hub_educator_materials` →
+  commit; idempotente por `requestKey`.
+  ⚠️ **Cota de plano do Hub muda por MIGRATION, nunca por UPDATE na mão**: o seed de
+  `marketing_hub_foundation` roda a cada release com `on conflict do update` e devolveria
+  o valor antigo no deploy seguinte.
+- **Tabela `hub_educator_materials`** (migration `20260918020000`): escrita só service_role,
+  leitura/apagar pelo criador ou OWNER/ADMIN da conta (mesmo desenho de `hub_educator_plans`).
+  Teste `supabase/tests/gerador_de_material_do_hub.sql`.
+- Medido em 18/09 dentro da VPS com `openai/gpt-4o-mini`: worksheet, quiz e conversação em
+  6–8 s, ~1.000 tokens cada, 0 questões descartadas; o schema estrito foi aceito pelo provedor.
+- Impressão: `window.print()` com CSS que esconde tudo fora de `#hub-material-print`; o
+  toggle "versão do professor" decide se o gabarito sai no papel. Copiar texto sempre leva o
+  gabarito (quem copia é quem ensina).
+- **Motor v2 (18/09, pedido da direção):** todo material é personalizado ao **objetivo do
+  aluno** (`goal`, texto livre: "logística numa multinacional", "estudante de gastronomia",
+  "intercâmbio no Canadá") e à **faixa etária** (`audience` kids/teens/adults), e carrega
+  três blocos comuns: `grammar_focus` (UM ponto escolhido do **leque gramatical do nível**,
+  `CEFR_GRAMMAR_MAP` em `hub-material.ts` — o modelo não pode usar estrutura acima do
+  nível), `opportunity_pt` (a "porta que abre": o que o aluno passa a conseguir fazer no
+  objetivo dele) e `ai_homework` (2 tarefas com o prompt pronto em inglês para o aluno colar
+  no ChatGPT/Wolfie e a dica de como continuar — ensina o aluno a se virar com IA).
+  Leitura ganha `strategies` (skimming com tempo, scanning com resposta, chunking com
+  tradução, shadowing com foco); conversação ganha `shadowing`. Foco gramatical ausente
+  reprova o material (retry → 502, não cobra). Medido com o provedor real: logística B1 →
+  present perfect para status de embarque; gastronomia A1 → there is/are na cozinha; teen
+  intercâmbio A2 → present continuous com a host family. `goal`/`audience` são colunas
+  (migration `20260918040000`); o resto vive no jsonb `material`.
+- **Jornada de 90 dias (`kind = journey`, migration `20260918050000`):** plano de 12 semanas
+  por objetivo — cada semana com tema, ponto gramatical em progressão dentro do nível, tipo de
+  material, resultado, 3 passos da aula de 30 min e lição; checkpoints (4/8/12) e **ações de
+  retenção** para o professor (semanas 1/3/6/10, só na versão do professor). Semana faltando
+  ou tipo inventado reprova (`MATERIAL_JOURNEY_INCOMPLETE`). Sem blocos comuns (a jornada é
+  o plano; o material da semana é que os carrega). Na tela, "Gerar <tipo> desta semana"
+  pré-preenche tipo + tema mantendo objetivo/nível/faixa — é a estrutura que o professor
+  mostra na primeira aula e o que atravessa o 3º mês. Medido: teen A1 → to be, possessivos,
+  there is/are, present simple…; gastronomia B1 → present perfect, first conditional, modais…
+
+**Assentos de aluno no Hub (18/09, migration `20260918060000`):** o aluno do professor entra
+no ambiente do professor como membro `MEMBER/LEARNER` — sem tenant. `team.seats` do plano é o
+número de alunos (Descoberta 1 · Essencial 2 · Pro 8 · Studio 25 · Institucional 100).
+- **Convite por link:** `hub_invite_learner(conta, perfil)` grava `invite_token` (64 hex, 14 dias)
+  em `hub_educator_learners`; o professor manda `https://hub.wisewolflanguage.com.br/?convite=<token>`
+  pelo WhatsApp (`HubLearnersPanel`, modo "Meus alunos" da aba Educador IA). O `HubApp` lê
+  `?convite=` (guardado em `sessionStorage` para sobreviver ao login), mostra a prévia
+  (`hub_learner_invite_preview`, anon) e `hub_accept_learner_invite` cria membership + perfil de
+  membro e liga `member_user_id`. Convite renovado do mesmo aluno não conta assento novo.
+- **O gabarito nunca sai do servidor:** o aluno não tem select em `hub_educator_materials` nem
+  em `hub_learner_assignments`; recebe tudo por `hub_learner_desk`, que passa cada material por
+  `private.hub_strip_answer_keys` (tira `correct`, `explanation_pt`, `answer`, `model_answer`,
+  `tip_pt`, `watch_out_pt`, `teacher_notes_pt`, `retention_moves_pt`, resposta do scanning e
+  tradução dos chunks). `hub_complete_assignment` marca feito + recado; o professor vê em
+  `hub_list_learner_seats` (RPC-only: a tabela de perfis de aluno não tem grant a authenticated,
+  e policy que consulte essa tabela por dentro dá "permission denied" — use predicado definer).
+- **Navegação do aluno convidado** (`subjectRole = LEARNER` numa conta que não é `LEARNER`):
+  só "Meus estudos" (`HubStudentDesk`) e Wolfie quando `wolfie.turn` do plano > 0. Sem
+  biblioteca (licença é do professor), sem planos, sem Educador IA. Conta pessoal de aluno
+  (audience `LEARNER`, Wolfie individual) não muda.
+- ⚠️ **O insert da membership dispara `hub_memberships_seed_member_profile`**, que cria o
+  perfil de membro ANTES do aceite — o insert do perfil em `hub_accept_learner_invite` cai
+  sempre no `on conflict`, e o update tem de carregar TUDO (objetivo, `onboarding_completed`,
+  `personalized_at`). O primeiro aluno convidado em produção viu o formulário genérico do
+  Wolfie em vez da mesa por isso (migration `20260918070000` conserta e repara via one-shot).
+- ⚠️ **Rota anônima nova = entrada em `security_definer_authorization_hardening.sql`.** A
+  suíte recusa qualquer SECURITY DEFINER com EXECUTE para anon fora da allowlist exata (nas
+  duas listas: a exata e a de rotas obrigatórias). `hub_learner_invite_preview(text)` derrubou
+  um release por isso.
+- Teste: `supabase/tests/assentos_de_aluno_no_hub.sql` (convite, teto, aceite com perfil
+  completo, prévia, mesa sem gabarito, estranho recusado, conclusão). Verificado ponta a ponta
+  em produção em 18/09/2026 com a conta QA (`qa-gerador-…` → `qa-aluno-assento-…`, as duas
+  com `test_fixture` no metadata do auth).
+
+**Upsell para o tenant (Professor Negócio):** `/seja-professor` grava `saas_leads`
+(lead_type `teacher`). Migration `20260918010000`:
+- trigger `zzz_saas_lead_notify_management` avisa o grupo da Gestão da escola operadora
+  (`hub_settings.metadata.salesNoticeTenantId`, dado e não código) pela `notification_queue`
+  (MANAGEMENT_NOTICE, idempotente por `saas_lead:<id>`); falha no aviso nunca derruba o lead;
+- `convert_teacher_lead_to_tenant` (service_role, idempotente) cria tenant `teacher` em trial +
+  `saas_subscriptions`; a edge **`activate-teacher-tenant`** (SUPER_ADMIN) chama a RPC, cria a
+  conta SCHOOL_ADMIN do dono e manda o e-mail "Ative seu acesso à Wise Wolf"
+  (`sendAccountActivation`, o mesmo de professor/aluno). `TeacherLeadsPanel` usa isso.
+- ⚠️ O painel antes inseria o tenant pelo navegador e mostrava `/teacher-onboarding?tenant=…`,
+  que `TeacherOnboarding` recusa (só aceita `?offer=<uuid>`) — link morto. Não volte a gerar
+  link ali; a ativação é o e-mail.
+- E-mail que já pertence a professor/aluno/diretor de outro ambiente é **recusado**
+  (`OWNER_EMAIL_IN_USE`); só conta NON_STUDENT (vinda do Hub) evolui para dona do tenant.
+
+---
+
+## Google Meet da escola: registro das aulas e presença ✅
+
+**Convite de professor (27/09/2026):** escola com conexão Google configurada exige, no
+`TeacherOnboarding`, que o candidato confirme **antes da assinatura** a própria conta
+Google com que entrará nas aulas. A tela explica que ela pode diferir do e-mail do
+portal e mostra o e-mail verificado. A edge `google-meet` abre OAuth `openid email`
+vinculado ao UUID do convite e a uma prova aleatória (hash no banco; PKCE; token do
+Google descartado); a migration `20260927230905` guarda o resultado por até 2 h em
+`private.teacher_invite_google_proofs`. `register-teacher` exige a prova na edge,
+confere o claim do mesmo convite e a usa uma vez só para criar
+`private.teacher_google_identities` antes de finalizar o cadastro. E-mail digitado
+ou checkbox não substituem login Google. Outras escolas sem conexão Google mantêm
+o cadastro atual. Teste: `supabase/tests/teacher_invite_google_identity.sql`.
+
+> Runbook completo: `docs/runbooks/google-meet-pedagogical-documentation.md`. Leia antes de mexer em
+> `supabase/functions/google-meet`, `lesson_sessions.documentation_consent` ou na Central de Qualidade.
+
+**Conta e projeto (26/09/2026):** Google Workspace **Business Plus** assinado sobre o Gmail da conta
+central (sem domínio → sem organização no Cloud → app OAuth **Externo, em produção, não verificado**,
+uso próprio < 100 usuários). Projeto `wise-wolf-aulas`, APIs Meet REST + Drive, cliente OAuth Web com
+retorno `https://api.wisewolflanguage.com.br/functions/v1/google-meet`.
+
+- ⚠️ **O segredo do cliente OAuth entra pela direção**, com `bash deploy/vps/configurar-google-meet.sh`
+  (lê o JSON de Downloads, grava em `.env.functions` pelo stdin do ssh, gera a chave de cifragem NA VPS,
+  apaga o JSON). Nunca colar no chat nem commitar.
+- **O que existe (12/09 + 26/09):** sala exclusiva por sessão criada pela conta central, professor
+  como coanfitrião, transcrição e anotações do Gemini automáticas, importação após a aula, revisão do
+  professor, resumo aprovado na memória do aluno.
+- **Registro autorizado pela ESCOLA — a Wise Wolf está nele desde 27/09/2026** (migration `20260929100000`,
+  runbook seção "Registro autorizado pela escola", teste `supabase/tests/registro_autorizado_pela_escola.sql`,
+  RIPD §4.1/R13–R14 — **bases por grupo marcadas para o jurídico**). Decisão da direção: "Não quero ter que gerar
+  link para aluno ou professor consentir… Já deixe como autorizado." Modo **por escola** em
+  `private.lesson_recording_authorization_modes` (trilha: quem, `decided_on`, motivo, base; nunca update):
+  `INDIVIDUAL_CONSENT` (o termo por pessoa das bullets abaixo; **padrão de escola sem linha**) ou `SCHOOL_DEFAULT`
+  (aluno e professor ATIVOS autorizados sem link, código, versão nem responsável — **menores incluídos**; só o
+  **pedido para não registrar** tira = última decisão `REFUSED`/`REVOKED`, na hora, efeito da revogação da onda 1).
+  A Wise Wolf entrou por one-shot com trilha (`registro_das_aulas_autorizado_pela_escola_wise_wolf_20260927`,
+  autor = `management_group_default_actor`). O modo vale pelo **fim da aula** (`authorization_mode_at`); "ativo" só
+  para aula que não terminou. Recriadas da definição viva: `*_consent_effective_at` (aluno e professor),
+  `lesson_recording_ai_accepted_at` (aviso em vigor declara a IA), `lesson_teacher_documentation_ready`,
+  `accepted_outdated_term`/`acceptance_outdated_at` (aceite antigo não "cai" no modo da escola),
+  `lesson_session_term_consent_lapsed`/`_lapse_text`, `current_term` e `term_covers`. ⚠️ **Aviso v4 é
+  `kind = 'NOTICE'`** e nunca vira o termo exigido do aceite individual (`current_term`/`term_covers` só olham
+  `TERM`); o texto mostrado vem de `private.lesson_recording_text_for(escola, público)` + `fill_term`. ⚠️ O job
+  marca com "`Termo de registro das aulas: registro autorizado pela escola (…)`" — é esse texto que faz a aula cair
+  (sem exigir dois aceites) quando a escola volta ao individual; aula marcada por aceites e passada a quem nunca
+  respondeu continua `HANDOVER_UNCONSENTED` (generalizar derrubou `sala_acompanha_a_troca_de_professor.sql`).
+  `OBJECTION_WITHDRAWN` (desfazer: `withdraw_lesson_recording_objection`, **só `SCHOOL_ADMIN`** com motivo — a
+  coordenação registra o pedido, não o desfaz; o pedido que o professor fez no app só ele desfaz,
+  `pedido_do_proprio_professor`) **não é aceite**. Direção registra o pedido com a revogação de sempre (`revoke_lesson_recording_consent`);
+  só `SCHOOL_ADMIN` troca o modo (`set_lesson_recording_authorization_mode`, confirmação na tela, roda o job). Link,
+  lote e reenvio recusam `registro_autorizado_pela_escola`; fila do termo cancela na hora de sair. Conta Google do
+  professor continua obrigatória para a sala (`director_pending_counts.professores_sem_conta_google`, só no modo da
+  escola) — ⚠️ e no modo da escola o job **só marca** a aula de professor com a conta confirmada: a marca sem sala
+  congelaria a sessão (`lesson_session_has_evidence`); medido no clone, seriam 21 de 21 aulas de segunda da Wise Wolf.
+  Tours do termo e do modo da escola filtrados pelo modo (`FeatureTour.recordingMode`,
+  `my_lesson_recording_authorization_mode()`); no modo da escola nenhuma tela manda "pedir link novo". Remendos por
+  âncora: `apply_standing_…` (×3), `get_lesson_recording_consent_public` (×3), `get_student_birth_date_record`,
+  `list_lesson_recording_consents` (×2),
+  `get_my_lesson_records` (×3), roster, snapshot, os três do lote, `create_…_link`, `list_…_requests`,
+  `director_pending_counts` — não recrie a partir de texto antigo. ⚠️ **Nada comunica o aviso às famílias atuais**
+  (J13 no RIPD): não dispare lote sem o jurídico. O aviso v4 e a cláusula dos contratos novos
+  (`20260927150000`) dizem a mesma coisa — ver "Contrato com o registro das aulas". ⚠️ **Pré-requisito do
+  deploy:** conta central reconectada com o escopo `drive` (a lixeira dos originais que o aviso promete; em
+  27/09 só `drive.meet.readonly`) — no modo da escola a primeira aula transcrita é a do dia do deploy.
+- **Termo de registro** (migration `20260926120000`): aluno/responsável aceita uma vez por link
+  (`/registro-das-aulas?token=`), professor aceita no app; o job de 15 min marca as sessões das
+  próximas 24 h com os dois aceites. Menor de idade exige responsável. Rotas anônimas nas duas listas de
+  `security_definer_authorization_hardening.sql`.
+- ⚠️ **Termo seguro do lado da família** (migration `20260926200000`, runbook seção "Lado do aluno e do
+  responsável"): **idade desconhecida = responsável** (fail-closed); só vale a data de nascimento
+  cadastrada pela ESCOLA por `set_student_birth_date` (trilha em `private.student_birth_date_records` +
+  `profile_audit_log`; data mudada por outro caminho perde a prova). ⚠️ A RPC grava o atestado ANTES de
+  mudar `profiles.birth_date`: os gatilhos AFTER UPDATE de `profiles` (o cartão do aluno apaga campos de
+  menor) leem o atestado — na ordem inversa, corrigir a data de um adulto apagava o cartão dele. `is_kids` é da direção (professor
+  barrado na RPC e na API). Toda decisão pelo link exige **código de 6 dígitos no WhatsApp** do cadastro
+  (edge `lesson-recording-code`, só hash no banco, 10 min, 5 tentativas; por link 3 envios/h, 6/dia, 10 no
+  total e 15 erros somados — batido o total, o link é **bloqueado**) e grava `verification`/`verified_phone`.
+  Aceite sem código ou "como aluno" de quem hoje exige responsável **não marca aula**, e a página diz isso.
+- ⚠️ **O telefone do código é o ATESTADO, congelado por trigger no link** (qualquer criador, inclusive o
+  lote): responsável = contato verificado pela escola, ou `guardian_phone`/`guardian_id` cuja última
+  gravação em `profile_audit_log` foi da direção/coordenação/matrícula (service_role). O próprio aluno não
+  altera nascimento, `is_kids`, `guardian_phone` nem `guardian_id` pela API — antes, um menor apontava o
+  "telefone do responsável" para si e assinava pela família. Quem recriar
+  `get_lesson_recording_consent_public` termina com `|| private.lesson_recording_public_link_fields(link)`.
+- **Envio do termo em lote** (migration `20260926210000`, **depois** de `20260926200000` e no mesmo release;
+  seção própria no runbook): a direção confirma na tela quantas mensagens e quando saem; fila
+  `LESSON_RECORDING_CONSENT_REQUEST` pela central, uma a cada 3 min, seg–sáb 9h–20h — **também na hora de
+  mandar** (o processador adia sem gastar tentativa; 5 por 15 min; pedido com 2 dias na fila é cancelado).
+  Quem responde E em que número é a regra de `20260926200000`, **sem régua própria**: o telefone do
+  responsável é o ATESTADO (`private.lesson_recording_guardian_phone`, o mesmo que o trigger congela no
+  link); **mesmo número do aluno não bloqueia**, só pede conferência no painel. `lesson_recording_enqueue_request`
+  confere depois do insert que o telefone congelado é o da mensagem (`destino_diferente_do_link`) —
+  mensagem e código vão ao mesmo número. ⚠️ A régua paralela do lote (`lesson_recording_trusted_guardian_phone`,
+  trilha `audit_logs`) saiu na integração da onda 1 antes de publicar: com ela a mensagem podia ir a um
+  número e o código a outro. Um link vivo por aluno; reenvio 3 dias depois (na hora
+  se o número mudou); link no portal da escola (`lesson_recording_portal_url`, sem portal = recusa).
+  ⚠️ `get_lesson_recording_consent_public` é remendada **por âncora** (registro de abertura + VOLATILE) —
+  não recrie a partir de texto antigo; `termo_de_registro_envio_em_lote.sql` reprova sem a chamada, sem o
+  `|| private.lesson_recording_public_link_fields(v_link.id)` e sem o caso `blocked`.
+- **Termo v3, aceite por versão e retenção** (migration `20260927100000`, runbook seção própria, teste
+  `supabase/tests/termo_v3_versao_e_retencao.sql`, RIPD em `docs/lgpd/ripd-memoria-das-aulas.md` — **rascunho
+  para o jurídico**): o texto v3 diz o que o sistema faz depois das ondas 1–3 (IA com aprovação do professor,
+  dossiê por link com login, cartão sem dado sensível, extrato de pontualidade sem ranking, OpenRouter pago sem
+  treino, **suporte técnico do fornecedor do sistema lendo resumo aprovado e cartão**, prazos de 90 dias) e
+  identifica a escola **só por marcadores** (`{escola_nome}`, `{escola_documento}`, `{escola_contato_privacidade}`)
+  que o **servidor** preenche (`private.lesson_recording_fill_term`, dados de Configurações → Escola e legal, com
+  o campo novo "Encarregado de dados"). ⚠️ Rota nova que devolva o texto do termo passa por
+  `lesson_recording_fill_term` — o teste varre o código das funções `public` e reprova `…current_term(…).body`
+  cru. **Aceite de versão anterior não vale** (aluno E professor — `lesson_recording_teacher_consent_effective`),
+  mas a versão exigida é a do **fim da aula** (`lesson_recording_active_at`): a aula futura e a em andamento
+  caem e o job as desmarca ("o termo mudou de versão"); a que já terminou segue importável. **O aceite grava a
+  versão lida**: `set_my_lesson_recording_consent(p_accept, p_term_version)` e
+  `decide_lesson_recording_consent_public(…, p_code, p_term_version)` recusam com `termo_mudou` a versão que não é
+  a vigente (a página não gasta o código); recusar vale sempre. Assinaturas antigas derrubadas. Retenção própria
+  (`private.purge_lesson_memory_retention`, cron diário): **toda versão de resumo** (rascunho e aprovada) perde
+  `narrative`/`evidence` 90 dias depois da aula; quem **deixou a escola** (`lifecycle_status = 'offboarded'` +
+  `offboarding_completed_at`) perde memória `MEET_SESSION`, cartão, resumos e a base das aulas aprovadas
+  copiada nos planos do Planner (`lesson_basis`, integração da onda 2) 90 dias depois — com a memória que o
+  Planner propôs a partir delas (`student_memory_update` e a linha `PLANNER_AI` da geração com `lesson_basis`,
+  `private.planner_runs_from_approved_lessons`; o plano fica marcado `approved_lessons_removed_at` e o Planner não
+  o relê); trilha só com contagens. **Correções da integração (27/09):** (1) **a IA só entra com aceite de termo
+  que a declara** — v3 em diante (`lesson_recording_term_declares_ai`), do aluno E do professor, na decisão que
+  valia no FIM da aula (`lesson_recording_ai_accepted_at`): aula dada sob a v2 ou marcada à mão para quem não
+  respondeu no sistema não vai ao OpenRouter, nem pelo botão manual; aceitar a v3 depois não muda a aula já dada.
+  (2) A **marcação manual** da direção recusa aluno/professor com aceite de versão anterior
+  (`termo_mudou_aceite_do_aluno_pendente` / `…_do_professor_pendente`) e a marcada antes de a versão mudar cai na
+  régua única (`lesson_session_documentation_blocked` → `lesson_session_manual_mark_outdated`); quem nunca
+  respondeu no sistema segue marcável com o comprovante no motivo. (3) **Cópias brutas no máximo 90 dias**: teto
+  no banco (`lesson_memory_retention_policy().raw_copies_days`, remendo por âncora em `artifact_save` e
+  `attendance_save`) e na edge — `GOOGLE_MEET_RAW_RETENTION_DAYS` só encurta. (4) A confirmação de leitura do
+  dossiê (`student_handover_reads`) guarda só referências (ids, datas, versão), nunca o texto das memórias e
+  lançamentos. ⚠️ Publicar versão nova do termo derruba os aceites na hora — avise a direção antes. ⚠️ Os
+  **originais no Drive** que o termo promete apagar dependem da lixeira de `20260927120000` **ligada**
+  (`GOOGLE_MEET_DELETE_ORIGINALS_ENABLED=true` + reconectar a conta central com o escopo `drive`; em 26/09 ela
+  tinha só `drive.readonly`): o primeiro vence 90 dias depois da primeira aula transcrita sob a v3 — até lá a
+  flag tem de estar ligada, ou a direção apaga à mão. ⚠️ `list_lesson_recording_consents`,
+  `apply_standing_lesson_recording_consent` e `get_lesson_recording_consent_public` foram remendadas por âncora:
+  não recrie a partir de texto antigo.
+- **Presença** (migration `20260926140000`, flag `GOOGLE_MEET_ATTENDANCE_REPORT_ENABLED`): vem do
+  **relatório de presença nativo do Google** (planilha no Drive da conta central), nunca de
+  `participants` da API do Meet — o Google diz que ela não é para acompanhamento de desempenho.
+  Divergência com o lançamento (aluno ausente em aula dada, falta do aluno com aluno na sala, professor
+  ausente, atraso 10+ min, aula fora da sala) **só abre caso** na Central de Qualidade
+  (`MEET_ATTENDANCE`, `LATE_START`, `OUTSIDE_ROOM`). Decisão da direção: nada disso altera pagamento.
+- ⚠️ **Formato do relatório não é documentado pelo Google.** `attendance.ts` aceita colunas pt/en e
+  horários em vários formatos; conferir no primeiro relatório real e ajustar. Nome real (26/09):
+  "Relatório de participação em fxj-hykv-jev (2026-09-26 14:41)".
+- ✅ **Sem computador ligado** (teste real 26/09): sala criada pelo servidor, só o professor (Gmail
+  pessoal, COHOST) entrou e a conta da escola nunca — transcrição, anotações do Gemini e relatório de
+  presença saíram assim mesmo. Aulas simultâneas = salas independentes da mesma conta.
+- ⚠️ **`accessType: RESTRICTED` é recusado** na conta sobre Gmail (403 `updateAccessType`). O provider
+  repete com `TRUSTED` só nesse erro exato (`provider.test.ts`). Antes do conserto, nenhuma sala nascia.
+- ⚠️ **`drive.meet.readonly` NÃO exporta** as anotações do Gemini nem o relatório de presença (403
+  `appNotAuthorizedToFile`, medido 2×) — por isso o escopo é `drive.readonly`, e o código só abre o id
+  que a Meet API aponta e planilhas da própria conta com o código da sala no nome. Mudou escopo →
+  **reconectar a conta central** (a tela avisa com `scopes_outdated`).
+- ⚠️ **`get_my_lesson_rooms` só devolve sessão com sala da escola OU aceite de documentação**
+  (migration `20260926160000`). Antes ela devolvia toda `lesson_session` (a agenda vira sessão a cada
+  15 min) com link nulo, e `lib/lessonRooms.ts` — que corretamente não abre sala pessoal em aula com
+  aceite — deixava o **botão "entrar na aula" do app vazio em todas as aulas de 13/09 a 26/09** (medido:
+  4 de 4 aulas de um professor em 25/09). Conserto no servidor vale até para PWA antigo em cache.
+  ⚠️ O lembrete do WhatsApp **não** carregava link nenhum desde 16/09 (0 de 81 enviados de 16 a
+  25/09 têm URL): a direção tirou o link pessoal do lembrete, e o aluno usa o link que já conhece.
+  Desde `20260926170000` também não volta sessão com sala `FAILED`/`NEEDS_RECONCILIATION` nem
+  aula a menos de 15 min do início sem sala `READY` — a aula nunca fica sem link.
+- **Importação não trava e termina** (migration `20260926170000`, teste
+  `supabase/tests/importacao_do_meet_nao_trava_e_termina.sql`): erro por documento em
+  `private.google_meet_artifact_imports` (visível em "Sala e resumo"), vazio é final, transcrição
+  sem export sai pelas falas da API (`MEET_ENTRIES`, só o nome de exibição do participante), sala
+  recusada vira `FAILED` com nova tentativa sozinha (30 min, 2 h, 6 h; até 5) e reserva `claim_id`,
+  fila com fim (`sync_status` COMPLETE/EXPIRED em 7 dias), conferências buscadas no DIA da aula,
+  planilhas de presença de queda e reentrada juntadas, e só token revogado (`invalid_grant`)
+  desconecta a conta. ⚠️ `google_meet_backend` foi recriada inteira: migration posterior que mexer
+  nela parte desta definição.
+- **Parte 2** (migration `20260926180000`, teste `supabase/tests/identidade_do_professor_e_revogacao_no_meet.sql`):
+  - **Coanfitrião = conta Google que o professor confirmou por login** (`teacher_identity_connect` na edge,
+    só `openid email`, mesmo cliente e mesmo retorno; o fluxo vem de `google_meet_oauth_states.flow`, nunca da
+    URL). Grava `private.teacher_google_identities`; a tela lê `get_my_google_identity()`. Sem identidade: sem
+    sala (`google_teacher_identity_required`), fora da fila, link de sempre no app, e o professor não autoriza o
+    termo (`teacher_google_identity_required`). O e-mail do cadastro não vale; no relatório de presença o
+    professor é SÓ a conta confirmada — convidado com o nome do professor não conta mais como ele.
+    Professor que confirma OUTRA conta com a sala pronta: a sala **segue `READY`** (link e importação
+    intactos) com `cohost_sync_pending`, e `ensureCohost` põe a nova como coanfitriã e **tira a antiga**.
+    ⚠️ Não rebaixe sala pronta para `COHOST_PENDING`: o link sumia do app e a aula não era importada.
+    O cartão do professor (`LessonRecordingTeacherCard`) confirma a conta antes do aceite; é o mesmo
+    arquivo da frente do termo seguro (`wave1/termo-aluno-fix`), e as duas sobem juntas.
+  - **Revogação desliga a sala já criada**: sem `documentation_consent`, sala `READY`/`COHOST_PENDING` vira
+    `DISABLE_ARTIFACTS` na fila (grupo 0) → `spaces.patch` com transcrição e anotações `OFF`
+    (`google_meet_rooms.artifacts_state`); aceite de volta antes da aula → `ENABLE_ARTIFACTS`. Falha tenta de
+    novo (15 min dobrando até 2 h). `get_my_lesson_rooms` passou a exigir `documentation_consent` (como o
+    lembrete do WhatsApp): sala de quem revogou não é mais entregue.
+  - **A revogação vale para a aula que ainda não tinha terminado quando ela chegou** — na hora, sem esperar o
+    job: `private.lesson_session_documentation_blocked(sessão)` (última decisão NÃO, anterior
+    ao fim previsto — ou aceite do termo que caiu, abaixo) tira o aceite efetivo na porta do servidor (`room_claim`, `artifact_save`,
+    `session_state`/`session_detail` devolvem `documentation_consent` efetivo + `documentation_blocked`), na
+    fila e em `get_my_lesson_rooms`. O job desmarca **sem exigir conta conectada** e olhando 8 dias para
+    trás; `trigger_sync_google_meet_artifacts` passa também por escola não conectada. Antes, revogar 5 min
+    antes da aula (job rodando depois do início) ou com a conta em `REAUTH_REQUIRED` deixava a transcrição ser
+    importada. ⚠️ Marcar continua exigindo conta conectada e só nas próximas 24 h.
+  - **Aceite que CAI sem decisão nova também barra** (integração da onda 1): aceite "como aluno" de quem a
+    escola passou a tratar como menor (marca `is_kids`, atesta data de menor) numa sessão marcada **pelo
+    termo** → `private.lesson_session_term_consent_lapsed` → sem aceite efetivo na hora (sala desligada,
+    fora do app, importação recusada). Sem hora (não é um "não"): o job desmarca a aula que não terminou; a
+    que terminou fica barrada na leitura e volta se a escola atestar a maioridade. Marcação manual da
+    direção não entra. Antes a aula em andamento de um menor era transcrita e importada.
+  - **Aceite que volta pelo termo religa** (sessão remarcada + `ENABLE_ARTIFACTS`): só um DESLIGAR manual como
+    **último** evento segura o termo. Eventos usam `clock_timestamp()` (a ordem vale na mesma transação).
+    Mudança de `documentation_consent` zera erro/espera da documentação da sala
+    (`trg_zz_lesson_session_meet_artifacts_retry`, dono postgres com grant de coluna na sala).
+  - **Transcrição bruta só para o professor da aula, coordenação e direção da escola** (`session_detail` →
+    `raw_access`); outros professores do aluno e o `SUPER_ADMIN` veem só o resumo aprovado. A edge usa
+    `session_state` (interno, sem texto bruto) na fila.
+  - **Troca de conta central**: `status.rooms_count`; com salas, o retorno recusa outra conta
+    (`google_organizer_change_requires_confirmation`) a menos que a direção tenha pedido "Trocar para outra
+    conta" (`allow_replace` no nonce).
+  - **Marcação manual só `SCHOOL_ADMIN`**, com motivo, e não liga por cima de recusa/revogação do aluno ou do
+    professor; revogação posterior desmarca a sessão marcada à mão (`apply_standing_lesson_recording_consent`).
+  - ⚠️ Teste SQL que cria sala precisa de linha em `private.teacher_google_identities` para o professor.
+- **Lembrete do WhatsApp leva a sala oficial** (migration `20260926190000`): aula com sala da escola
+  `READY`, sessão viva e **aceite vigente** (`documentation_consent` e sem recusa/revogação antes do fim da
+  aula — `private.lesson_session_documentation_blocked`, a régua de `get_my_lesson_rooms`; acerto da
+  integração da onda 1) → o lembrete de 30 min, o botão
+  "Disparar" e o aviso de reposição mandam o `meeting_uri` dela — no `{class_link}` do modelo ou numa
+  linha própria no fim ("Esta aula é na sala da escola no Google Meet. Entre por este link:"). Sem sala,
+  nada muda. Regra única em `public.official_lesson_link(tenant, tipo, id, data, professor, hora,
+  aluno)` (só `service_role`; agendamento, reposição e antecipação — antecipação é `booking` na data
+  nova). ⚠️ Exige o aceite, e não só "sala existe" como o `get_my_lesson_rooms`: a sala transcreve
+  sozinha, e quem revogou não pode ser mandado para lá. ⚠️ **Só vale se a sessão for de quem DÁ a
+  aula** — o professor da agenda ou, com cobertura viva do agendamento naquela data, o substituto (a
+  regra de `lesson_quality_sources`). Sessão com aceite ou sala fica **congelada**
+  (`lesson_session_has_evidence`): cobertura confirmada, reposição com professor trocado ou agendamento
+  transferido depois do aceite não mudam o `teacher_id` dela, e o aluno cairia na sala do ausente (só
+  ele admite quem bate). A régua é UMA (`private.lesson_occurrence_giver`, `20260926180000`) e vale
+  também para o link do app (`get_my_lesson_rooms` não devolve a sessão dada hoje por outro professor,
+  `private.lesson_session_taught_by_other`) e para a fila (sem `PREPARE_ROOM`/coanfitrião) — até a
+  integração da onda 1 só o lembrete conferia, e o app dividia a aula coberta em duas salas.
+  ⚠️ Duas salas vivas para a mesma aula sem horário que desempate → nenhuma
+  (mandar a errada é pior). ⚠️ Consulta da sala falhou → o lembrete **espera** (não cai no link de
+  sempre numa aula que pode ter aceite). ⚠️ A sala que fica pronta (ou deixa de valer) entre o worker e
+  a cerca vira **`RETRY` `official_lesson_room_changed`** — o worker remonta; antes era
+  `REVIEW_REQUIRED` e o lembrete era descartado para sempre.
+- **Resumo por IA automático depois da aula** (migration `20260927110000`, runbook seção própria): fila
+  `GENERATE_SUMMARY` (uma por rodada) → OpenRouter com `provider.data_collection = "deny"` e JSON estrito →
+  rascunho `PROPOSED`; só o aprovado pelo professor vai para a memória. Teto mensal por escola (padrão US$ 20,
+  "Conta central Google"); atingido, o automático para e o manual segue com aceite de custo. Idempotência pelo
+  hash das fontes calculado NO BANCO (o mesmo conteúdo nunca é pago duas vezes, nem pelo botão). Fila "Aulas
+  para revisar" em "Salas e continuidade" com o prazo de aprovação (fim da retenção das fontes) e
+  `director_pending_counts.resumos_para_revisar` (3+ dias). ⚠️ A fila e as pendências foram remendadas **por
+  âncora**: quem recriar `get_pending_google_meet_sync_sessions` ou `director_pending_counts` mantém o ramo
+  `GENERATE_SUMMARY` e a chave `resumos_para_revisar` (o teste reprova sem eles). ⚠️ `greatest`/`least` são
+  formas especiais como `nullif`: `pg_catalog.greatest(...)` não existe. ⚠️ A elegibilidade e a reserva
+  (automática E manual) exigem `private.meet_summary_ai_consented` — aceite de termo que declara a IA valendo no
+  fim da aula; sem ele a reserva devolve `google_summary_ai_consent_required` e o professor revisa as notas do
+  Google à mão. ⚠️ O teste não recua `created_at` de geração do mês: recuar reprovava o release nas duas
+  primeiras horas do dia 1º (BRT).
+- **Originais no Drive vão para a LIXEIRA 90 dias depois da aula; a direção apaga os registros de um aluno a
+  pedido** (migration `20260927120000`, runbook seção própria, teste `originais_do_drive_para_a_lixeira.sql`).
+  Flag `GOOGLE_MEET_DELETE_ORIGINALS_ENABLED`: ligada, a conexão pede o escopo **`drive`** (escrita) em vez de
+  `drive.readonly` — **ligou → reconectar a conta central** (`scopes_outdated` segue a configuração; `drive`
+  inclui a leitura). ⚠️ **Só vai para a lixeira arquivo com id da Meet API (`docsDestination`) ou da planilha
+  de presença guardada E identificada pelo código da sala no nome — nunca busca por nome**; a planilha do plano B
+  da importação (pelo e-mail do professor) fica fora, para conferência manual (`attendance_unidentified`); e a
+  edge ainda confere `ownedByMe` e o tipo (Documento/Planilha) antes do `files.update trashed=true`. Registro por
+  arquivo em `private.google_meet_drive_originals` (TRASHED/GONE/REFUSED; falha tenta de novo em 1 h dobrando até
+  24 h, sem desistir); a importação registra o que lista (e só fecha a lista com todo documento em arquivo), a
+  planilha entra por gatilho. Fila `PURGE_ORIGINALS` (até 5 por rodada): a **lixeira** só com o escopo `drive`;
+  a **conferência** na Meet API da lista das salas que a importação não fechou (EXPIRED, aceite revogado, pedido
+  de exclusão, COMPLETE com documento pendente 6 h depois) roda **mesmo sem o `drive`** — ⚠️ só até 28 dias da
+  aula (a Meet API guarda ~30), e presa ao `drive` ela nunca rodava com a lixeira desligada (correção da
+  revisão). Revogação desliga também o relatório de presença da sala (2º `PATCH`, não fatal). Exclusão a pedido
+  (`erase_student_lesson_records`, só `SCHOOL_ADMIN`, ficha → Continuidade pedagógica): apaga cópias brutas,
+  planilhas, todas as versões de resumo, memória `MEET_SESSION` e cartão, e tira dos planos do Planner a base das
+  aulas aprovadas (`lesson_plans.structured_plan.lesson_basis` e `planner_ai_runs.result`: o próximo passo e os
+  erros copiados do resumo — o plano fica) junto com a memória que o Planner propôs a partir delas
+  (`student_memory_update` e a linha `PLANNER_AI` das gerações com `lesson_basis`, contada em `memories`); o plano
+  fica marcado (`approved_lessons_removed_at`) e `planner-input.ts` não o manda mais ao modelo como
+  continuidade; originais vencem na hora; a aula
+  fica marcada, a importação da sala é encerrada (`sync_status = EXPIRED`, `last_error_code =
+  lesson_records_erased`, mantido por gatilho em `google_meet_rooms` mesmo com importação em andamento) e um
+  gatilho recusa nova cópia, planilha ou rascunho dela. Não mexe em presença, pagamento nem na trilha do aceite.
+  ⚠️ A prévia/resultado só dizem "vai para a lixeira" com a flag ligada E o `drive` concedido (lê o status da
+  edge); o que a conta atual não alcança (conta central anterior, aula antiga, planilha sem registro) a tela manda
+  apagar à mão. ⚠️ `importacao_do_meet_nao_trava_e_termina.sql` ignora `PURGE_ORIGINALS` no "não volta à fila". ⚠️ O ramo `PURGE_ORIGINALS` entrou na fila **pela mesma âncora do
+  resumo** (`) jobs order by jobs.priority_group`), que continua valendo uma vez para a próxima frente — quem
+  recriar a fila mantém `GENERATE_SUMMARY` e `PURGE_ORIGINALS` (os testes reprovam sem eles).
+- **O aluno vê o próprio registro** (migration `20260927140000`, tela "Minhas aulas registradas", aba
+  `lesson-records` do aluno): `get_my_lesson_records()` devolve, de cada aula DELE na escola dele, a última
+  decisão humana (versão `VERIFIED` ou `REJECTED` de maior número) **quando ela é `VERIFIED`** — aprovada e
+  depois rejeitada sai, como sai da memória (`20260927130000`); a "Sala e resumo" de quem não vê a fonte
+  (`session_detail` sem `raw_access`) segue a mesma régua — objetivo, praticado, próximo passo, lição, com os
+  tetos da aprovação —, o prazo de
+  CADA cópia bruta pelo nome (`transcript_until`, `notes_until`, `attendance_until`), quantas esperam revisão
+  (a rejeitada por último não conta), a situação do próprio termo (sem token; validade do link só se ele
+  CHEGOU — aberto ou mensagem aceita; aceite que não vale com o motivo, `not_effective_reason`:
+  `TERM_UPDATED` — o caso de todos depois do termo v3 —, `UNVERIFIED` ou `GUARDIAN_REQUIRED`), o texto do termo
+  **preenchido** (`lesson_recording_fill_term`) e o WhatsApp da instância central para pedir exclusão. ⚠️ Nunca texto
+  bruto, citação de evidência, "dificuldades", narrativa do professor nem cartão do aluno; outros papéis
+  recebem `somente_o_aluno`. Campo novo no resumo que deva chegar ao aluno entra **na RPC** (lista fechada de
+  chaves; o teste reprova chave a mais).
+  ⚠️ **A tela não diz "fica só o resumo"**: a versão aprovada guarda `narrative` (em aula aprovada das notas
+  nativas, o texto das anotações do Google revisado) e `evidence` (citações literais) até 90 dias depois da aula
+  (`purge_lesson_memory_retention`), e outros professores do aluno e o suporte a leem por `session_detail` — a
+  tela diz esses prazos, os do termo v3. **Exclusão pedida pelo aluno:** ele pede pelo WhatsApp da escola e a
+  direção usa "Apagar registros das aulas deste aluno" na ficha (`erase_student_lesson_records`, acima); a tela
+  do aluno lista o que aquela RPC apaga e o que fica. ⚠️ Não apague "à mão" só `student_learning_memories`:
+  `get_my_lesson_records` lê `lesson_summary_versions`, e o resumo continuaria na tela dele.
+- **Substituto e novo titular recebem o dossiê por link com login** (migration `20260928100000`, runbook
+  seção própria, teste `supabase/tests/substituto_e_novo_titular_recebem_o_dossie.sql`): cobertura
+  **confirmada** e reposição **com data** abrem o dossiê, a lista de sessões, a RLS de `lesson_sessions` e o
+  resumo aprovado (`session_detail`, só essa ação) do dia anterior ao seguinte da aula
+  (`private.pedagogy_temporary_access`, a janela do Planner); `'Pendente'` e encerrada não abrem. A regra do
+  dossiê é uma só, `private.student_pedagogy_access(escola, aluno, com_janela)`: `can_read_student_pedagogy`
+  com a janela, `student_learning_card_can_edit` sem (o substituto lê o cartão, não reescreve). Quem entra
+  **só** pela janela recebe "Sala e resumo" sem a sala (`room: null` — nem `meeting_uri`, nem a conta Google
+  do professor da aula, nem a conta central), sem `imports` e sem presença (`v_temporary_only`,
+  `temporary_access`). O pacote da cobertura leva a **data** da última aula APROVADA e manda ao dossiê — ⚠️ o
+  **texto** do resumo (próximo passo, erros, lição) não vai no WhatsApp: o termo v3 promete o histórico ao
+  substituto "por um link que só abre com login", e o que sai no WhatsApp fica na fila, na inbox, no provedor
+  e no celular, onde a exclusão a pedido e a retenção não chegam. Leva também a sala oficial de quem dá a aula
+  e `<portal>/dossie-do-aluno?aluno=<id>` — e deixou de levar o objetivo livre do cadastro e o nome do
+  responsável. **Sem sala pronta no aceite**, `private.coverage_school_room_expected` decide se
+  substituto e família ouvem "o link da escola chega por aqui" ou "combine e mande o link" — pela **régua da
+  sala da troca** (redefinida em `20260928110000`, seção 6.8: escola conectada, substituto pronto por
+  `lesson_teacher_documentation_ready`, aceite do aluno, aula não barrada); quando a sala fica `READY` **ou a
+  retenção da troca é solta**, o gatilho em `private.google_meet_rooms` (sem lista de colunas: quem solta é o
+  gatilho BEFORE) manda o link aos dois uma vez POR AULA (`coverage:<id da cobertura da 1ª parte>:room`/`room-family`,
+  com o horário da aula) — nunca a sala retida, nunca a de substituto sem aceite (`official_lesson_link`).
+  ⚠️ **Aula de 1 h = dois agendamentos, cada um com a SUA cobertura** (em produção, 16:30 e 17:00 com a mesma
+  substituta em 16/09 e 18/09): o pacote é da AULA (`private.coverage_lesson_parts`). Parte que não está com o
+  mesmo substituto → o texto não promete nem nega a sala; confirmada a última parte → uma mensagem da aula
+  inteira (`coverage-lesson:<cobertura da 1ª parte>:*`, a atualização curta se uma parte já tinha sido avisada).
+  Teste: `supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql`. O link do app (`useStudentDossierLink`) guarda o foco até a pessoa
+  sair do dossiê e **segura os tours** enquanto isso (o tour do login trocava de aba e o dossiê sumia).
+  Transferência aceita/aplicada avisa o novo titular pela fila (gatilho em `teacher_transfers`,
+  `teacher-transfer:<id>:dossier`). ⚠️ `admin_transfer_student_teacher` recusava TODA transferência direta
+  desde 22/09 (o gatilho `bookings_sync_student_primary_teacher` já trocava o `professor_id` antes da trava
+  da função) — remendada por âncora aqui.
+- **A sala acompanha a troca de professor** (migration `20260928110000`, runbook seção própria, teste
+  `supabase/tests/sala_acompanha_a_troca_de_professor.sql`): a sessão CONGELADA (aceite ou sala) passa para quem
+  **dá** a aula quando a troca é de UMA aula — cobertura confirmada (e a volta ao titular quando ela é desfeita,
+  inclusive da sessão que NASCEU com o substituto — cobertura confirmada antes do congelamento —, e depois da aula
+  salvo se o ex-substituto a lançou), reposição, antecipação ou experimental com outro professor —, com trilha em
+  `private.lesson_session_teacher_handovers` + revisão `TEACHER_HANDOVER`. Novo professor **pronto** (conta Google
+  confirmada + aceite do termo que vale no fim da aula): a sala fica **retida** (`teacher_handover_pending`, fora do
+  app e do lembrete) até a fila pôr a conta dele como coanfitriã (`room_claim` → `SYNC_COHOST` → `ensureCohost`, sai a
+  do titular); o lançamento dele se liga à sessão (acabou o `MISSING_LOG` falso) e é ele quem revisa o resumo. **Não
+  pronto**: a sessão passa assim mesmo, mas `lesson_session_handover_unconsented` entrou na régua única → sala com a
+  transcrição desligada e link de sempre. Aula dada por outro professor e ainda não trocada também é barrada
+  (`lesson_session_taught_by_other` na régua). Aula de 1 h que ficou em duas sessões congeladas (uma parte coberta
+  antes do congelamento, a outra depois) e passou a ser toda do mesmo professor vira UMA sessão com a sala já
+  entregue (`private.lesson_session_merge_adjacent`; a outra é arquivada `…:merged:<id>`, sala desligada).
+  ⚠️ **Agendamento recorrente transferido não troca sozinho**: segue o
+  "Replanejar sessão futura" de 12/09. **Sessão congelada que sai da agenda** (remarcada, desmarcada, encerrada pela
+  direção, cancelada) até 24 h depois do fim vira `SUPERSEDED` com a sala desligada; aula com lançamento, auditoria de
+  presença ou documento do Meet não. Roda no `sync_lesson_quality_sessions` (remendo por âncora) e na hora por
+  gatilhos em `class_coverages`/`reschedules`/`lesson_advances` que **nunca derrubam a escrita de origem** (falha =
+  `WARNING [sala da troca]`, a rodada de 15 min refaz). Presença: `session_state.attendance_identity` — quem passou a
+  aula adiante é `OTHER_TEACHER` (nem professor nem aluno). ⚠️ `lesson_session_documentation_blocked`,
+  `sync_lesson_quality_sessions`, `lesson_quality_sources`, `get_my_lesson_rooms`, `official_lesson_link`,
+  `google_meet_backend` e `apply_standing_lesson_recording_consent` foram remendadas por âncora — o teste reprova quem
+  as recriar sem os remendos. `private.google_meet_rooms` é do `supabase_admin`: a troca (dono `postgres`) tem grant
+  só na coluna `teacher_handover_pending`.
+- **Extrato de pontualidade do professor — DESLIGADO até o jurídico** (migration `20260928120000`, runbook seção
+  própria, teste `supabase/tests/extrato_de_pontualidade_do_professor.sql`): `public.teacher_lesson_presence` guarda só
+  números do professor por aula (entrada, minutos na sala, atraso, saída antecipada, status `FOUND`/`NOT_FOUND`/
+  `UNPARSED`/`NO_CONFERENCE`/`NO_ROOM`/`TEACHER_NOT_READY`), sem CSV nem dado do aluno, RLS sem policy e sem grant a
+  ninguém. Alimentada
+  pela avaliação de presença (remendo por âncora em `google_meet_attendance_backend` → `attendance_evaluate`, que nunca
+  derruba a avaliação) e pela varredura de hora em hora (aula sem sala, importação que terminou sem avaliação, troca
+  de professor depois da medição); números recalculados com a conta de quem DÁ a aula — ⚠️ **nunca** os `teacher_*`
+  da importação (eram do titular): sem conta que identifique o professor de hoje, `TEACHER_NOT_READY`. Falta do
+  professor, aula de antes de ligar e **aula que não é do professor da sessão** (`teacher_lesson_presence_given_by_other`:
+  régua única, lançamento de outro professor, agendamento transferido sem lançamento dele) não entram; sala **retida pela
+  troca** no início da aula (`teacher_handover_released_at` > início) é `NO_ROOM` e não abre caso na Central
+  (`meet_attendance_evaluate` redefinida inteira); 90 dias depois da aula (o prazo do relatório no termo v3), purga diária.
+  **Integração da onda 3:** a avaliação de presença (casos da Central) usa a MESMA régua — aula de outro professor
+  ou barrada não é avaliada, e depois de uma troca atraso/"professor ausente"/"aluno ausente" saem da planilha
+  reclassificada pela conta de quem dá a aula na hora (`private.meet_attendance_numbers`, também na planilha de "Sala
+  e resumo" — remendo por âncora em `google_meet_backend`), nunca dos `teacher_*`/`student_*` da importação (sem
+  troca, valem os da importação); a chave do caso leva o professor
+  (`meet:<sessão>:<regra>:<professor>`) e o caso antigo de outro professor ganha `MEET_TEACHER_HANDOVER`. A aula que
+  troca de professor depois da medição sai do extrato de quem não a deu na hora (filtro na leitura). Teste de ponta a
+  ponta: `supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql`. ⚠️ `google_meet_backend` é remendada por
+  âncora em TRÊS migrations desta onda (100000 → 110000 → 120000, nesta ordem de nome): quem a recriar mantém
+  `v_temporary_only`, `attendance_identity`/`teacher_handover` e `meet_attendance_numbers`. Leitura só por
+  `get_my_punctuality_extract` (o professor, o dele — cartão no painel) e `get_teacher_punctuality_extract` (direção e
+  coordenação, **um professor por vez**, lista só de nomes em ordem alfabética — aba "Pontualidade" da Central de
+  Qualidade). **Sem nota, média, ranking ou comparação; não toca `class_logs`, folha nem pagamento.** Desligado (sem
+  linha em `private.teacher_punctuality_settings`, o padrão): nada é calculado, as RPCs devolvem `{enabled: false}` e a
+  Central mostra que o extrato depende da liberação do jurídico. ⚠️ **Ligar é fora de qualquer API**:
+  `select private.set_teacher_punctuality_enabled('<escola>', true, 'Parecer do jurídico …')` na VPS, com a referência do
+  parecer; vale para as aulas que começam depois; desligar apaga o extrato da escola. Ao ligar, publique o tour do
+  professor (`data-tour="teacher-punctuality"`) — o `2026-09-28-tempo-na-sala` é só da direção. O `LATE_START` do
+  sistema aparece na Central como "Atraso detectado pelo Meet" (o da família segue "Atraso relatado").
+- ⚠️ Testando reunião no Chrome da escola: o Meet **entra com a câmera ligada** (permissão já dada ao
+  site). Desligar câmera e microfone logo ao abrir (`cmd+e`, `cmd+d`).
+
+---
+
+## Contrato com o registro das aulas — e o texto assinado que não muda ✅
+
+> Decisão da direção (27/09/2026): as aulas são registradas por decisão da escola e os **novos**
+> contratos trazem a cláusula — o registro integra a execução do contrato e quem assina fica ciente,
+> com direito de pedir para não ser registrado (o modelo "autorizado pela escola com direito de
+> recusa" da migration `20260929100000`, mesma release). Migration `20260927150000`, teste
+> `supabase/tests/versao_do_contrato_no_aceite.sql`. **Não mexe na regra de autorização** — ver
+> "Cláusula × modos de autorização" abaixo.
+>
+> ⚠️ **Antes de publicar esta release: reconectar a conta central do Google com o escopo `drive`**
+> (com `GOOGLE_MEET_DELETE_ORIGINALS_ENABLED=true`, que já está na VPS). Em 27/09 ela tinha só
+> `drive.meet.readonly`. A cláusula (a CONTRATADA elimina os originais em até 90 dias) e o aviso v4 (os
+> originais "são apagados 90 dias depois da aula") prometem a lixeira; sem o escopo, a fila
+> `PURGE_ORIGINALS` e `erase_student_lesson_records` só **adiam** (`google_drive_scope_missing`, tentam de
+> novo sem desistir). Com o `SCHOOL_DEFAULT` a Wise Wolf passa a ter aula transcrita **no dia do deploy** —
+> o primeiro original vence 90 dias depois dele, e um pedido de exclusão feito antes da reconexão só apaga os
+> originais quando ela acontecer. Não dá por código: é login da direção na tela do Google Meet
+> ("Reconectar conta central"; a tela já avisa com o alerta âmbar da lixeira).
+
+- **Cláusula:** aluno = `Cláusula 8 — Do Registro das Aulas` (o Foro passa a ser a 9); professor =
+  `CLÁUSULA 11ª – REGISTRO DAS AULAS`, no fim, para não renumerar a 3ª/7.3/9ª citadas por número. Resume o
+  termo v3 (sem vídeo, finalidades, Google/fornecedor/OpenRouter sem treino, prazos, direitos pelo WhatsApp,
+  responsável assina pelo menor; no do professor, extrato de pontualidade sem ranking que não mexe no
+  pagamento) e remete ao aviso completo no app. Ao lado da assinatura, `LessonRecordingClauseNotice`.
+  Prazos **como o sistema faz** (e o termo v3 diz): cópias no sistema contam **de quando chegam** (o
+  `expires_at` nasce na importação); trechos copiados e originais contam da aula. O caso da Central de
+  Qualidade guarda os horários da aula divergente (`lesson_quality_case_events.details`) pelo tempo do caso —
+  a cláusula diz isso e ressalva na exclusão a pedido. Fornecedores são **operadores**, não "terceiros" da
+  Cláusula 7 (aluno) / 8ª (professor); o tratamento **integra a execução do contrato** e quem assina fica
+  ciente — **não é termo de consentimento** (a v2 dizia "consente expressamente"; corrigida na integração de
+  27/09, antes de qualquer assinatura: `contract_terms_acceptances` nem existia em produção). O cartão
+  aparece inteiro (temas a evitar e observações do professor) e as sugestões da IA para ele entram nas
+  finalidades. A confirmação da aula pelos horários de entrada e saída (§1º, f) **não substitui o link de
+  confirmação da Cláusula 4, alínea (e)** (a forma oficial, inclusive para a cobrança) nem muda apuração ou
+  cobrança: divergência só abre verificação pela coordenação — o que o 11.3 já dizia ao professor sobre o
+  pagamento (revisão de 27/09; aviso v4 do aluno diz o mesmo e a migration recusa aviso sem isso).
+- **Cláusula = aviso v4.** A cláusula v2 e o aviso v4 (`private.lesson_recording_terms`, `kind = 'NOTICE'`)
+  dizem a mesma coisa: o que, para quê, quem vê, quem processa, prazos (inclusive o caso de presença),
+  direitos (pedir para não ser registrado pelo WhatsApp da escola — professor também pelo app —, sem
+  prejuízo das aulas nem da remuneração; exclusão; informação/correção/cópia pelo contato de privacidade).
+  `ContractDocument.test.ts` ("cláusula do contrato novo × aviso v4") compara os dois; a migration
+  `20260929100000` recusa aviso v4 sem esses pontos (`aviso_v4_diverge_da_clausula_do_contrato`). Mudou um,
+  mude o outro — contrato já assinado só muda por versão nova.
+- **Cláusula × modos de autorização.** O contrato **não é chave técnica**: no `SCHOOL_DEFAULT` quem tem
+  contrato v1 é registrado igual e o pedido para não registrar vale igual para quem assinou a v2; no
+  `INDIVIDUAL_CONSENT` só o aceite do termo (TERM) autoriza — **o contrato com a cláusula não conta como
+  aceite** (decisão da frente de autorização). `private.contract_lesson_recording_accepted_at` fica sem uso
+  em regra nenhuma. Ao ligar a v2 (`tenant_contract_terms`) em outra escola, ponha-a também no
+  `SCHOOL_DEFAULT` — senão o contrato descreve mais registro do que o sistema faz.
+- **A cláusula é da escola que decidiu, não da plataforma.** `tenant_contract_terms` diz qual versão cada
+  escola oferece aos contratos NOVOS (sem linha = 1); só `school-wise-wolf` nasce com a 2 (one-shot
+  `contrato_registro_das_aulas_wise_wolf_20260927`). Mudar a de uma escola é SQL da plataforma e só vale para
+  contrato novo. A tela que assina **mostra e grava a mesma versão**: matrícula e convite do professor
+  recebem `contractTermsVersion` da edge `tenant-legal-assets` (RPC `contract_terms_offered_version`, só
+  service_role); o professor que regulariza pelo app lê `offered_version` de `get_contract_terms`. O servidor
+  recusa versão diferente da oferecida (`versao_desatualizada` na matrícula, `versao_invalida` no app, 409 na
+  `register-teacher`) — sempre antes de cobrar ou criar conta.
+- **O texto do contrato é montado na TELA** (`ContractDocument`/`TeacherContractDocument`), então ele é
+  **versionado** (`lib/contractTerms.ts`): não assinado → a versão que a escola oferece (sem saber, a 1 —
+  nunca cláusula não decidida); assinado com versão gravada → a gravada; **assinado sem versão gravada → 1, o
+  texto de antes**. Matrícula migrada (`contract_accepted` sem `accepted_at`) conta como assinada.
+  ⚠️ **"Não assinado" só existe na tela que ASSINA** (matrícula, convite, aceite do professor). Tela que só
+  mostra — "Meu contrato" do aluno (`ContractView`), Contratos da direção — passa `signed: true` e nunca lê a
+  versão oferecida: sem versão gravada, texto de antes. Senão os 8 alunos ativos da Wise Wolf matriculados à
+  mão (`contract_accepted = false`, `accepted_at` nulo, 27/09) veriam e baixariam em PDF um contrato com a
+  Cláusula 8 que nunca assinaram. O HTML do
+  contrato antigo foi conferido byte a byte com o componente anterior, e `ContractDocument.test.ts` guarda o
+  hash do texto das cláusulas da versão 1 —
+  ⚠️ **se esse teste falhar, o texto de um contrato já assinado mudou: crie versão nova, não edite a antiga.**
+- **A versão é gravada no aceite** (`contract_terms_acceptances`, imutável; `contract_terms_versions` diz
+  quais versões trazem a cláusula): aluno por `record_enrollment_contract_terms(oferta, versão)`, chamada
+  pela página de matrícula logo depois de `begin_enrollment_offer` e **antes da cobrança** (falhou → erro,
+  nada cobrado; a cadeia de `begin_enrollment_offer` não foi tocada); professor por convite pela
+  `register-teacher` (também em `commercial_snapshot.contractTermsVersion`; página sem a versão → 409); professor
+  que regulariza pelo app por `accept_teacher_contract(assinatura, versão)` — sem versão (app antigo) = 1.
+  O aceite guarda **`signed_as_guardian`** (link de dependente, lido de `offers.payload.isDependent` no
+  servidor) e **a data desta assinatura**: `begin_enrollment_offer` mantém a assinatura antiga do perfil
+  (coalesce) e grava `processing_updated_at = now()` a cada chamada, na mesma transação da primeira
+  assinatura; então o aceite usa `profiles.accepted_at` só quando ela foi gravada pelo begin que acabou de
+  rodar (`>= processing_updated_at`) e `now()` senão — rematrícula, **nova assinatura depois de
+  `versao_desatualizada`** (a pessoa leu o texto antigo, recarregou e assinou a v2) e oferta retomada depois de
+  a escola mudar a versão. Custo conhecido: begin repetido por falha de rede antes da gravação também vira
+  `now()` (selo sem o IP antigo).
+  Leitura: `get_contract_terms(pessoa, tipo)` → `{recorded_version, accepted_at, offered_version}` (a pessoa,
+  direção/coordenação da escola) e colunas `contract_terms_version` + `contract_terms_accepted_at` em
+  `vw_student_contracts`. `signedContractEvidence` (lib) usa a data do aceite no selo/"Data Matrícula" quando
+  ela difere da do perfil, sem repetir o IP da assinatura antiga. Base para a autorização futura:
+  `private.contract_lesson_recording_accepted_at(usuário, tipo, escola)` — ⚠️ para aluno de quem a escola exige
+  responsável (`lesson_recording_guardian_reason`: KIDS, MINOR ou **idade não comprovada**, o caso de todos em
+  26/09) só conta contrato com `signed_as_guardian`; o aceite do próprio aluno vale depois que a escola atesta a
+  maioridade (`set_student_birth_date`).
+- ⚠️ `accept_teacher_contract` **nunca funcionou** antes daqui: `search_path = public` e o `digest` mora em
+  `extensions` → todo aceite de professor pelo app morria. Refeita com `search_path = ''` e
+  `extensions.digest`; a assinatura de 1 argumento saiu (duas no ar = ambiguidade no PostgREST).
+- **O aceite pelo app grava a CÓPIA do contrato** em `tenant_contract_records` (revisão de 27/09): o "Meu
+  Contrato" do professor (`tenant-legal-assets` → `PublicContractView`) só lê essa tabela, que antes só o
+  convite criava — sem isso os 3 professores ativos da Wise Wolf com `contract_accepted = false` assinariam a
+  v2 e cairiam em "Contrato não encontrado". Partes como a tela mostrou (`---` onde faltava), escola =
+  `tenants.school_info`, `hourlyRate`, `contractTermsVersion`, `acceptedVia = TEACHER_CONTRACT_ACCEPT`, sem PDF
+  (`signed_document_path` nulo). ⚠️ **Sem `rateUnit`**: `teacher_student_rate` lê `rateUnit = 'PER_LESSON'`
+  desse registro para trocar a régua de pagamento (valor fixo do perfil em vez das faixas) — aceite não muda
+  pagamento. A tela assinada mostrou o valor por aula, então a cópia leva `displayRateUnit = 'PER_LESSON'` e a
+  edge (`teacherContractRateUnit`) o devolve como `rateUnit` só para exibir; sem ele a cópia mostraria metade
+  (a regra do contrato antigo por hora). O servidor recusa como a tela: `escola_sem_identidade_juridica`,
+  `valor_por_aula_ausente`. Os 6 professores aceitos antes de 21/08 (sem registro) continuam sem cópia — já
+  era assim.
+- ⚠️ Versão nova de texto = número novo em **três** lugares: `lib/contractTerms.ts`, a tabela
+  `contract_terms_versions` (migration nova) e `register-teacher/contract-terms.ts`.
+  `lib/contractTerms.test.ts` confere os três.
+- **Registro no `release.sh`** (feito na integração de 27/09): `MIGRATION_RELATIVES` ←
+  `supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql` (pela ordem do nome, antes das
+  `20260928*` já aplicadas — o release roda as pendentes na ordem do nome, então ela vem ANTES da
+  `20260929100000`; as duas não tocam objeto em comum); testes SQL ←
+  `supabase/tests/versao_do_contrato_no_aceite.sql`; `deno test --allow-read --frozen` ←
+  `supabase/functions/register-teacher/contract-terms.test.ts`; `deno fmt --check` ←
+  `register-teacher/contract-terms.ts` e `.test.ts`. Sem a migration no ar, a matrícula para
+  (`record_enrollment_contract_terms` inexistente), "Meu contrato" dá erro e nenhum convite de professor fecha.
+- ⚠️ **Teste do release não confere valor de negócio que muda.** O teste roda em TODO release, com ou sem
+  migration pendente; conferir "a Wise Wolf oferece a v2" travaria todos os releases depois que a plataforma
+  mudasse a versão dela por SQL. `versao_do_contrato_no_aceite.sql` exige só a marca do one-shot e confere o
+  valor quando a semente acabou de rodar (`schema_one_shots.applied_at = now()`: o release roda os testes na
+  transação das migrations); `registro_autorizado_pela_escola.sql` confere só os campos imutáveis da trilha,
+  nunca o papel ATUAL de quem decidiu.
+- Fora (de propósito): **renovação** e **troca de plano** ("as demais cláusulas continuam válidas") não
+  carregam a cláusula — aluno antigo só passa a tê-la assinando contrato novo. Matrícula feita à mão pela
+  escola, sem a página de matrícula, não grava versão (lê como texto de antes — também no "Meu contrato").
 
 ---
 
@@ -310,6 +1126,26 @@ onClick texto → sendMessage() → unlockAudio()
 - `prepare-daily-reminders` (cron 5min): enfileira lembrete para aulas começando em 25-35 min (≈30 min antes). Professor com `date_automation_enabled = false` é pulado (modo manual).
 - `TeacherDashboard`: seção "Aulas de Hoje" com botão **Disparar** por aluno (envia pela instância do professor, template personalizado via `send-class-notification`) + badge AUTO/MANUAL.
 - `AutomacaoSmart`: toggle Automático (30min) vs Manual + QR de conexão.
+- ✅ **O texto do lembrete tem UMA fonte: `public.render_lesson_reminder_message`** (migration
+  `20260926190000`). O worker (`process-notification-queue`), a prévia da fila
+  (`prepare-daily-reminders`) e o "Disparar" chamam essa RPC (`canonicalLessonReminder` em
+  `send-class-notification/core.ts`), e a cerca `begin_notification_delivery_submission` confere com
+  ela. **Não volte a renderizar lembrete no TypeScript**: o worker achatava o modelo
+  (`safeCommunicationText` troca `_`/`*` por espaço e junta as linhas) e punha o link pessoal no
+  `{class_link}`; a cerca, que preserva a formatação e apaga o link, recusou **todo** lembrete da
+  Débora de 16/09 a 25/09 (45 `lesson_authorized_snapshot_changed`, 0 enviados). Testes:
+  `supabase/tests/lembrete_leva_a_sala_oficial.sql` e `process-notification-queue/safety.test.ts`.
+  ⚠️ **O TypeScript não apara o texto do banco** (`renderLessonReminderMessage`): a cerca compara byte
+  a byte. Quem limpa as pontas é o SQL — modelo terminado em `{class_link}` numa aula sem sala sobrava
+  com `"\n\n"`, o worker aparava e a cerca recusava.
+- ⚠️ **Link pessoal:** o automático não manda (decisão de 16/09); o "Disparar" continua pondo o
+  `profiles.meeting_link` no `{class_link}` quando a aula não tem sala da escola (0 usos em 90 dias).
+- ⚠️ A tela "Mensagens" abria com o padrão ANTIGO ("começa em 1 hora" + `{class_link}`) e gravava
+  esse texto como modelo próprio quando o professor só ligava a automação — os 3 modelos de produção
+  eram ele. Hoje o padrão do front é o do servidor e modelo igual ao padrão é salvo como `null`
+  (`reminderTemplateToStore`); a migration `20260926190100` (one-shot) trocou "1 hora" por "30
+  minutos" nos 3 e **manteve o `{class_link}`**. Voltar a `null` tiraria o link do "Disparar" de
+  Flávio e Beatrís, que estão com o automático desligado e só avisam por ele.
 
 ---
 
@@ -324,7 +1160,7 @@ onClick texto → sendMessage() → unlockAudio()
 - `rate_attendance(token, stars)` — avaliação 1-5 do aluno na confirmação de presença → alimenta `avg_rating` do professor.
 
 **Tabelas/colunas:** `student_teacher_notes` (observações), `profile_audit_log` + trigger `log_profile_changes` (auditoria STUDENT: financeiro/contrato; TEACHER: hourly_rate/commission/status/pix), `attendance_confirmations.student_rating`, `student_payments.due_reminder_sent_at`.
-**Crons:** `wisewolf-notify-payment-due` (aviso de vencimento 3 dias antes).
+**Crons:** `wisewolf-notify-payment-due` (aviso de vencimento 3 dias antes; régua de vencidas 3/10/20/30 dias). No marco de 30 dias, o aviso adicional sai por WhatsApp e e-mail com travas independentes e sem retroagir para faturas mais antigas que a janela de 45 dias. Exige fatura `OVERDUE` no banco e no Asaas, mesmo cliente/assinatura, contrato aceito, vínculo e aulas ativos, e-mail autenticado do aluno titular e link da própria fatura. Menores com responsável financeiro não recebem e-mail automático enquanto não houver e-mail do responsável validado. A tentativa de e-mail fica em `payment_overdue_email_attempts`; resultado ambíguo não é reenviado automaticamente. O texto informa a possibilidade contratual de suspensão, sem afirmar perda automática do professor.
 **Regra de risco:** sinais FRACOS sozinhos NÃO alertam (evita ruído de `class_logs` esparso). Ajuste thresholds nos RPCs `list_*_overview`.
 
 ---
@@ -391,15 +1227,104 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
-## Gestão de Vendedores (SALESPERSON) ✅
+## Gestão de Afiliados (SALESPERSON) — modelo híbrido por cupom ✅
 
-- **Criação:** por link de convite (`VendorInviteGenerator`, payload base64 com `commissionRate` em **centavos**) — vendedor se autocadastra. Surfaced no hub.
-- **Hub do diretor** (`VendorManagement`, aba "Vendedores"): KPIs (a pagar, receita trazida), lista com editar comissão inline + ativar/desativar + convite. `VendorProfileView` = ficha 360 (comissões, funil, histórico) com **workflow** Confirmar→Pagar.
-- **RPCs (só admin):** `list_vendors_overview()`, `get_vendor_overview(uuid)`, `set_vendor_commission_status(uuid, text)`.
-- **Auto-confirm:** trigger `confirm_vendor_commission_on_payment` em `student_payments` → comissão PENDING vira CONFIRMED quando o aluno indicado paga (RECEIVED).
-- **Atribuição:** link de matrícula com `?vendor_id=` cria `vendor_commissions` (vendor_id, student_id, amount_brl em **reais**, status PENDING/CONFIRMED/PAID).
-- `profiles.commission_rate` em **centavos** (dividir por 100 p/ exibir). Auditoria de comissão via `log_profile_changes` (role SALESPERSON).
-- **Estado atual:** 0 vendedores / 0 comissões — camada estava inerte; agora operável.
+> **Decisão da direção (25/09/2026): o afiliado NÃO gera link.** A indicação é o
+> **cupom** dele (ex.: `AFILIADA10`). Quem se matricula com cupom fica isento da taxa
+> de matrícula; o afiliado ganha um valor fixo por matrícula, liberado quando a
+> **1ª mensalidade é liquidada**. Migration `20260924194214_affiliate_coupon_commission_settlement`
+> (ainda **não publicada** em 25/09), teste `supabase/tests/affiliate_coupon_commission_settlement.sql`.
+
+- **Convite:** `VendorInviteGenerator` → `create_affiliate_invite(comissão, nome, cupom)` —
+  passa pela porta de sempre (`create_invite_offer`, que confere papel e escola) e **reserva
+  o cupom** até o convite ser usado ou vencer (`affiliate_code_in_use` se já é de alguém).
+  `/vendor-onboarding` exige o aceite das regras (`acceptedTerms`, conferido no
+  `register-vendor`). ⚠️ **A ordem mudou (27/09):** no celular vêm primeiro o resumo
+  (comissão e cupom) e o formulário com o aceite; "Como funciona" e as regras completas
+  ficam ABAIXO (o link "Ler as regras completas" leva até elas), e os prazos de liquidação
+  (Pix, boleto, cartão até ~30 dias) ficam recolhidos na etapa "A 1ª mensalidade é
+  liquidada". Não parta do pressuposto de que quem marcou a caixa leu os prazos: o texto
+  do aceite é que carrega o essencial (comissão, liberação na 1ª mensalidade liquidada,
+  saque aprovado). Cor e logo vêm da escola (`tenant-legal-assets` → `brandPrimary`,
+  `brandSecondary`, `schoolLogoUrl`); cor que não dá 4,5:1 com branco SÓLIDO cai no padrão,
+  e a página só escreve branco sólido sobre ela. **O cupom do convite ainda não vale na
+  matrícula** (`private.active_affiliate_by_code` só acha perfil SALESPERSON, que nasce no
+  cadastro): a página o mostra "Reservado para você", sem copiar; o Copiar fica na tela de
+  conclusão, com o cupom que o `register-vendor` devolve (`affiliateCode`, lido do perfil).
+  Cupom tomado entre o convite e o cadastro não trava: a conta nasce com cupom gerado —
+  e é esse que a conclusão mostra.
+- **Atribuição — três portas, um benefício** (`private.grant_affiliate_benefit`: taxa 0 +
+  comissão congelada em `offers.metadata.affiliate_commission_cents`):
+  1. ~~o aluno digita o cupom na página de matrícula~~ — **removido em 31/10/2026** (decisão
+     da direção: quem não tem cupom sentia que pagava a mais). Sem campo na página e a ação
+     `applyAffiliateCoupon` saiu da `tenant-legal-assets`; a RPC `apply_affiliate_coupon`
+     segue só para service_role. Cupom é interno: a escola aplica no link manual;
+  2. a escola põe o cupom no **link manual** (`RegistrationLinkGenerator` →
+     `create_enrollment_offer_with_affiliate(payload, cupom)`, que chama a porta pública e
+     aplica o benefício no mesmo commit; cupom inválido desfaz o link inteiro). O campo
+     aceita cupom **ou nome** (`find_affiliates`, sem acento): cupom exato resolve sozinho;
+     nome pede um clique, e com dois nomes iguais a lista mostra o cupom de cada um;
+  3. legado: experimental aberta por afiliado (`opportunities.created_by_vendor_id`).
+  Só vale para **plano** — aula avulsa não tem matrícula e não gera comissão.
+- ⚠️ **SALESPERSON não cria oferta de matrícula** — trava na tabela
+  (`trg_block_salesperson_enrollment_offer`, BEFORE INSERT em `offers`, pelo `_my_role()` da
+  sessão). A porta aceitava **qualquer mensalidade** vinda do afiliado. O menu dele é só
+  Painel + Como funciona + Perfil.
+- ⚠️ **Não encaixe camada nova na cadeia de `create_enrollment_offer`.** Três testes
+  (`crm_trial_conversion_hardening`, `harden_trial_offer_authority_and_idempotency`,
+  `enrollment_without_trial_feedback`) leem o **texto-fonte** de cada camada (a pública tem de
+  travar o lead do CRM; a `_pre_crm_lead_lock_impl` tem de conter a idempotência…). A primeira
+  versão do cupom virou camada por cima da porta pública e reprovou a auditoria. Porta
+  própria ao lado, chamando a pública, não quebra nada.
+- ⚠️ Guarda de papel é sempre `coalesce(role, '') not in (…)`: a reescrita de
+  `set_vendor_commission_status` perdeu o `coalesce(v_role` e o `tenant_id = v_tenant`, e o
+  `conciliacao_caixa_asaas.sql` (que audita o texto da função) reprovou.
+- **Liberação:** comissão nasce `PENDING` quando o aluno começa a matrícula e vira `CONFIRMED`
+  quando a oferta chega a `COMPLETED` — que é disparado pela liquidação (`PAYMENT_RECEIVED`/
+  `RECEIVED_IN_CASH`) da cobrança que ativa a matrícula. Como o cupom zera a taxa, essa
+  cobrança é a **1ª mensalidade**: Pix na hora, boleto na compensação, cartão quando o valor
+  cai (até ~30 dias; com antecipação da Asaas cai antes — medido: cartão de 31/08 liquidou
+  em 01/09). Estorno reabre a oferta → comissão volta a `PENDING` e o saque pendente é cancelado.
+- **Etapas do painel são derivadas, nunca gravadas** (`private.affiliate_referral_view`):
+  aguardando pagamento → em liquidação (cartão aprovado, com `student_payments.estimated_credit_at`)
+  → disponível → em saque → paga. Afiliado vê o aluno como "Maria S.".
+- **Painel do afiliado:** `get_my_affiliate_panel()` (tudo numa chamada) + `set_my_affiliate_pix`.
+  ⚠️ "Meu Perfil" só mostra PIX para **professor** — sem a porta própria, o saque do afiliado
+  ficava preso em `PIX_REQUIRED` para sempre.
+- **Saque:** só comissões `CONFIRMED` sem reserva entram; `request_vendor_withdrawal` reserva as
+  linhas exatas (`withdrawal_request_id`); a direção aprova e marca pago na ficha
+  (`set_vendor_withdrawal_status`). "Liberar manualmente" na ficha é exceção (pede confirmação).
+- `vendor_commissions.amount_brl`, `vendor_withdrawal_requests.amount_brl` e
+  `profiles.commission_rate` são **centavos** (padrão 4900 = R$ 49). Caixa, DRE e o alerta de
+  `list_vendors_overview` convertem na borda (o alerta mostrava "R$ 4.900,00" para R$ 49).
+- ⚠️ **Dois erros de sintaxe que derrubariam o release** estavam na migration e foram
+  corrigidos em 25/09: um `+` solto (resto de patch) e `pg_catalog.substring(x from 1 for 10)`
+  — a forma `from … for` é sintaxe especial e **não existe com o prefixo `pg_catalog.`** (use
+  `pg_catalog.substr(x, 1, 10)`). Mesma família do `nullif`.
+- **Testar migration sem travar produção:** cópia só com a estrutura no mesmo servidor —
+  `createdb ww_x` + `pg_dump --schema-only | psql -d ww_x` (só o `pg_cron` falha, fica no
+  banco principal), rodar migration 2× + teste em `BEGIN … ROLLBACK` ali, `dropdb` no fim.
+  Não pega `ACCESS EXCLUSIVE` em `profiles` em horário de aula.
+- **Validação de 26/09/2026:** os 134 testes SQL do release rodados um a um numa cópia
+  só-estrutura, sem e com as migrations novas — **zero regressões** (as ~35 falhas nas duas
+  rodadas dependem de dado real que a cópia não tem).
+- **Clone COM dados (onda 1, 26/09):** `createdb` + `pg_dump postgres | psql` (~150 MB, log enorme só
+  de `cron.job_run_details`, que não restaura) e um segundo clone por `createdb -T` do primeiro — os dois
+  saem do mesmo dump. `pg_cron` só existe no banco `postgres`: 6 testes do release falham no clone por
+  `cron.job` ausente. Um `cron` de mentira (tabelas `job`/`job_run_details` com as linhas copiadas da
+  produção só-leitura e `schedule`/`unschedule` mexendo só nelas) faz 5 deles rodarem;
+  `whatsapp_delivery_pipeline.sql` ainda exige `pg_extension` = `pg_cron` na pré-condição. O
+  `pg_net` do clone não envia nada (`pg_net.database_name = postgres`). Reproduza também a forma do
+  release (migrations + todos os testes em savepoint, UMA transação, `now()` único), não só um a um.
+- ⚠️ **Teste SQL do release roda no banco de PRODUÇÃO** (savepoint na transação do release): não pode
+  depender de fila global. A do Meet (`get_pending_google_meet_sync_sessions`, 30 por vez, todas as
+  escolas) → o teste tira as conexões reais do ar dentro da transação (`update
+  private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED'`). A de
+  notificações → nunca chame `claim_notification_delivery_batch` (reserva trabalho real e perde para a
+  fila represada): reserve só as linhas do teste com o mesmo `update` do claim. E horário "diferente" num
+  teste sai do horário da aula, não de uma constante (`23:59` é a própria aula às 23:29).
+- 0 afiliados e 0 comissões em 26/09. O bot do WhatsApp **não** reconhece cupom na conversa —
+  o caminho é a escola (link manual) ou o aluno (página de matrícula).
 
 ---
 
@@ -575,6 +1500,126 @@ alunos da Wise Wolf ficavam graváveis por professor e diretor de outra escola.
 ⚠️ **Ainda aberto:** o mesmo padrão pode existir em outras tabelas. Ao auditar, procure
 `polcmd = '*'` com `polpermissive = true`, e também `polcmd = 'w'` cujo `USING` **não**
 menciona tenant.
+
+---
+
+## ⚠️ NÃO registre as migrations legadas em `MIGRATION_RELATIVES` ✅
+
+> Medido em 23/09/2026. Escrito aqui porque "faltam 115 migrations na lista" parece
+> pendência e **não é** — registrá-las é que seria o estrago.
+
+O release **não reaplica a lista inteira**: ele guarda marker
+`<versão>-<sha256>.sha256` em `/opt/wisewolf/releases/.migration-checksums` e só roda as
+**pendentes** (duas vezes, em transação, com rollback, antes de valer). Migration já
+aplicada com **outro checksum** é recusada na hora.
+
+- **115 migrations do repo estão fora da lista** — legado de jan–jul/2026. Como não têm
+  marker, registrá-las faria o release **executá-las**. E **39 delas têm `DELETE`,
+  `DROP`, `TRUNCATE` ou `UPDATE` de dado sem a trava `schema_one_shots`**, incluindo
+  `20260127080000_delete_admins.sql`, `20260131140000_delete_veronica.sql`,
+  `20260127021500_fix_password_hash.sql` e `20260127030000_copy_valid_hash.sql`. O
+  próximo deploy apagaria administradores e reescreveria hash de senha.
+- **Registre só migration nova**, escrita para rodar de novo. Ao registrar uma antiga
+  (raro), leia o arquivo inteiro antes.
+- ⚠️ **Ordem de aplicação é o glob `migrations/*.sql` ordenado por NOME**, não a ordem da
+  lista. Conserto de função sempre em arquivo com data posterior ao que a define.
+- **Auditar em 30 s:** extrair `MIGRATION_RELATIVES` do `release.sh`, comparar com
+  `ls supabase/migrations`, cruzar o sha256 local com os markers da VPS → três respostas:
+  conflito de checksum (recusa), pendente (vai rodar), fora da lista (nunca roda).
+- ⚠️ **Rodar os 128 testes SQL na mão? Use o CÓDIGO DE SAÍDA do psql**, não
+  `grep '^ERROR:'` — vários provocam erro de propósito. O grep acusou 7 falhas onde
+  havia 4.
+- ⚠️ `npm run deploy:vps | tail` **esconde a falha**: o `exit code` passa a ser o do
+  `tail`. Redirecione para arquivo e leia `$?`.
+
+---
+
+## ⚠️ Reposição parada NÃO abre o aluno — e por que eu quase "consertei" isso ✅
+
+> Migration `20260923130000_revert_open_reschedule_access.sql`. Leia antes de mexer em
+> `_teacher_can_access_student`.
+
+`_teacher_can_access_student` só deixa o professor enxergar o aluno por reposição quando
+ela tem **data utilizável dentro da janela de 7 dias** (`20260922040028`, intenção
+declarada: *"historical coverage and reschedule records must not grant access forever"*).
+Reposição parada em `'Pendente'` **não abre nada**, e isso está certo.
+
+**O erro que eu cometi em 23/09/2026 e a direção pegou:** vi que 195 das 196 reposições
+abertas não abriam mais o aluno e que a Beatrís enxergava **zero**, tratei como regressão
+e afrouxei a regra. O que ela abria eram **fantasmas** — 26 pares, todos de aluno que hoje
+é de OUTRO professor: Beatrís via Paulo Eduardo (titular Mateus) e Ana Clara (titular
+Flávio) por reposições de 09/06, 106 dias paradas; Flávio via Anderson (titular Lais) por
+8 reposições de junho/julho; Mateus via Bruno Luis, **inativo**, por reposição de março.
+A Beatrís enxergar zero estava certo: **ela não tem aluno**.
+
+- ⚠️ **Contagem de acesso não é sinal de defeito.** Medi a saída da regra (quantos alunos
+  cada professor vê, antes e depois) e nunca conferi a **verdade do terreno**: aquele
+  professor dá aula para aquele aluno HOJE? A tabela que decide isso é `bookings`
+  SCHEDULED, `profiles.professor_id/2` e cobertura confirmada — não `reschedules`.
+- **Antes de mexer em regra de acesso, liste caso a caso**: professor, aluno, titular
+  atual do aluno, idade do registro que está concedendo o acesso. Se o titular é outro e
+  o registro tem 100 dias, o acesso é que estava errado.
+- **O caso legítimo continua coberto:** substituto que VAI dar a aula tem reposição **com
+  data**, e cobertura confirmada tem ramo próprio. `substituto_enxerga_o_aluno_que_cobre.sql`
+  afirma os três lados — reposição marcada abre, reposição em `'Pendente'` não abre,
+  reposição de 30 dias atrás não abre.
+- **O passivo por trás disso é real e é outro problema:** 196 reposições abertas
+  atribuídas a professor, 4 com data. Isso é higiene de dado (ver *Reposição parada é
+  passivo*), não regra de acesso.
+
+## ⚠️ `NULL not in (...)` é NULL, não verdadeiro ✅
+
+> Migration `20260923060000_null_trial_status_keeps_post_trial_question.sql`.
+
+O retorno de `trial_closing_teacher_asks` filtrava `opportunity.trial_status not in (...)`
+**sem `coalesce`**, enquanto o `insert` da MESMA função usava `coalesce(trial_status,'')`.
+Com o campo nulo a oportunidade entrava na fila e **nunca aparecia no retorno**: a
+professora não era perguntada e o fechamento da experimental não começava, sem erro nenhum.
+
+Não atingia ninguém (90 dias: 34 DONE, 15 SCHEDULED, 3+2 no-show, **zero nulos**), então o
+conserto é no-op sobre os dados de hoje. Provado com fixture: nulo vai de 0 para 1, e
+`NO_SHOW_TEACHER`/`CANCELLED` continuam em 0. Guardado por
+`pos_experimental_com_trial_status_nulo.sql`, que reprova contra a função antiga.
+
+⚠️ **Ao filtrar por `not in` / `<>` / `>=` numa coluna que aceita nulo, decida o nulo
+explicitamente.** Mas decidir não é sempre "deixar passar" — na reposição acima, o nulo
+**tem** de barrar. Qual dos dois é o certo se decide olhando o dado, não a simetria.
+
+---
+
+## ⚠️ Policy que chama função `private` derruba a escrita de TODO bucket ✅
+
+> **Leia antes de usar `private.*` dentro de qualquer policy para `authenticated`/`anon`.**
+> Migration `20260923030000_storage_write_guards_use_my_role.sql`.
+
+O diretor não conseguia subir o PDF do treinamento: *"permission denied for function
+active_tenant_role"*, num INSERT que o diretor nem escreveu. As barreiras de `invoices`
+(`invoices_authenticated_update_guard` / `_delete_guard`, **RESTRICTIVE**, e as
+`invoices_closing_scoped_update` / `_delete`) chamavam `private.active_tenant_role(...)`
+direto — e `authenticated` **não tem EXECUTE** nela, de propósito: ela aceita um uuid
+qualquer e diria o papel de qualquer pessoa.
+
+- ⚠️ **O `bucket_id <> 'invoices'` NÃO salva.** O Postgres cobra o EXECUTE na
+  **inicialização da expressão**, antes de qualquer curto-circuito do `OR`. Barreira
+  RESTRICTIVE vale para todo bucket ⇒ **todo upsert, update e delete de arquivo morria**,
+  em qualquer bucket, para qualquer usuário logado. `SELECT` e `INSERT` simples passavam —
+  por isso a biblioteca "funcionava" e só o upload com `upsert: true` (`TrainingAdmin`) e
+  as remoções (`PedagogicalConfig`) quebravam.
+- **Conserto:** usar **`public._my_role()`** — que é exatamente
+  `private.active_tenant_role((select auth.uid()))` embrulhado num SECURITY DEFINER do
+  `postgres` com EXECUTE para `authenticated`. Conferido perfil a perfil (95 pessoas,
+  **0 divergências**); a função interna continua fechada.
+- ❌ **Não conserte dando `grant execute` na função `private`** — ela recebe uuid
+  arbitrário; liberar entregaria o papel de qualquer usuário a qualquer logado.
+- **Trava contra reincidência** dentro da própria migration: policy de `storage.objects`
+  para `anon`/`authenticated` que cite função `private` sem EXECUTE **derruba a migration**,
+  e não a tela do diretor às 23h.
+- **Como auditar** (vale para qualquer tabela, não só storage): cruze `pg_policy` com
+  `pg_proc` do schema `private` e `has_function_privilege('authenticated', oid, 'EXECUTE')`.
+- ⚠️ `storage.objects` tem trigger `protect_objects_delete`: **DELETE direto por SQL é
+  recusado** ("Use the Storage API instead"). Teste de remoção tem de ir pela API HTTP —
+  `/storage/v1/object/<bucket>/<path>` com JWT do usuário, rodado **dentro da VPS** para a
+  chave não entrar no contexto.
 
 ---
 
@@ -885,6 +1930,17 @@ professores para Terça 15:30; o slot discreto devolve 3.
 - ⚠️ **`accept-coverage` devolve HTML e funciona** — testado, o gateway entrega
   `text/html`. É exceção à regra "edge function não renderiza HTML" (que vale para o que o
   Kong serve nas rotas do SPA). Não "conserte" movendo para o SPA sem medir.
+  ⚠️ **"Funciona" valia só para o GET.** Até 17/10/2026 o botão Confirmar postava para
+  `url.pathname` — que dentro do container é `/accept-coverage`, porque o Kong tira o
+  `/functions/v1` — e caía na rota do painel do Kong (401, pedido de usuário e senha).
+  **Formulário de edge function não leva `action`**: `<form method="post">` posta para a
+  própria URL do link. Guardado por `accept-coverage/form-action.test.ts`.
+- ⚠️ **Página HTML com `Referrer-Policy: no-referrer` NÃO pode checar `Origin` no POST.**
+  Com essa política o navegador manda `Origin: null` no envio do formulário (medido no
+  Chromium em 16/09/2026). A `teacher-training-invite` fazia a checagem e devolvia 403
+  "Origem inválida" para **todo** aceite — nenhum convite de treinamento foi aceito entre
+  09/09 e 16/09 (a Bruna foi a primeira a reclamar). Quem protege o aceite é o token de 64
+  hex no corpo, como na `accept-coverage`/`claim-coverage`, que nunca checaram origem.
 
 ---
 
@@ -929,6 +1985,162 @@ Medido: 0 linhas em `teacher_absences`, 0 coberturas com `request_id` na histór
 `reason` derivado do texto (`SICK`/`OTHER`), texto em `notes`, `status = 'ACTIVE'`. Leitores
 usam `lower(status)` ou `.in(['ACTIVE','active'])` — `.eq('status','active')` é código morto.
 
+### ⚠️ Participante do grupo chega como `@lid` — `p_actor_id` é NULL nas ações
+
+A Evolution entrega quem escreve no grupo como `99201044238394@lid`, sem telefone, então
+`resolveManagementActor` não acha o perfil e a ação segue como `MANAGEMENT_GROUP_MEMBER`
+com `userId = null`. A **autorização** vem da ação pendente confirmada
+(`private.management_group_execution_authorized`, por `request_id`), não da identidade —
+mas qualquer RPC que **exija** o uuid (`if p_actor_id is null`, ou que grave `confirmed_by`
+/`created_by` com ele) quebra só para quem escreve pelo grupo. Foi assim que a cobertura do
+Theo passou pela autorização e morreu no INSERT (`active_coverage_already_started`, porque
+`confirmed_by` nulo é "cobertura futura" para o trigger), em 16/09/2026 à noite.
+Regra (migration `20260917000000`): `v_attester := coalesce(p_actor_id,
+private.management_group_default_actor(p_tenant))` (o diretor ativo da escola) para
+atribuição; a auditoria (`gestao_action_audit`) guarda o jid real. ⚠️ O release **recusa
+migration já aplicada com checksum diferente** — editar a de ontem derrubou o deploy; o
+conserto vai em migration nova com `create or replace`. ⚠️ Testar RPC de grupo **com `p_actor_id := null`** e uma linha `executing` em
+`gestao_acao_pendente` — testar só com o uuid do diretor, como fiz na véspera, passa e
+não prova nada.
+
+### ⚠️ O substituto precisa ENXERGAR o aluno — senão a cobertura "registrada" não chega ao lançamento (18/09/2026) ✅
+
+A Bruna tinha três coberturas confirmadas de 16/09 e o `Lançar Aula` mostrava nada ("Não
+aparece para eu lançar aula"). `coverages_for_teacher_in_tenant` devolvia as três, os
+`bookings` do Flávio apareciam — mas `_teacher_can_access_student` só reconhecia
+`professor_id`/`professor_id2` e `bookings` SCHEDULED; o join `student:student_id(...)` do
+`LessonLauncher` voltava `null` e a aula era descartada em silêncio (`if (!student) return`).
+Como o pagamento é `class_logs` × tarifa, a substituta não recebia. Migration
+`20260918080000`: cobertura confirmada (`cover_teacher_id`) e reposição atribuída
+(`reschedules.teacher_id`) abrem o aluno para o professor (só a projeção de diretório —
+grants de coluna continuam). Medido por pessoa em produção: só Bruna, Débora e Mateus mudam.
+Teste: `supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql`.
+
+- ⚠️ **Convite recusado/cancelado bloqueava a próxima cobertura da MESMA aula.** A UNIQUE
+  `(booking_id, class_date)` de `class_coverages` (criada fora do repositório) valia para linha
+  cancelada — o atestado retroativo do Theo (convite cancelado na véspera) morria em
+  `duplicate key`. Migration `20260918090000`: índice parcial só para `confirmed`
+  (+ legados); quem cuida das vivas é o trigger. Teste:
+  `supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql`.
+- ⚠️ **Treinamento: o appointment é da TRAINER.** `teacher_training_invite` cria o
+  `appointments` com `teacher_id = trainer` (Débora), e `protect_training_class_log` recusa
+  lançamento nesse appointment por quem não é a trainer. O professor que RECEBE o treinamento
+  lança num appointment PRÓPRIO (`type='training'`, `teacher_id` = ele, sem sessão vinculada)
+  → `v_payable_class_logs` paga R$ 8 (não é `is_trainer`). Foi assim que o treinamento da
+  Bruna (16/09 15:50) entrou.
+- **Cobertura confirmada não aparece na Agenda nem no "Aulas de hoje" do substituto** —
+  `TeacherAvailabilityEditor` lê só `bookings` + experimental, `TeacherDashboard` lê
+  `list_teacher_lesson_booking_occurrences` (só bookings próprios) + reposições + trials.
+  Ela só aparece em `Lançar Aula`, depois do horário do slot. Reposição atribuída
+  (`reschedules.teacher_id`) aparece no "Aulas de hoje" e em Reposições. Lacuna conhecida.
+- **Horário combinado ≠ slot:** a cobertura fica amarrada ao slot do booking (16:30) mesmo que
+  a aula seja às 18:00 — o combinado vai no motivo/notes (mesma regra do Theo/Débora). O
+  `class_log` nasce com o horário do slot.
+
+### Reposição com trilha — só existe marcada no sistema (migration `20260918100000`) ✅
+
+**O caso (18/09/2026):** o Flávio "passou a reposição que tinha marcado para hoje" e a direção
+não sabia horário nem motivo — as 13 dele estão `Pendente`; a reposição foi combinada por
+fora. Medido em 60 dias: **138 criadas, 16 com data (12%), 11 dadas, 122 abertas sem data**
+(Mateus 127, Lais 34, Flávio 13, Débora 10). A tela só gravava data/hora, sem motivo, sem
+histórico, sem aviso, sem `audit_logs`.
+
+- **`reschedule_events`** (trigger `trg_zz_reschedule_events_capture` em `reschedules`):
+  criada · marcada · remarcada · desmarcada · professor_trocado · atestada · dada, com ator,
+  origem (`app` tela · `whatsapp_professor` · `whatsapp_aluno` acompanhamento · `direcao` ·
+  `sistema`), motivo e `em_cima_da_hora` (< 3 h). Origem/motivo entram por
+  `set_config('app.reschedule_source'|'app.reschedule_reason', …, true)` antes do UPDATE —
+  a RPC e o `care_set_reschedule_slot` já fazem isso. **Venha de onde vier a mudança, a
+  trilha existe.** `set_config('app.reschedule_silent','on',true)` cala os avisos num
+  reparo em massa por SQL.
+- **Avisos automáticos** (fila `notification_queue`, kind `MANAGEMENT_NOTICE`, idempotente
+  `reschedule-event:<id>:group|family`): uma linha no **canal de coordenação** e uma para a
+  família (marcada/remarcada/desmarcada; atestado e troca de professor são internos).
+- **`schedule_reschedule(id, data, hora, motivo)`** — remarcar (já tinha data) sem motivo
+  → `motivo_obrigatorio`. A assinatura de 3 argumentos foi derrubada (PostgREST recusaria
+  por ambiguidade). **`unschedule_reschedule(id, motivo)`** volta a `Pendente`.
+- ⚠️ **Reposição de falta do PROFESSOR dada por OUTRO professor nunca pagava:**
+  `teacher_reschedule_financial_origin_is_proven` só conhecia o lançamento de falta do
+  próprio titular. Agora a direção **atesta** (`attest_teacher_fault_reschedule(id, motivo)`,
+  SCHOOL_ADMIN/COORDINATOR ou service_role) — como na cobertura de aula já dada. Colunas
+  `attested_*` são do servidor (`trg_aa_reschedule_server_fields_guard`, chave
+  `app.reschedule_attest`); `fault_type` só muda por admin/service_role/DBA. Professor não
+  tem policy de UPDATE em `reschedules` — escreve só pelas RPCs.
+- **`reschedule_backlog_summary(tenant)`**: por professor, sem data · vencidas · marcadas
+  em 7 dias · mais antiga. Base do resumo semanal e do comando do grupo (ainda por ligar).
+- Tela `TeacherReschedules`: motivo (obrigatório ao remarcar), ⚠️ "em breve", histórico
+  (`reschedule_events`, RLS: professor vê as suas), Desmarcar. Regras espelhadas em
+  `lib/rescheduleRules.ts` (com teste).
+- **Etapa 2 (migration `20260918110000`):** o professor marca/remarca/desmarca pelo
+  WhatsApp da escola — "a reposição do Theo passou para terça 15h", "marca a reposição da
+  Ana amanhã 16:30", "desmarca a reposição do Vinícius" (`teacher-reschedule-move.ts`,
+  puro, testado; roteado ANTES da troca de horário fixo porque "passou para 15h" casa nos
+  dois — a palavra *reposição* decide). Proposta + "confirma?" (motivo junto: "sim, aluno
+  pediu") → `teacher_reschedule_prompt_apply` age como o professor pela MESMA RPC da tela,
+  com `app.reschedule_source = whatsapp_professor`. Comando **"reposições"** no grupo
+  (Direção ou Coordenação) e **resumo toda segunda** no canal de coordenação
+  (`daily-automations`, kind `RESCHEDULE_WEEKLY`); **reposição vencida** (data passou, sem
+  lançamento) cobra o professor uma vez por reposição (`RESCHEDULE_OVERDUE`, marca em
+  `automation_sent` antes da fila) e resume no grupo (`RESCHEDULE_OVERDUE_GROUP`).
+  Composição em `_shared/reschedule-messages.ts` (ritual completo no `release.sh`).
+
+### Canais de aviso — um grupo de WhatsApp por assunto (migration `20260918100000`) ✅
+
+Decisão da direção (18/09/2026): o grupo da Gestão centralizava dinheiro, agenda, funil e
+o assistente. Agora **4 canais**: `direcao` (rateio, DRE, folha, cobrança, planos, lead de
+professor, perguntas de gestão), `coordenacao` (ausência, cobertura, reposição, troca de
+horário, aluno faltando, briefing de experimental), `comercial` (lead, experimental
+marcada/aceita/sem professor, pós-experimental, follow-up), `professores` (disparos —
+`profiles.teachers_group_id`).
+
+- **Fonte:** `tenant_notice_channels (tenant, channel, group_jid)`; resolver
+  **`private.tenant_notice_destination(tenant, canal)`** → configurado, senão
+  `teachers_group_id` (só `professores`), senão `management_group_destination` (Gestão).
+  **Canal sem grupo cai na Gestão** — nada se perde enquanto os grupos são criados.
+- Tela: *WhatsApp (Conexão)* → "Canais de aviso da gestão" (`GroupSelector` com
+  `channel=`, RPCs `get_notice_channels` / `save_notice_channel`).
+- Já roteados: eventos de reposição, `coverage_briefing_enqueue` (resumo da cobertura) e
+  `teacher_apply_student_schedule_change` (troca de horário) → `coordenacao`.
+- **Etapa 2 (migration `20260918110000`):** `comercial` cai em `profiles.directors_group_id`
+  ("EXPERIMENTAL CONFIRMADAS") antes da Gestão. Edge functions leem o canal por
+  `loadTenantNoticeDestination(sb, tenant, canal)` (`_shared/tenant-communication.ts` →
+  RPC `notice_channel_destination`, service_role): `claim-coverage`, ausência e cobertura
+  do dia no `whatsapp-inbound` → `coordenacao`; `payment-split-notify`, `dre-report`,
+  `management-payroll-report`, `monthly-reserve-notify`, renovação → `direcao`. **O bot
+  ouve os grupos por canal**: ingress e inbox aceitam o conjunto de `notice_channel_jids`
+  (menos o dos professores); `private.management_group_jid_is_authorized` entra em
+  `management_group_execution_authorized` e `whatsapp_inbox_remote_jid_is_allowed`.
+  Escopo: Direção/Gestão = tudo; **Coordenação** = cobertura, cobertura do dia,
+  transferência, troca de horário, treinamento, reposições (pedido de dinheiro ou pergunta
+  de gestão ganha "isso é no grupo da Direção" — o retrato financeiro não sai lá);
+  **Comercial** = só avisos (comando vira um ponteiro).
+- **Canal `financeiro` (19/09/2026, migration `20260919100000`):** a direção criou DIREÇÃO,
+  FINANCEIRO, COORDENAÇÃO e AULAS E COMERCIAL — dinheiro ganhou grupo próprio. `financeiro`
+  recebe rateio (`payment-split-notify`), DRE, folha (`management-payroll-report`) e caixinha
+  (`monthly-reserve-notify`); sem grupo configurado cai na **Direção**, depois na Gestão. No bot,
+  o grupo Financeiro executa `conta_pagar`, `ajuste_repasse`, `folha_professores`,
+  `mudanca_plano` e responde pergunta de gestão; agenda ganha "isso é na Coordenação".
+  ⚠️ **As cercas do outbox de aviso de pagamento** (`begin_/authorize_management_payment_
+  notification_submission`) comparavam o destino esperado com `dre_report_settings.destino` —
+  com canal apontando para outro grupo, TODO rateio seria suprimido
+  (`management_destination_changed_before_send`). Agora comparam com
+  `tenant_notice_destination(tenant, 'financeiro')`. Ao rotear um aviso que passa por outbox,
+  procure a cerca correspondente.
+- **Folha do mês EM ABERTO é prévia, não zero.** `gestao_payroll_summary` lia só
+  `teacher_closings` (nasce no dia 1º): em setembro a Bruna saía como "0 aulas · R$ 0,00" com
+  oito "↪ cobriu …: +R$ 8,00" embaixo — lia-se "as coberturas não entraram na contabilidade
+  dela", quando o Financeiro dela já dizia R$ 120. Hoje `private.payroll_month_rows` devolve,
+  para quem não tem fechamento, `status = 'PREVIA'` com a MESMA conta do Financeiro do
+  professor (`v_payable_class_logs` + `closing_adjustments`), cobertura confirmada sem aula
+  lançada sinalizada (`received.pending`, item `logged=false` → "ainda não lançada", nunca
+  "+R$ 0,00"). "Repasse a Profs" mostra a prévia por professor (`payroll_month_preview`,
+  `data-tour="payroll-preview"`) em vez de ficar em branco até o dia 1º.
+- **Wise Wolf em 19/09:** `dre_report_settings.destino` passou a ser o grupo DIREÇÃO (o
+  antigo "Gestão" ficou sem função — nada mais cai nele); `directors_group_id` → AULAS E
+  COMERCIAL (era "EXPERIMENTAL CONFIRMADAS"). ⚠️ `teachers_group_id` aponta para "LEADS WISE
+  WOLF" (4 pessoas, nenhuma professora) — o broadcast de vaga é individual por padrão, então
+  não dói, mas o "Grupo de Oportunidades" está errado até a direção escolher o grupo certo.
+
 ### Cobertura do DIA — "Flávio não dá aula hoje" (migration `20260916230000`) ✅
 
 O modelo `class_coverages` é **um convite para um professor** e o trigger proíbe dois
@@ -969,6 +2181,127 @@ era a atendente — era ninguém). Hoje `teacher-absence.ts` (puro, testado) rec
 `gestao_open_coverage_day` com `p_source='teacher'` (ele atesta a própria ausência), aviso
 no grupo da Gestão com o mesmo resumo do comando do grupo, links para os professores livres.
 Falso positivo custa uma pergunta; por isso a regex é generosa e a confirmação, obrigatória.
+
+### Professor troca horário do aluno pelo WhatsApp da escola (migration `20260917190000`) ✅
+
+"O aluno Felipe trocou pra 14:30 e a Isabella para as 14" (Teacher Mateus, 17/09/2026) —
+a coordenação fazia na mão. Hoje `teacher-schedule-change.ts` (puro, testado) lê o pedido
+(nome, horário novo; dia/horário de origem opcionais), `teacher_schedule_change_candidates`
+resolve o nome na agenda fixa do professor (prefixo de qualquer nome, sem acento; dois
+"Felipe" → pergunta qual), `proposeChanges` monta aula a aula o que muda (sem dia = todas
+as aulas que ainda não estão no horário), e o bot mostra "Quinta 14:00 → 14:30 … Vale a
+partir de amanhã. Confirma?" (`teacher_schedule_change_prompts`, 2 h, uma por professor).
+No SIM, `teacher_schedule_change_prompt_apply` (só service_role) age como o professor
+(`trial_closing_act_as`) e chama a **mesma RPC da tela** (`teacher_apply_student_schedule_change`:
+vigência amanhã, choque checado, Gestão avisada) — o bot não inventou regra de agenda nova.
+
+- ⚠️ **Uma aula por chamada, em duas rodadas.** A RPC da tela recusa o lote inteiro se UMA
+  aula choca (Felipe: quarta 14:30 é da Ana Clara; quinta e sexta estavam livres). E um
+  choque pode ser com aula que a PRÓPRIA proposta tira do lugar (Isabella vai para quinta
+  14:00, de onde o Felipe sai para 14:30): a segunda rodada retenta o que chocou depois
+  que o resto mudou. Medido em `ROLLBACK` com a proposta real: 3 aplicadas, 1 choque.
+- **O choque é dito ANTES do "confirma?"** (`teacher_schedule_change_busy` +
+  `annotateConflicts`: "⚠️ Quarta 14:30 já é de Ana — essa fica como está") e fica fora
+  da proposta; o SIM aplica só o que pode mudar. O resultado repete aula a aula, com quem
+  ocupa o horário quando ainda assim choca.
+- Roteamento no inbound: professor → ausência → **troca de horário** → resposta de
+  acompanhamento. `fold_accents` já existia no banco (usada pela RPC da tela) — não crie
+  outra função de tirar acento.
+
+### Cobertura aceita traz o pacote do aluno; o substituto responde "sim" por texto (migration `20260917200000`) ✅
+
+A coordenação negociava com a Bruna na mão ("10:30 você consegue?" / "Consigo sim" / "vou te
+mandar o contato e o conteúdo"). Hoje, ao ACEITAR uma cobertura — pelo link
+(`accept-coverage` → `resolve_coverage_invite_and_brief`), pela disputa do dia
+(`claim-coverage` → `coverage_briefing_enqueue`) ou **respondendo "consigo sim"/"não consigo"
+ao número da escola** (`handleTeacherCoverageReply`, com `teacher_pending_coverage_invites`) —
+`coverage_briefing_enqueue` põe na `notification_queue` (instância central, kind
+`MANAGEMENT_NOTICE`, idempotente por `coverage:<id>:briefing|family|group`): o pacote para o
+substituto (contato do aluno em `wa.me/`, responsável se kids, última avaliação de nível do
+professor, objetivo, **últimas 3 aulas com "próx." e lição**), o aviso à família de quem dá
+a aula e o resumo no grupo da Gestão (recusa também vai ao grupo).
+- ⚠️ `profiles.level` é nível de **gamificação** (XP), não CEFR — o briefing usa
+  `class_logs.assessment_level` mais recente. Aula de 1 h vira dois lançamentos iguais: linha
+  repetida é pulada.
+- ⚠️ "Combinado"/"ok"/"perfeito" **não** aceitam cobertura (`coverageInviteAnswer`): são acuso
+  de recebimento; registrar cobertura e avisar a família por um "ok" seria pior que perguntar.
+  Vários convites pendentes: o professor escolhe pelo horário ou responde "todas".
+- ⚠️ `private.management_group_default_actor` nasceu com dono `supabase_admin` e ACL só para
+  ele; função com dono `postgres` que a chama precisa do `grant execute … to postgres` (feito
+  nesta migration). Reposição (`reschedules`) com outro professor **não** é cobertura de
+  booking — continua manual.
+- **Desde `20260928100000`** o pacote leva também a data da última aula com resumo APROVADO (o próximo
+  passo, os erros e a lição ficam no dossiê), a sala oficial quando vale para quem dá a aula (ou "o link
+  da escola chega por aqui" quando a sala é prevista e ainda não existe — e chega, pelo gatilho de sala
+  pronta) e o link com login do dossiê (válido do dia anterior ao seguinte da aula); o objetivo livre do
+  cadastro e o nome do responsável saíram do texto (ficam no dossiê). O modo **force** do `coverage-admin`
+  também manda o pacote (`coverage-admin/briefing.ts`). ⚠️ Não volte a pôr cartão, preferência, objetivo
+  do aluno **nem o texto do resumo aprovado** no WhatsApp do substituto — decisão da direção e termo v3:
+  dado pessoal e histórico do Meet só atrás do login (o WhatsApp copia para fila, inbox, provedor e
+  celular, fora do alcance da exclusão a pedido).
+
+### 🚦 Teto e aquecimento do WhatsApp — todo envio automático pede licença ao banco ✅
+
+> Migration `20260918000000`. **Leia antes de criar qualquer disparo automático.**
+
+**O caso (17/09/2026, 14:15):** o WhatsApp **restringiu o número da escola por 21 h**
+depois de ~130 mensagens automáticas em 7 h (pico de 37/h), boa parte para contato frio.
+Um número só concentra atendente, lembretes, acompanhamento, cobertura e Gestão — banimento
+definitivo derruba tudo de uma vez.
+
+- **Choke point:** `sendWhatsTextToResolvedDestinationDetailed` em `_shared/evolution-send.ts`
+  (26 módulos passam por ele) chama `whatsapp_outbound_permit(instância, destino)` antes do
+  POST. `allowed=false` → `{outcome:"rejected", throttled:true, retryAfterMs}`; `sendWhatsText`
+  devolve `false` (quem "marca antes e apaga se falhar" tenta na rodada seguinte — é o
+  espalhamento desejado). `wait_ms ≤ 12 s` → dorme e manda. Sem `SUPABASE_URL`/chave (testes)
+  ou com o banco fora, **não trava** (fail-open com `console.error`).
+- **O tipo é do destino, não do chamador** (`private.whatsapp_outbound_kind`): `group`;
+  `reply` (a pessoa escreveu ao número nas últimas 72 h — sem espaçamento); `staff` (perfil da
+  equipe — sem espaçamento); `transactional` (aluno/responsável com perfil — 20–40 s);
+  `outreach` (o resto: lead frio, follow-up — 60–120 s, teto 10/h e 50/dia por padrão).
+  Tetos por instância em `whatsapp_outbound_policy` (linha criada sozinha no 1º envio;
+  `enabled=false` desliga a régua).
+- **Aquecimento:** `warmup_started_at` → 40 % dos tetos no dia da volta, 70 % no seguinte,
+  100 % depois. Depois de QUALQUER restrição: `update whatsapp_outbound_policy set
+  warmup_started_at = <hora da volta>`.
+- **Fila (`process-notification-queue`):** espia a régua (`p_reserve=false`) ANTES do fence
+  e, se vetada, `defer_notification_delivery` devolve a vaga **sem gastar `attempts`** (o
+  claim já tinha somado 1). Corrida rara depois do fence vira `pending` com backoff.
+- `throttle: "skip"` só para envio manual de gente (inbox). Os 12 chamadores que fazem
+  `fetch` direto em `message/sendText` (broadcast-opportunity, hr, register-teacher, inbox
+  proxy…) **não** passam pela régua — baixo volume; ao criar disparo novo, use o helper.
+- Livro em `whatsapp_outbound_ledger` (2 dias, cron `wisewolf-wa-ledger-prune`). Diagnóstico:
+  `select kind, count(*) from whatsapp_outbound_ledger where slot_at > now()-interval '1 day'
+  group by 1` e `docker logs … | grep "adiado pelo teto"`.
+- `sdr-followups` caiu de 15 para **5 por rodada**; `care-sweeper` e `sdr-followups` ficaram
+  pausados em 17/09 e voltam com a régua no ar.
+
+### ⚠️ Link para GENTE usa `SUPABASE_PUBLIC_URL`, nunca `SUPABASE_URL` (17/09/2026) ✅
+
+Dentro do container `SUPABASE_URL` é **`http://kong:8000`** (rede interna). `whatsapp-inbound`
+(convite individual e disputa do dia) e `coverage-admin` montavam
+`…/functions/v1/accept-coverage?token=` com ele — **todo convite de cobertura saía com link que
+não abre no celular**. Medido: 0 coberturas com `dispatched_at` na história. Hoje:
+`publicFunctionsBase()` / `PUBLIC_FUNCTIONS_URL` = `SUPABASE_PUBLIC_URL`
+(`https://api.wisewolflanguage.com.br`), com `SUPABASE_URL` só como fallback. Cliente
+supabase-js continua com `SUPABASE_URL` (interno, correto). Ao criar link que uma pessoa
+abre, procure `SUPABASE_PUBLIC_URL` — e teste com `curl -I` no host público.
+
+### A atendente respeita a janela de horário do lead — e o código veta horário inventado ✅
+
+A Ana Carolina (17/09/2026) disse "sábados ou dias de semana depois das 18h". Nenhum professor
+tem sábado na grade; a atendente ofereceu "2026-09-19 às 09:00" (inventado, data crua), o
+leilão falhou e a alternativa foi 10:30 num dia útil. Em `_shared/sdr-scheduling.ts`:
+`parseAvailabilityWindows` (dias × faixa: "depois das 18h", "antes das 12", "entre 19h e 21h",
+"de manhã", "fim de semana", "dias de semana", nomes de dia; negação não vira janela; hora com
+data por perto é escolha, não disponibilidade) → a lista dada ao modelo é filtrada pela janela
+(`filterSlotsByWindows`), o prompt recebe `availabilityFacts` ("aos sábados → NENHUM professor
+livre; seg–sex depois das 18:00 → 58 opções"), `rankTrialAlternatives` trata a janela como
+filtro duro quando há opção dentro dela, e `replyOffersUnknownSlot` **veta** resposta que
+oferece data+horário fora da lista livre (vira `unavailablePreferenceNote` + alternativas
+reais). Datas saem como "sex 18/09 às 18:00" (`formatSlotBr`/`humanizeIsoDates`).
+⚠️ O veto não roda com experimental já marcada (`activeTrial`): o modelo cita o horário dela,
+que não está na lista livre.
 
 ### Folha do mês por professor no grupo (migrations `20260916250000`/`260000`) ✅
 
@@ -1033,9 +2366,179 @@ experimentais, fechamentos e reconciliação, e **ignorava reposição por compl
 
 > Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.
 
-- Edge `lesson-planner` (OpenRouter, Gemini free + fallback) monta plano PERSONALIZADO juntando: perfil (nível/CEFR, personalidade, KIDS, interesses, objetivos), **pontos fracos recorrentes** (`wolfie_corrections.error_type` das sessões do aluno), **histórico** (`class_logs` últimas 5 — continuidade), plano anterior (`lesson_plans`), e **materiais APROVADOS** do tenant (sugere só desses). Retorna `{objectives, content, materials, ai_memory_reflection, weak_points}` — o `content` traz seções com tempos (aquecimento/principal/prática/lição/evitar/continuidade).
+- Edge `lesson-planner` (OpenRouter, Gemini free + fallback) monta plano PERSONALIZADO juntando: perfil (nível/CEFR, KIDS, e objetivo/temas pelo cartão do aluno — desde 27/09 sem personalidade, profissão nem observação livre; ver "Planner a partir das aulas aprovadas"), **pontos fracos recorrentes** (`wolfie_corrections.error_type` das sessões do aluno), **histórico** (`class_logs` últimas 5 — continuidade), plano anterior (`lesson_plans`), e **materiais APROVADOS** do tenant (sugere só desses). Retorna `{objectives, content, materials, ai_memory_reflection, weak_points}` — o `content` traz seções com tempos (aquecimento/principal/prática/lição/evitar/continuidade).
 - `LessonPlannerAI.handleGeneratePlan` chama `supabase.functions.invoke('lesson-planner', { student_id, custom_prompt })` (não mais template). Salva em `lesson_plans` (memória p/ continuidade).
 - Guardrails: só sugere materiais da lista fornecida; usa dados reais (anti-genérico). Auth: TEACHER/admin.
+
+### Cartão do aluno — o professor escreve, a IA não inventa (migration `20260926220000`)
+
+Objetivo real, temas que engajam, estilo de correção (`immediate|end|selective|examiner`, o
+mesmo vocabulário de `wolf_intelligence.preferred_correction_mode`), o que evitar e
+observações. Tabela própria **`public.student_learning_cards`** (PK `tenant_id, student_id`) —
+**não é coluna de `profiles`** (e `correction_preference` continua não sendo).
+
+- **Escrita só por `save_student_learning_card`** (SECURITY DEFINER): quem lê o dossiê
+  (`private.can_read_student_pedagogy`) **e** tem papel TEACHER/COORDINATOR/SCHOOL_ADMIN.
+  SUPER_ADMIN não escreve. `p_expected_version` recusa sobrescrever o que outra pessoa
+  salvou (`cartao_alterado_por_outra_pessoa`). **Ninguém lê a tabela direto** — nem
+  `service_role`: o Planner usa `student_learning_card_for_planner(tenant, aluno)`, que já
+  entrega o cartão de menor sem os campos pessoais. `tenant_id`/`student_id` são
+  imutáveis no UPDATE (`cartao_chave_imutavel`).
+- **Limites no servidor** (`private.student_learning_card_limits()`: objetivo 300, 8 temas,
+  6 "evitar", 60 por item, notas 400) — texto longo é **recusado**, não cortado. A tela
+  avisa ao lado do formulário: nada de saúde, religião, política, família ou dinheiro.
+- **Menor de idade: a régua NÃO é do cartão.** `private.student_learning_card_minor_reason`
+  CHAMA `private.lesson_recording_requires_guardian` (a régua do termo — com
+  `20260926200000` ela vira fail-closed e idade não comprovada passa a contar como menor) e
+  soma **responsável cadastrado** (`guardian_id` de outro perfil ou `guardian_name`). Motivo
+  na tela: `KIDS | MINOR | GUARDIAN | AGE_UNKNOWN`. Medido em 26/09: 47 de 47 ativos sem
+  data nem `is_kids`, e o único com responsável seria "adulto" numa régua só de idade.
+  ⚠️ Não copie a régua de idade para cá: se o termo mudar, o cartão tem de mudar junto.
+  Só objetivo e temas; o gatilho `trg_student_learning_cards_guard` recusa o resto para
+  QUALQUER escritor.
+- **Quem vira menor perde os campos pessoais — apagados, não escondidos:**
+  `private.student_learning_card_purge_minor_fields` zera estilo/evitar/observações,
+  sobe a versão e registra no histórico com papel `SYSTEM_MINOR_RULE` (sem texto). Portas:
+  gatilho `trg_student_learning_card_minor_purge` em `profiles` (is_kids, birth_date,
+  guardian_id, guardian_name — `WHEN IS DISTINCT`, nunca derruba a edição da ficha), cron
+  diário `wisewolf-learning-card-minor-purge` (06:40 UTC, pega mudança da régua do termo
+  que não toca `profiles`) e a própria migration. Entre a mudança e a limpeza a leitura
+  esconde (`hidden_for_minor`). ⚠️ Publique junto com (ou depois de) `20260926200000`: se o
+  cartão for antes, notas de adultos sem data atestada serão apagadas quando a régua
+  fail-closed chegar.
+- **Histórico** (`private.student_learning_card_events`): quem, quando, papel e QUAIS campos —
+  **nunca o texto**. A confirmação de leitura do dossiê (`student_handover_reads`) guarda só
+  referências — `learning_card_version`, id/origem/data de cada memória lida (e a versão do resumo que a
+  originou) e id/data de cada lançamento —, pelo mesmo motivo: até 27/09 ela copiava o texto das memórias
+  (inclusive do resumo aprovado), que nem a exclusão a pedido nem a retenção alcançam.
+- **Tela:** aba "Continuidade pedagógica" da ficha (`StudentHandover` → `StudentLearningCard`,
+  regras espelhadas em `lib/studentLearningCard.ts`). O cartão chega por
+  `get_student_handover` → `learning_card`. Conflito de versão **não apaga o rascunho**:
+  ao recarregar, o texto digitado fica e a versão nova aparece ao lado ("Manter o meu
+  texto" / "Usar a versão nova"); salvar só volta a valer depois da escolha.
+- **Planner:** `lesson-planner/teacher-card.ts` (`plannerSignalsFor` +
+  `studentProfileSignalFields`) — campo preenchido no cartão **substitui** o inferido
+  (objetivo, temas, evitar, estilo); vazio cai no Wolfie/`profiles`. O banco diz quem é
+  menor; a régua local (is_kids, data, responsável) só endurece. Resposta sem
+  `is_minor: false` explícito = menor. Falha ao ler o cartão não derruba o plano.
+  `student_profile.teacher_reviewed_fields` diz o que veio do professor.
+- Testes: `supabase/tests/cartao_do_aluno_pelo_professor.sql` (acesso, menor por idade e
+  por responsável, régua do termo, limpeza, limites, versão, chave imutável, leitura do
+  Planner, histórico sem texto — passa com e sem `20260926200000`),
+  `lesson-planner/teacher-card.test.ts` e `lesson-planner/source.test.ts` (amarra o
+  `index.ts` à RPC e ao `plannerSignalsFor`; precisa de `--allow-read`).
+
+### Sugestões da IA para o cartão (migration `20260928130000`, edge `student-card-suggestions`)
+
+A IA lê a aula cujo resumo o professor APROVOU (fila a cada 15 min, ou o botão "Sugerir a partir da
+aula de dd/mm" no dossiê) e sugere objetivo, temas, estilo de correção e o que evitar, **cada um com a
+frase literal da aula** conferida contra a fonte. **Nada entra no cartão sozinho:** o professor aceita
+(`decide_student_card_suggestion` → `save_student_learning_card`, com a versão carregada) ou descarta.
+Runbook: seção "Sugestões da IA para o cartão do aluno".
+
+- ⚠️ **IA só com o termo v3 do aluno E do professor, no fim da aula E hoje**
+  (`private.student_card_suggestion_ai_allowed`); quem revogou depois da aula não tem a aula relida.
+- ⚠️ **A frase da aula segue a régua da transcrição bruta** (`session_detail`, `v_raw`):
+  `private.student_card_suggestion_source_visible` = professor DA aula, coordenação, direção. O
+  cartão é editável também pelo segundo professor, pela agenda e pela transferência pendente —
+  esses veem só a contagem (`other_lessons_pending`), não decidem e o botão não lê aula alheia
+  para eles (`aula_de_outro_professor`). Leitura das frases em `google_meet_access_events`
+  (`CARD_SUGGESTIONS_READ`). Correção da revisão (27/09): antes o segundo professor lia trechos
+  literais da transcrição da colega que `session_detail` lhe nega.
+- ⚠️ **A lista de exclusão existe duas vezes e tem de bater:** `BLOCKED_TERMS` (edge `core.ts`) =
+  `private.student_card_suggestion_blocked_terms()` (banco, entre `termos-bloqueados:inicio/fim`);
+  `source.test.ts` reprova divergência. Vale no valor E na citação; o banco confere de novo no `finish`.
+- **Menor** (a régua do cartão): o schema do modelo só tem `real_goal`/`engaging_topics` no enum, o banco
+  recusa o resto, e quem vira menor perde as pendentes pessoais (gatilho em `profiles`).
+- **Mesmo teto do resumo por IA:** `meet_summary_month_spend` e `get_meet_summary_budget` foram
+  remendadas por âncora — quem recriar mantém `student_card_suggestion_month_spend` e
+  `card_suggestion_count` (o teste reprova sem eles). O botão também para no teto.
+- **Texto só enquanto espera decisão** (constraint): decidida, vencida (citação: 90 dias depois da
+  aula) ou retirada (resumo rejeitado, menor) fica só o hash — e a linha some 90 dias depois de
+  fechar (o hash sem sal de "avoid_topics:namoro" se reverte por dicionário). Exclusão a pedido apaga
+  por gatilho em `google_meet_original_sessions.records_erased_at`. Nunca `wolfie_memory_items`.
+- **IA desligada = botão some:** a fila e o próprio botão pausam a escola por 6 h
+  (`card_suggestions_not_configured`; sem preço 1 h) e `get_student_card_suggestions` devolve
+  `can_request = false` com o motivo. Conflito de versão no aceite relê o cartão e a lista.
+- Env: `STUDENT_CARD_SUGGESTIONS_ENABLED=true` (padrão desligado), `STUDENT_CARD_SUGGESTIONS_MODEL`
+  (ausente = o do resumo) e a `OPENROUTER_API_KEY` de sempre; o modelo precisa de preço em
+  `ai_model_pricing`. Testes: `supabase/tests/sugestoes_do_cartao_pela_ia.sql` (semeia a v2 e usa
+  o termo vigente — roda em cópia só-estrutura e depois da v4), `student-card-suggestions/{core,runner}.test.ts`
+  e `source.test.ts` (`--allow-read`: bloco `deno test --allow-read`, não o geral). O registro no
+  `release.sh` está listado no runbook.
+
+### Planner a partir das aulas aprovadas (migration `20260927130000`)
+
+- **Memória do Meet só aprovada:** o Planner lê à parte até **6** memórias
+  `MEET_SESSION` + `VERIFIED` (as que o professor aprovou na revisão do resumo), com a
+  DATA da aula no fuso da escola; a consulta geral de memórias passou a excluir
+  `MEET_SESSION` — resumo do Meet sem aprovação não chega ao modelo nem como hipótese.
+  Regra pura em `lesson-planner/approved-lessons.ts`: só campos pedagógicos
+  (`APPROVED_LESSON_COLUMNS` — nada de `metadata`, `notes_to_verify`, `source_ref`,
+  revisor), texto passa por `redactDirectIdentifiers`.
+- **A base é do código, não do modelo:** `lesson_basis` ("Baseado nas aulas de 20/09 e
+  23/09", o próximo passo aprovado de onde o plano continua e, no modo `homework`, os
+  erros recorrentes que a lição ataca) sai de `approvedLessonBasis`, vai na resposta, no
+  plano salvo (`structured_plan.lesson_basis`) e na primeira linha do `content`. A tela
+  mostra em "Base do plano" (`data-tour="planner-lesson-basis"`).
+  ⚠️ A base COPIA texto do resumo aprovado (próximo passo, erros): a exclusão a pedido
+  (`erase_student_lesson_records`) e a retenção de quem deixou a escola
+  (`purge_lesson_memory_retention`) tiram `lesson_basis` do plano salvo e do
+  `planner_ai_runs.result` (integração da onda 2); o plano fica. Saem também a memória que o
+  Planner propôs com as aulas aprovadas na entrada (`student_memory_update` e a linha
+  `PLANNER_AI` dessas gerações) e o plano fica marcado `approved_lessons_removed_at`, que
+  `planner-input.ts` (`approvedLessonsRemoved`) tira de `previous_plans_for_continuity`.
+  Campo novo que copie o resumo aprovado para o plano entra nessas duas limpezas.
+  ⚠️ O mesmo `data-tour` mora num cartão do estado vazio (sem plano gerado): o tour abre
+  no primeiro acesso, sem plano, e um alvo que só existe depois de gerar faz o motor
+  **pular o passo e marcar o tour como visto**. `featureTours.test.ts` só confere que o
+  alvo existe no código — quem prova que ele aparece sem plano é
+  `LessonPlannerAI.teacher.test.tsx`.
+- ⚠️ **Aula aprovada só é ponto de partida se for a aula DADA mais recente.** O Meet é
+  piloto: aceite revogado, sala não criada ou resumo não aprovado deixam aulas só em
+  `class_logs`. Com `class_logs` COMPLETED posterior à última aprovada
+  (`latestGivenLessonDate` → `approvedLessonsContext`), `task_focus` vira
+  `use_as_evidence`, `continue_from` e os alvos da lição somem, o rótulo diz "Aulas
+  aprovadas de dd/mm usadas como histórico: houve aula lançada depois, em dd/mm" e a
+  tela avisa. Lançamento no MESMO dia da aprovada é a própria aula. Toda conta de base
+  passa por `ApprovedLessonsContext` — não existe caminho que use as aprovadas sem saber
+  se houve aula depois.
+- ⚠️ **A última decisão humana sobre o resumo vale:** rejeitar depois de aprovar tira a
+  memória (gatilho `trg_zz_meet_summary_rejection_revokes_memory`, na tabela das
+  versões — não no `google_meet_backend`, para valer para qualquer escritor). Antes a
+  memória ficava VERIFIED para sempre e ia ao Planner do substituto.
+- ⚠️ **Nada de dado pessoal fora do cartão no prompt — para TODO professor** (titular,
+  segundo, substituto, reposição recebem a MESMA entrada; o motivo do acesso nem é
+  parâmetro). A montagem é pura em `lesson-planner/planner-input.ts` (as listas de
+  colunas lidas e o prompt), testada de verdade em `planner-input.test.ts`: fora
+  `personality`, `occupation`, `long_term_goal`, `profession`/`job_role`/`industry`/
+  `secondary_goals` do Wolfie, `class_logs.observations` e `notes_to_verify` das
+  memórias (inclusive a nota que o próprio Planner propôs). Os lançamentos entram com o
+  recorte do dossiê do substituto (`lesson_objective`, `content_covered`,
+  `student_difficulties`, `homework_assigned`, `recommended_next_step`). Não volte a
+  montar prompt no `index.ts` — `source.test.ts` recusa.
+- **Regra das aulas para o modelo** numa mensagem de sistema PRÓPRIA do lesson-planner
+  (`APPROVED_LESSONS_SYSTEM_PROMPT`): o prompt base é compartilhado com o planner do Hub,
+  que não tem aula do Meet. `prompt_version` vira `<base>+aulas-aprovadas-2026-09-27`.
+- **Quem planeja** (`private.planner_student_access`, variante com `p_teacher_id` da regra
+  de `_teacher_can_access_student`, que NÃO foi alterada): agenda viva, **segundo
+  professor** (`professor_id2`, sempre), titular sem agenda (o fallback de sempre) e — só
+  **do dia anterior ao seguinte da aula** — cobertura **confirmada** e reposição **com
+  data** (a encerrada pela direção, `closed_reason`, não conta; a dada por lançamento vale
+  até o dia seguinte). A edge pergunta por `planner_teacher_can_access_student` (só
+  service_role; motivo ou nulo, `lesson-planner/access.ts` fecha em resposta estranha); a
+  tela lista por `my_planner_students()` com "cobertura até dd/mm" ao lado do nome
+  (`lib/plannerStudents.ts`). ⚠️ A regra de leitura de perfis aceita cobertura de 7 dias
+  atrás e **qualquer** data futura — o Planner não: acesso acaba.
+- ⚠️ O segundo professor pode não ler a ficha pela RLS (o aluno tem agenda viva com o
+  titular): o painel de perfil some, o plano sai igual. A tela não trata mais ficha
+  ausente como erro.
+- Testes: `supabase/tests/planner_a_partir_das_aulas_aprovadas.sql` (cada motivo, cada
+  borda da janela, fantasma, encerrada, inativo, outra escola, lista por pessoa,
+  privilégios; aprovar → rascunho → rejeitar → reaprovar pelo `google_meet_backend`),
+  `lesson-planner/approved-lessons.test.ts`, `lesson-planner/access.test.ts`,
+  `lesson-planner/planner-input.test.ts`, `lesson-planner/source.test.ts`,
+  `components/LessonPlannerAI.teacher.test.tsx`.
 
 ---
 
@@ -1054,6 +2557,13 @@ nem MCP da Supabase. Nada disso chega na produção.
 `deno test` e `deno check`, builda o frontend, faz `rsync` para
 `/opt/wisewolf/releases/<timestamp>-<commit>/`, **aplica as migrations**,
 promove e roda smoke test.
+
+⚠️ **O release NÃO roda `npm ci`** — builda o site com o `node_modules` da pasta de onde
+roda. Em 26/09/2026 a pasta principal tinha 20 pacotes fora do lock (`@supabase/supabase-js`
+2.112 contra 2.89, React 19.2.8 contra 19.2.3): publicar dali trocaria dependência em
+produção sem ninguém decidir. **Rode `npm ci` antes do deploy.** Prova de que o site no ar é
+de um commit: `npm ci` + build dele com as mesmas `VITE_*` → os 472 arquivos batem byte a byte
+com `release-inputs.sha256`.
 
 ⚠️ **O release APLICA MIGRATION, sim** (corrigido em 04/08/2026 — este arquivo
 afirmava o contrário e o erro custou um deploy quebrado). Ele percorre
@@ -1075,7 +2585,7 @@ Já mordeu duas vezes no mesmo dia:
 | Lista | O que registra | Sintoma quando esquece |
 |---|---|---|
 | `MIGRATION_RELATIVES` | migrations aplicadas/enviadas | banco fica sem o objeto, ou o pacote de restauração fica incompleto |
-| `HARDENED_FUNCTIONS` (aparece **2×** no arquivo — edite as duas) | pastas de edge function | "Deploy concluído" e o diretório **nem existe** na VPS |
+| `HARDENED_FUNCTIONS` (literal **1×**; o script remoto lê `hardened-functions.txt`) | pastas de edge function | "Deploy concluído" e o diretório **nem existe** na VPS |
 | lista do `deno check` | type-check das functions | função nova sobe sem validação |
 
 **Arquivo novo dentro de uma function que JÁ está na lista** vai junto sozinho
@@ -1203,12 +2713,30 @@ ssh wisewolf-vps 'docker restart supabase-edge-functions'
 
 Faça backup antes (`cp -a` do diretório em `/opt/wisewolf/backup-<fn>-<data>`).
 
-**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) —
+**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) — os das edge
+functions (OpenRouter, Evolution, Resend, Asaas, Gamma…) em **`.env.functions`**, que o
+`docker-compose.override.yml` injeta por `env_file` (mudou o arquivo → recriar o container
+das functions, `docker compose up -d functions`) —
 nunca no Git nem no chat. Testes que precisam de chave (OpenAI etc.) devem rodar
 **dentro da VPS**, lendo do `.env`, para a chave não entrar no contexto.
 
 **Diagnóstico:** `ssh wisewolf-vps 'docker logs --timestamps
-supabase-edge-functions --since 30m'`. Banco: `docker exec supabase-db psql -U
+supabase-edge-functions --since 30m'`.
+
+### O edge-runtime matava metade dos pedidos (16/09/2026) ✅
+
+`supabase/functions/main/index.ts` criava workers com 150 MB / 60 s e a política padrão
+`per_worker` **reaproveita o isolate de cada function até o relógio de parede vencer** —
+o pedido que estivesse em voo naquele segundo morria com `early termination has been
+triggered`. Medido: **9.270 terminações em 19.129 pedidos/24 h**; o grupo da Gestão ficou
+sem resposta às 19:53 porque o worker do `whatsapp-inbound` venceu 7 s depois de a
+mensagem chegar. Hoje: `--policy per_request` no `docker-compose.yml` (um worker por
+pedido, relógio próprio), 512 MB e 150 s. Duas horas depois: 0 terminações; CPU do
+container caiu de 150% para <1% (era o custo de matar e recriar workers o dia inteiro).
+⚠️ **O `release.sh` NÃO publica `main/index.ts` nem o `docker-compose.yml`** — os dois
+foram copiados na mão (`scp` + `docker compose up -d functions`); backup em
+`/opt/wisewolf/backups/edge-runtime-20260916T231602Z`. Se mexer neles, repita o ritual.
+ Banco: `docker exec supabase-db psql -U
 postgres`. Compare o horário do erro com
 `docker inspect -f '{{.State.StartedAt}}' supabase-edge-functions` antes de
 concluir que um erro é posterior ao deploy.
@@ -1903,6 +3431,178 @@ numa frase humana que reage ao que a pessoa acabou de dizer.
   editar `ETAPAS`.
 - Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
 
+### Renovação assinada por aluno SUSPENSO — o caso da Bianca (17/09/2026) ✅
+
+Ela assinou a renovação (5x R$ 377 → 3x R$ 261) estando suspensa, com a assinatura antiga
+já apagada na Asaas. Quatro travas em cadeia, todas "fail-closed" e nenhuma pensada para
+renovação com mudança de plano:
+
+1. **`student-renewal-billing` (CREATE_NEW)** exigia a assinatura antiga viva, com o MESMO
+   valor: 404/valor diferente → `REVIEW source_subscription_changed`. Hoje: antiga ausente
+   (404) ou encerrada (EXPIRED/INACTIVE/deleted) libera; só antiga ATIVA barra
+   (`source_subscription_still_active`). Valor e forma de pagamento vêm da oferta.
+2. **`asaas-mutation-guard`** só conhecia `<studentId>` e `enrollment:<oferta>:<fim>`; a
+   renovação cria `renewal:<oferta>:subscription` → `ASAAS_IDENTITY_MISMATCH` na reativação
+   e em qualquer mutação futura. Hoje: kind `RENEWAL`, provado por
+   `student_course_renewal_binding(p_offer)` (migration `20260917150000`).
+3. **`apply_active_student_payment_event`** (RPC) rejeitava a mesma referência
+   (`reference_mismatch` → TRIAGE). Cópia integral com o ramo novo em `20260917160000`.
+4. **Deadlock**: a reativação oficial exige a cobrança no ledger local
+   (`SUBSCRIPTION_PAYMENT_PROVIDER_ONLY`), e o ledger só aceita cobrança de aluno ATIVO
+   (`student_lifecycle_or_binding_changed`). Resolvido na mão: `profiles` → ativo (sem
+   operação em voo, o guard deixa), o trigger `apply_pending_renewal_schedule_on_reactivation`
+   criou a agenda, e os 4 eventos da inbox foram reenfileirados (`status='RETRY'`).
+   ✅ **Fechado no mesmo dia** (migration `20260917170000`): na reativação pelo painel, se a
+   assinatura do perfil foi criada por renovação SIGNED+SYNCED
+   (`student_course_renewal_binding_for_subscription`), a conferência do ledger TOLERA a
+   cobrança que só existe no provedor; depois do `finalize`, os eventos em TRIAGE daquela
+   assinatura voltam para o worker (`requeue_asaas_inbox_events_for_renewal_subscription`) e
+   entram pelo caminho normal. Nada é inserido na mão em `student_payments`.
+- `SUBSCRIPTION_CREATED` da renovação fica em TRIAGE (`student_subscription_operation_
+  unresolved`): o vínculo já foi gravado pelo `finish … SYNCED`; é ruído, não perda.
+
+### Inbox do WhatsApp: áudio e foto abrem na plataforma ✅
+
+A inbox guarda só texto e tipo (`whatsapp_messages.message_type`); o arquivo fica no
+provedor. Botão **Ouvir áudio / Ver foto / Abrir documento** na bolha
+(`MediaAttachment`, `components/WhatsappInbox.tsx`) busca sob demanda pela ação
+`inbox/media` do `whatsapp-evolution-proxy` (`chat/getBase64FromMediaMessage`, o mesmo
+endpoint que o bot usa para transcrever), validando conversa + instância + escola e o
+tipo da mensagem; teto de 12 MB de base64. ⚠️ Mensagem antiga pode não ter mais mídia
+no provedor — a resposta é "não está mais disponível", não erro de sistema.
+
+### Acompanhamento de aluno e professor — a manutenção de conversa ✅
+
+> Migration `20260917180000`, edge `care-sweeper` (cron `wisewolf-care-sweeper`, 15 min),
+> agente `care` no `whatsapp-inbound`. Decisão da direção em 17/09/2026.
+
+**Medido antes:** 82 faltas de aluno em 30 dias (18%), 15 alunos com 2+ faltas, **55
+reposições abertas, todas sem data**; a confirmação de presença tinha 796 aulas sem
+resposta. O aluno faltava, ganhava o direito, e ninguém corria atrás.
+
+- **Sinais, não calendário.** `care_due_absence_followups` (faltou ontem → "sentimos sua
+  falta" + direito + horários livres do professor), `care_due_weekly_checkins` (sexta
+  15–19h, só quem teve aula), `care_due_monthly_checkins` (a cada 30 dias, 2 por rodada
+  para não sair em rajada), `care_due_teacher_touchpoints` (aluno que não respondeu →
+  professor cobra comparecimento com texto pronto; 2+ faltas SEM cobertura → política de
+  remarcação; check-in mensal). Cada toque é uma linha em `care_touchpoints`
+  (idempotente por assunto+tipo+referência; marca antes do envio, apaga se falhar).
+- **Aluno matriculado fala com a IA SÓ aqui** (`handleCareStudent`), e a IA **nunca** fala
+  de cobrança/contrato/valor — `isMoneyOrContractTopic` manda para gente antes da IA.
+  Sentimento negativo ou pedido que só a coordenação decide → `HANDOFF` + aviso ao
+  diretor. Horário escolhido da lista (ou "quinta às 19h") marca a reposição na hora
+  (`care_set_reschedule_slot`, só na grade livre do professor) e avisa a professora.
+- **4 reposições por direito no mês** (era 5): patch por âncora no
+  `private.log_teacher_classes_engine`; da 5ª em diante não nasce reposição automática —
+  é combinação, sem obrigação. A regra está na tela do aluno (`StudentSchedule`, tour
+  `2026-09-17-faltas-e-reposicoes`) e nos guias do professor.
+- ⚠️ Falta do professor COM cobertura confirmada não conta para a política — quem avisou e
+  teve a aula coberta fez o certo.
+- Professor respondendo a um toque: sem IA — registra no toque e encaminha à coordenação.
+- Desligar por escola: `tenants.ai_team_config.care = false` (ou `.care.enabled = false`).
+
+### Central de Ajuda do professor + Planner IA vivo de novo ✅
+
+- **Central de Ajuda** (`components/TeacherSupportCenter.tsx`, botão flutuante "Ajuda" em toda
+  tela do professor): guias em `lib/teacherSupportGuides.ts` — o que fazer em cada situação,
+  com a mensagem exata para o WhatsApp da escola ("Não vou conseguir dar aula hoje" → o bot
+  de ausência) e botões que agem (wa.me com texto pronto; navegar para a tela). Contatos vêm
+  de `teacher_support_contacts()` (migration `20260917140000`): o WhatsApp da escola é o
+  telefone do perfil SCHOOL_ADMIN dono da instância central (conferido contra o `sender` dos
+  webhooks), a coordenação vem de `tenants.school_info`. ⚠️ Os números dos guias (5
+  reposições/mês, R$ 16 do treinamento, 40 min da confirmação) são regra do produto — mudou
+  no banco, mude no guia. Teste garante que toda ação de navegação existe no menu do professor.
+- **Planner IA estava morto no ar**: 25 s de timeout por chamada para um JSON estrito de até
+  7.000 tokens — 504 em toda geração; **zero planos salvos na história** (medido em
+  17/09/2026 como o Flávio, dentro da VPS). Agora orçamento único de 135 s por geração
+  (`PLANNER_TOTAL_BUDGET_MS`; worker e Kong dão 150 s), primeira tentativa até 100 s, retry
+  com o que sobrar. Medido depois: 20 s, plano completo.
+- **"Planejar" em Aulas de Hoje** (`data-tour="lesson-plan-ai"`): manda o professor ao Planner
+  já com o aluno e o objetivo (`lib/plannerIntent.ts`, sessionStorage consumido uma vez).
+- ⚠️ **`tenants.domain` não é o portal.** A tela de configuração grava
+  `<slug>.wisewolflanguage.com.br` (`update_tenant_settings`), e "wisewolf.wisewolflanguage.
+  com.br" não existe no DNS — em 17/09 o link de renovação da Bianca saiu nesse host e ela
+  respondeu "esse link não funciona". `resolveTenantCommunicationIdentity` agora só deixa
+  domínio próprio VERIFICADO passar na frente de `system.wisewolflanguage.com.br` para a Wise
+  Wolf; o dado foi corrigido na mão (`domain = system…`) e o link reenviado.
+
+### Pós-experimental é conversa, 10 minutos depois da aula — e o professor recebe briefing ✅
+
+> Migration `20260917120000`. **Leia antes de mexer em `trial_closing_*`, no
+> `funnel-sweeper` (bloco F/G) ou na etapa de fechamento da atendente.**
+
+- **Antes** o aluno só era chamado depois de a professora responder "sim" ao bot
+  (etapa `ASK_STUDENT`) — e recebia de cara "me diz frequência e plano + tabela".
+  Professora que demorava travava tudo (16/09: três experimentais "sem resposta").
+- **Agora** (`trial_closing_student_openers`): 40 min depois do início (30 de aula + 10)
+  **ou assim que a aula é lançada** como dada, o bot abre a conversa — *"Como foi a
+  aula com a teacher X? Me conta o que achou"* — entre 8h e 22h, sem esperar a
+  professora. Daí em diante quem conduz é a **atendente**, com a etapa
+  `PÓS-EXPERIMENTAL — FECHAMENTO` (`trial_closing_student_context`): reage, pergunta a
+  frequência, dá os valores da tabela, oferece os horários livres da professora.
+  Frequência/plano/horários ditos pelo aluno continuam sendo lidos pelo caminho
+  determinístico (`handleTrialClosingStudent` → `trial_closing_student_plan`, que agora
+  aceita a etapa `ASK_TEACHER`).
+- ⚠️ **O LINK continua exigindo o "sim" da professora** (antifraude: quem diz que deu
+  a aula é quem recebe por ela). Escolha feita antes fica guardada (`waiting: feedback`)
+  e `trial_closing_pending_offers` solta o link quando ela responde.
+- ⚠️ `trial_closing_student_asks` ficou intacta de propósito: a migration antiga a
+  recria a cada release com o retorno antigo, e mudar o retorno quebraria aquele
+  `create or replace`. Função nova para retorno novo.
+- **Briefing do professor** (`trial_teacher_briefings`, `TRIAL_TEACHER_BRIEFING` em
+  `automation_sent`): até 2h30 antes da experimental (ou na primeira varredura depois
+  de um aceite em cima da hora) o professor recebe aluno, telefone, objetivo, nível,
+  contexto do CRM (sem carimbos `[IA …]` nem UTMs) e o que fazer antes. A Bruna tinha
+  recebido "não esqueça da experimental de hoje" — mandado na mão, sem nome nem
+  horário (17/09).
+
+### Várias ações na mesma mensagem do grupo — fila dentro da ação pendente ✅
+
+A direção manda "a Bruna cobriu três aulas do Flávio: …" numa mensagem só, e o modelo
+de pendência é **um por grupo** (PK `group_jid`). Até 17/09 só a primeira era proposta;
+as outras duas morriam em silêncio (foi assim com Victor Hugo 17:00 e Vinícius 17:30).
+Hoje o modelo devolve `acoes: [...]`, a primeira vira a pendente e as demais viajam em
+`acao.fila`; ao terminar (ou cancelar) uma, `proposeNextQueuedManagementAction` propõe
+a próxima com código novo (`request_id` = mensagem original + `:qN`). A autorização
+compara por contenção (`acao @> expected`), então a chave extra não invalida nada.
+⚠️ Cancelar uma **não** cancela a lista — a próxima ainda é proposta.
+
+### Preço para o lead: a IA propõe a frase, o código veta o número ✅
+
+> **Leia antes de mexer em `commercial-response-policy.ts`, `lead-pricing.ts` ou no
+> prompt da atendente.** Conserto de 17/09/2026.
+
+**O caso (lead Diná, 07:12–07:21):** pediu "estimativa de valores" e ouviu um bloco
+fixo ("As aulas são de 30 minutos, e isso é proposital… Os planos começam em
+R$ 169"); perguntou **"4 vezes na semana qual valor?"** e ouviu, duas vezes, *"esse
+horário já está aguardando o aceite de um professor"*. Escreveu que estava sendo
+tratada "como idiota com essas mensagens repetidas" e a direção mandou a tabela na
+mão. Três defeitos, nenhum do modelo:
+
+1. **A política SUBSTITUÍA a resposta** por um texto fixo a cada palavra "valor" —
+   sem a tabela e sem a frequência pedida. Hoje a resposta do modelo com valores do
+   catálogo (`student_pricing_plans`, carregado em `loadLeadPriceCatalog`) **passa
+   inteira**; valor de fora do catálogo é barrado (`blocked_foreign_price`); pergunta
+   de preço sem número ganha o mínimo; **frequência dita ganha os valores dela + a
+   tabela no formato da direção** (uma vez por conversa — `priceListAlreadySent`);
+   "??" ou reclamação depois de preço sem resposta é cobrança e recebe a tabela.
+2. **O modelo repetia `schedule_trial` do pedido anterior** em toda mensagem, e o
+   ramo `alreadyPending` (e o `keep` da aula com dono) sobrescrevia qualquer
+   resposta. Só mensagem que fala de horário (`mentionsSchedule`) ouve o aviso.
+3. **A resposta de preço engolia a promessa de verificar o professor** quando os dois
+   pedidos vinham na mesma mensagem ("As 10" + "estimativa de valores"). A promessa
+   é anexada (`TRIAL_PROMISE`).
+
+- ⚠️ **O mensal (fidelidade 1) existe no catálogo e NÃO entra na tabela** — a
+  direção manda só 6 e 12 meses (`LIST_MIN_DURATION_MONTHS`). O modelo recebe o
+  catálogo inteiro como fato e cita o mensal só se perguntarem por opção sem
+  fidelidade.
+- ⚠️ **Não volte a colocar texto fixo no lugar da resposta.** Robô que repete a
+  mesma frase é o que a direção pediu para acabar. O que é fixo é o **número**; a
+  frase é do modelo, e o histórico enviado a ele já traz o que foi dito.
+- Testes: `lead-pricing.test.ts` e `commercial-response-policy.test.ts` (a conversa
+  real como regressão). Os dois no `release.sh` (fmt + test).
+
 ### Áudio vale para lead e candidato, não só para a direção
 
 O Whisper já estava pago e ligado, mas **só o grupo da direção usava**: lead e candidato que
@@ -1916,3 +3616,1065 @@ era o sinal mais útil da triagem inteira.
 - ⚠️ A mídia do WhatsApp é criptografada: a Evolution devolve o arquivo decifrado em base64 a
   partir da chave da mensagem (`chat/getBase64FromMediaMessage`), e só então dá para
   transcrever.
+
+
+## Sincronização de assinaturas legadas — 27/09/2026
+
+`sync-subscription-status/subscription-read.ts` separa a prova de leitura da autorização
+para mutação Asaas. A sincronização faz somente GET no provedor. Referências externas
+existentes continuam no guard canônico; referência vazia exige IDs exatos, vínculo único
+global do aluno e CPF/CNPJ coincidente (do aluno ou responsável nomeado). Sem documento,
+exige simultaneamente nome, e-mail e telefone coincidentes. Documento inválido ou divergente
+bloqueia a leitura. Removida com identidade comprovada espelha DELETED localmente.
+O update local compara também todos os campos usados como prova, impedindo corrida cadastral.
+Nenhuma cobrança, referência externa, cancelamento ou contrato é alterado por esse caminho.
+Os testes da prova de leitura integram os gates do release; os guards de mutação permanecem
+estritos. Pendências cadastrais sem prova continuam bloqueadas e requerem confirmação real.
+
+### 27/09/2026 — Identidade do portal e aviso de início da Memória das Aulas
+
+- HTML do portal e manifest PWA usam Wise Wolf Languages, marca oficial e ícones versionados; saem a descrição WiseCore e a prévia do Hub no acesso de alunos.
+- `components/marketing/portalLinkPages.json` alimenta 13 shells de acesso pelo gerador existente. Nginx (frontend e proxy) serve os metadados antes do React; as prévias são genéricas, `noindex,nofollow`, sem token, dados pessoais ou Meta Pixel. As LPs comerciais e o Hub conservam seus próprios metadados.
+- Avisos `LESSON_RECORDING_NOTICE_STUDENT` e `LESSON_RECORDING_NOTICE_TEACHER` passam pela fila oficial, instância central e revalidação de vínculo ativo; não são pedidos de consentimento. Envio autorizado pela direção nesta conversa, início comunicado para 28/09, com direito de recusa e autenticação Google individual dos professores mantidos.
+- Contratos futuros STUDENT e TEACHER da escola já oferecem versão 2: cláusula 8 do aluno e cláusula 11 do professor. Não se modifica contrato assinado nem se declara revisão jurídica concluída.
+- Tour `2026-09-27-identidade-e-previas-dos-links` inserido na posição cronológica, pois o catálogo já continha entradas datadas de 28 e 29/09.
+
+### 27/09/2026 — Correção do acesso ao contrato e botão Google do professor
+
+- `PublicContractView` distingue contrato sem assinatura (abre `TeacherContractAccept`) de aceite legado sem arquivo (solicitar cópia à escola). `tenant-legal-assets` retorna esse estado somente após validar usuário, papel e tenant; não sintetiza documento assinado.
+- `openGoogleAuthorization` reserva a aba no clique antes do pedido assíncrono: o botão principal abre o Google no cartão e na contratação. Bloqueio de popup mostra botão destacado; retorno à aba confere a identidade automaticamente, mantendo conferência manual.
+- Tour `2026-09-30-google-e-contrato-do-professor` e testes de popup/ausência de arquivo acompanham a correção.
+
+### 28/09/2026 — Meet preenche o lançamento pedagógico
+
+`get_class_log_meet_drafts(jsonb)` (migration `20260928010243`, registrada no release)
+resolve origem + data exatas em `lesson_occurrences`, incluindo antecipação pela
+origem confirmada no servidor. Somente o professor ativo da sessão, no tenant
+operacional, lê cinco campos pedagógicos e incertezas. Sessão barrada/arquivada,
+registro apagado, versão rejeitada e rascunho com fonte vencida não fornecem
+sugestão. Leitura fica auditada. Nenhum lançamento, presença ou pagamento é criado.
+`ClassLogForm` busca em lotes em Lançar e Pendentes; preserva campos tocados pelo
+professor, mostra quadro de revisão com edição e exige seleção explícita do
+resultado. Atualizar resumos remove sugestões que deixaram de valer sem apagar
+edições humanas. Não inventa “sem tarefa”/“nenhuma dificuldade”: botões registram
+essas declarações somente por clique. Motivo retroativo continua humano, com
+atalhos de preenchimento. Aprovação da memória continua no fluxo de revisão de
+resumos; salvar lançamento não aprova automaticamente um rascunho. Testes SQL
+`meet_class_log_suggestions.sql`, UI e tour `2026-09-30-meet-preenche-lancamento`.
+
+### 28/09/2026 — Bloqueio do release por renovação no fim do mês
+
+O emissor legado de renovação (assinatura com 8 argumentos) somava 5/6 meses
+inteiros à data inicial, divergindo dos checks de progressão mensal ao atravessar
+fevereiro. `20260928033600` ajusta somente esses dois cálculos para encadear
+`fim_do_servico`, como o emissor atual de 9 argumentos. Sem alteração de ofertas
+existentes ou cobranças. Regression `renewal_legacy_month_end.sql` cobre 29/30/31
+em ano comum e 31 em ano bissexto; migration e teste registrados no release.
+
+### 28/09/2026 — Conexão Google obrigatória ao entrar como professor
+
+No modo `SCHOOL_DEFAULT`, o portal monta `TeacherGoogleConnectionGate` para
+professores: identidade já confirmada segue normalmente; ausente abre diálogo
+modal nativo sem adiar, fechamento por Escape ou clique fora. O professor pode
+sair da conta. A consulta falhou → mensagem e nova tentativa, sem liberar por
+erro. O botão reserva a aba no clique (`openGoogleAuthorization`) e mostra
+alternativa destacada se bloqueada. Foco/visibilidade e consulta a cada 5 s
+enquanto espera conferem a confirmação; mostra o e-mail antes de continuar.
+O texto exige a conta com que entra no Meet, que pode diferir do e-mail do
+portal, e orienta usar o link oficial por aula. Tours ficam suspensos enquanto
+o diálogo está ativo; novidade `2026-09-30-portal-exige-google`.
+A exigência é de configuração de identidade no portal: não registra aceite
+do termo nem altera pedidos para não registrar aulas. Convite de contratação
+continua com a prova OAuth obrigatória validada pelo servidor.
+Testes: `components/TeacherGoogleConnectionGate.test.tsx` (identidade existente,
+Escape, saída, abertura direta, retorno confirmado, aba bloqueada, erro sem
+liberação). Sem migration: reutiliza `get_my_google_identity`.
+
+### 28/09/2026 — Link oficial comunicado ao professor e ao aluno
+
+`TEACHER_MEET_ROOM` entra na fila existente pela varredura de 5 min
+(`private.queue_teacher_meet_room_notices(text)`, cron
+`wisewolf-teacher-meet-room-notices`). Sala pronta nas próximas 24 h agenda
+um aviso 30 min antes para o professor atual, uma vez por sessão × professor.
+A conta central envia aluno/data/horário/link exclusivo/conta Google confirmada.
+`get_teacher_meet_room_notice_snapshot(uuid)` é só service_role e refaz fonte,
+papéis, tenant/membership ativa, fixture, conta coanfitriã,
+aceite efetivo, régua de quem dá a aula e link exato da ocorrência; aviso
+após o início é descartado. A cerca `begin_notification_delivery_submission`
+revalida e trava as fontes com NOWAIT antes de autorização e replay. Recibos e
+resultados ambíguos seguem o motor existente. Não modifica presença ou folha.
+
+Painel do professor destaca o botão Sala oficial; Agenda do aluno identifica
+as salas oficiais. O botão principal do StudentDashboard, que ainda usava
+`profiles.meeting_link`, agora resolve booking + data via `get_my_lesson_rooms`,
+renovando a leitura ao voltar e a cada minuto com a aba visível; erro de consulta
+não abre link pessoal. Sala oficial ainda não pronta também não usa fallback.
+Tours: `2026-09-30-sala-oficial-para-os-dois` e versão `-aluno`.
+Migration `20260928114127` e teste SQL `official_meet_link_for_teachers.sql`
+registrados no release; teste roda em rollback com identidades isoladas e
+nenhuma fila visível externamente.
+
+### 28/09/2026 — Aprovação jurídica do extrato de pontualidade
+
+O responsável declarou ser o jurídico e autorizou expressamente nesta conversa:
+“sim, eu sou o juridico, pode aprovar!!”. Referência para a ativação administrativa
+prospectiva em `school-wise-wolf`, pela função existente
+`private.set_teacher_punctuality_enabled`, sem grant de API e sem retroativo.
+Backup prévio: `/opt/wisewolf/backups/punctuality-before-activation-20260928.sql`.
+Teste transacional confirmou ativação e ausência de acesso `anon`/`authenticated`,
+com rollback antes da execução definitiva. Tour novo do professor
+`2026-09-28-tempo-na-sala-professor`: consulta individual, motivos sem medição,
+retenção de 90 dias, sem ranking e sem alteração de pagamento. A autorização
+vale só para esta escola; a configuração e o evento no banco são a fonte do
+estado real. Não usar desligar como rollback: isso apaga o extrato existente.
+
+### 29/09/2026 — Antecipações já realizadas, com competência real
+
+A direção pode contabilizar antecipações históricas no gerenciador de
+antecipações. `settle_historical_lesson_advances` cria atomicamente antecipação
+COMPLETED e class_log COMPLETED na data efetiva; o pagamento continua lendo
+`v_payable_class_logs`. Horário desconhecido permanece NULL, fora de salas,
+lembretes e fontes de qualidade. A ocorrência original fica consumida, não
+lançável novamente. Retry exato é idempotente; fechamento mensal bloqueia
+alteração. Constraint diferida impede histórico sem log correspondente.
+`exclude_booking_occurrence` permite exclusão administrativa auditada de uma
+ocorrência futura específica (não é calendário global de feriados).
+Migration 20260929151406 e teste SQL transacional registrados no release.
+Tour administrativo: `2026-09-30-z-antecipacoes-ja-realizadas`.
+
+### 02/10/2026 — Teste oral com reserva e avisos individuais
+
+`schedule_oral_test` reserva appointment `oral_test` de 30 minutos para o examinador
+apto e ativo; impede professor titular/segundo do aluno, passado e conflito de agenda.
+A reserva tem data, aparece nas agendas dos dois e no painel de hoje do professor,
+e não troca titular nem cria class_log/pagamento. Reagendamento move a mesma reserva;
+conclusão, desmarcação e exclusão a encerram. Avisos e lembretes ORAL_TEST_* usam a
+fila oficial pela central, com versão/idempotência, fixture suprimido e revalidação
+no worker e na cerca. O painel mostra estado real da fila. Sem contato/link não
+inventa entrega/sala; Diretoria sem examinador continua sem reserva individual.
+Migration `20261002193942`, teste transacional e tours registrados no release.
+Detalhes: [runbook](docs/runbooks/oral-test-scheduling.md).
+
+### 06/10/2026 — Pedido de acesso da experimental não é venda
+
+Incidente: lead com experimental aceita pediu o Meet; o SDR respondeu que a
+experimental era presencial na cidade do cadastro. O prompt genérico inventava
+modalidade, formato e público. Foi retirado; Wise Wolf tem regra explícita online,
+sem inferir local de aula da cidade. `trial-access.ts` reconhece acesso (inclusive
+"met"), antes do modelo/agendamento, relê aula, tenant, telefone, professor, estado
+e horário. Sala oficial existente usa `official_lesson_link`; barrada/não pronta
+nunca cai em sala pessoal. Sem sessão institucional, usa somente link HTTPS
+registrado da experimental ou do professor ativo; não gera códigos de sala.
+Sem acesso confirmado/falha de consulta: resposta factual, handoff e aviso à
+direção pela central auditável, com coalescência, cerca e revalidação do handoff.
+Veto de resposta presencial também cancela `schedule_trial` daquele turno.
+
+Experimentais de leads sem `student_id` não entram em `lesson_quality_sources`/
+documentação pedagógica: login Google confirmado do teacher NÃO cria sala para
+elas. Não inventar aluno/matrícula/consentimento para forçar essa fila. Link real
+deve ser combinado/cadastrado; agenda do professor avisa quando estiver ausente.
+Dashboard e lançamento passam a respeitar `appointments.meeting_link` antes do
+link do perfil, mantendo a prioridade/bloqueio da sala oficial. Não mudamos a
+política de gravação nem acrescentamos links pessoais aos lembretes automáticos.
+Não há mensagem retroativa para o incidente já concluído com atendimento humano.
+
+Testes: `whatsapp-inbound/trial-access.test.ts` (fixtures/fetch falso, sem contatos
+externos), `lib/trialAccessWiring.test.ts`, `lib/featureTours.test.ts`.
+Tours de novidade: `2026-10-06-acesso-experimental-atendimento` e
+`2026-10-06-acesso-experimental-professor`. Sem migration/dados reais alterados.
+
+Publicação de 06/10: a tentativa oficial do commit `b2b2fd9e` parou em
+`npm audit --audit-level=moderate`, antes da ativação. `braces <=3.0.3` não tem
+versão corrigida (GHSA-vfj7-8cjw-p6xm); a solução sugerida migra Tailwind 3 para 4,
+com impacto no CSS/configuração. NÃO desativar a auditoria nem publicar por SCP.
+A produção permaneceu na release `20261002T202037Z-6f23d076a27c`; as correções
+acima estão no código, não no runtime. Migração de dependências depende de
+direção da pessoa proprietária, com regressão visual e testes completos.
+
+Atualização 21/10/2026: a correção ENTROU no ar no release `20261006T203520Z`
+(06/10 17:40 BRT) e segue em todos os seguintes. Conferido: `index.ts` e
+`trial-access.ts` publicados batem por hash com o repositório, e nenhuma resposta da
+IA citou presencial, visita ou a cidade desde então (a "experiência presencial" de
+08/10 foi digitada pela equipe, `human_takeover`, sobre outra escola). Antes do
+veto, cinco leads ouviram que havia aula presencial: finais 8448 (23/07), 3954 e
+9782 (10/08), 1845 (22/09) e 5151 (05/10, o Well, que matriculou online). Nenhuma
+mensagem retroativa enviada; decisão da direção.
+
+### 06/10/2026 — Antecipações consultam a agenda efetiva (correção preparada)
+
+A tela oferecia ocorrências passadas do mês e datas realizadas no mesmo mês,
+recusadas com `lesson_advance_origin_not_a_booking_occurrence`. Agora lê
+`list_lesson_advance_candidates`: somente origens posteriores a hoje, pela
+`booking_schedule_on_date`, sem lançadas, consumidas ou excluídas. Atualizar
+reconsulta a lista; troca de aluno/mês limpa seleções enquanto carrega. A data
+realizada termina no último dia do mês anterior à origem. A criação valida a
+agenda efetiva (versões/remarcações/avulsas), usa seu horário quando omitido e
+separa erros de passado, mesmo mês e agenda indisponível, com mensagens pt-BR.
+Migration `20261006194950` e teste SQL registrados no release; tour da direção.
+Validado: migration 2× e quatro suítes SQL na VPS em transação com rollback,
+sem fixtures remanescentes; 21 testes de UI/tours e typecheck.
+Ainda NÃO publicado: auditoria de dependências continua reprovando, incluindo
+`braces`/Tailwind 3. A migração de dependências segue dependendo da autorização
+da direção indicada acima; não aplicar esta migration manualmente em produção.
+
+### 06/10/2026 — Dependências autorizadas para liberar o release
+
+A direção autorizou a publicação e a migração necessária de dependências.
+Tailwind 4.3.3 com @tailwindcss/postcss, templates convertidos pela ferramenta
+oficial (sombras, gradientes, outlines e utilitários renomeados), ambos os
+lockfiles atualizados. O plugin de cores não cria variáveis autorreferentes:
+os tokens brand/tenant e shadcn continuam definidos pelo tema. O login mantém
+o fundo branco dos campos. Descoberta de classes limitada ao content declarado
+no config (source(none)), evitando varrer dumps SQL e artefatos do repositório.
+Validado: npm ci, npm audit sem vulnerabilidades, typecheck, build de produção
+com vídeos públicos do Hub e comparação visual desktop/mobile (sem overflow).
+Publicado pelo release oficial `20261006T203520Z-beeb10281418`, origem
+`63803252010b87e992c450492d3cc5c92339a3e7`. Primeira execução parou antes
+da ativação pelo workspace do deno.lock antigo; lock sincronizado, sem retirar
+--frozen dos gates. Release concluído: 1.233 testes Vitest, 1.468 testes Deno,
+checks de funções, migrations e suíte SQL transacional, smoke tests de produção.
+Confirmado após release: marker ativo, RPC de candidatos presente, criação usa
+booking_schedule_on_date e SHA-256 do bundle LessonAdvancesManager servido igual
+ao build. Backup reversível em `/opt/wisewolf/backups/release-20261006T203520Z-beeb10281418`.
+As notas anteriores de bloqueio/não publicação foram superadas por este release.
+
+### 07/10/2026 — Troca de horário pela direção no Mapa de Aulas
+
+`StudentScheduleManager` usava a RPC legada `change_booking_schedule`, que não
+costura versões e é barrada pelo trigger quando o booking já tem histórico.
+Agora Alterar horário abre o editor compartilhado, limitado ao booking clicado,
+e aplica pela `teacher_apply_student_schedule_change`: ela já autoriza gestores
+da escola, exige motivo e vigência futura, verifica conflitos e preserva aulas
+anteriores. Nenhuma permissão foi ampliada e não há migration nova.
+`StudentProfileForm.onScheduleChanged` atualiza o mapa/lista pai após a gravação;
+Salvar Perfil é identificado como cadastro. A confirmação diferencia aviso na
+fila de entrega. Tour `2026-10-07-troca-horario-direcao` aponta ao Mapa de Aulas.
+Validação: 20 testes UI/tour, typecheck e build com vídeos públicos habilitados.
+A suíte SQL já registrada `professor_troca_horario_do_proprio_aluno.sql` agora
+reproduz a recusa legada da direção, aplica 16:30 numa agenda versionada, confere
+três vigências e recusa diretor de outra escola. Executada na VPS com rollback,
+sem fixtures remanescentes. Publicado pelo release oficial
+`20261007T132327Z-b696154d8835`, origem `25c21b8c979e`: 1.235 testes Vitest,
+checks de serviços, suíte SQL e smoke tests aprovados. Marker ativo conferido
+e SHA-256 do bundle StudentProfileForm servido igual ao build, contendo o editor
+com a RPC canônica. Backup em
+`/opt/wisewolf/backups/release-20261007T132327Z-b696154d8835`.
+
+### 07/10/2026 — Troca de horário de aula materializada da matrícula
+
+O formulário mascarava `invalid_enrollment_booking_link` como erro de data/motivo.
+`protect_enrollment_schedule_reservation` comparava o horário novo ao slot comercial
+original, bloqueando a RPC canônica para bookings com `enrollment_offer_slot_id`.
+Migration `20261007175907` aceita a divergência somente no mesmo booking materializado,
+com vínculo/participantes preservados e versão permanente APPLIED correspondente.
+Mudança exige revisão do ator na mesma transação e vigência futura; update sem mudança
+reconhece a versão persistida. Origem da oferta/slot não é reescrita nem desligada.
+Reserva RESERVED viva no destino continua barrada. Nenhum grant público novo.
+
+Mensagens distinguem vínculo da matrícula, reserva em andamento e sessão expirada;
+falha desconhecida não acusa campos válidos. Formulário permanece preenchido.
+Tours de direção/professor e migration registrados no release; regressão SQL existente
+agora começa com uma aula materializada, preserva origem e três vigências, recusa
+edição direta/reserva viva/outro professor/outra escola. Testes na VPS somente em
+transação revertida, migration 2×, sem mensagens externas ou dados reais alterados.
+Validado: 24 testes UI/tours, typecheck e build com vídeos públicos habilitados;
+suítes SQL de troca de horário e reservas autoritativas passaram com rollback,
+sem fixtures remanescentes.
+Publicado pelo release oficial `20261007T220009Z-7273d1bee6ff`, origem `686133049c54`:
+1.239 testes Vitest, 1.468 testes Deno, auditoria sem vulnerabilidades, suíte SQL
+transacional e smoke tests aprovados. Primeira tentativa parou por timeout SSH antes
+de alterar produção; segunda concluída pelo mesmo processo, sem desativar guardas.
+Marker ativo e função com correção confirmados; dono postgres, sem EXECUTE para anon
+ou authenticated. SHA-256 dos bundles StudentProfileForm e StudentsList servidos
+igual ao build da release. Backup reversível:
+`/opt/wisewolf/backups/release-20261007T220009Z-7273d1bee6ff`.
+Nenhum horário real foi alterado para testar; reabrir o formulário e aplicar a troca
+combinada. O arquivo local não rastreado foi preservado e devolvido ao checkout.
+
+### 10/10/2026 — Histórico operacional de aulas e conferência da prestação (preparado)
+
+Parte 2: `LessonHistoryPanel` no menu do teacher, da coordenação e em Qualidade
+na direção; também na ficha do aluno e na conferência de Saída / Ausência.
+Filtros de aluno/mês/intervalo, categorias exclusivas, futuras/não finalizadas,
+passivo de reposições separado, última atividade e relatório HTML/ impressão PDF.
+Fontes oficiais: class_logs, agenda efetiva, exclusões e reschedules; não altera
+folha, presença original, contratos ou resumos do Meet. Correções operacionais
+versionadas com justificativa; feriado/cancelamento excluem somente uma ocorrência
+sem lançamento/antecipação, e reabertura exige nova correção auditada. Teacher
+contesta; direção/coordenação resolve, preservando o original.
+
+Trilha prospectiva privada e imutável de criação/alteração/remoção, anterior/atual,
+autor quando conhecido e motivo da origem; baseline único sem inventar autoria
+legada. Eventos canônicos das reposições continuam consultáveis. Remoções e
+reatribuições de lançamento ficam visíveis sem contar como realizadas; transferir
+booking preserva pendências anteriores quando há prova na trilha. Não se inventa
+vínculo passado de agenda transferida antes da implantação.
+
+`/historico-prestacao` tem login próprio para o extrato do teacher desligado,
+com membership TEACHER revogada e lifecycle offboarded. A restauração operacional
+do App não roda nessa rota; não se afrouxam get_my_access_context, profiles,
+dossiê nem ProtectedRoute. Suspensos não recebem a exceção. Novidades passam a
+atender COORDINATOR sem criar tour de boas-vindas para esse papel.
+
+Migration `20261010232456` e teste `lesson_history_traceability.sql` no release;
+tour `2026-10-10-historico-aulas-rastreavel`. Validação: 1.251 testes Vitest,
+typecheck/build; migration 2× e teste transacional em clone só de estrutura,
+mais regressões de antecipações, troca de horário, sugestões do Meet e SECDEF.
+Desktop/celular (390 px) com fixtures, sem overflow. Nenhum dado real alterado,
+nenhuma mensagem enviada. NÃO publicado nesta tarefa. Política de retenção
+operacional/contratual não ganhou prazo jurídico inventado nem expurgo automático;
+o prazo das fontes do Meet não se aplica por inferência. Detalhes e limitações:
+[runbook](docs/runbooks/lesson-history-traceability.md).
+
+Publicação de 11/10/2026: release oficial `20261011T170527Z-e6a31dfd9953`,
+origem `02fb68a3cbc7f51fa09f913042705508f58981a2`, concluído com 1.251 testes
+Vitest, 1.468 testes Deno, typecheck, build, auditoria sem vulnerabilidades,
+migration 2×, suíte SQL transacional e smoke tests. Marker ativo confirmado;
+RPC do histórico dono postgres, authenticated autorizado e anon recusado.
+Baseline de 2.481 lançamentos, fixtures desta tarefa ausentes. Consulta real do
+extrato próprio em leitura/rollback: 24 linhas e 32 eventos, sem expor dados
+pessoais. SHA-256 do bundle App servido igual ao build; rota de consulta após
+encerramento respondeu 200 e abriu o formulário autenticado. Backup reversível
+em `/opt/wisewolf/backups/release-20261011T170527Z-e6a31dfd9953`.
+A indicação de não publicação acima foi superada por este release. Artefatos
+locais não rastreados preservados durante a publicação e restaurados depois.
+
+### 12/10/2026 — Avisos respeitam inatividade e suspensão (preparado)
+
+`is_student_notifiable` também bloqueia suspensão financeira e as grafias
+Suspenso/SUSPENDED/Pausado do estado acadêmico, preservando autorização e grants.
+Preparação, envio manual de lembrete, fila, confirmação de presença e cobrança
+consultam a porta canônica e exigem true explícito; falha na consulta não envia.
+Claim/binding da presença e cerca da fila revalidam antes do provedor, inclusive
+replay. Avisos oficiais de pausa/saída permanecem no fluxo específico.
+Migration `20261012145740`, teste SQL transacional, regressão de wiring e tour
+da direção registrados no release. Não altera matrículas ou cobranças em lote.
+
+Reparos exatos autorizados nesta conversa: telefone de Vinicius Oliveira Chaves
+confirmado pela direção e corrigido; Yasmin Preciosa, cuja saída foi aceita pela
+escola em 31/08, estava ativa e foi marcada Inativo pela RPC administrativa.
+Financeiro e histórico preservados; sem reenviar mensagens antigas nem alterar
+Asaas. Backup anterior completo (acesso restrito):
+`/opt/wisewolf/backups/student-notification-repair-20261012/database-before.sql.gz`.
+As demais suspensões combinadas mas não cadastradas precisam de conciliação por
+pessoa; não se infere saída pelo silêncio nem pelo valor vencido.
+
+Infraestrutura confirmada: PostgreSQL na VPS própria, com componentes locais
+de autenticação/API/storage da stack self-hosted. Não usar Supabase Cloud nem
+deploy de functions pelo CLI hospedado; o nome da pasta não muda a infraestrutura.
+
+Publicado pelo release oficial `20261012T151425Z-01697d2f7446`, origem
+`e4de9fe511c3e5a543f31f86c4daa621bf758c7b`: 1.256 testes Vitest, 1.468
+testes Deno, typecheck, auditoria sem vulnerabilidades, migration 2×, suíte SQL
+transacional e smoke tests aprovados. Marker ativo e checksums das funções de
+fila/presença conferidos; serviços saudáveis. Em leitura após publicação,
+nenhum dos 19 cadastros inativos/suspensos da escola ficou notificável; Yasmin
+Inativo e Lariza SUSPENDED bloqueadas, Vinicius ativo com telefone corrigido.
+Fixture novo ausente. Nenhuma mensagem externa de teste ou reenvio foi feito.
+Backup da release: `/opt/wisewolf/backups/release-20261012T151425Z-01697d2f7446`.
+Arquivos locais não rastreados preservados e restaurados após a publicação.
+
+### 12/10/2026 — Saída silencia pendências e transferência com nova agenda (publicado)
+
+Migration `20261012152506_atomic_student_exit_and_teacher_transfer.sql` registrada
+no release: a porta de notificações bloqueia também operações de pausa/saída
+CLAIMED/UNKNOWN/BLOCKED ainda não concluídas. Triggers cancelam somente pendências
+sem aceite do provedor, encerram care touchpoints e propostas ainda não aplicadas;
+novas pendências de fila/presença são barradas. Aceitos, entregues e incertos não
+são reenviados nem apagados. Categorias legadas, como HEARTS_FULL, e novas categorias
+dirigidas ao aluno passam pela mesma proteção também na cerca anterior ao provedor.
+Abortada a operação, só envios futuros voltam a ser
+elegíveis; skipped não ressuscita. Backfill com `schema_one_shots`, sem Asaas ou
+alteração financeira. As mensagens oficiais de encerramento seguem sua rota.
+
+Gestão → Agenda do aluno → Transferência definitiva: escolher data de início,
+manter horários ou escolher novos horários, teacher e motivo. A consulta
+`get_student_transfer_options` usa slots discretos de 30 minutos, inclusive
+end_time NULL, e apenas teachers ativos da escola. `admin_schedule_student_transfer`
+valida novamente, exige quantidade igual à grade fixa e identidade idempotente.
+Futura fica ACCEPTED até a data; não troca o vínculo antecipadamente. A aplicação
+preserva bookings antigos CANCELLED, class_logs e trilha, cria a nova agenda e
+desativa pendências da agenda antiga. Não altera preço, frequência ou contrato.
+Reservas protegem gravações de bookings/versões, reposições, experimentais,
+coberturas e matrícula; aplicação revalida a disponibilidade. Falha individual
+no job registra auditoria sem impedir as demais trocas. Proposta com aceite
+também consulta a disponibilidade canônica. Testes SQL usam fixtures e rollback,
+sem mensagem externa. Tour de novidade da direção incluído.
+
+No fluxo direto, o anúncio à família permanece com a Gestão, como no fluxo
+imediato anterior; o job não repete o anúncio humano. O dossiê ao novo titular
+continua pelo gatilho APPLIED, sem disparo antecipado ao confirmar uma data futura.
+Vigência e cron usam a data de São Paulo, inclusive após 21h BRT (virada UTC).
+Retirada da agenda futura por transferência aceita não apaga nem bloqueia
+pendências históricas de cobertura; cobertura futura ainda exige conciliação.
+Aplicação integral do caso Vinicius/Mateus foi validada transacionalmente e
+revertida por rollback antes da publicação, sem mensagem externa.
+
+Caso autorizado: Vinicius Oliveira Chaves → Mateus, seg/ter/qui 18h30,
+vigência 13/10/2026. A direção confirmou nesta conversa; Mateus confirmou
+seg/ter às 15h23 UTC e acrescentou quinta às 15h24 UTC em 12/10, no WhatsApp
+central. Registrada somente após publicação, backup e última revalidação.
+Não encerrar Flávio nem alterar a folha/contratos dos outros alunos por inferência.
+
+Release oficial `20261012T161603Z-51f6e35b495b`, origem
+`0df83a38201d98c26e190be0bba29d750519008b`: 1.259 testes Vitest, 1.468 Deno,
+typecheck, auditoria sem vulnerabilidades, migration 2×, suíte SQL e smoke
+aprovados. Marker ativo e serviços saudáveis. Após publicação: zero pendências
+seguras de aluno inativo elegíveis nas categorias abrangidas (incluindo legadas),
+zero alunos inativos/suspensos da escola notificáveis e zero fixtures novas.
+Backup: `/opt/wisewolf/backups/release-20261012T161603Z-51f6e35b495b`.
+
+Transferência real `b5097bcb-bb40-415a-bcf7-a4a97efab432`, ACCEPTED/programada
+para 13/10/2026, pela RPC administrativa; request durável
+`435d60bd-1d86-4f15-9299-37093de56433`. Seg/ter/qui 18h30, três aulas.
+Hoje o titular e os três bookings antigos continuam com Flávio, como esperado;
+o cron `wisewolf-apply-teacher-transfers` está ativo às 09h UTC / 06h BRT e
+aplica somente na vigência. Não aplicar antecipadamente nem repetir anúncio
+humano à família. Auditoria da programação conferida; nenhuma mensagem nova
+de transferência ao aluno foi enfileirada. Acompanhar APPLIED e eventual
+`teacher_transfer_apply_failed`, sem duplicar a operação.
+Backup específico anterior ao registro, arquivo válido e restrito de 56.656.791
+bytes: `/opt/wisewolf/backups/vinicius-mateus-transfer-20261012T162142Z/database-before.dump`.
+Sem mudança em mensalidade, contrato, cobrança ou prestação histórica. Arquivos
+locais não rastreados do usuário restaurados após o release.
+
+### 12/10/2026 — Continuidade da triagem de professores (publicado)
+
+`avancarTriagem` seleciona no servidor a próxima pergunta após extrair somente
+a etapa aberta. A mesma resposta agradece e pergunta; não exige nova mensagem
+para continuar. Pedidos de próxima pergunta não viram respostas, chaves futuras
+do modelo não pulam etapas e conclusão continua exigindo os dez campos. O
+handler persiste com comparação do estado anterior e confere novamente handoff
+antes de responder; falha de gravação ou concorrência não envia pergunta com
+progresso divergente. Não amplia o limite de respostas nem altera remuneração.
+Regressões nas dez etapas e tour da direção incluídos. Laura ficou bloqueada
+pela cadência após as respostas extras; recuperação deve conferir histórico,
+handoff e recibo durável, sem replay de webhook ou retomada em lote.
+
+Publicado pelo release oficial `20261012T185756Z-b693b8203a95`, origem
+`1ad5f00033b4e6fa1be3e2df990f1d05a46f40c7`: 1.259 testes Vitest, 1.472
+Deno, typecheck, auditoria sem vulnerabilidades, suíte SQL transacional e
+smoke tests aprovados; serviços saudáveis. Backup de release em
+`/opt/wisewolf/backups/release-20261012T185756Z-b693b8203a95`.
+
+Laura, candidatura `8a15c286-d5a8-409e-85aa-d8a39f8f589b`: o “Sim” à
+remuneração de 12/10 às 18h10m38 UTC, provider
+`AC2B712A47308EDCFE7647A9865EC6AF`, foi silenciado por `rate_limit` depois
+das respostas extras exigidas pelo bug. A direção autorizou reparar nesta
+conversa. Após conferir a pergunta anterior, toda a conversa e ausência de
+intervenção posterior, registrado somente `remuneracao_ok=true`; demais
+respostas, status IN_PROGRESS e contratação intactos. Teste com rollback,
+aplicação única e repetição sem nova auditoria aprovados. Trilha
+`hr_screening_rate_limited_answer_repaired` (uma linha), backup restrito e
+validado de 3.904.805 bytes em
+`/opt/wisewolf/backups/laura-screening-20261012-IiPLBP/before.dump`.
+Nenhuma mensagem externa enviada nesse reparo. Retomada imediata da conversa
+depende de sessão autenticada no canal oficial; a sessão do navegador estava
+na tela de login. Não repetir a pergunta de remuneração, criar aprovação,
+replay de webhook ou contornar autenticação. Arquivos locais não rastreados
+do usuário preservados e restaurados após o release.
+
+### 16/10/2026 — Cobertura com agenda vigente e valor exclusivo da direção (preparado)
+
+A prévia da ausência usa `coverage_booking_occurrences` → `booking_schedule_on_date`,
+sem criar ausência ao listar e sem fallback de calendário no navegador. O fallback
+antigo confundia índices seg=0 com getDay seg=1; a consulta antiga também ignorava
+versões e abortava diante de um aluno inativo. Seleção, busca de substitutos,
+validação, trigger e aceite passam a usar a ocorrência efetiva. Lançamento de
+cobertura prioriza `class_time` da cobertura, preservando o booking de origem.
+
+A direção pode oferecer um valor por ocorrência de 30 min antes do convite;
+em branco permanece a tarifa normal. Autor vem da sessão e membership SCHOOL_ADMIN
+ativa do tenant é conferida na edge e no banco. Oferta/autoria/data imutáveis;
+coordenação, professor e outros papéis não definem valor. Convite WhatsApp e página
+de aceite mostram a oferta ao substituto. A folha canônica aplica a oferta somente
+à aula confirmada, lançada e pagável, preservando ajustes e bloqueios existentes.
+Aulas de 1 h continuam em duas partes. Resultado parcial não declara sucesso total.
+
+Migration `20261016165219`, teste SQL transacional e testes Deno registrados no
+release; tours de direção/coordenação/professor incluídos. Validação em clone de
+estrutura: migration 2×, aceite, lançamento autenticado pelo substituto, financeiro,
+permissões e regressões de cobertura, aula de 1 h, troca de horário, antecipação e
+SECDEF, sempre rollback. Nenhum convite real enviado nem agenda real alterada.
+Fluxo: [runbook](docs/runbooks/coverage-effective-schedule-and-rate.md).
+
+Publicação de 16/10: a primeira tentativa oficial da cobertura parou antes da
+ativação em `atomic_student_exit_and_teacher_transfer.sql`: o fixture tinha
+agenda fixa na sexta e lançamento em `current_date-3`, compatíveis apenas às
+segundas. Corrigido somente o dia do booking fictício, derivado da data do log;
+regressão de transferência/saída passou em clone com rollback. Nenhuma regra
+operacional foi relaxada e o estado de produção anterior foi preservado.
+
+A segunda tentativa parou antes do commit por ACL do auxiliar legado
+`private.coverage_candidates`: dono `supabase_admin`, sem EXECUTE para `postgres`,
+o dono do wrapper novo. A cópia de estrutura restaurada como postgres havia
+mascarado esse dono. Migration nova ainda não publicada ganhou GRANT somente a
+postgres, mantendo anon/authenticated fechados; suíte testa o privilégio interno.
+Reproduzido o dono/ACL reais no clone e validado o fluxo com rollback. A produção
+continuou na release de 12/10, sem coluna nova ou fixtures remanescentes.
+
+Publicado pelo release oficial `20261016T182218Z-004d643f285e`, origem
+`a93a936122370808751d1166bc5e398935307e48`: 1.267 testes Vitest, 1.476 testes
+Deno, typecheck, build, auditoria sem vulnerabilidades, migration 2×, suíte SQL
+transacional completa e smoke tests aprovados. Marker ativo conferido; RPCs
+somente service_role, dono postgres, colunas de oferta indisponíveis na consulta
+operacional do aluno. API HTTP 200 retornou 30 aulas no período de 19–23/10 e
+confirmou o exemplo da agenda em segunda/quarta às 09:30. Os bundles servidos de
+Cobertura, Ausência e Lançamento e os fontes das duas edges bateram SHA-256 com
+a release. Backups anteriores e da release preservados, em especial
+`/opt/wisewolf/backups/release-20261016T182218Z-004d643f285e`.
+Os dois clones de validação foram removidos; zero fixtures novas na produção.
+Nenhuma ausência, convite, mensagem externa ou pagamento real foi criado para
+testar. Arquivos locais não rastreados do usuário foram preservados e restaurados.
+As indicações de não publicação e falhas acima foram superadas por este release.
+
+### 17/10/2026 — Aceite de cobertura pelo link (hotfix publicado)
+
+A professora abria o convite de cobertura, tocava em Confirmar e o navegador pedia
+usuário e senha. `accept-coverage` e `claim-coverage` montavam o `action` do formulário
+com `url.pathname` (`/accept-coverage`, sem o `/functions/v1` que o Kong tira) e o POST
+caía no Basic Auth do painel do Kong. Kong mostrou ~10 tentativas da Bruna em dois
+convites, todas 401; nenhuma oportunidade do dia (`claim-coverage`) foi ganha na
+história. Agora `<form method="post">` sem `action`, como o convite de treinamento;
+teste `accept-coverage/form-action.test.ts` registrado no release (fmt + allow-read).
+
+Publicado por hotfix (scp das duas `index.ts`, sem reiniciar: a política `per_request`
+lê o arquivo novo), autorizado pela direção nesta conversa. Backup:
+`/opt/wisewolf/backups/hotfix-coverage-form-action-20261018T010616Z`. Conferido no ar:
+página sem `action`, navegador resolve para `/functions/v1/accept-coverage?token=…`, POST
+com token falso chega à função (409 em HTML). Nenhum convite foi aceito ou recusado
+para testar; os dois convites da Bruna seguem `pending` e valem pelos mesmos links.
+Release oficial `20261018T014125Z-6b3ff9f98062`, origem `9bd0da8f`, com
+`DEPLOY_ALLOW_FUNCTION_DRIFT=1` depois de conferir que só essas duas functions
+divergiam do manifesto (agora atualizado): 1.234 testes Vitest, 245 Deno, suíte SQL e
+smoke aprovados. Backup: `/opt/wisewolf/backups/release-20261018T014125Z-6b3ff9f98062`.
+Foi o **primeiro release na VPS da Everglades** e saiu na terceira tentativa:
+- ⚠️ **A VPS nova não tinha `jq`** — o preflight morre calado em `command -v jq`
+  (`set -e` dentro do heredoc, sem mensagem). Instalado por `apt-get install jq`.
+  Preflight mudo: rode o heredoc dele com `bash -x` para achar a linha.
+- ⚠️ `atomic_student_exit_and_teacher_transfer.sql` punha a vigência em `current_date`
+  (UTC) e `apply_teacher_transfer` aplica pela data de São Paulo: entre 21h e 24h BRT a
+  troca ficava para "amanhã" e o release reprovava ("old booking preserved, not
+  deleted"). O teste usa a data de São Paulo; a função estava certa.
+Aviso à Bruna (texto aprovado pela direção) enviado pela instância central com os
+dois links, pela régua `whatsapp_outbound_permit` (`reply`).
+
+### 20/10/2026 — Reserva de agenda para aluno com início futuro (publicado)
+
+Caso do Well: fechou seg/qua 20h30 com o Teacher Mateus para começar em 05/11; o
+horário precisa ficar seguro até lá e a escola paga ao professor por segurar (R$ 30
+combinados). Antes era só um ajuste manual ("Reserva de agenda — Mariana Pastro"),
+sem nada que impedisse outro aluno de pegar o horário.
+
+- **Gerador de link** (`RegistrationLinkGenerator`): com início futuro, a opção
+  "Reservar estes horários na agenda do professor até o início" pede valor livre e o
+  nome do aluno. `create_enrollment_offer_with_future_hold(payload, valor, aluno,
+  cupom)` cria link + reserva + lançamento na folha no MESMO commit (porta própria ao
+  lado das públicas; folha do mês já fechada desfaz tudo). Horário reservado some da
+  grade do gerador.
+- **É pagamento interno**: entra na folha por `set_closing_adjustment` (mesma régua do
+  lançamento manual, mês corrente). Não cobra o aluno e NÃO mexe na taxa de matrícula —
+  isentar matrícula continua sendo decisão separada.
+- **Trava**: `teacher_future_start_holds` + `private.future_start_hold_blocks`. Barra
+  horário RECORRENTE de outra oferta na validação oficial (`teacher_slot_held`), nas
+  sugestões do fechamento da atendente, no `match_teachers_for_plan`, no
+  `teacher_free_recurring_slots` e por trigger em `bookings` (recorrente) e
+  `booking_schedule_versions`. Aula com data (reposição, experimental, cobertura) antes
+  do início passa: o horário está livre de fato até lá. A própria oferta nunca é barrada.
+- Vale até a data de início, oferta revogada/vencida sem assinatura, ou
+  `release_future_start_hold` (o pagamento fica; tirar é pela tela de repasse).
+- **Agenda do professor**: reserva aparece tracejada em verde-azulado (RES) com a data,
+  via `list_future_start_holds` (jsonb; professor só vê as dele).
+- ⚠️ Funções antigas remendadas (`lock_and_validate…`, `trial_closing_free_slots`…)
+  são do dono `postgres`: helper novo chamado por elas precisa ser do `postgres` também
+  (`alter function … owner to postgres`), senão "permission denied for function".
+- ⚠️ O release aplica só migrations sem marker (ensaio 2× com rollback antes) — não a
+  lista inteira a cada deploy. Reentrância continua obrigatória por causa do ensaio.
+
+Migration `20261020233000_reserva_de_agenda_inicio_futuro.sql` e teste
+`reserva_de_agenda_inicio_futuro.sql` registrados no release; validados na VPS em
+rollback (migration 2× + teste). Tours `2026-10-20-reserva-de-agenda-*`.
+
+Publicado pelo release oficial `20261020T234152Z-6486ba50c301`, origem `f8b68bf4`,
+autorizado pela direção nesta conversa. Backup:
+`/opt/wisewolf/backups/release-20261020T234152Z-6486ba50c301`. A primeira tentativa
+parou na auditoria (alerta alto novo do `launch-editor` em `vite ≤6.4.3`, só de
+desenvolvimento) antes de tocar a VPS; corrigido trocando só a entrada do `vite` no
+lockfile para 6.4.4 (dentro do `^6.2.0`). Conferido no ar: tabela e 6 funções com dono
+`postgres`, os 4 patches, as 2 travas, RPC fechada para `anon`, chunks do gerador e da
+agenda servidos com o código novo. Reserva do Well (oferta `3e6029fa…`, seg/qua 20h30
+com o Mateus até 05/11) cadastrada ligada ao ajuste de R$ 30 já lançado em 2026-10
+(`3379c7fc…`): um único lançamento; bloqueia outra oferta e a sugestão da atendente,
+libera a oferta dele. Arquivos locais não rastreados do usuário foram preservados e
+restaurados.
+
+### 26/10/2026 — Encerramento autorizado e instrumentos de continuidade
+
+Uma saída autorizada foi concluída pelo `school-admin` na sessão autenticada da
+direção: estado COMPLETED, política WAIVE_CURRENT_MONTH, histórico preservado,
+aulas futuras encerradas e cobranças futuras canceladas. Recebimentos anteriores
+foram preservados; uma divergência legada foi corrigida pelo reparador canônico,
+com prova fresca do Asaas antes da operação. Comunicações autorizadas saíram pelo
+canal oficial, sem confundir aceite do provedor com leitura ou quitação do aluno.
+Identificadores, nomes, extratos e evidências ficam somente no relatório reservado
+em `output/seguranca-contratual-2026-10-26/`, fora do Git público.
+
+Minutas e procedimento em `docs/legal/seguranca-contratual-e-continuidade.md`;
+Word e PDFs em armazenamento reservado. O aluno mantém o contrato com a escola;
+o termo individual proposto é firmado por escola e professor, com o aluno como
+beneficiário e confirmação da agenda pela família em registro separado. O fluxo
+obrigatório de assinatura por aluno ainda não está implementado. Não criar multa,
+desconto, assinatura ou obrigação retroativa nem reescrever instrumentos aceitos.
+A apuração de casos anteriores exige contrato efetivamente firmado e evidências;
+relato e falta de registro isolados não constituem decisão automática de culpa.
+
+### 26/10/2026 — Contrato geral do professor PJ v3 (publicado)
+
+A direção pediu corrigir o contrato atual e preservar o direito de saída com
+transição. V3 identifica empresa/representante e prevê aviso bilateral pactuado
+de 30 dias corridos (não mínimo legal universal), recusa de novas propostas,
+redução por acordo, motivos de saída antecipada e data final sem depender de
+substituto. Bônus de 10% mantido; penalidades proporcionais com manifestação,
+sem desconto automático ou reparação duplicada. Removidas da V3 a renúncia ampla
+a direitos, a presunção de MEI e a retenção global por ausência de NF.
+
+V1/V2 preservadas. Novos convites validam PJ e congelam identidade; primeiro
+aceite pelo app usa `accept_teacher_pj_contract`, com perfil bloqueado, tenant e
+membership ativos. API antiga não contorna V3; corpo legado protegido em private.
+Cópia consultada usa snapshot, não cadastro atual. Não alterar `rateUnit` no
+aceite do app. Seed one-shot promove apenas TEACHER da Wise Wolf de V2 para V3.
+Não força reaceite, aditivo ou assinatura por aluno; vias anteriores exigem
+instrumento próprio para mudanças futuras.
+
+Migration/testes/tour no release. Typecheck, 78 Vitest, 12 Deno e build aprovados
+(build com a flag dos vídeos públicos existentes). Migration 2× e duas suítes SQL
+na VPS em transações com rollback; nenhum efeito persistente ou mensagem externa.
+PDF v3 de 9 páginas com minuta integral e guia de saída, revisado visualmente.
+Publicado pelo release oficial `20261027T003901Z-40582250ab26`, origem
+`7d05e10c2263406749a4c2f6b817895a3663173a`. Oferta real conferida: TEACHER 3,
+STUDENT 2. Passaram 1.276 Vitest, 1.483 Deno e as 175 suítes SQL do release,
+além dos typechecks, build, migrations em execução dupla e testes HTTP finais.
+Quatro arquivos das functions e cinco bundles públicos conferidos por hash.
+Comparação reservada preservou os três registros contratuais e as nove
+assinaturas anteriores; nenhum aceite real foi produzido pela implantação.
+Assinatura por aluno e aditivo de contratos existentes continuam sem implementação.
+Detalhes em
+`docs/runbooks/teacher-pj-contract-v3.md`; minuta em
+`docs/legal/contrato-geral-professor-pj-v3.md`.
+
+### 26/10/2026 — Confirmação de acesso e parcelas legadas Asaas
+
+Correção financeira em `confirmed-enrollment-and-legacy-installments.md` no runbook.
+`APPROVED` distingue pagamento confirmado de caixa liquidado: matrícula aceita
+CONFIRMED com evidência local dupla e vínculo exato; PENDING/AUTHORIZED não liberam.
+Agregação de status financeiro considera confirmação para elegibilidade, sem
+inventar crédito, ledger, rateio ou aviso de recebimento. Agenda, contrato,
+reversões, tenant e ciclo de vida continuam protegidos.
+
+Parcelas legadas sem referência podem entrar pelos mesmos ids únicos de cliente
+E assinatura após GET corroborado da cobrança e da assinatura, inclusive eventos
+pendentes. Status/valor/data divergentes e referências desconhecidas ficam em
+triagem. Não descobrir aluno por nome ou valor, nem reprocessar a inbox inteira.
+Migration reexecutável registrada no release; testes SQL somente no QA isolado.
+A infraestrutura Supabase é auto-hospedada junto ao PostgreSQL da própria VPS.
+
+A publicação de 26/10 exigiu atualizar o lockfile de DOMPurify, Vitest/mocker,
+fast-uri e serialize-javascript. Remotion 4.0.515 fixa Zod 4.4.3, coberto pelo
+GHSA-mrhx-c7xc-m3w5: override somente de Zod para 4.6.7 (mesma major), sem
+rebaixar Remotion. `npm audit` zerado; typechecks de app e vídeo aprovados.
+
+Publicado em 26/10 pelo release `20261026T232704Z-78a4e308c906` (origem
+`e183100a`); hashes dos três consumidores financeiros conferidos na VPS. Passaram
+1.272 testes Vitest, 1.481 Deno, três suítes financeiras no QA isolado e a
+verificação de movimentação pessoal sem aviso/rateio. Banco anterior em backup
+restrito `finance-sync-20261026-E0rIUk`, com provas operacionais reservadas.
+
+Reparos pontuais por GET canônico: cartão confirmado passou a atender o requisito
+financeiro da matrícula. A conclusão de um caso também exigiu reconciliar a reserva
+materializada com quatro trocas de horário SCHOOL_ADMIN já APPLIED em 08/10,
+vigentes em 09/10. Mantidos os horários atuais; registros e assinaturas contratuais
+comparados antes/depois, sem diferença; conclusão pelo fluxo público normal.
+Quatro assinaturas antigas sem ponteiro local foram religadas após confirmar
+cliente/documento e uma única assinatura ativa. Seus quatro recebimentos foram
+processados pela inbox original. Parcelas pendentes verificadas foram recuperadas
+sem marcá-las como pagas. As três contas consultadas passaram na regra real de
+acesso ACTIVE e cobrança OK.
+
+Três Pix (R$ 130 no total) foram explicitamente confirmados pela direção como
+particulares: NAO_RECEITA/RECEIVED, sem aluno, sem alocação e sem intenção de aviso
+escolar. Conciliação preserva o caixa não operacional. Nunca usar lista negra por
+nome/pagador nem classificar novos Pix sem contexto. Pendências de depósitos
+diretos e de rescisão exigem confirmar a natureza; não declarar conciliação total
+apenas porque os processadores estão ativos. A primeira auditoria ampla após os
+reparos caiu de 59 para 32 apontamentos, antes da recuperação adicional de parcelas
+futuras; preservar essa distinção entre saúde da rotina e conciliação concluída.
+
+### 26/10/2026 — Fechamento da conferência financeira
+
+Auditoria final com janela fixa de 11/09 a 25/10, igual à comparação inicial:
+119 cobranças e 440 linhas de extrato; 12 apontamentos restantes (1 crítico,
+8 altos, 3 avisos), ante 59. Run `b72318db-64b9-42dd-80d2-dbd1bc6a6136`.
+No total, 21 parcelas pendentes recuperadas (2 + 17 + 2), sem caixa fictício.
+Seis ponteiros de assinatura ativa restaurados por prova individual. Último
+ponteiro nulo de cliente em cobrança ativa aberta foi restaurado; evento original
+OVERDUE processado e diferença de status eliminada. Zero faturas abertas de
+alunos ativos com cliente Asaas conhecido e `provider_customer_id` nulo no fim.
+
+As pendências remanescentes são quatro recebimentos diretos que precisam de
+natureza/competência (inclui taxa descrita como rescisão), uma cobrança sem aluno
+identificado e cobranças futuras de cadastro suspenso/encerrado. Não as converter
+em mensalidade, reativar alunos nem cancelar acordo financeiro por inferência.
+Relatório e evidências de leitura em `output/financeiro-2026-10-26/`, reservados e
+não rastreados. QA efêmero removido; rascunhos PJ e arquivos locais anteriores
+restaurados após o release financeiro, sem publicação acidental desse WIP.
+
+### 27/10/2026 — Conciliação após confirmação da direção
+
+Três Pix diretos confirmados como mensalidade e um recebimento de rescisão foram
+conciliados por ids exatos, com GET fresco, identidade exclusiva e auditoria da
+decisão. Mensalidades continuam individuais; rescisão usa OTHER, sem quitar
+competência nem gerar cobertura. Uma entrada de caixa por recebimento, datas
+originais e notificações históricas suprimidas antes do commit; nada de fixtures
+reais ou webhooks inventados.
+
+O encerramento de um cadastro legado exigiu recuperar também uma mensalidade
+antiga recebida e ausente localmente: o inventário completo do provedor bloqueava
+corretamente o fluxo. Após a recuperação, o school-admin autenticado concluiu;
+assinatura Asaas excluída/inativa, sem estorno. Assinatura do perfil e documentos
+contratuais comparados por hash e preservados. Data da regularização administrativa
+não é prova da data histórica do último atendimento.
+
+Backup anterior validado e provas em diretório reservado
+`finance-owner-confirmations-20261027` na VPS; relatório local não rastreado em
+`output/financeiro-2026-10-27/`. Auditoria da mesma janela de 11/09 a 25/10:
+119 cobranças, 440 linhas de extrato, 4 apontamentos (1 crítico, 3 avisos), ante 12;
+zero altos. Restam três casos que dependem da direção: cliente sem aluno e duas
+cobranças futuras de cadastros suspenso/encerrado. Não cancelar por inferência.
+Sem alteração de código, migration ou deploy nesta etapa. Procedimento em
+`docs/runbooks/confirmed-enrollment-and-legacy-installments.md`.
+
+### 27/10/2026 — Status da matrícula depende do financeiro (publicado)
+
+Editores da lista e da agenda não podem mudar somente o cadastro e deixar a
+recorrência ativa. Helper `changeStudentLifecycle` exige confirmação `ok: true`
+do school-admin, sem fallback SQL ou retry incerto; pausa/reativação e encerramento
+também passam por ele. A RPC `set_student_academic_status` mantém somente o pedido
+idempotente do status vigente. Transição direta ou pelo editor pedagógico retorna
+`student_lifecycle_requires_school_admin`, preservando permissões e atomicidade.
+
+Migration reexecutável `20261027114059`, suíte SQL atualizada e tour da direção
+registrados no release. Typecheck, 33 Vitest relacionados, 17 Deno e migration 2×
+com suíte pedagógica/administrativa em rollback aprovados. Publicado pelo release oficial `20261027T125824Z-27d6d34c40c8` (origem
+`06c2043a`): 1.283 Vitest, 1.483 Deno, typecheck, build e 175 suítes SQL aprovados;
+função efetiva, marcador da migration e quatro bundles HTTP conferidos. Runbook:
+`docs/runbooks/student-lifecycle-billing-confirmation.md`.
+
+Após confirmação da direção, três recorrências legadas e suas faturas futuras
+foram encerradas no Asaas, preservando os 16 recebimentos correspondentes. Dois
+cadastros inativos tinham assinatura local ausente; um cliente não tinha aluno.
+Não foi inventado vínculo de aluno. Reparos locais somente após prova de exclusão,
+com backup e comparação dos documentos assinados. Conferência de 11 clientes de
+alunos inativos não encontrou assinatura ativa restante; duas dívidas históricas
+de outro cadastro exigem decisão própria e não foram apagadas por inferência.
+Provas reservadas em `inactive-billing-stop-20261027` na VPS; nunca publicar
+relatórios financeiros com nomes, documentos ou payloads de alunos no Git público.
+
+A direção confirmou manter as duas dívidas antigas identificadas na conferência,
+impedindo novas mensalidades. Auditoria final da janela 11/09–25/10 ficou sem
+apontamentos após os cancelamentos autorizados (run `6b4a1af2-d34c-4443-9484-54c29c661053`).
+Eventos nativos das exclusões conciliados por identidade e recebimento na janela
+da operação; seis PROCESSED e nenhum TRIAGE desses ids, com payloads preservados.
+
+
+### 27/10/2026 — Registros operacionais e origem de contatos (publicado)
+
+Migration `20261027135908` e worker `school-operations-notify`: três canais
+privados, configuração prospectiva e outbox com cerca antes do POST. Relatório
+nativo encerrado do Meet gera evidência mínima por pessoa identificada, revisões
+e retenção de até 90 dias; desconhecido não vira atraso/falta. Sem desconto,
+multa, mudança na folha ou habilitação do antigo extrato desligado da escola.
+Direção/coordenação consultam Registros e origens na Central de Qualidade.
+Silêncio do aluno não confirma aula nem afasta dever de acompanhamento.
+
+Convites passam a privados. `teacher_opportunity_recipient_eligible` revalida
+perfil/tenant/membership/ciclo antes do envio, lembrete e aceite; suspensos e
+encerrados ficam fora mesmo em listas antigas. Regularização pontual autorizada
+foi auditada com backup e documentos assinados preservados; ids em prova privada.
+
+Origem conserva UTMs, página inicial/contato e hostname de referência, sem query
+sensível ou identificador publicitário bruto. Canal e entrada no blog são
+independentes; ausência de evidência permanece desconhecida. Captura primeira
+parte na sessão do institucional e landings; sem avisos retroativos. Publicar o
+institucional só depois do app por `publish-institutional-origin-tracker.sh`,
+que preserva o site atual e usa sua ativação oficial. Nunca publicar WIP do outro
+repositório incidentalmente. Grupos e participantes somente no backup privado.
+
+Migration 2×, ACLs/fonte alterada/resultado incerto e relatório real em rollback
+validados; nenhum alerta de teste para pessoas reais. Tour incluído. A publicação
+e a ativação prospectiva foram conferidas conforme o registro abaixo. Procedimento:
+`docs/runbooks/school-operations-evidence-and-lead-origins.md`; minuta complementar
+em `docs/legal/registro-de-aulas-pontualidade-e-dever-de-comunicacao.md`.
+
+
+A primeira tentativa desta publicação parou antes de preparar a release: o teste
+legado de retorno do login Google disparava focus sem aguardar a instalação do
+listener e sem fixar a página como visível. Passou isoladamente; o fixture agora
+explicita essas duas pré-condições antes do evento. Nenhuma regra de consentimento,
+autenticação ou código do login foi alterada. Reexecutar o release completo.
+
+
+Publicado pelo release oficial `20261027T143316Z-6269f48e561e`, origem
+`c8916503a5ba95467cf61abf6a2e98e361bb88e0`: 1.285 Vitest, 1.487 Deno, 176 suítes
+SQL, typechecks, build, migration 2× e smoke HTTP aprovados. Sete fontes das
+functions e quatro arquivos HTTP bateram SHA-256 com a release. Canais ativados
+somente para ocorrências futuras; participantes e rota conferidos sem mensagens
+fictícias. Os dois suspensos foram recusados pela regra, com cinco prestadores
+ativos ainda elegíveis. Consulta como authenticated da direção retornou três
+canais. A inspeção visual da sessão de produção estava desabilitada no navegador.
+
+Institucional publicado pelo ativador oficial `20261027T145048Z`: somente o
+script nos 3.177 HTMLs, com comparação integral ao backup e 477 outros arquivos
+preservados. Homepage, blog e página de curso conferidos por HTTP. Configurações,
+ids de grupos, provas de participantes e comparação de assinaturas continuam no
+backup reservado `school-operations-20261027`. O PDF de três páginas está em
+`output/pdf/wise-wolf-guia-registros-origens-e-protecao.pdf`, fora do Git. Os
+120 arquivos privados anteriores foram restaurados e comparados por hash.
+A indicação de preparação acima é histórica e foi superada por esta publicação.
+A assinatura obrigatória por aluno exigia implementação própria nesse release;
+foi publicada e ativada no release posterior registrado abaixo.
+
+
+### 27/10/2026 — Assinatura do professor por aluno (publicado e ativo)
+
+A direção solicitou implementar o fluxo antes pendente. Migration
+`20261027152745_teacher_student_individual_terms.sql`, RPC humana
+`teacher_student_terms`, modelo jurídico 1 e tabelas privadas com RLS. Escola e
+professor assinam pelo próprio contexto autenticado, com nome digitado, leitura,
+representação, data do servidor, texto integral e SHA-256; a família confirma só
+agenda, sem receber honorários/CPF profissional. Primeira assinatura congela a
+via. Reemissão preserva o anterior e exige novos aceites; silêncio não assina.
+PDF da via e comprovantes, além dos tours por papel, incluídos. Identidade PJ
+nova é confirmada pelo próprio prestador e não reescreve o contrato geral anterior.
+
+Matrícula por link mantém o contrato aluno-escola e pausa antes da cobrança;
+proposta individual é criada da oferta/grade, com confirmação separada referida à
+assinatura do aluno. Materialização, conclusão e três portas Asaas consultam a
+guarda. Triggers cobrem bookings, versões, reposições, cobertura e novos
+professores na ficha. Atendimentos manuais têm preparação própria. Troca direta
+de horário persiste como proposta até os aceites; depois retomar a alteração.
+Transferência nova fica PENDING, sem anunciar novo titular confirmado; após os
+aceites a gestão usa Concluir atribuição da transferência, mantendo a vigência
+futura. Links de cobertura orientam a assinatura autenticada e não assinam o
+instrumento por token. Treinamento sem aluno e provas históricas anteriores não
+exigem assinatura retroativa.
+
+Ativação prospectiva somente da Wise Wolf, após release oficial, backup e
+inventário. Ofertas já iniciadas e transferências já aceitas ainda não aplicadas são
+relacionadas em tabelas de transição com seu escopo exato, sem copiar assinatura
+para termo. A exceção da transferência conserva professor, aluno, grade e
+vigência previamente autorizados e não permite antecipar sua data. Agenda/contratos antigos permanecem íntegros;
+nenhuma multa, desconto, assinatura em nome de terceiro ou cobrança do professor
+é produzida pela implantação. Não afirmar ausência garantida de vínculo CLT.
+
+Migration aplicada duas vezes em transação com rollback e suíte isolada aprovada:
+papéis, privacidade, recusa, repetição, hash alterado, texto imutável, encerramento,
+matrícula pública, cobrança bloqueada, grade idempotente, cobertura com assinatura,
+proposta de horário e transferência futura. 43 Vitest relacionados, 9 Deno,
+typechecks aprovados. PDF de amostra gerado pela mesma rotina e revisado nas três
+páginas. Sem mensagem, assinatura, aluno ou pagamento real de teste. Fluxo em
+`docs/runbooks/teacher-student-individual-terms.md`, minuta em
+`docs/legal/termo-individual-professor-aluno-v1.md`.
+
+Publicado pelo release oficial `20261027T165826Z-e9ab217f6a92`, origem
+`f23c88c56f45a481b9ebce8424080c618872da11`: 1.293 Vitest, 1.488 Deno, 177 suítes
+SQL, typechecks, build, auditoria de dependências, migrations 2× e smoke HTTP
+aprovados. Checksum, seis arquivos de functions e quatro bundles HTTP conferidos.
+API humana recusou anon (401) e service_role (403); direção autenticada consultou
+a política habilitada. Dez triggers e guardas de materialização/conclusão/cobrança
+conferidos. Suíte SQL repetida após ativação, em rollback, sem efeitos externos.
+
+Política ativa somente na Wise Wolf em 27/10/2026 às 14:15:55 BRT. Transição
+registrou uma matrícula já iniciada e uma transferência já aceita, limitadas aos
+snapshots anteriores, sem inventar assinaturas. Zero termos assinados na ativação,
+zero fixtures remanescentes. Comparação preservou três registros contratuais,
+três aceites e os campos contratuais/fiscais verificados de 77 perfis. Provas no
+backup privado `individual-student-terms-20261027`; rollback do release no backup
+`release-20261027T165826Z-e9ab217f6a92`. Os 126 arquivos privados locais guardados
+para a publicação foram restaurados e comparados por SHA-256. Inspeção visual de
+produção indisponível no navegador; validação por testes, HTTP e contexto real do
+banco. Modelo ilustrativo, sem assinaturas, em
+`output/pdf/wise-wolf-termo-individual-modelo.pdf`, fora do Git.
+
+### 27/10/2026 — Termo individual não trava falta, reposição nem aluno antigo
+
+Auditoria pós-ativação provou em rollback: lançar falta cria reposição com
+`date='Pendente'` e o gatilho fazia `'Pendente'::date`, recusando TODO lançamento
+de falta ("falha_no_lancamento"); marcar reposição e trocar horário de aluno
+anterior à política exigiam termo (assinatura retroativa não pedida); nenhum aviso
+saía para assinar; `set_student_status` mudava status sem o financeiro. Política
+desligada às 14:55 BRT até a correção (starts_at preservado).
+
+Migration `20261027175500`: reposição sem data não é ocorrência e passa; vínculo
+antigo (`student_term_legacy_relationship`: aluno criado antes de `starts_at` com
+o mesmo professor titular/agenda anterior) dispensa termo em agenda, versões,
+troca de horário e reposição; reposição também vale com termo EXECUTED vigente do
+mesmo professor. Professor NOVO (transferência, cobertura, outro titular, reposição
+dada por outro) continua exigindo termo. Proposta nova avisa a Direção e a
+assinatura da escola avisa o professor pela fila oficial (MANAGEMENT_NOTICE,
+idempotente `student-term:<id>:proposed|school-signed`; falha no aviso só gera
+WARNING). `set_student_status` segue fachada autenticada (auditoria SECDEF), mas
+recusa a transição: pausa/reativação/encerramento só pelo fluxo oficial.
+Teste `termo_individual_nao_trava_falta_e_reposicao.sql` reprova sem a correção.
+Dois professores ativos (63 de 109 horários) têm `contract_accepted=false`: não validam
+termo nenhum até aceitarem o contrato geral v3 no app.
+
+### 27/10/2026 — Professor autônomo (CPF) e cobertura pontual sem termo
+
+Nenhum professor ativo tinha CNPJ: ninguém assinava termo individual nem o v3
+(contrato entre empresas). Decisões da direção, migration `20261027190000`:
+sem CNPJ, o professor assina o contrato geral v2 de pessoa física mesmo com o v3
+oferecido (`accept_teacher_contract(..., 2)`; a fachada liga
+`app.teacher_pf_contract` só nessa chamada e o remendo por âncora em
+`private.accept_teacher_contract_v2` aceita a v2 apenas assim). O termo individual
+aceita identidade `kind='INDIVIDUAL'` (CPF e endereço; a via diz que as referências
+a empresa/representante valem para o próprio prestador). Cobertura pontual de
+aluno atual (`student_term_coverage_exempt`: titular com vínculo antigo ou termo
+vigente + substituto com contrato geral aceito e elegível) dispensa termo, sem
+proposta nem aviso; aluno novo, transferência e troca de titular seguem exigindo.
+Tela: escolha "Tenho CNPJ / Sou autônomo" no aceite do contrato e nos dados do
+termo. Teste `professor_autonomo_e_cobertura_pontual.sql`; a suíte do termo passou
+a esperar cobertura pontual dispensada. Tours `2026-10-27-zz-*`.
+
+### 27/10/2026 — Origem dos leads em frases claras e pista do WhatsApp
+
+O lead do WhatsApp (maior volume) chegava sempre "campanha não identificada",
+mas o WhatsApp informa na 1ª mensagem como a conversa começou
+(`contextInfo.entryPointConversionSource`: `global_search_new_chat`,
+`phone_number_hyperlink`, `ctwa_ad`; anúncio do Meta também em
+`externalAdReply`/`conversionSource`). `whatsapp-inbound/lead-entry.ts` lê isso,
+a fila do SDR o preserva quando as mensagens seguintes chegam sem a pista
+(`enqueue_sdr_work`, migration `20261027200000`) e o lead nasce com
+`notes = 'Origem: {...}'`. `private.lead_origin_evidence` passou a usar a 1ª
+página vista, separa `SOCIAL` (fbclid sozinho NÃO é anúncio), `WHATSAPP_LINK`,
+`WHATSAPP_DIRECT` e `paid_platform` (META_WHATSAPP/META/GOOGLE/OTHER). Aviso do
+grupo e tela "Registros e origens" usam as mesmas frases
+(`school-operations-notify/origin-description.ts`, reexportado em
+`lib/leadOriginDescription.ts` — ⚠️ `lib/leadOrigin.ts` é outro arquivo, o
+rastreador das landing pages). Leads antigos não são reclassificados.
+Sem prefixo de texto no botão do site, link do número no site e na bio do
+Instagram continuam indistinguíveis (os dois são `phone_number_hyperlink`).
+
+### 27/10/2026 — PDF do contrato no navegador quebrado desde o Tailwind 4
+
+Professor não conseguia assinar o convite ("Não foi possível congelar a versão
+jurídica do contrato"): o PDF é gerado no celular por `html2pdf.js`, que usa
+`html2canvas` 1.4.1, e ele recusa `oklch()` — formato de todas as cores do
+Tailwind 4 (migração de 06/10). Nenhum convite fechou depois de 14/09. Mesmo
+defeito em todo PDF gerado no navegador (contrato do aluno, Contratos da
+direção, cópia pública). Override `html2canvas` → `npm:html2canvas-pro@2.5.2`
+(mesma API, suporta oklch). ⚠️ Não remova o override nem volte ao
+`html2canvas` original enquanto o CSS tiver oklch. A captura do convite limita a
+escala a 15 M de pixels (teto de canvas do Safari no iPhone) e a mensagem de
+erro deixou de culpar a assinatura da escola.
+
+### 27/10/2026 — Reposição dada por substituto sem termo individual
+
+A Bruna não marcava a reposição da Bianca (titular Débora): o guarda do termo
+só dispensava reposição para o professor com vínculo antigo/termo próprio. Agora
+reposição de aluno atual segue a regra da cobertura pontual
+(`student_term_coverage_exempt` contra `professor_id`/`professor_id2`): titular
+com vínculo antigo ou termo vigente + substituto com contrato geral aceito e
+elegível. Substituto sem contrato e aluno novo continuam exigindo termo.
+Migration `20261027201000` (remendo por âncora, marcador
+`reposicao_por_substituto`) e teste registrados. Reposição já dada no passado
+continua não podendo ser marcada pelo professor
+(`teacher_reschedule_slot_must_be_future`, antifraude): a direção marca a data
+e o professor lança em Pendentes.
+
+### 28/10/2026 — Feriado nacional: sem aula, com aviso automático (preparado)
+
+Regra da direção: feriado NACIONAL não tem aula; ponto facultativo (Carnaval,
+Corpus Christi, Dia do Servidor) tem aula normal. `public.national_holidays` é
+calculada por `private.brazil_national_holidays_for(ano)` (10 datas: fixas da Lei
+662/49, 6.802/80, 14.759/23 + Paixão de Cristo pela Páscoa) e preenchida para o
+ano corrente e o seguinte por `private.ensure_national_holidays()` — data editada
+à mão não é sobrescrita. A tabela da atendente (`whatsapp-inbound/holidays.ts`)
+perdeu Carnaval e Corpus Christi, que bloqueavam experimental à toa.
+
+Cron `wisewolf-national-holiday-notices` (12:00 UTC = 09:00 BRT) →
+`private.queue_national_holiday_notices()`: aluno notificável e professor elegível
+COM aula da agenda fixa no dia (`booking_schedule_on_date`) recebem aviso pela fila
+oficial (`MANAGEMENT_NOTICE`, chave `national-holiday:<data>:<D7|D1>:<pessoa>`).
+D7 vale de 7 a 2 dias antes (sai uma vez, mesmo se o calendário entrou tarde); D1 na
+véspera. Escola só entra com linha em `private.national_holiday_notice_settings`
+(nasce só a Wise Wolf; desligar = `enabled=false`). Quem não tem aula no dia não
+recebe (inclui feriado em domingo) — evita disparo inútil no número da escola.
+No dia do feriado, aula da agenda fixa não gera lembrete de 30 min
+(`prepare-daily-reminders`) nem confirmação de presença (remendo por âncora em
+`enqueue_attendance_confirmations`); reposição/experimental marcada no dia segue.
+Pop-up `NationalHolidayNotice` (RPC `my_upcoming_national_holiday`) na semana do
+feriado; "fechei" fica no localStorage por usuário+data. Migration
+`20261028150000`, teste `feriados_nacionais_sem_aula.sql`, tour da direção.
+Ensaio na VPS com rollback: Finados (02/11) geraria 27 avisos.
+
+### 31/10/2026 — Contrato rola no computador; cupom só pela escola; rascunho da matrícula
+
+Na tela do contrato (>980 px, duas colunas) a folha (`.enrollment-contract-document > div`,
+`overflow: hidden`) encolhia até a altura da coluna e cortava o texto: só a coluna da assinatura
+rolava. `flex-shrink: 0` na folha. ⚠️ O PWA serve o CSS do precache do service worker: hotfix
+no arquivo da VPS NÃO chega a quem já abriu o portal (caso Ivone, Firefox/Windows) — só o
+release troca o hash. Página de matrícula sem campo de cupom (ver Afiliados). O que o aluno
+digitou (nome, e-mail, telefone, CPF, CEP, endereço, número, forma de pagamento — nunca senha
+nem cartão) fica em `localStorage` por oferta (`lib/enrollmentDraft.ts`), volta no F5, some ao
+concluir ou em 7 dias. Tour `2026-10-31-cupom-so-pela-escola`.
+
+### 01/11/2026 — Termo por aluno pelo link do WhatsApp + modelo jurídico 2
+
+Decisão da direção (31/10): assinar pelo portal era lento (o termo da Amábile levou 3 dias só
+na escola). Na proposta (`PROPOSED`), professor e diretor recebem cada um um **link pessoal**
+(`/aceitar-termo?t=<64 hex>`, `components/StudentTermSign.tsx`): uso único, 7 dias, só o hash
+em `private.student_term_links`, enviado ao telefone do próprio perfil pela fila oficial
+(`student-term-link:<termo>:<parte>:<n>`). A página age como quem recebeu o link pela MESMA
+`teacher_student_terms` do portal (`trial_closing_act_as`) e grava o meio num evento à parte
+(`SIGNED_VIA_WHATSAPP_LINK`, IP e navegador). **Escola e professor assinam em qualquer ordem**
+(remendo por âncora). Link da escola só sai com os dados do prestador preenchidos (gatilho em
+`provider_identity`). Lembrete em 24 h (link novo) e aviso à coordenação em 48 h
+(`wisewolf-student-term-link-reminders`, 9h–21h). Escola sem endereço de portal
+(`lesson_recording_portal_url` nulo) não recebe link — nunca mensagem sem link. ⚠️ Página e
+mensagens nunca mostram valor pago pelo aluno, só o valor do professor por 30 min.
+**Modelo jurídico 2** (`docs/legal/termo-individual-professor-aluno-v2.md`, aprovado pela
+direção, recomendado revisar com advogado): aula registrada sem ter sido dada = devolução +
+multa de 10× por unidade + encerramento de todos os atendimentos; abandono sem o aviso de 30
+dias = 2 meses de honorários do atendimento (+ diferença do substituto comprovada); falta
+injustificada = 2× por unidade; sempre após manifestação de 5 dias úteis. `student_term_render`
+usa o modelo mais recente; termo já assinado não muda (texto só é remontado antes da 1ª
+assinatura). Migration `20261101010000`, teste `termo_individual_por_link.sql`, tours
+`2026-11-01-termo-por-link-*`.
+
+### 01/11/2026 — Turbo em reais e experimental conferida pelo Meet
+
+O quanto o Turbo rende aparece em R$: extra = tarifa paga − tarifa sem Turbo,
+só em aula paga pela régua das faixas com o Turbo ligado no dia
+(`private.turbo_lessons`). Card do professor (`teacher_turbo_earnings`), prévia
+do Repasse e folha do grupo (`payroll_month_rows_with_turbo` embrulha
+`payroll_month_rows`, que não mudou). O Balancete segue contando como Turbo
+qualquer aula acima da faixa 1 (inclui valor de cobertura oferecido).
+Experimental ganha sala da escola no Meet SEM transcrição (só presença), criada
+pelo cron do `google-meet` até 24 h antes, com o professor coanfitrião; o link
+vira `appointments.meeting_link` e vai ao lead pelo `funnel-sweeper`. 40 min
+depois, professor e lead ≥ 10 min juntos → aula lançada e paga; lead ausente →
+`no_show`; o resto fica no painel Liquidar com o motivo. Liga por escola em
+`private.trial_meet_settings` (Wise Wolf ligada). Migration `20261101020000`,
+teste SQL e `google-meet/trial-rooms.test.ts` no release. Fluxo:
+[runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).
+
+### 02/11/2026 — Links das aulas, aviso de 10 min e Ao vivo da direção
+
+Sala do Meet da experimental nasce no aceite (janela 24 h → 30 dias em
+`trial_meet_backend`) e o link vai ao lead logo que fica pronta.
+`my_lesson_links` é a fonte única dos links para a aba Links, o pop-up de
+10 minutos antes (aluno e professor) e a tela "Ao vivo" (direção entra pela
+conta central com `authuser`; Meet não tem participante invisível). Professor
+com pedido para não registrar não tem sala da escola. Migration
+`20261102140000`, teste SQL e tours no release:
+[runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).

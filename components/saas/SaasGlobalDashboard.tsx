@@ -25,7 +25,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
         <div className="space-y-6">
             {/* KPI Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-xs border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
                             <DollarSign size={20} />
@@ -40,7 +40,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
                     </h3>
                 </div>
 
-                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-xs border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
                             <Globe size={20} />
@@ -55,7 +55,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
                     </h3>
                 </div>
 
-                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-xs border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
                             <Users size={20} />
@@ -67,7 +67,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
                     </h3>
                 </div>
 
-                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-xs border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-red-100 text-red-600 rounded-xl">
                             <AlertTriangle size={20} />
@@ -84,7 +84,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
             </div>
 
             {/* Main Chart */}
-            <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-brand-border">
+            <div className="bg-brand-surface p-8 rounded-3xl shadow-xs border border-brand-border">
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h3 className="text-lg font-bold text-brand-text">Crescimento de Receita (MRR)</h3>

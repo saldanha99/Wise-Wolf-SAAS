@@ -36,6 +36,8 @@ export interface TenantSchoolInfo {
   legalRepresentativeSignaturePath?: string;
   legalRepresentativeSignatureUrl?: string;
   privacyContactEmail?: string;
+  /** Encarregado de dados (LGPD): o termo de registro das aulas mostra o nome ao lado do contato. */
+  privacyOfficerName?: string;
 }
 
 export interface TenantBrandingForm {

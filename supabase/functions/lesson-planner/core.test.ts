@@ -302,13 +302,31 @@ Deno.test("GPT-4o mini profile omits reasoning and stays deterministic", () => {
   assertEquals(plannerModelProfile("openai/gpt-4o-mini"), {
     supportsReasoning: false,
     temperature: 0.2,
-    timeoutMs: 25_000,
+    timeoutMs: 100_000,
   });
   assertEquals(plannerModelProfile("openai/gpt-5-mini"), {
     supportsReasoning: true,
     temperature: null,
-    timeoutMs: 25_000,
+    timeoutMs: 100_000,
   });
+});
+
+// 25 s por chamada matava toda geração (504 em produção, 17/09/2026). O retry
+// de qualidade recebe só o que sobrou do orçamento total, nunca menos que o
+// mínimo útil.
+Deno.test("o retry de qualidade fica com o resto do orçamento", () => {
+  assertEquals(
+    plannerModelProfile("openai/gpt-5-mini", true, 40_000).timeoutMs,
+    40_000,
+  );
+  assertEquals(
+    plannerModelProfile("openai/gpt-5-mini", true, 5_000).timeoutMs,
+    20_000,
+  );
+  assertEquals(
+    plannerModelProfile("openai/gpt-4o-mini", false, 500_000).timeoutMs,
+    100_000,
+  );
 });
 
 Deno.test("recommended materials are restricted to approved or retrieved titles", () => {

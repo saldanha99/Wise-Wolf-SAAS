@@ -1,5 +1,9 @@
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  avancarTriagem,
   ETAPAS,
   etapasRespondidas,
   mergeRespostas,
@@ -16,7 +20,12 @@ import {
 } from "./commercial-response-policy.ts";
 
 const HOJE = "2026-08-09";
-const base = { nomeCandidato: "Ana", primeiraInteracao: false, coletando: true, hoje: HOJE };
+const base = {
+  nomeCandidato: "Ana",
+  primeiraInteracao: false,
+  coletando: true,
+  hoje: HOJE,
+};
 const commercialPolicy = {
   classDurationMinutes: CLASS_DURATION_MINUTES,
   minimumPlanPriceBrl: MINIMUM_PLAN_PRICE_BRL,
@@ -25,6 +34,60 @@ const commercialPolicy = {
 
 const todasRespondidas = () =>
   Object.fromEntries(ETAPAS.map((e) => [e.key, "resposta"]));
+
+Deno.test("sim para começar não responde nacionalidade por inferência", () => {
+  const result = avancarTriagem(
+    {},
+    { nacionalidade: "sim" },
+    "Sim",
+    "Podemos começar agora?",
+  );
+  assertEquals(result.answers, {});
+  assertStringIncludes(result.reply, ETAPAS[0].pergunta);
+});
+
+Deno.test("cada resposta emenda exatamente a próxima etapa sem aguardar outra mensagem", () => {
+  let answers = {};
+  for (const [index, etapa] of ETAPAS.entries()) {
+    const result = avancarTriagem(
+      answers,
+      { [etapa.key]: "resposta" },
+      "resposta",
+    );
+    assertEquals(etapasRespondidas(result.answers), index + 1);
+    if (index + 1 < ETAPAS.length) {
+      assertStringIncludes(result.reply, ETAPAS[index + 1].pergunta);
+      assertEquals(result.reply.includes(etapa.pergunta), false);
+    } else assertStringIncludes(result.reply, "triagem foi concluída");
+    answers = result.answers;
+  }
+});
+
+Deno.test("pedido de próxima pergunta não vira resposta e modelo não pula etapas", () => {
+  const result = avancarTriagem(
+    {},
+    { nacionalidade: "sim", idade: 20 },
+    "Qual a próxima pergunta?",
+  );
+  assertEquals(result.answers, {});
+  assertStringIncludes(result.reply, ETAPAS[0].pergunta);
+  assertEquals(
+    avancarTriagem({}, { nacionalidade: "sim", idade: 20 }, "sim").answers,
+    { nacionalidade: "sim" },
+  );
+});
+
+Deno.test("recusa explícita é resposta válida e dúvida sem extração repete só a etapa aberta", () => {
+  const previous = { nacionalidade: "sim", idade: 20 };
+  assertEquals(
+    avancarTriagem(previous, { modelo_ok: false }, "não").answers.modelo_ok,
+    false,
+  );
+  assertStringIncludes(
+    avancarTriagem(previous, {}, "como funciona?").reply,
+    ETAPAS[2].pergunta,
+  );
+});
 
 Deno.test("a primeira etapa é nacionalidade", () => {
   assertEquals(proximaEtapa({})?.key, "nacionalidade");
@@ -49,11 +112,17 @@ Deno.test("triagem só termina com as 10 etapas preenchidas", () => {
 });
 
 Deno.test("nota_ingles não é etapa — não segura o encerramento", () => {
-  assertEquals(triagemCompleta({ ...todasRespondidas(), nota_ingles: undefined }), true);
+  assertEquals(
+    triagemCompleta({ ...todasRespondidas(), nota_ingles: undefined }),
+    true,
+  );
 });
 
 Deno.test("mergeRespostas ignora chave que o modelo inventou", () => {
-  const out = mergeRespostas({}, { nacionalidade: "brasileira", salario_pretendido: "5000" });
+  const out = mergeRespostas({}, {
+    nacionalidade: "brasileira",
+    salario_pretendido: "5000",
+  });
   assertEquals(out.nacionalidade, "brasileira");
   assertEquals(out.salario_pretendido, undefined);
 });
@@ -68,7 +137,10 @@ Deno.test("mergeRespostas não sobrescreve resposta já dada", () => {
 });
 
 Deno.test("mergeRespostas descarta vazio vindo do modelo", () => {
-  const out = mergeRespostas({ idade: "30" }, { nacionalidade: "", formacao: null });
+  const out = mergeRespostas({ idade: "30" }, {
+    nacionalidade: "",
+    formacao: null,
+  });
   assertEquals(out.nacionalidade, undefined);
   assertEquals(out.formacao, undefined);
   assertEquals(out.idade, "30");
@@ -82,7 +154,11 @@ Deno.test("o prompt carrega UMA pergunta, não as dez", () => {
 });
 
 Deno.test("a triagem usa a identidade do tenant, nunca a marca da plataforma", () => {
-  const p = promptTriagem({ ...base, schoolName: "Escola Tenant A", answers: {} });
+  const p = promptTriagem({
+    ...base,
+    schoolName: "Escola Tenant A",
+    answers: {},
+  });
   assertStringIncludes(p, "da Escola Tenant A");
   assertEquals(p.includes("WISE WOLF LANGUAGE"), false);
 });
@@ -96,8 +172,11 @@ Deno.test("o bloco comercial acompanha a etapa que depende dele", () => {
 
 Deno.test("os números da remuneração não são reescritos", () => {
   const answers = {
-    nacionalidade: "sim", idade: "30", modelo_ok: "sim",
-    formacao: "Letras", computador_internet: "sim",
+    nacionalidade: "sim",
+    idade: "30",
+    modelo_ok: "sim",
+    formacao: "Letras",
+    computador_internet: "sim",
   };
   const p = promptTriagem({ ...base, answers });
   assertStringIncludes(p, "R$8,00 por aula");
@@ -131,7 +210,10 @@ Deno.test("a etapa de inglês pede a nota", () => {
 });
 
 Deno.test("o prompt lista o que já foi respondido para não repetir", () => {
-  const p = promptTriagem({ ...base, answers: { nacionalidade: "brasileira" } });
+  const p = promptTriagem({
+    ...base,
+    answers: { nacionalidade: "brasileira" },
+  });
   assertStringIncludes(p, "NÃO pergunte de novo");
   assertStringIncludes(p, "brasileira");
 });
@@ -159,7 +241,10 @@ Deno.test("atendente informa somente o valor mínimo quando o lead insiste", () 
     commercialPolicy,
   });
   assertEquals(result.policy, "minimum_price_after_insistence");
-  assertStringIncludes(result.reply, `a partir de R$ ${MINIMUM_PLAN_PRICE_BRL}/mês`);
+  assertStringIncludes(
+    result.reply,
+    `a partir de R$ ${MINIMUM_PLAN_PRICE_BRL}/mês`,
+  );
   assertEquals(result.reply.includes("198"), false);
   assertEquals(result.reply.includes("261"), false);
   assertEquals(result.reply.includes("355"), false);
@@ -214,21 +299,40 @@ Deno.test("resposta comercial segura do modelo passa sem alteração", () => {
 });
 
 Deno.test("treinamento atual da atendente prevalece sobre o campo legado", () => {
-  assertEquals(resolveAtendenteTraining({
-    agents: { atendente: { training: "Treinamento atual" } },
-    sdr: { training: "Treinamento antigo" },
-  }), "Treinamento atual");
-  assertEquals(resolveAtendenteTraining({ sdr: { training: "Treinamento antigo" } }), "Treinamento antigo");
-  assertEquals(resolveAtendenteTraining({
-    agents: { atendente: { training: "" } },
-    sdr: { training: "Treinamento antigo" },
-  }), "");
+  assertEquals(
+    resolveAtendenteTraining({
+      agents: { atendente: { training: "Treinamento atual" } },
+      sdr: { training: "Treinamento antigo" },
+    }),
+    "Treinamento atual",
+  );
+  assertEquals(
+    resolveAtendenteTraining({ sdr: { training: "Treinamento antigo" } }),
+    "Treinamento antigo",
+  );
+  assertEquals(
+    resolveAtendenteTraining({
+      agents: { atendente: { training: "" } },
+      sdr: { training: "Treinamento antigo" },
+    }),
+    "",
+  );
 });
 
 Deno.test("política comercial é carregada somente quando configurada e válida", () => {
-  assertEquals(resolveCommercialPolicy({ agents: { atendente: { commercialPolicy } } }), commercialPolicy);
+  assertEquals(
+    resolveCommercialPolicy({ agents: { atendente: { commercialPolicy } } }),
+    commercialPolicy,
+  );
   assertEquals(resolveCommercialPolicy({}), null);
-  assertEquals(resolveCommercialPolicy({
-    agents: { atendente: { commercialPolicy: { ...commercialPolicy, minimumPlanPriceBrl: -1 } } },
-  }), null);
+  assertEquals(
+    resolveCommercialPolicy({
+      agents: {
+        atendente: {
+          commercialPolicy: { ...commercialPolicy, minimumPlanPriceBrl: -1 },
+        },
+      },
+    }),
+    null,
+  );
 });

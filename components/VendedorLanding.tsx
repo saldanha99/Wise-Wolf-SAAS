@@ -96,7 +96,7 @@ const VendedorLanding: React.FC = () => {
     // ── INTRO ──
     if (step === 'intro') {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 font-sans">
+            <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 font-sans">
                 <div className="w-full max-w-lg animate-in fade-in duration-500">
                     {/* Logo */}
                     <div className="text-center mb-10">
@@ -110,7 +110,7 @@ const VendedorLanding: React.FC = () => {
                     </div>
 
                     {/* Card */}
-                    <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-sm">
+                    <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-xs">
                         <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5 mb-6">
                             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                             <span className="text-emerald-400 text-xs font-black uppercase tracking-widest">Processo Seletivo</span>
@@ -140,7 +140,7 @@ const VendedorLanding: React.FC = () => {
 
                         <button
                             onClick={() => setStep('nome')}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/25"
+                            className="w-full bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/25"
                         >
                             Começar
                             <ArrowRight size={16} />
@@ -154,7 +154,7 @@ const VendedorLanding: React.FC = () => {
     // ── SUCCESS ──
     if (step === 'success') {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950/20 to-slate-950 flex items-center justify-center p-6 font-sans">
+            <div className="min-h-screen bg-linear-to-br from-slate-950 via-emerald-950/20 to-slate-950 flex items-center justify-center p-6 font-sans">
                 <div className="bg-slate-800/60 border border-emerald-700/40 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl animate-in fade-in duration-500">
                     <div className="w-20 h-20 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
                         <CheckCircle size={36} className="text-emerald-400" />
@@ -208,7 +208,7 @@ const VendedorLanding: React.FC = () => {
     const current = stepConfig[step as keyof typeof stepConfig];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 font-sans">
+        <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 font-sans">
             {/* Glow */}
             <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -238,7 +238,7 @@ const VendedorLanding: React.FC = () => {
                 </div>
 
                 {/* Card */}
-                <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-sm">
+                <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-xs">
                     <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">
                         Etapa {currentIndex + 1} de 3
                     </p>
@@ -255,7 +255,7 @@ const VendedorLanding: React.FC = () => {
                             onChange={e => current.onChange(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={current.placeholder}
-                            className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-11 pr-4 py-4 text-base focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                            className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-11 pr-4 py-4 text-base focus:outline-hidden focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                             autoComplete="off"
                         />
                     </div>
@@ -267,7 +267,7 @@ const VendedorLanding: React.FC = () => {
                     <button
                         onClick={handleNext}
                         disabled={loading || !current.value.trim()}
-                        className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/20"
+                        className="w-full bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/20"
                     >
                         {loading ? (
                             <Loader2 size={18} className="animate-spin" />

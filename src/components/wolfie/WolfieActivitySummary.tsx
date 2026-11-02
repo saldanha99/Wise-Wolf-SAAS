@@ -535,7 +535,7 @@ export function WolfieActivitySummary({
       <div className="mx-auto max-w-6xl">
         <div className="grid gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
           <aside className="lg:sticky lg:top-5 lg:self-start">
-            <section className="rounded-3xl border border-brand-border bg-brand-surface p-6 shadow-sm">
+            <section className="rounded-3xl border border-brand-border bg-brand-surface p-6 shadow-xs">
               <div className="mx-auto mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent">
                 <Trophy size={24} aria-hidden="true" />
               </div>

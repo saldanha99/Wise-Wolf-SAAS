@@ -1,19 +1,24 @@
+import TeacherStudentTerms from './TeacherStudentTerms';
 
 import React, { useEffect, useState } from 'react';
-import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw } from 'lucide-react';
+import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw, Sparkles } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { localMonth, localYMD } from '../lib/dateUtils';
-import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
+import { lessonMeetingLink, officialLessonRoom, type LessonRoom } from '../lib/lessonRooms';
+import { coverageAgendaItems, coverageCaption, coverageDisplayTime, type CoverageAgendaRow } from '../lib/coverageAgenda';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
+import { setPlannerIntent } from '../lib/plannerIntent';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
+import TeacherPunctualityCard from './TeacherPunctualityCard';
 import TeacherContractAccept from './TeacherContractAccept';
+import { useTeacherHandbookAck } from '../lib/useTeacherHandbookAck';
 
 interface TeacherDashboardProps {
   user: UserType;
@@ -37,6 +42,8 @@ function saoPauloDateTime(value: string): { date: string; time: string } | null 
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onNavigate }) => {
+  // Treinamento obrigatório: lembrete no Início até o professor confirmar a leitura.
+  const { acknowledged: handbookRead } = useTeacherHandbookAck(user?.id);
   // monthlyEarnings é `null` quando o servidor não respondeu: a tela mostra "—"
   // em vez de inventar um número. Valor de aula não se estima no navegador.
   const [stats, setStats] = useState<{
@@ -248,6 +255,28 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('date', todayISO)
         .eq('tenant_id', effectiveTenantId);
 
+      // Coberturas de HOJE, nos dois sentidos. A que este professor ASSUMIU entra
+      // na lista (é aula dele hoje, mesmo sendo agendamento de outro); a que ele
+      // CEDEU sai (quem dá é o substituto). Até 18/09/2026 nada disso aparecia
+      // aqui — o substituto abria o Início e via "sem aulas".
+      const { data: coverageRows, error: coverageError } = await supabase
+        .from('class_coverages')
+        .select(`
+          id, booking_id, class_date, class_time, status, notes, original_teacher_id, cover_teacher_id,
+          student:student_id(id, full_name, phone, avatar_url, module, meeting_link),
+          original_teacher:original_teacher_id(full_name),
+          cover_teacher:cover_teacher_id(full_name)
+        `)
+        .eq('tenant_id', effectiveTenantId)
+        .eq('class_date', todayISO)
+        .eq('status', 'confirmed');
+      if (coverageError) throw coverageError;
+      const todayCoverages = coverageAgendaItems((coverageRows || []) as unknown as CoverageAgendaRow[], user.id);
+      const cededBookingIds = new Set(
+        todayCoverages.filter(c => c.papel === 'cedida' && c.bookingId).map(c => c.bookingId as string)
+      );
+      const assumedToday = todayCoverages.filter(c => c.papel === 'assumida');
+
       // Lançamentos do mês — usados para a AGENDA (esconder da lista "próximas
       // aulas" o que já foi lançado) e para o gráfico da semana. Não servem mais
       // para calcular dinheiro: ver o bloco logo abaixo.
@@ -276,7 +305,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
       setStats({
         activeStudents: Number(projection?.active_students ?? uniqueStudents.size),
-        classesToday: (todayBookings.length + (todayRepos?.length || 0)),
+        classesToday: (todayBookings.filter((o: any) => !cededBookingIds.has(o.booking_id)).length + (todayRepos?.length || 0) + assumedToday.length),
         monthlyEarnings: projection?.amount_logged == null ? null : Number(projection.amount_logged),
         completionRate: 100
       });
@@ -306,16 +335,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       const { data: trials } = await supabase
         .from('appointments')
         .select(`
-          id, start_time, student_name, student_phone, type, status
+          id, start_time, student_name, student_phone, type, status, meeting_link
         `)
         .eq('teacher_id', user.id)
-        .eq('type', 'experimental')
+        .in('type', ['experimental', 'oral_test'])
         .eq('status', 'scheduled')
         .gte('start_time', `${todayISO}T00:00:00-03:00`)
         .lt('start_time', `${localYMD(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))}T00:00:00-03:00`)
         .eq('tenant_id', effectiveTenantId);
 
       const upcomingRegular = (todayFixed as any[])
+        .filter(b => !cededBookingIds.has(b.id))
         .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
         .map(b => ({
           name: (b.student as any)?.full_name || 'Desconhecido',
@@ -323,6 +353,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: b.time_slot,
           module: (b.student as any)?.module || 'N/A',
           img: (b.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(b.student as any)?.full_name}`,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'booking', b.id, todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', b.id, todayISO, (b.student as any)?.meeting_link),
           phone: (b.student as any)?.phone,
           type: b.lesson_advance_id ? 'ANTECIPAÇÃO' : 'REGULAR',
@@ -338,6 +369,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: r.time,
           module: (r.student as any)?.module || 'N/A',
           img: (r.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(r.student as any)?.full_name || 'R'}`,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'reschedule', r.id, todayISO)?.meeting_uri,
           meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'reschedule', r.id, todayISO, (r.student as any)?.meeting_link),
           phone: (r.student as any)?.phone,
           type: 'REPOSIÇÃO',
@@ -352,17 +384,38 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .map(({ row: t, local }) => ({
           name: t.student_name || 'Aula Experimental',
           time: local?.time || '',
-          module: 'EXPERIMENTAL',
+          module: t.type === 'oral_test' ? 'TESTE ORAL' : 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
-          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO)?.meeting_uri,
+          meet: t.type === 'oral_test' ? t.meeting_link : lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, t.meeting_link || user.meeting_link),
           phone: t.student_phone,
-          type: 'TRIAL',
+          type: t.type === 'oral_test' ? 'ORAL_TEST' : 'TRIAL',
           source_id: t.id,
           source_type: 'APPOINTMENT',
           class_date: todayISO,
         }));
 
-      setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials]
+      // Cobertura assumida hoje: fica na lista até o horário combinado (ou o
+      // slot) passar, e some quando a aula já foi lançada.
+      const upcomingCoverages = assumedToday
+        .filter(c => coverageDisplayTime(c) >= currentTimeStr)
+        .filter(c => !logs?.some(l => l.booking_id === c.bookingId && l.class_date === todayISO))
+        .map(c => ({
+          name: c.studentName,
+          studentId: c.studentId,
+          time: coverageDisplayTime(c),
+          module: coverageCaption(c),
+          img: c.studentAvatar,
+          officialRoom: !!officialLessonRoom((lessonRooms || []) as LessonRoom[], 'booking', c.bookingId || '', todayISO)?.meeting_uri,
+          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', c.bookingId || '', todayISO, c.studentMeetingLink),
+          phone: c.studentPhone,
+          type: 'COBERTURA',
+          source_id: c.coverageId,
+          source_type: 'COVERAGE',
+          class_date: todayISO,
+        }));
+
+      setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials, ...upcomingCoverages]
         .sort((a, b) => a.time.localeCompare(b.time))
       );
 
@@ -443,6 +496,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in-up font-sans">
+      <TeacherStudentTerms compact />
 
       {/* Financial Closing Modal */}
       {showClosingModal && (
@@ -456,6 +510,26 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             fetchDashboardData();
           }}
         />
+      )}
+
+      {handbookRead === false && (
+        <div className="bg-gradient-to-r from-[#000F66] to-[#1A2690] text-white p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-4 shadow-lg">
+          <div className="p-2 bg-white/10 rounded-xl self-start">
+            <AlertCircle size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold">Treinamento obrigatório pendente</h3>
+            <p className="text-sm text-white/80">
+              Leia o Manual do Professor: Teacher Exchange, reposições, feriados, avisos de ausência, aula experimental e o que não é papel do professor.
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate?.('teacher-handbook')}
+            className="bg-[#E31B23] text-white px-6 py-3 rounded-xl text-xs font-bold hover:brightness-110 transition-all shadow-lg whitespace-nowrap self-start sm:self-auto"
+          >
+            Ler o manual
+          </button>
+        </div>
       )}
 
       {user?.id && <TeacherTurboCard teacherId={user.id} />}
@@ -492,7 +566,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       {/* Header Section */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-wide">
+          <h2 className="text-2xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-wide">
             Olá, {user.name?.split(' ')[0] || 'Prof.'} 👋
           </h2>
           <p className="text-brand-muted text-sm mt-1">
@@ -577,7 +651,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             </div>
 
             {stat.isFinancial && complianceLocked.isLocked && (
-              <div className="absolute inset-0 flex items-center justify-center bg-brand-surface/50 backdrop-blur-sm z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-brand-surface/50 backdrop-blur-xs z-10">
                 <div className="flex flex-col items-center gap-1">
                   <Lock size={20} className="text-brand-muted" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Bloqueado</span>
@@ -632,10 +706,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                 <Line
                   type="monotone"
                   dataKey="aulas"
-                  stroke="#8b5cf6"
+                  stroke="#2E3FA8"
                   strokeWidth={4}
-                  dot={{ r: 4, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, fill: '#8b5cf6' }}
+                  dot={{ r: 4, fill: '#2E3FA8', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, fill: '#2E3FA8' }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -649,8 +723,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           {/* Affiliate Link Card */}
           <TeacherAffiliateCard user={user} />
 
+          {/* Extrato de pontualidade: só aparece com o extrato ligado para a escola
+              (desligado até o jurídico liberar — migration 20260928120000). */}
+          <TeacherPunctualityCard />
+
           {/* Schedule Section */}
-          <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">
+          <div data-tour="today-lessons" className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-sm font-bold text-brand-text">Aulas de Hoje</h3>
               <div className="flex items-center gap-2">
@@ -677,34 +755,44 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                 return (
                 <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border transition-all group ${aula.type === 'TRIAL'
                   ? 'border-brand-accent/40 bg-brand-accent/5'
-                  : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
+                  : aula.type === 'COBERTURA'
+                    ? 'border-amber-400/50 bg-amber-400/5'
+                    : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
                   <div className="relative shrink-0">
-                    <img src={aula.img} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt={aula.name} />
-                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-brand-surface rounded-full ${aula.type === 'TRIAL' ? 'bg-brand-accent' : 'bg-emerald-500'}`} />
+                    <img src={aula.img} className="w-12 h-12 rounded-xl object-cover shadow-xs" alt={aula.name} />
+                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-brand-surface rounded-full ${aula.type === 'TRIAL' ? 'bg-brand-accent' : aula.type === 'COBERTURA' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-brand-text truncate">{aula.name}</p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-brand-muted">
-                      <span className="flex items-center gap-1 font-medium bg-brand-surface border border-brand-border px-2 py-0.5 rounded-md shadow-sm">
+                      <span className="flex items-center gap-1 font-medium bg-brand-surface border border-brand-border px-2 py-0.5 rounded-md shadow-xs">
                         <Clock size={10} className={aula.type === 'TRIAL' ? 'text-brand-accent' : 'text-brand-muted'} /> {aula.time}
                       </span>
                       {aula.type === 'TRIAL' ? (
                         <span className="text-[9px] font-black bg-brand-accent text-white px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse">Experimental</span>
+                      ) : aula.type === 'COBERTURA' ? (
+                        <span className="truncate text-amber-600 dark:text-amber-400 font-semibold" title={aula.module}>{aula.module}</span>
                       ) : (
                         <span className="truncate">{aula.module}</span>
                       )}
                     </div>
+                    {aula.type === 'TRIAL' && !aula.meet && (
+                      <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300" role="alert">
+                        Sem link de acesso cadastrado. Confirme a sala com a coordenação e envie o link real ao aluno antes da experimental.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-2 items-center shrink-0">
                     {/* Em modo AUTO o botão manual fica oculto para impedir que
                         o mesmo lembrete seja enviado pelos dois caminhos. */}
+                    {/* Cobertura não tem lembrete daqui: a edge só conhece booking/reposição/experimental. */}
                     {teacherWa.automation === false && (
-                      <button
+                      aula.source_type !== 'COVERAGE' && aula.type !== 'ORAL_TEST' && <button
                         onClick={() => handleDispatch(aula, dispatchKey)}
                         disabled={dispatchState === 'sending' || dispatchState === 'sent'}
-                        className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm border text-xs font-bold ${
+                        className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs border text-xs font-bold ${
                           dispatchState === 'sent'
                             ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
                             : dispatchState === 'error'
@@ -733,15 +821,34 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         compact
                       />
                     )}
+                    {aula.studentId && aula.type !== 'TRIAL' && (
+                      <button
+                        type="button"
+                        data-tour="lesson-plan-ai"
+                        onClick={() => {
+                          setPlannerIntent({
+                            studentId: aula.studentId as string,
+                            studentName: aula.name,
+                            request: `Aula de hoje às ${aula.time} com ${aula.name}.`,
+                          });
+                          onNavigate?.('lesson-planner-ai');
+                        }}
+                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-xs border border-brand-border"
+                        title="Planejar esta aula com a IA"
+                      >
+                        <Sparkles size={18} />
+                      </button>
+                    )}
                     {aula.meet && (
                       <a
                         href={aula.meet}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-sm border border-brand-border"
-                        title="Entrar na Sala"
+                        data-tour="teacher-official-meet-link"
+                        className="min-h-10 rounded-xl bg-brand-accent px-3 text-white flex items-center justify-center gap-2 transition-all shadow-xs"
+                        title={aula.officialRoom ? "Link oficial desta aula. Entre com sua conta Google confirmada." : "Sala combinada para esta aula"}
                       >
-                        <Video size={18} />
+                        <Video size={18} /><span className="text-xs font-bold">{aula.officialRoom ? 'Sala oficial' : 'Entrar na sala'}</span>
                       </a>
                     )}
                   </div>

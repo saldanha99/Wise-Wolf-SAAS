@@ -1,3 +1,4 @@
+import { teacherMayReceiveOpportunity } from "../_shared/opportunity-dispatch.ts";
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -54,6 +55,14 @@ serve(async (req) => {
   const tenantId = profile?.tenant_id;
   if (!tenantId || !userId) {
     return json({ ok: false, error: "TENANT_ACCESS_REQUIRED" }, 403);
+  }
+
+  if (!await teacherMayReceiveOpportunity(admin, tenantId, userId)) {
+    return json({
+      ok: false,
+      error: "teacher_inactive",
+      message: "Seu cadastro não está habilitado para novas oportunidades.",
+    }, 403);
   }
 
   const { data: visibleOpportunity, error: lookupError } = await admin

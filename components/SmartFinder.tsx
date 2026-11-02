@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import TeacherTrainingScheduler from './TeacherTrainingScheduler';
-import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
+import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { buildBroadcastErrorMessage, parseFunctionErrorAsync } from '../lib/functionInvokeErrors';
 
@@ -38,19 +38,12 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     // Preferred Slots (weekly preferences)
     const [preferredSlots, setPreferredSlots] = useState<PreferredSlot[]>([]);
 
-    // Modo de disparo: 'group' posta no grupo de professores configurado em
-    // WhatsApp (Conexão); 'individual' manda DM só pros professores ativos.
-    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('individual');
     // TRIAL = aula experimental de aluno · TRAINING = treinamento de professor.
     // Sem este campo o broadcast caía sempre em TRIAL, e o treinamento entrava na
     // folha como AULA EXPERIMENTAL a R$ 8,00 em vez de R$ 16,00 de treinador —
     // foi o que aconteceu com o treinamento da Teacher Lais em julho/2026.
     const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
-    // A experimental voltou a poder ir ao grupo (16/09/2026, pedido da direção:
-    // é de lá que ela copia o link para mandar a um professor específico). Quem
-    // protege o dado do aluno agora é a MENSAGEM: o grupo recebe data, hora e
-    // link, sem nome nem objetivo — isso aparece na página de aceite.
-    const effectiveDispatchMode = dispatchMode;
+    // Convites privados permitem excluir professores suspensos antes de cada envio.
     const [lastClaimLink, setLastClaimLink] = useState('');
     const [linkCopied, setLinkCopied] = useState(false);
 
@@ -115,7 +108,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                     time: targetTime,
                     interests: studentInterests,
                     preferred_slots: preferredSlots.length > 0 ? preferredSlots : undefined,
-                    dispatch_mode: effectiveDispatchMode,
+                    dispatch_mode: 'individual',
                     kind,
                 },
             });
@@ -130,17 +123,10 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                 throw new Error(friendlyMessage + (parsedError.details ? `\n\n${parsedError.details}` : ''));
             }
 
-            const isGroupMode = data.mode === 'group';
-
+            const detail = `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
             if (data.warning) {
-                const detail = isGroupMode
-                    ? 'Grupo institucional configurado'
-                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
                 alert(`⚠️ Vaga criada, mas houve falha no WhatsApp.\n${detail}\n${data.warning}`);
             } else {
-                const detail = isGroupMode
-                    ? 'Grupo institucional configurado'
-                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
                 alert(`🚀 Oportunidade enviada!\n${detail}.\nID: ${data.id}`);
             }
             if (data?.claim_link) {
@@ -167,7 +153,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             {/* Floating Trigger Button */}
             <button
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
+                className="fixed bottom-6 right-6 z-50 bg-linear-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
                 title="Lançar Vaga"
             >
                 <Zap size={28} fill="currentColor" className="group-hover:animate-pulse" />
@@ -175,7 +161,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
 
             {/* Modal Drawer */}
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
                     <div className="w-full max-w-md bg-brand-surface h-full shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
 
                         {/* Header */}
@@ -194,7 +180,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setKind('TRIAL')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRIAL'
-                                            ? 'bg-indigo-600 text-white shadow'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
                                     >
@@ -204,7 +190,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         type="button"
                                         onClick={() => setKind('TRAINING')}
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRAINING'
-                                            ? 'bg-indigo-600 text-white shadow'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
                                     >
@@ -267,7 +253,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                             type="time"
                                             value={targetTime}
                                             onChange={(e) => setTargetTime(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-800/30 rounded-2xl font-black text-xl text-orange-600 dark:text-orange-400 focus:outline-none focus:border-orange-500 text-center shadow-inner"
+                                            className="w-full pl-10 pr-4 py-4 bg-orange-50 dark:bg-orange-900/10 border-2 border-orange-100 dark:border-orange-800/30 rounded-2xl font-black text-xl text-orange-600 dark:text-orange-400 focus:outline-hidden focus:border-orange-500 text-center shadow-inner"
                                         />
                                         <Clock className="absolute left-3 top-5 text-orange-300" size={20} />
                                     </div>
@@ -329,34 +315,11 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2 pt-2">
                                     <Send size={14} /> Como disparar
                                 </p>
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDispatchMode('individual')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'individual'
-                                            ? 'bg-orange-500 text-white shadow'
-                                            : 'text-brand-muted hover:bg-brand-surface'
-                                            }`}
-                                    >
-                                        <Users size={14} /> Todos os Professores
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDispatchMode('group')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'group'
-                                            ? 'bg-orange-500 text-white shadow'
-                                            : 'text-brand-muted hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-40'
-                                            }`}
-                                    >
-                                        <MessageCircle size={14} /> Só no Grupo
-                                    </button>
+                                <div className="flex items-center gap-2 p-3 bg-brand-surface-2 border-2 border-brand-border rounded-xl text-xs font-bold">
+                                    <Users size={14} /> Convites privados para professores ativos
                                 </div>
                                 <p className="text-[10px] text-brand-muted font-medium px-1">
-                                    {effectiveDispatchMode === 'individual'
-                                        ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem), com nome e objetivo do aluno.'
-                                        : kind === 'TRIAL'
-                                        ? 'Publica no grupo só data, horário e o link de aceite — nome e objetivo do aluno aparecem na página, para quem clicar.'
-                                        : 'Treinamentos podem ser publicados no grupo institucional configurado.'}
+                                    A situação do professor é conferida antes de cada convite. Suspensos e desligados não recebem oportunidades.
                                 </p>
                             </div>
 
@@ -389,7 +352,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                             <button
                                 onClick={handleBroadcast}
                                 disabled={loading}
-                                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-200 dark:shadow-none hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-70 disabled:grayscale"
+                                className="w-full bg-linear-to-r from-orange-500 to-red-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-200 dark:shadow-none hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 disabled:opacity-70 disabled:grayscale"
                             >
                                 {loading ? (
                                     <div className="animate-spin rounded-full h-6 w-6 border-4 border-white border-t-transparent" />
@@ -401,9 +364,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 )}
                             </button>
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
-                                {effectiveDispatchMode === 'individual'
-                                    ? 'Envia individualmente a cada professor ativo da escola.'
-                                    : 'Envia ao grupo institucional de professores da escola.'}
+                                Envia individualmente a cada professor ativo da escola.
                             </p>
                         </div>
 

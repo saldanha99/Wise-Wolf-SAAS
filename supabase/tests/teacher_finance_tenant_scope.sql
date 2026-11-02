@@ -192,6 +192,10 @@ select pg_temp.assert_true(
   'helpers privilegiados de folha ou transferencia continuam publicos'
 );
 
+-- A proposta válida precisa de um slot declarado (inclusive meia hora).
+insert into public.teacher_availability(tenant_id,teacher_id,day_of_week,start_time)
+values('finance-scope-school-a','00000000-0000-4000-8000-000000000f02',1,'10:00');
+
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000f01","role":"authenticated"}';
 

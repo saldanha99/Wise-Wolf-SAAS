@@ -176,7 +176,7 @@ const renderBuilder = () => render(
 
 const openPath = async () => {
     renderBuilder();
-    fireEvent.click(await screen.findByRole('button', { name: /^editar$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /abrir trilha/i }));
     await screen.findByRole('button', { name: /nova unit/i });
 };
 

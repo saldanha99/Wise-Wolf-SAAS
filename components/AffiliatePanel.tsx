@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
 import { UserRole } from '../types';
+import VendorDashboard from './VendorDashboard';
 
 interface AffiliatePanelProps {
     user: {
@@ -14,6 +15,7 @@ interface AffiliatePanelProps {
         name?: string;
         role: UserRole;
     };
+    linkedAffiliate?: boolean;
 }
 
 interface ReferredUser {
@@ -31,7 +33,7 @@ interface AffiliateStats {
 
 const BONUS_PER_REFERRAL = 45;
 
-const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
+const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user, linkedAffiliate = false }) => {
     const [copied, setCopied] = useState(false);
     const [stats, setStats] = useState<AffiliateStats>({
         referrals: 0,
@@ -136,8 +138,18 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
 
+            {linkedAffiliate ? (
+                <section data-tour="linked-affiliate-panel" className="space-y-4">
+                    <p className="text-sm text-brand-muted">
+                        Sua conta de aluna também dá acesso ao programa de afiliados. As comissões abaixo são independentes dos créditos por indicar outros alunos.
+                    </p>
+                    <VendorDashboard user={user} />
+                    <h2 className="pt-4 text-lg font-black text-brand-text">Indicações como aluna</h2>
+                </section>
+            ) : null}
+
             {/* ── Hero / CTA Banner ── */}
-            <div className="relative rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-2xl shadow-emerald-500/30">
+            <div className="relative rounded-[2.5rem] overflow-hidden bg-linear-to-br from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-2xl shadow-emerald-500/30">
                 {/* Background decorations */}
                 <div className="absolute top-0 right-0 w-72 h-72 bg-brand-surface/10 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4 pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/4 pointer-events-none" />
@@ -146,7 +158,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 <div className="relative z-10 p-8 md:p-10">
                     <div className="flex items-start justify-between mb-6">
                         <div>
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface/15 backdrop-blur-sm border border-white/20 rounded-full text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface/15 backdrop-blur-xs border border-white/20 rounded-full text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-4">
                                 <Gift size={12} />
                                 <span>Programa de Indicação</span>
                             </div>
@@ -163,7 +175,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                 </p>
                             )}
                         </div>
-                        <div className="hidden md:flex w-20 h-20 bg-brand-surface/15 backdrop-blur rounded-3xl items-center justify-center border border-white/20 shrink-0">
+                        <div className="hidden md:flex w-20 h-20 bg-brand-surface/15 backdrop-blur-sm rounded-3xl items-center justify-center border border-white/20 shrink-0">
                             <Gift size={36} className="text-emerald-100" />
                         </div>
                     </div>
@@ -175,7 +187,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                             { step: '2', label: 'Amigo preenche os dados' },
                             { step: '3', label: 'Fecha plano → você ganha!' },
                         ].map(({ step, label }) => (
-                            <div key={step} className="bg-brand-surface/10 backdrop-blur-sm border border-white/15 rounded-2xl p-3 text-center">
+                            <div key={step} className="bg-brand-surface/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3 text-center">
                                 <div className="w-7 h-7 bg-brand-surface/20 rounded-full flex items-center justify-center mx-auto mb-2">
                                     <span className="text-xs font-black text-white">{step}</span>
                                 </div>
@@ -185,12 +197,12 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                     </div>
 
                     {/* Link box */}
-                    <div className="bg-black/20 backdrop-blur-sm border border-white/15 rounded-2xl p-3 flex items-center gap-3">
+                    <div className="bg-black/20 backdrop-blur-xs border border-white/15 rounded-2xl p-3 flex items-center gap-3">
                         <Link2 size={16} className="text-emerald-300 shrink-0" />
                         <input
                             readOnly
                             value={affiliateLink}
-                            className="flex-1 bg-transparent text-xs font-mono text-emerald-200 outline-none truncate min-w-0"
+                            className="flex-1 bg-transparent text-xs font-mono text-emerald-200 outline-hidden truncate min-w-0"
                             onClick={e => (e.target as HTMLInputElement).select()}
                         />
                         <div className="flex items-center gap-2 shrink-0">
@@ -219,13 +231,13 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
 
             {/* ── Indicar outro PROFESSOR (mesmo valor) ── */}
             {isTeacher && programEnabled && (
-              <div className="bg-gradient-to-r from-indigo-500 to-violet-600 rounded-[2rem] p-5 text-white flex items-center gap-3 flex-wrap">
+              <div className="bg-linear-to-r from-indigo-500 to-violet-600 rounded-4xl p-5 text-white flex items-center gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black">👩‍🏫 Indique outro professor e ganhe o mesmo valor!</p>
                   <p className="text-[11px] text-indigo-100 mt-0.5">Compartilhe seu link de indicação de professores:</p>
                   <input readOnly value={`${APP_BASE_URL}/seja-professor?ref_teacher=${user.id}`}
                     onClick={e => (e.target as HTMLInputElement).select()}
-                    className="mt-2 w-full bg-black/20 border border-white/15 rounded-xl px-3 py-2 text-[11px] font-mono text-indigo-100 outline-none truncate" />
+                    className="mt-2 w-full bg-black/20 border border-white/15 rounded-xl px-3 py-2 text-[11px] font-mono text-indigo-100 outline-hidden truncate" />
                 </div>
                 <button
                   onClick={() => {
@@ -242,8 +254,8 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             {/* ── Stats Cards ── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {/* Aguardando Matrícula */}
-                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
-                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-amber-400/15 to-transparent rounded-full blur-2xl group-hover:from-amber-400/25 transition-colors" />
+                <div className="bg-brand-surface rounded-4xl p-6 border border-brand-border shadow-xs hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-linear-to-b from-amber-400/15 to-transparent rounded-full blur-2xl group-hover:from-amber-400/25 transition-colors" />
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
                             <Clock size={22} />
@@ -259,8 +271,8 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 </div>
 
                 {/* Total Indicações */}
-                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
-                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-teal-400/15 to-transparent rounded-full blur-2xl group-hover:from-teal-400/25 transition-colors" />
+                <div className="bg-brand-surface rounded-4xl p-6 border border-brand-border shadow-xs hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-linear-to-b from-teal-400/15 to-transparent rounded-full blur-2xl group-hover:from-teal-400/25 transition-colors" />
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2.5 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-xl">
                             <Users size={22} />
@@ -276,8 +288,8 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 </div>
 
                 {/* Total Ganho */}
-                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
-                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-emerald-400/15 to-transparent rounded-full blur-2xl group-hover:from-emerald-400/25 transition-colors" />
+                <div className="bg-brand-surface rounded-4xl p-6 border border-brand-border shadow-xs hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-linear-to-b from-emerald-400/15 to-transparent rounded-full blur-2xl group-hover:from-emerald-400/25 transition-colors" />
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
                             <TrendingUp size={22} />
@@ -294,7 +306,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             </div>
 
             {/* ── Histórico de Indicados ── */}
-            <div className="bg-brand-surface rounded-[2rem] border border-brand-border shadow-sm overflow-hidden">
+            <div className="bg-brand-surface rounded-4xl border border-brand-border shadow-xs overflow-hidden">
                 <div className="px-6 py-5 border-b border-brand-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Award size={18} className="text-emerald-500" />
@@ -317,7 +329,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                     ) : stats.recentReferrals.length > 0 ? (
                         stats.recentReferrals.map((ref) => (
                             <div key={ref.id} className="flex items-center gap-4 px-6 py-4 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-colors">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-sm">
+                                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-xs">
                                     {ref.full_name?.charAt(0)?.toUpperCase() || '?'}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -356,7 +368,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             </div>
 
             {/* ── Share Tips ── */}
-            <div className="bg-gradient-to-br from-slate-50 to-emerald-50/30 dark:from-slate-900 dark:to-emerald-900/5 rounded-[2rem] p-6 border border-emerald-100 dark:border-emerald-900/20">
+            <div className="bg-linear-to-br from-slate-50 to-emerald-50/30 dark:from-slate-900 dark:to-emerald-900/5 rounded-4xl p-6 border border-emerald-100 dark:border-emerald-900/20">
                 <div className="flex items-center gap-2 mb-4">
                     <Sparkles size={16} className="text-emerald-500" />
                     <h4 className="font-black text-brand-text dark:text-slate-300 text-sm uppercase tracking-wider">

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Flame, LockKeyhole, RefreshCw, ShieldAlert, TimerReset, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Ring3D } from './depth/Depth3D';
 
 type TurboStatus = 'INELIGIBLE_STUDENTS' | 'BUILDING' | 'ACTIVE' | 'SUSPENDED';
 
-interface TeacherTurboRow {
+export interface TeacherTurboRow {
   teacher_id: string;
   full_name: string;
   tenant_id: string;
@@ -30,7 +31,9 @@ const STATUS_ORDER: Record<TurboStatus, number> = {
   INELIGIBLE_STUDENTS: 3,
 };
 
-const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
+// `onRows` entrega a mesma leitura à página de Professores: o cartão "Turbo"
+// do topo contava pelo navegador (8) enquanto esta seção dizia 0 ativos.
+const TeacherTurboOverview: React.FC<{ tenantId?: string; onRows?: (rows: TeacherTurboRow[]) => void }> = ({ tenantId, onRows }) => {
   const [rows, setRows] = useState<TeacherTurboRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -43,7 +46,9 @@ const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => 
       setRows([]);
       setError('Não foi possível carregar a ofensiva do Turbo.');
     } else {
-      setRows(Array.isArray(data) ? data as TeacherTurboRow[] : []);
+      const next = Array.isArray(data) ? data as TeacherTurboRow[] : [];
+      setRows(next);
+      onRows?.(next);
     }
     setLoading(false);
   };
@@ -65,15 +70,15 @@ const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => 
   }), [rows]);
 
   return (
-    <section className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] shadow-sm overflow-hidden">
-      <div className="p-5 md:p-6 border-b border-gray-100 dark:border-brand-border flex flex-col md:flex-row md:items-center gap-4">
+    <section className="ww-slab overflow-hidden">
+      <div className="p-5 md:p-6 border-b border-brand-border/60 flex flex-col md:flex-row md:items-center gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-3 rounded-2xl bg-orange-50 dark:bg-orange-900/20 text-orange-600 shrink-0">
+          <div className="ww-orb tone-orange h-12 w-12 shrink-0">
             <Flame size={22} />
           </div>
           <div className="min-w-0">
-            <h3 className="font-black text-gray-800 dark:text-slate-100">Ofensiva do Turbo</h3>
-            <p className="text-xs text-gray-500 dark:text-brand-muted">
+            <h3 className="font-black text-brand-text">Ofensiva do Turbo</h3>
+            <p className="text-xs text-brand-muted">
               Exige a carteira mínima indicada abaixo e 30 dias corridos sem falta do professor.
             </p>
           </div>
@@ -134,7 +139,7 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
       title: `Turbo ativo há ${row.active_days} dia${row.active_days === 1 ? '' : 's'}`,
       detail: `Ativo desde ${date(row.active_since)} · ofensiva de ${row.streak_days} dias`,
       badge: 'Ativo',
-      cls: 'border-orange-200 dark:border-orange-800/60 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 text-orange-700 dark:text-orange-300',
+      cls: 'border-orange-200 dark:border-orange-800/60 bg-linear-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 text-orange-700 dark:text-orange-300',
     };
     if (row.turbo_status === 'BUILDING') return {
       icon: <TimerReset size={18} />,
@@ -153,9 +158,11 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
   })();
 
   return (
-    <article className={`rounded-2xl border p-4 ${status.cls}`}>
+    <article className={`ww-lift rounded-2xl border p-4 shadow-sm ${status.cls}`}>
       <div className="flex items-start gap-3">
-        <div className="p-2 rounded-xl bg-white/70 dark:bg-black/10 shrink-0">{status.icon}</div>
+        {row.turbo_status === 'BUILDING'
+          ? <Ring3D value={progress} tone="sky" size={46} label={`${row.streak_days} de 30 dias`} />
+          : <div className="p-2.5 rounded-xl bg-white/70 dark:bg-black/10 shrink-0 shadow-inner">{status.icon}</div>}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-black text-sm text-gray-800 dark:text-slate-100 truncate">{row.full_name || 'Professor'}</p>
@@ -173,8 +180,8 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
       </div>
 
       {row.turbo_status === 'BUILDING' && (
-        <div className="mt-3 h-2 rounded-full bg-white/70 dark:bg-black/10 overflow-hidden" aria-label={`${row.streak_days} de 30 dias`}>
-          <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
+        <div className="mt-3 h-2.5 rounded-full bg-white/70 dark:bg-black/10 overflow-hidden shadow-inner" aria-label={`${row.streak_days} de 30 dias`}>
+          <div className="h-full rounded-full bg-linear-to-r from-sky-400 to-blue-600 shadow-[0_0_10px_rgb(59_130_246/0.6)] transition-all" style={{ width: `${progress}%` }} />
         </div>
       )}
 

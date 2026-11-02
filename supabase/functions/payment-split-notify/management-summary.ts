@@ -113,10 +113,11 @@ export function monthlyPaymentCloseMessage(
     "",
     "💰 *Caixa e rateio pelas regras da escola*",
     `🏦 Caixa efetivamente recebido no mês: *${money(cash.recebido)}*`,
-    `👨‍🏫 Custo docente projetado usado no rateio: *${
+    `👨‍🏫 Custo docente projetado (incluindo Turbo): *${
       money(cash.custo_professor)
     }*`,
-    `➖ Base do rateio: *${money(cash.liquido)}*`,
+    `🤝 Comissões de afiliados: *${money(cash.custo_afiliado)}*`,
+    `➖ Base operacional do rateio: *${money(cash.liquido)}*`,
     `🙏 Dízimo: *${money(cash.dizimo)}*`,
     `📈 Investimento: *${money(cash.investimento)}*`,
     `🏫 Saldo destinado à escola: *${money(cash.sobra)}*`,
@@ -131,6 +132,7 @@ export function monthlyPaymentCloseMessage(
     "",
     "_Competência e caixa aparecem separados: pagamento antecipado ou atrasado não distorce o mês._",
     `_O DRE mostra custos, despesas e resultado; o rateio mostra o destino do caixa. Os dois blocos não devem ser somados entre si._`,
+    `_O rateio desconta professor e comissão. Confira taxas e demais despesas no DRE antes de tratar a base como lucro final._`,
     `_Qualquer alteração posterior abre revisão, sem duplicar esta mensagem._`,
   );
   return lines.join("\n");

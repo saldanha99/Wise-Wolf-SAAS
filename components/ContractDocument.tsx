@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { ShieldCheck, Building2, Printer } from 'lucide-react';
 import { SUPABASE_URL } from '../lib/supabase-config';
+import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS
@@ -51,7 +52,7 @@ export interface PlanInfo {
     classFrequency: number | string;   // Ex: 2 ou "2 vezes por semana"
     classDuration?: number;     // Minutos por aula (padrão: 30)
     cancellationFee?: number;   // % multa rescisória (padrão: 30)
-    repositionLimit?: number;   // Reposições por mês (padrão: 1)
+    repositionLimit?: number;   // Reposições por mês (padrão: 4)
 }
 
 /** Props principais do componente. */
@@ -90,6 +91,14 @@ interface ContractDocumentProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    /**
+     * Versão do texto (ver `lib/contractTerms.ts`): a gravada no aceite, ou,
+     * no contrato ainda não assinado, a que a escola oferece. Ausente, o
+     * documento mostra o texto de antes (versão 1) — nunca uma cláusula que a
+     * pessoa não assinou nem que a escola não decidiu. Tela que assina passa a
+     * versão oferecida explicitamente, e grava a mesma.
+     */
+    termsVersion?: number;
 
     // ── Personalização da escola (multi-tenant) ──
     school?: SchoolInfo;
@@ -207,6 +216,65 @@ export function getSchoolContractIdentity(school?: SchoolInfo | null): SchoolCon
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CLÁUSULA DO REGISTRO DAS AULAS (versão 2 em diante)
+// ─────────────────────────────────────────────────────────────────────────────
+// Resume o aviso do registro das aulas (aviso v4, kind NOTICE em
+// private.lesson_recording_terms, público STUDENT — migration 20260929100000) e
+// remete a ele: os dois dizem a MESMA coisa (o que é registrado, para quê,
+// quem vê, quem processa, prazos e direitos). O registro é decisão da escola
+// (27/09/2026) e faz parte da execução do contrato — modelo "autorizado pela
+// escola com direito de recusa" (SCHOOL_DEFAULT): quem assina fica ciente e
+// pode pedir, a qualquer tempo e pelo WhatsApp da escola, para não ser
+// registrado. Não é termo de consentimento (sem "autorizo"/"consente"). Só
+// aparece na escola que oferece a versão com a cláusula (tenant_contract_terms).
+// Os prazos seguem o que o sistema faz (e o aviso diz): cópias no sistema
+// contam de quando chegam, trechos copiados e originais contam da aula; o
+// registro de caso da Central de Qualidade guarda os horários da aula
+// divergente pelo tempo do caso (exclusão a pedido não o alcança). A
+// confirmação da aula pelos horários de entrada e saída NÃO substitui a da
+// Cláusula 4, alínea (e) (o link de confirmação, forma oficial) nem muda a
+// cobrança: a divergência só abre caso na Central de Qualidade — o mesmo que
+// o item 11.3 diz ao professor sobre o pagamento.
+// ⚠️ Texto de contrato assinado não muda: qualquer alteração aqui é versão
+// nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
+const clauseTitle = 'font-bold uppercase text-[#002366] text-[9px] tracking-wider mb-1';
+const clauseText = 'text-justify text-gray-700 leading-relaxed';
+
+function StudentLessonRecordingClause() {
+    return (
+        <div data-contract-clause="registro-das-aulas">
+            <h3 className={clauseTitle}>
+                Cláusula 8 — Do Registro das Aulas
+            </h3>
+            <p className={clauseText}>
+                As aulas online acontecem em salas do Google Meet criadas pela <strong>CONTRATADA</strong> e, por decisão dela, são registradas, <strong>sem gravação em vídeo</strong>, da seguinte forma: <strong>(a)</strong> transcrição automática do que foi falado e anotações automáticas geradas pelo Google; <strong>(b)</strong> relatório com os horários de entrada e saída de cada participante na sala. O registro faz parte das aulas da CONTRATADA, e o CONTRATANTE pode pedir, a qualquer tempo, que ele deixe de ser feito, sem prejuízo das aulas (Parágrafo 5º).
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 1º.</strong> O registro é usado exclusivamente para: <strong>(a)</strong> dar continuidade pedagógica às aulas; <strong>(b)</strong> preparar, com auxílio de inteligência artificial, o resumo de cada aula, que só passa a integrar a ficha do aluno depois de lido, corrigido quando necessário e aprovado pelo professor; <strong>(c)</strong> planejar as próximas aulas e as tarefas, com auxílio de inteligência artificial e revisão do professor, a partir do resumo aprovado; <strong>(d)</strong> entregar o histórico pedagógico do aluno ao professor que o assumir ou substituir, por link que só abre com login na plataforma da CONTRATADA; <strong>(e)</strong> sugerir, com auxílio de inteligência artificial, itens para o cartão pedagógico do aluno (Parágrafo 4º), que só entram no cartão depois de revisados pelo professor; <strong>(f)</strong> confirmar que a aula aconteceu, pelos horários de entrada e saída, sem substituir a confirmação prevista na Cláusula 4, alínea (e), e sem alterar a apuração nem a cobrança das aulas: a divergência entre esse relatório e o lançamento da aula só abre uma verificação pela coordenação.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 2º.</strong> Além da CONTRATADA, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino usada pela CONTRATADA, que armazena os dados e presta suporte técnico, podendo ver o resumo aprovado e o cartão pedagógico do aluno somente para resolver problema técnico; e o provedor de inteligência artificial contratado pela CONTRATADA (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado. A transcrição completa só é acessível ao professor da aula, à coordenação e à direção da CONTRATADA; o resumo aprovado e o cartão pedagógico do aluno, aos professores do aluno, à coordenação e à direção.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 3º.</strong> Os fornecedores indicados no parágrafo anterior atuam como operadores, em nome e sob as instruções da CONTRATADA, e não são terceiros para os fins da Cláusula 7. O tratamento descrito nesta cláusula integra a execução deste contrato, também para os fins da Cláusula 7, e o CONTRATANTE, ao assinar, declara estar ciente dele e dos operadores aqui indicados, sem prejuízo dos direitos previstos no Parágrafo 5º.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 4º.</strong> A transcrição, as anotações e o relatório de presença ficam no sistema da CONTRATADA por até <strong>90 (noventa) dias</strong>, contados de quando chegam ao sistema (logo depois da aula); os trechos da aula copiados para o resumo são apagados <strong>90 (noventa) dias</strong> depois da aula. A CONTRATADA elimina os arquivos originais de sua conta Google em até <strong>90 (noventa) dias</strong> depois da aula; eles passam pela lixeira do Google, que os elimina de vez em até 30 (trinta) dias. Quando o relatório de presença diverge do lançamento da aula, os horários de entrada e saída daquela aula ficam também no registro do caso aberto para a coordenação, mantido pelo tempo necessário para resolvê-lo e para o exercício regular de direitos da CONTRATADA. O resumo aprovado e o cartão pedagógico do aluno (objetivo, temas de interesse, temas a evitar, forma preferida de correção e observações pedagógicas anotados pelo professor, nunca com informação sobre saúde, religião, política, família ou dinheiro; para menores de 18 anos, somente objetivo e temas) são mantidos enquanto o aluno estudar na CONTRATADA e eliminados <strong>90 (noventa) dias</strong> após a sua saída.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 5º.</strong> O CONTRATANTE pode, a qualquer tempo e sem prejuízo das aulas: <strong>(a)</strong> ver no aplicativo da CONTRATADA os resumos aprovados das aulas; <strong>(b)</strong> pedir, pelo WhatsApp da CONTRATADA, que as aulas deixem de ser registradas, caso em que, a partir do pedido, elas continuam normalmente, sem registro; <strong>(c)</strong> pedir, pelo mesmo canal, a exclusão do que já foi registrado, ressalvado o registro de caso previsto no Parágrafo 4º; <strong>(d)</strong> pedir informação, correção ou cópia dos seus dados pelo contato de privacidade da CONTRATADA indicado no aviso completo, nos termos da Lei nº 13.709/2018 (LGPD).
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 6º.</strong> Quando o aluno for menor de 18 (dezoito) anos, este contrato é assinado pelo seu responsável legal, que fica ciente, em nome do aluno, do registro previsto nesta cláusula e pode exercer por ele os direitos do Parágrafo 5º, inclusive o pedido para que as aulas deixem de ser registradas.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo 7º.</strong> O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATADA, na área das aulas registradas.
+            </p>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 export function ContractDocument({
@@ -228,10 +296,11 @@ export function ContractDocument({
     proRataValue = 0,
     classDuration = 30,
     cancellationFee = 30,
-    repositionLimit = 1,
+    repositionLimit = 4,
     acceptedAt,
     userIp,
     subscriptionId,
+    termsVersion,
     school,
     showPrintButton = true,
     innerRef,
@@ -243,6 +312,13 @@ export function ContractDocument({
 
     const s = getSchoolContractIdentity(school);
     const isOneTime = planDuration === 0;
+    // Contrato assinado nunca muda de texto: sem versão gravada no aceite, é o
+    // texto de antes da cláusula do registro das aulas.
+    const contractVersion = resolveContractTermsVersion('STUDENT', {
+        signed: Boolean(acceptedAt),
+        recordedVersion: termsVersion,
+    });
+    const withLessonRecording = contractIncludesLessonRecording('STUDENT', contractVersion);
 
     const handlePrint = useReactToPrint({
         contentRef: a4Ref,
@@ -289,7 +365,7 @@ export function ContractDocument({
             <div
                 ref={a4Ref}
                 className={isResponsive
-                    ? 'contract-doc-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    ? 'contract-doc-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-xs sm:p-8 lg:p-[18mm] lg:text-[11px]'
                     : 'w-[210mm] min-h-[297mm] bg-white p-[22mm] shadow-2xl text-gray-800 text-[11px] leading-relaxed'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
@@ -501,7 +577,7 @@ export function ContractDocument({
                             Cláusula 4 — Das Obrigações do Contratante
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O CONTRATANTE se compromete a: <strong>(a)</strong> dispor de equipamento (computador, tablet ou smartphone) com microfone, câmera e conexão de internet compatíveis com videoconferência; <strong>(b)</strong> efetuar os pagamentos nas datas acordadas; <strong>(c)</strong> comunicar ausências com antecedência mínima de <strong>24 (vinte e quatro) horas</strong>, sendo assegurada a reposição de até <strong>{repositionLimit} (uma) aula por mês</strong> mediante disponibilidade da agenda; <strong>(d)</strong> respeitar os direitos de propriedade intelectual dos materiais fornecidos; <strong>(e)</strong> auditar e confirmar, a cada aula, se ela efetivamente ocorreu, por meio do link de confirmação/auditoria enviado pela CONTRATADA — sendo esta a forma oficial de comprovação da aula realizada. É obrigação do CONTRATANTE realizar essa auditoria; na ausência de confirmação pelo CONTRATANTE, a aula será considerada realizada mediante registro de presença pelo professor (veredito do professor), para todos os fins, inclusive de apuração e cobrança.
+                            O CONTRATANTE se compromete a: <strong>(a)</strong> dispor de equipamento (computador, tablet ou smartphone) com microfone, câmera e conexão de internet compatíveis com videoconferência; <strong>(b)</strong> efetuar os pagamentos nas datas acordadas; <strong>(c)</strong> comunicar ausências com antecedência mínima de <strong>24 (vinte e quatro) horas</strong>, sendo assegurada a reposição de até <strong>{repositionLimit} ({['uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez'][repositionLimit - 1] || repositionLimit}) {repositionLimit === 1 ? 'aula' : 'aulas'} por mês</strong> mediante disponibilidade da agenda; <strong>(d)</strong> respeitar os direitos de propriedade intelectual dos materiais fornecidos; <strong>(e)</strong> auditar e confirmar, a cada aula, se ela efetivamente ocorreu, por meio do link de confirmação/auditoria enviado pela CONTRATADA — sendo esta a forma oficial de comprovação da aula realizada. É obrigação do CONTRATANTE realizar essa auditoria; na ausência de confirmação pelo CONTRATANTE, a aula será considerada realizada mediante registro de presença pelo professor (veredito do professor), para todos os fins, inclusive de apuração e cobrança.
                         </p>
                     </div>
 
@@ -540,9 +616,13 @@ export function ContractDocument({
                         </p>
                     </div>
 
+                    {withLessonRecording && <StudentLessonRecordingClause />}
+
                     <div>
                         <h3 className="font-bold uppercase text-[#002366] text-[9px] tracking-wider mb-1">
-                            Cláusula 8 — Do Foro
+                            {/* Na versão com o registro das aulas o Foro passa a ser a 9;
+                                nenhuma cláusula do aluno cita outra pelo número. */}
+                            {withLessonRecording ? 'Cláusula 9 — Do Foro' : 'Cláusula 8 — Do Foro'}
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
                             As partes elegem o foro da Comarca de <strong>{s.city} — {s.state}</strong> para dirimir quaisquer controvérsias oriundas deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.
@@ -627,7 +707,7 @@ export function ContractDocument({
                 {acceptedAt && (
                     <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded-xl relative overflow-hidden">
                         <div className="contract-authentication flex items-center gap-4 relative z-10">
-                            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full flex-shrink-0">
+                            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full shrink-0">
                                 <ShieldCheck size={36} />
                             </div>
                             <div className="flex-1">
@@ -639,6 +719,8 @@ export function ContractDocument({
                                     <p><strong>IP de Registro:</strong> {userIp || 'Não registrado'}</p>
                                     <p><strong>Protocolo:</strong> {subscriptionId || 'PENDING'}</p>
                                     <p><strong>Plataforma:</strong> {s.name}</p>
+                                    {/* Só a partir da versão 2: o selo dos contratos de antes fica como era. */}
+                                    {contractVersion > 1 && <p><strong>Versão do texto:</strong> {contractVersion}</p>}
                                 </div>
                                 <p className="text-[8px] text-gray-400 mt-1.5 italic">
                                     Este documento possui validade jurídica conforme MP 2.200-2/2001 e Lei 14.063/2020.

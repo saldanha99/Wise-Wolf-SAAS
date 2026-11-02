@@ -81,7 +81,7 @@ const ReferralLanding: React.FC = () => {
 
     if (loadingReferrer) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-navy-950 to-slate-900 flex items-center justify-center">
+            <div className="min-h-screen bg-linear-to-br from-slate-950 via-navy-950 to-slate-900 flex items-center justify-center">
                 <Loader2 className="animate-spin text-emerald-400" size={32} />
             </div>
         );
@@ -89,7 +89,7 @@ const ReferralLanding: React.FC = () => {
 
     if (invalidLink) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
                 <div className="bg-slate-800/60 border border-slate-700 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
                     <div className="w-16 h-16 bg-red-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <AlertCircle size={28} className="text-red-400" />
@@ -105,7 +105,7 @@ const ReferralLanding: React.FC = () => {
 
     if (success) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950/20 to-slate-950 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-linear-to-br from-slate-950 via-emerald-950/20 to-slate-950 flex items-center justify-center p-4">
                 <div className="bg-slate-800/60 border border-emerald-700/40 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
                     <div className="w-20 h-20 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
                         <CheckCircle size={36} className="text-emerald-400" />
@@ -134,7 +134,7 @@ const ReferralLanding: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
             {/* Background glow */}
             <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -156,7 +156,7 @@ const ReferralLanding: React.FC = () => {
                 </div>
 
                 {/* Card */}
-                <div className="bg-slate-800/50 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-sm">
+                <div className="bg-slate-800/50 border border-slate-700/60 rounded-3xl p-8 shadow-2xl backdrop-blur-xs">
                     {/* Benefits */}
                     <div className="grid grid-cols-3 gap-3 mb-8">
                         {[
@@ -185,7 +185,7 @@ const ReferralLanding: React.FC = () => {
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     placeholder="Seu nome"
-                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-hidden focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                                 />
                             </div>
                         </div>
@@ -203,7 +203,7 @@ const ReferralLanding: React.FC = () => {
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
                                     placeholder="seu@email.com"
-                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-hidden focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                                 />
                             </div>
                         </div>
@@ -221,7 +221,7 @@ const ReferralLanding: React.FC = () => {
                                     value={phone}
                                     onChange={e => setPhone(formatPhone(e.target.value))}
                                     placeholder="(11) 99999-9999"
-                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                                    className="w-full bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-hidden focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                                 />
                             </div>
                         </div>
@@ -236,7 +236,7 @@ const ReferralLanding: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-60 text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/25 mt-2"
+                            className="w-full bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-60 text-white font-black text-sm uppercase tracking-widest rounded-xl py-4 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/25 mt-2"
                         >
                             {loading ? (
                                 <Loader2 size={18} className="animate-spin" />

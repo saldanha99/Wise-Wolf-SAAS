@@ -236,7 +236,7 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
 
             {/* ── Broadcast de Treinamento Ao Vivo (link mágico) ── */}
             {showLive && (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-200 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl">
                         <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -254,23 +254,23 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                             <div>
                                 <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Tema do treinamento *</label>
                                 <input value={liveTopic} onChange={e => setLiveTopic(e.target.value)} placeholder="Ex: Metodologia de Conversação Avançada"
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500" />
                             </div>
                             <div>
                                 <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Foco / objetivo</label>
                                 <input value={liveFocus} onChange={e => setLiveFocus(e.target.value)} placeholder="Ex: Técnicas de correção em tempo real"
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500" />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Data *</label>
                                     <input type="date" value={liveDate} onChange={e => setLiveDate(e.target.value)}
-                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Horário *</label>
                                     <input type="time" value={liveTime} onChange={e => setLiveTime(e.target.value)}
-                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-hidden focus:ring-2 focus:ring-amber-500" />
                                 </div>
                             </div>
                             {/* Modo de disparo */}
@@ -280,14 +280,14 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                                     <button
                                         type="button"
                                         onClick={() => setLiveDispatchMode('group')}
-                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'group' ? 'bg-amber-500 text-white shadow' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
+                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'group' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
                                     >
                                         <MessageCircle size={12} /> Só no Grupo
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setLiveDispatchMode('individual')}
-                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'individual' ? 'bg-amber-500 text-white shadow' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
+                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'individual' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
                                     >
                                         <Users size={12} /> Todos os Professores
                                     </button>
@@ -374,7 +374,7 @@ const ModuleForm: React.FC<{ initial: Module | null; onSave: (f: any) => void; o
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-200 flex items-end sm:items-center justify-center p-0 sm:p-4">
             <form onSubmit={submit} className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[95vh] overflow-y-auto shadow-2xl">
                 <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 z-10">
                     <h3 className="font-black text-slate-800 dark:text-white">{initial ? 'Editar módulo' : 'Novo módulo de treinamento'}</h3>
@@ -455,10 +455,10 @@ const Input: React.FC<{ label: string; value: string; onChange: (v: string) => v
         <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">{label}</label>
         {multiline ? (
             <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500" />
         ) : (
             <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500" />
         )}
     </div>
 );

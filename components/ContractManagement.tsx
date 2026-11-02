@@ -1,3 +1,4 @@
+import TeacherStudentTerms from './TeacherStudentTerms';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
@@ -5,6 +6,13 @@ import { contractReferenceDate, formatContractPeriod, formatSignatureDate } from
 import { CheckCircle, XCircle, FileText, Image, ExternalLink, Search, Loader2, AlertCircle, Eye, X, Download } from 'lucide-react';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
+import {
+    contractIncludesLessonRecording,
+    contractTermsLabel,
+    resolveContractTermsVersion,
+    signedContractEvidence,
+} from '../lib/contractTerms';
+import { loadContractTerms } from '../services/contractTermsService';
 
 interface StudentContract {
     user_id: string;
@@ -26,7 +34,28 @@ interface StudentContract {
     class_frequency?: string;
     subscription_id?: string;
     tenant_id?: string;
+    /** Versão do texto gravada no aceite (vw_student_contracts); null = contrato de antes. */
+    contract_terms_version?: number | null;
+    /** Data do aceite dessa versão (na rematrícula, não a assinatura antiga do perfil). */
+    contract_terms_accepted_at?: string | null;
 }
+
+// Todo contrato desta lista já foi aceito: sem versão gravada, é o texto de
+// antes (lib/contractTerms.ts) — a tela nunca acrescenta cláusula que o aluno
+// não leu.
+const signedTermsVersion = (student: StudentContract) => resolveContractTermsVersion('STUDENT', {
+    signed: true,
+    recordedVersion: student.contract_terms_version,
+});
+
+// Data e IP da assinatura do contrato que a coluna "Contrato" descreve: numa
+// rematrícula o perfil guarda a assinatura antiga, e "Data Matrícula" antiga ao
+// lado de "v2" diria que a cláusula foi assinada antes de existir.
+const signedEvidence = (student: StudentContract) => signedContractEvidence({
+    profileAcceptedAt: student.accepted_at,
+    profileIp: student.signature_ip,
+    recordedAcceptedAt: student.contract_terms_accepted_at,
+});
 
 interface ContractManagementProps {
     tenantId?: string;
@@ -39,6 +68,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     const [searchTerm, setSearchTerm] = useState('');
     const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    // Versão que a escola oferece aos contratos novos (null = ainda não se sabe).
+    const [offeredTermsVersion, setOfferedTermsVersion] = useState<number | null>(null);
     const [downloading, setDownloading] = useState(false);
     const [actionNotice, setActionNotice] = useState<{
         tone: 'success' | 'warning';
@@ -85,7 +116,21 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     useEffect(() => {
         fetchContracts();
         if (tenantId) fetchSchoolInfo(tenantId);
+        fetchOfferedTerms();
     }, [tenantId]);
+
+    // O aviso diz o que os contratos NOVOS desta escola trazem — só a escola
+    // que decidiu registrar as aulas oferece a cláusula. Sem resposta, o aviso
+    // fala só da coluna "Contrato", que vale para qualquer escola.
+    const fetchOfferedTerms = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user?.id) return;
+            setOfferedTermsVersion((await loadContractTerms(session.user.id, 'STUDENT')).offeredVersion);
+        } catch (_) {
+            setOfferedTermsVersion(null);
+        }
+    };
 
     useEffect(() => {
         if (!selectedStudent) return;
@@ -270,7 +315,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
         // accepted_at é NULO enquanto o aluno não assinou. `new Date(null)` vira
         // o epoch — e no fuso de Brasília isso é 31/12/1969, o que empurrava a
         // vigência para "10/01/1970 a 10/01/1971" no contrato impresso.
-        const enrollmentDate = contractReferenceDate(selectedStudent.accepted_at);
+        const signature = signedEvidence(selectedStudent);
+        const enrollmentDate = contractReferenceDate(signature.acceptedAt);
         const dueDay = selectedStudent.due_day || 1;
         const { startDate, endDate } = formatContractPeriod(enrollmentDate, dueDay, 12);
         const monthlyFee = Number(String(selectedStudent.plan_value || '0').replace(/\./g, '').replace(',', '.'));
@@ -288,17 +334,19 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
             endDate,
             dueDay,
             classFrequency: selectedStudent.class_frequency ? parseInt(String(selectedStudent.class_frequency), 10) : 2,
-            acceptedAt: selectedStudent.accepted_at,
-            userIp: selectedStudent.signature_ip,
+            acceptedAt: signature.acceptedAt,
+            userIp: signature.userIp,
             subscriptionId: selectedStudent.subscription_id,
+            termsVersion: signedTermsVersion(selectedStudent),
             school: schoolInfo ?? undefined,
         };
     })() : null;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            <TeacherStudentTerms />
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-sm border border-brand-border">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-xs border border-brand-border">
                 <h3 className="text-lg font-bold text-brand-text flex items-center gap-2">
                     <FileText className="text-[#002366]" /> Auditoria de Matrículas
                 </h3>
@@ -309,9 +357,24 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                         placeholder="Buscar aluno..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-brand-border focus:outline-none focus:ring-2 focus:ring-[#002366] transition-all"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-brand-border focus:outline-hidden focus:ring-2 focus:ring-[#002366] transition-all"
                     />
                 </div>
+            </div>
+
+            <div
+                data-tour="contracts-recording-clause"
+                className="flex items-start gap-3 rounded-2xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted shadow-xs"
+            >
+                <FileText size={18} className="mt-0.5 shrink-0 text-[#002366]" aria-hidden="true" />
+                <p>
+                    <strong className="text-brand-text">Registro das aulas no contrato.</strong>{' '}
+                    {offeredTermsVersion === null
+                        ? 'A coluna “Contrato” mostra a versão do texto que cada aluno assinou — contrato assinado continua com o texto que foi assinado.'
+                        : contractIncludesLessonRecording('STUDENT', offeredTermsVersion)
+                            ? 'Os contratos novos desta escola trazem a Cláusula 8 — Do Registro das Aulas: a transcrição e as anotações automáticas do Google Meet (sem vídeo), o resumo com IA aprovado pelo professor e o relatório de presença fazem parte do contrato, e quem assina fica ciente e pode pedir, pelo WhatsApp da escola, para não ser registrado. Contrato assinado antes continua com o texto que foi assinado — a coluna “Contrato” mostra a versão de cada um.'
+                            : 'Os contratos novos desta escola não trazem a cláusula do registro das aulas. A coluna “Contrato” mostra a versão do texto que cada aluno assinou.'}
+                </p>
             </div>
 
             {loadError && (
@@ -357,7 +420,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             ? 'Foto da assinatura'
                             : 'Assinatura digital';
                     return (
-                        <article key={student.user_id} className="space-y-4 rounded-2xl border border-brand-border bg-brand-surface p-4 shadow-sm">
+                        <article key={student.user_id} className="space-y-4 rounded-2xl border border-brand-border bg-brand-surface p-4 shadow-xs">
                             <div className="min-w-0">
                                 <p className="font-bold text-brand-text">{student.student_name}</p>
                                 <p className="break-anywhere text-xs text-brand-muted">{student.student_email}</p>
@@ -365,11 +428,15 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             <dl className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Matrícula</dt>
-                                    <dd className="mt-1 text-brand-text">{formatSignatureDate(student.accepted_at)}</dd>
+                                    <dd className="mt-1 text-brand-text">{formatSignatureDate(signedEvidence(student).acceptedAt ?? student.accepted_at)}</dd>
                                 </div>
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Assinatura</dt>
                                     <dd className="mt-1 text-brand-text">{signatureLabel}</dd>
+                                </div>
+                                <div className="col-span-2">
+                                    <dt className="font-bold uppercase tracking-wide text-brand-muted">Contrato</dt>
+                                    <dd className="mt-1 text-brand-text">{contractTermsLabel('STUDENT', signedTermsVersion(student))}</dd>
                                 </div>
                                 <div className="col-span-2">
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Status</dt>
@@ -399,15 +466,16 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                 <th className="px-6 py-4">Aluno</th>
                                 <th className="px-6 py-4">Data Matrícula</th>
                                 <th className="px-6 py-4">Assinatura</th>
+                                <th className="px-6 py-4">Contrato</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {loading ? (
-                                <tr><td colSpan={5} className="text-center py-10"><Loader2 className="animate-spin mx-auto" /></td></tr>
+                                <tr><td colSpan={6} className="text-center py-10"><Loader2 className="animate-spin mx-auto" /></td></tr>
                             ) : filteredStudents.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-10 text-brand-muted">Nenhum registro.</td></tr>
+                                <tr><td colSpan={6} className="text-center py-10 text-brand-muted">Nenhum registro.</td></tr>
                             ) : (
                                 filteredStudents.map((student) => {
                                     const isUploadSig = !!student.student_signature_url;
@@ -420,12 +488,17 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                                 <p className="text-xs text-brand-muted">{student.student_email}</p>
                                             </td>
                                             <td className="px-6 py-4 text-brand-muted">
-                                                {formatSignatureDate(student.accepted_at)}
+                                                {formatSignatureDate(signedEvidence(student).acceptedAt ?? student.accepted_at)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {isUploadDoc ? <span className="badge-purple">Upload Completo</span> :
                                                     isUploadSig ? <span className="badge-blue">Foto Assinatura</span> :
                                                         <span className="badge-emerald">Digital</span>}
+                                            </td>
+                                            <td className="px-6 py-4 text-xs">
+                                                {contractIncludesLessonRecording('STUDENT', signedTermsVersion(student))
+                                                    ? <span className="font-bold text-[#002366]">v{signedTermsVersion(student)} · com registro das aulas</span>
+                                                    : <span className="text-brand-muted">v{signedTermsVersion(student)} · texto anterior</span>}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {student.documentation_status === 'APPROVED' ?
@@ -456,8 +529,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
 
             {/* --- AUDIT MODAL --- */}
             {selectedStudent && selectedContractProps && createPortal(
-                <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 animate-in fade-in sm:p-4">
-                    <div ref={auditDialogRef} role="dialog" aria-modal="true" aria-labelledby="audit-contract-title" tabIndex={-1} className="flex h-dvh max-h-dvh w-full max-w-6xl flex-col overflow-hidden bg-brand-surface shadow-2xl outline-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl">
+                <div className="fixed inset-0 z-250 flex items-center justify-center bg-black/60 backdrop-blur-xs p-0 animate-in fade-in sm:p-4">
+                    <div ref={auditDialogRef} role="dialog" aria-modal="true" aria-labelledby="audit-contract-title" tabIndex={-1} className="flex h-dvh max-h-dvh w-full max-w-6xl flex-col overflow-hidden bg-brand-surface shadow-2xl outline-hidden sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl">
 
                         {/* Modal Header */}
                         <div className="flex flex-col justify-between gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:p-6">
@@ -486,7 +559,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             <div className="flex flex-col gap-4 lg:flex-row lg:gap-8">
 
                                 {/* Left: Contract Preview */}
-                                <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-brand-surface p-2 shadow-sm sm:p-4">
+                                <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-brand-surface p-2 shadow-xs sm:p-4">
                                     <h4 className="font-bold text-gray-400 mb-4 uppercase text-xs tracking-wider">Visualização do Contrato</h4>
                                     <div className="select-text">
                                         <ContractDocument {...selectedContractProps} displayMode="responsive" showPrintButton={false} />
@@ -497,10 +570,14 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                 <div className="w-full lg:w-96 flex flex-col gap-6">
 
                                     {/* Evidence Card */}
-                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-xs">
                                         <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                                             <Image size={18} className="text-blue-600" /> Evidências
                                         </h4>
+                                        <p className="mb-4 rounded-lg bg-brand-surface-2 p-3 text-xs text-brand-muted">
+                                            <strong className="text-brand-text">Texto assinado:</strong>{' '}
+                                            {contractTermsLabel('STUDENT', signedTermsVersion(selectedStudent))}
+                                        </p>
                                         {selectedStudent.student_signature_url ? (
                                             <div className="border rounded-lg p-2 bg-brand-surface-2">
                                                 <p className="text-xs text-brand-muted mb-2">Assinatura Enviada:</p>
@@ -523,7 +600,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                     </div>
 
                                     {/* Actions Card */}
-                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm mt-auto">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-xs mt-auto">
                                         {!isRejecting ? (
                                             <div className="space-y-3">
                                                 <button
@@ -556,7 +633,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                             <div className="animate-in fade-in slide-in-from-bottom-2">
                                                 <h5 className="font-bold text-red-700 mb-2">Motivo da Rejeição</h5>
                                                 <textarea
-                                                    className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none mb-3"
+                                                    className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-hidden mb-3"
                                                     rows={3}
                                                     placeholder="Ex: Assinatura ilegível..."
                                                     value={rejectReason}

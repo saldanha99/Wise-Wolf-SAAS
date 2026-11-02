@@ -57,6 +57,8 @@ export interface Tenant {
     legalRepresentativeSignaturePath?: string;
     legalRepresentativeSignatureUrl?: string;
     privacyContactEmail?: string;
+    /** Encarregado de dados (LGPD): aparece no termo de registro das aulas. */
+    privacyOfficerName?: string;
   } | null;
 }
 
@@ -179,6 +181,7 @@ export interface Vendor {
   role: UserRole.SALESPERSON;
   avatar?: string;
   commission_rate: number; // valor em centavos por matrícula
+  affiliate_code?: string;
 }
 
 export type ClosingStatus =

@@ -18,15 +18,22 @@ import {
   safeCommunicationText,
   type TenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
-import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
+import {
+  loadOpportunityDispatchGuard,
+  teacherMayReceiveOpportunity,
+} from "../_shared/opportunity-dispatch.ts";
 // As mensagens do fechamento vivem junto do bot que lê as respostas
 // (`whatsapp-inbound`): texto de pergunta e texto de resposta precisam mudar
 // juntos. As duas funções são publicadas no mesmo pacote.
 import {
-  type CatalogPrice,
+  studentCounterproposalBlocks,
   studentOfferMessage,
-  studentPlanQuestion,
+  studentPostTrialOpener,
+  studentTwoOptionsBlocks,
   teacherOutcomeQuestion,
+  teacherRecurringSlotsQuestion,
+  teacherTrialBriefing,
+  trialMeetLinkMessage,
 } from "../whatsapp-inbound/trial-closing.ts";
 import type { RenewalSlot as Slot } from "../whatsapp-inbound/renewal-negotiation.ts";
 import {
@@ -260,6 +267,10 @@ serve(async (req) => {
 
     const hourBRT = nowBRT().getUTCHours();
     const businessHours = hourBRT >= 9 && hourBRT < 20;
+    // Disparos automáticos de pós-experimental seguem o mesmo horário
+    // comercial dos demais contatos proativos (09:00-19:59 em São Paulo).
+    // Uma aula noturna fica pendente para a próxima janela, sem contato à noite.
+    const postTrialHours = businessHours;
 
     const result = {
       first_touch: 0,
@@ -272,12 +283,18 @@ serve(async (req) => {
       interview_followups: 0,
       expired: 0,
       orphan_leads: 0,
+      trial_confirmations: 0,
       reschedule_timeouts: 0,
       teacher_reminders: 0,
       orphan_skipped: 0,
       closing_teacher_asks: 0,
+      closing_teacher_slot_asks: 0,
       closing_student_asks: 0,
+      closing_authorized_followups: 0,
+      closing_counterproposals: 0,
       closing_offers: 0,
+      teacher_briefings: 0,
+      trial_meet_links: 0,
       closing_overdue: 0,
       failures: [] as string[],
     };
@@ -702,6 +719,22 @@ serve(async (req) => {
         continue;
       }
       for (const ph of phones) {
+        const mayNotify = async () => {
+          const ids = [
+            ...new Set(
+              recipients.filter((r) => cleanPhone(r.phone) === ph).map((r) =>
+                r.teacher_id
+              ),
+            ),
+          ];
+          for (const id of ids) {
+            if (await teacherMayReceiveOpportunity(sb, opp.tenant_id, id)) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (!await mayNotify()) continue;
         const msg =
           `Lembrete da experimental de ${formatted} às ${slot.time}, para ${
             opp.student_name || "o aluno"
@@ -726,14 +759,22 @@ serve(async (req) => {
                 "PENDING",
               );
           },
-          send: () =>
-            sendWhatsTextDetailed({
+          send: async () => {
+            if (!await mayNotify()) {
+              return {
+                outcome: "rejected" as const,
+                messageId: null,
+                httpStatus: null,
+              };
+            }
+            return await sendWhatsTextDetailed({
               base: EVOLUTION_API_URL,
               keys: EVOLUTION_KEYS,
               instance: t.teacherInstance!,
               to: ph,
               text: msg,
-            }),
+            });
+          },
         });
         if (outcome === "sent") result.teacher_reminders++;
         else if (outcome === "failed") {
@@ -820,6 +861,136 @@ serve(async (req) => {
         if (outcome === "sent") result.teacher_reminders++;
         else if (outcome === "failed") {
           result.failures.push(`teacher_reminder ${request.id}`);
+        }
+      }
+    }
+
+    // ============ C1) ACEITE DA EXPERIMENTAL — fechar a promessa ao lead ============
+    // Só vale para aceites posteriores à ativação deste fluxo; não dispara
+    // mensagens retroativas a famílias cujo atendimento humano já prosseguiu.
+    // A trava por appointment evita confirmação duplicada em cada varredura.
+    if (postTrialHours) {
+      const { data: accepted, error: acceptedError } = await sb.from(
+        "opportunities",
+      ).select(
+        "id,tenant_id,student_name,student_phone,trial_appointment_id,winner_teacher_id,status,trial_status",
+      ).eq("kind", "TRIAL").eq("status", "CLAIMED").eq(
+        "trial_status",
+        "SCHEDULED",
+      ).not("trial_appointment_id", "is", null).gte(
+        "created_at",
+        "2026-09-22T23:00:00Z",
+      ).order("created_at", {
+        ascending: false,
+      }).limit(100);
+      if (acceptedError) throw new Error("trial_confirmation_lookup_failed");
+      for (const opp of accepted || []) {
+        const route = byTenant[opp.tenant_id];
+        if (!route?.studentInstance || !opp.winner_teacher_id) continue;
+        const phone = cleanPhone(opp.student_phone || "");
+        if (phone.length < 12) continue;
+        const [appointmentResult, teacherResult, leadResult] = await Promise
+          .all([
+            sb.from("appointments").select(
+              "id,start_time,status,created_at,teacher_id",
+            )
+              .eq("tenant_id", opp.tenant_id).eq("id", opp.trial_appointment_id)
+              .maybeSingle(),
+            sb.from("profiles").select("full_name,lifecycle_status")
+              .eq("tenant_id", opp.tenant_id).eq("id", opp.winner_teacher_id)
+              .maybeSingle(),
+            sb.from("crm_leads").select("id,phone,ai_handoff,ai_handoff_at")
+              .eq("tenant_id", opp.tenant_id).order("created_at", {
+                ascending: false,
+              }).limit(100),
+          ]);
+        if (
+          appointmentResult.error || teacherResult.error || leadResult.error
+        ) {
+          result.failures.push(`trial_confirmation_lookup ${opp.id}`);
+          continue;
+        }
+        const appointment = appointmentResult.data;
+        const teacher = teacherResult.data;
+        const lead = (leadResult.data || []).find((row: any) =>
+          phonesMatch(String(row.phone || ""), phone)
+        );
+        if (
+          !appointment || !teacher || !lead || handoffAtivo(lead) ||
+          appointment.status !== "scheduled" ||
+          appointment.teacher_id !== opp.winner_teacher_id ||
+          teacher.lifecycle_status !== "active" ||
+          Date.parse(appointment.start_time) <= Date.now() ||
+          Date.parse(appointment.created_at) <
+            Date.parse("2026-09-22T23:00:00Z")
+        ) continue;
+        const { data: recentReplies, error: replyError } = await sb.from(
+          "ai_wa_messages",
+        ).select("content,meta").eq("tenant_id", opp.tenant_id).eq(
+          "phone",
+          phone,
+        ).eq("direction", "out").gte(
+          "created_at",
+          appointment.created_at,
+        ).order("created_at", { ascending: false }).limit(20);
+        if (replyError) {
+          result.failures.push(`trial_confirmation_history ${opp.id}`);
+          continue;
+        }
+        if (
+          (recentReplies || []).some((row: any) =>
+            row.meta?.entregue !== false &&
+            (/experimental.{0,35}confirmad|aula experimental j[aá] est[aá] marcada/i
+              .test(String(row.content || "")) ||
+              row.meta?.kind === "trial_accepted_acknowledgement")
+          )
+        ) continue;
+        const mark = await claim(
+          sb,
+          "TRIAL_STUDENT_CONFIRMED",
+          String(appointment.id),
+          "1970-01-01",
+        );
+        if (!mark.ok) continue;
+        const local = new Date(Date.parse(appointment.start_time) - 3 * 3600000)
+          .toISOString();
+        const when = `${local.slice(8, 10)}/${local.slice(5, 7)} às ${
+          local.slice(11, 16)
+        }`;
+        const first = greetName(opp.student_name);
+        const msg = `Oi${
+          first ? `, ${first}` : ""
+        }! Sua aula experimental de ${when} está confirmada com a Teacher ${teacher.full_name}. Até lá! 😊`;
+        const delivery = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: route.studentInstance,
+          to: phone,
+          text: msg,
+        });
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: opp.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
+          content: msg,
+          meta: {
+            lead_id: lead.id,
+            opportunity_id: opp.id,
+            appointment_id: appointment.id,
+            kind: "trial_student_confirmed",
+            delivery_outcome: delivery.outcome,
+            entregue: delivery.outcome === "accepted",
+          },
+        });
+        if (delivery.outcome === "rejected") {
+          await mark.undo();
+          result.failures.push(`trial_confirmation ${opp.id}`);
+        } else if (delivery.outcome === "accepted") {
+          result.trial_confirmations++;
+          await sb.from("crm_leads").update({
+            last_outbound_at: new Date().toISOString(),
+          }).eq("id", lead.id);
         }
       }
     }
@@ -1168,9 +1339,190 @@ serve(async (req) => {
             result.failures.push(`closing_teacher_ask ${ask.flow_id}`);
           }
         }
+      }
 
+      if (postTrialHours) {
+        // A Direção pode autorizar a retomada de um pós-experimental após
+        // handoff. A consulta consome uma trava durável antes do envio; qualquer
+        // nova mensagem humana ou do aluno invalida o disparo proativo.
+        const resumeRoute = byTenant["school-wise-wolf"];
+        if (
+          resumeRoute?.studentInstance &&
+          cfgOf("school-wise-wolf")?.sdr?.enabled !== false
+        ) {
+          const { data: followup, error: followupError } = await sb.rpc(
+            "trial_closing_claim_authorized_student_followup",
+          );
+          if (followupError) throw new Error(followupError.message);
+          if (followup?.claimed) {
+            const phone = cleanPhone(followup.lead_phone || "");
+            const first =
+              String(followup.lead_name || "").trim().split(/\s+/)[0] || "";
+            const count = Number(followup.frequency);
+            const msg = `Oi${
+              first ? `, ${first}` : ""
+            }! Para seguir com ${count} aulas por semana no plano que você escolheu, quais ${count} dias e horários ficam melhores? Podemos considerar o horário da experimental como primeira opção. Confirmo a grade com a professora antes de preparar o link.`;
+            if (phone.length >= 12) {
+              const delivery = await sendWhatsTextDetailed({
+                base: EVOLUTION_API_URL,
+                keys: EVOLUTION_KEYS,
+                instance: resumeRoute.studentInstance,
+                to: phone,
+                text: msg,
+              });
+              const delivered = delivery.outcome === "accepted";
+              const { error: logError } = await sb.from("ai_wa_messages")
+                .insert({
+                  tenant_id: "school-wise-wolf",
+                  phone,
+                  agent: "sdr",
+                  direction: "out",
+                  content: msg,
+                  meta: {
+                    kind: "trial_closing_authorized_student_followup",
+                    flow_id: followup.flow_id,
+                    delivery_outcome: delivery.outcome,
+                    entregue: delivered,
+                  },
+                });
+              if (logError) {
+                result.failures.push(
+                  `closing_followup_log ${followup.flow_id}`,
+                );
+              }
+              if (delivered) result.closing_authorized_followups++;
+              else {result.failures.push(
+                  `closing_followup_delivery ${followup.flow_id}: ${delivery.outcome}`,
+                );}
+            } else {
+              result.failures.push(
+                `closing_followup_phone ${followup.flow_id}`,
+              );
+            }
+          }
+          // A professora não precisa responder à alternativa para sempre:
+          // após duas horas, oferecemos somente a grade primária confirmada.
+          const { error: alternativeExpiryError } = await sb.rpc(
+            "trial_closing_expire_teacher_alternatives",
+          );
+          if (alternativeExpiryError) {
+            throw new Error(alternativeExpiryError.message);
+          }
+          const { data: counterproposal, error: counterproposalError } =
+            await sb.rpc(
+              "trial_closing_claim_teacher_counterproposal_student",
+              { p_flow: null },
+            );
+          if (counterproposalError) {
+            throw new Error(counterproposalError.message);
+          }
+          if (counterproposal?.claimed) {
+            const phone = cleanPhone(counterproposal.lead_phone || "");
+            const blocks = Array.isArray(counterproposal.alternative_slots)
+              ? studentTwoOptionsBlocks({
+                leadName: counterproposal.lead_name || null,
+                teacherName: counterproposal.teacher_name || null,
+                requested: (counterproposal.original_slots || []) as Slot[],
+                primary: (counterproposal.slots || []) as Slot[],
+                alternative: counterproposal.alternative_slots as Slot[],
+                hourBRT,
+              })
+              : studentCounterproposalBlocks({
+                leadName: counterproposal.lead_name || null,
+                teacherName: counterproposal.teacher_name || null,
+                requested: (counterproposal.original_slots || []) as Slot[],
+                proposed: (counterproposal.slots || []) as Slot[],
+                hourBRT,
+              });
+            if (phone.length >= 12) {
+              let allAccepted = true;
+              for (const [blockIndex, msg] of blocks.entries()) {
+                const delivery = await sendWhatsTextDetailed({
+                  base: EVOLUTION_API_URL,
+                  keys: EVOLUTION_KEYS,
+                  instance: resumeRoute.studentInstance,
+                  to: phone,
+                  text: msg,
+                });
+                const delivered = delivery.outcome === "accepted";
+                const { error: logError } = await sb.from("ai_wa_messages")
+                  .insert({
+                    tenant_id: "school-wise-wolf",
+                    phone,
+                    agent: "sdr",
+                    direction: "out",
+                    content: msg,
+                    meta: {
+                      kind: "trial_closing_teacher_counterproposal_to_student",
+                      flow_id: counterproposal.flow_id,
+                      block_index: blockIndex,
+                      delivery_outcome: delivery.outcome,
+                      entregue: delivered,
+                    },
+                  });
+                if (logError) {
+                  result.failures.push(
+                    `closing_counterproposal_log ${counterproposal.flow_id}:${blockIndex}`,
+                  );
+                }
+                if (!delivered) {
+                  allAccepted = false;
+                  result.failures.push(
+                    `closing_counterproposal_delivery ${counterproposal.flow_id}:${blockIndex}: ${delivery.outcome}`,
+                  );
+                  break;
+                }
+              }
+              if (allAccepted) result.closing_counterproposals++;
+            } else {result.failures.push(
+                `closing_counterproposal_phone ${counterproposal.flow_id}`,
+              );}
+          }
+        }
+        const { data: slotAsks, error: slotAskError } = await sb.rpc(
+          "trial_closing_pending_teacher_slots",
+          { p_limit: 10 },
+        );
+        if (slotAskError) throw new Error(slotAskError.message);
+        for (const ask of (slotAsks || [])) {
+          const t = byTenant[ask.tenant_id];
+          if (
+            !t?.teacherInstance || cfgOf(ask.tenant_id)?.sdr?.enabled === false
+          ) continue;
+          const phone = cleanPhone(ask.teacher_phone || "");
+          if (phone.length < 12) continue;
+          const msg = teacherRecurringSlotsQuestion({
+            teacherName: ask.teacher_name,
+            leadName: ask.lead_name,
+            slots: (ask.slots || []) as Slot[],
+          });
+          const delivered = await sendWhats(t.teacherInstance, phone, msg);
+          await sb.from("ai_wa_messages").insert({
+            tenant_id: ask.tenant_id,
+            phone,
+            agent: "trial_closing",
+            direction: "out",
+            content: msg,
+            meta: {
+              kind: "trial_closing_teacher_slots_question",
+              flow_id: ask.flow_id,
+              entregue: delivered,
+            },
+          });
+          if (delivered) {
+            await sb.rpc("trial_closing_mark_teacher_slots_asked", {
+              p_flow: ask.flow_id,
+            });
+            result.closing_teacher_slot_asks++;
+          } else result.failures.push(`closing_teacher_slots ${ask.flow_id}`);
+        }
+
+        // 10 minutos depois da aula (ou assim que ela é lançada), SEM esperar
+        // a professora: "como foi?" — o resto da negociação é conversa da
+        // atendente (`trial_closing_student_context` no `whatsapp-inbound`),
+        // e o link só sai com o "sim" da professora.
         const { data: studentAsks, error: studentAskError } = await sb.rpc(
-          "trial_closing_student_asks",
+          "trial_closing_student_openers",
           { p_limit: 10 },
         );
         if (studentAskError) throw new Error(studentAskError.message);
@@ -1181,10 +1533,10 @@ serve(async (req) => {
           ) continue;
           const phone = cleanPhone(ask.lead_phone || "");
           if (phone.length < 12) continue;
-          const msg = studentPlanQuestion({
+          const msg = studentPostTrialOpener({
             leadName: ask.lead_name,
             teacherName: ask.teacher_name,
-            prices: (ask.prices || []) as CatalogPrice[],
+            classLogged: ask.class_logged === true,
           });
           const delivered = await sendWhats(t.studentInstance, phone, msg);
           // O registro não depende do envio: é o histórico que a atendente lê.
@@ -1195,8 +1547,9 @@ serve(async (req) => {
             direction: "out",
             content: msg,
             meta: {
-              kind: "trial_closing_plan_question",
+              kind: "trial_closing_opener",
               flow_id: ask.flow_id,
+              class_logged: ask.class_logged === true,
               entregue: delivered,
             },
           });
@@ -1209,6 +1562,106 @@ serve(async (req) => {
           } else {
             result.failures.push(`closing_student_ask ${ask.flow_id}`);
           }
+        }
+      }
+
+      // ── G) BRIEFING DA EXPERIMENTAL PARA O PROFESSOR ──
+      // Até 2h30 antes da aula (ou na primeira varredura depois de um aceite
+      // em cima da hora): quem é o aluno, telefone, objetivo, nível, contexto.
+      // Sai a qualquer hora — a aula tem horário, o aviso tem de chegar antes.
+      const { data: briefings, error: briefingError } = await sb.rpc(
+        "trial_teacher_briefings",
+        { p_limit: 20 },
+      );
+      if (briefingError) throw new Error(briefingError.message);
+      for (const row of (briefings || [])) {
+        const t = byTenant[row.tenant_id];
+        if (!t?.teacherInstance) continue;
+        const phone = cleanPhone(row.teacher_phone || "");
+        if (phone.length < 12) continue;
+        const marca = await claim(
+          sb,
+          "TRIAL_TEACHER_BRIEFING",
+          String(row.appointment_id),
+          String(row.class_date || todayBRT()),
+        );
+        if (!marca.ok) continue;
+        const msg = teacherTrialBriefing({
+          teacherName: row.teacher_name,
+          whenText: String(row.when_text || ""),
+          leadName: row.lead_name,
+          leadPhone: row.lead_phone,
+          goal: row.goal,
+          level: row.level,
+          notes: row.notes,
+          weeklyAvailability: row.weekly_availability,
+          interests: row.interests,
+          meetingLink: row.teacher_meeting_link,
+        });
+        const delivered = await sendWhats(t.teacherInstance, phone, msg);
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "trial_closing",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_teacher_briefing",
+            appointment_id: row.appointment_id,
+            entregue: delivered,
+          },
+        });
+        if (delivered) result.teacher_briefings++;
+        else {
+          await marca.undo();
+          result.failures.push(`teacher_briefing ${row.appointment_id}`);
+        }
+      }
+
+      // ── H) LINK DA SALA DA EXPERIMENTAL PARA O LEAD ──
+      // A experimental acontece na sala da escola no Meet (31/10/2026): é a
+      // presença lá que confirma a aula. O lead recebe o link uma vez, até 6 h
+      // antes; sem ele o lead entraria pelo link pessoal e nada seria visto.
+      const { data: meetLinks, error: meetLinkError } = await sb.rpc(
+        "trial_meet_link_notices",
+        { p_limit: 20 },
+      );
+      if (meetLinkError) throw new Error(meetLinkError.message);
+      for (const row of (meetLinks || [])) {
+        const t = byTenant[row.tenant_id];
+        if (!t?.studentInstance) continue;
+        const phone = cleanPhone(row.lead_phone || "");
+        if (phone.length < 12) continue;
+        const marca = await claim(
+          sb,
+          "TRIAL_MEET_LINK",
+          String(row.appointment_id),
+          String(row.class_date || todayBRT()),
+        );
+        if (!marca.ok) continue;
+        const msg = trialMeetLinkMessage({
+          leadName: row.lead_name,
+          teacherName: row.teacher_name,
+          whenText: String(row.when_text || ""),
+          link: String(row.meeting_uri || ""),
+        });
+        const delivered = await sendWhats(t.studentInstance, phone, msg);
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "trial_closing",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_meet_link",
+            appointment_id: row.appointment_id,
+            entregue: delivered,
+          },
+        });
+        if (delivered) result.trial_meet_links++;
+        else {
+          await marca.undo();
+          result.failures.push(`trial_meet_link ${row.appointment_id}`);
         }
       }
 
@@ -1234,8 +1687,17 @@ serve(async (req) => {
           duration: Number(offer.duration),
           slots: (offer.slots || []) as Slot[],
           startDate: String(offer.start_date || ""),
+          dueDay: Number(offer.due_day || 10),
+          enrollmentFee: Number(offer.enrollment_fee || 0),
         });
-        const delivered = await sendWhats(t.studentInstance, phone, msg);
+        const delivery = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: t.studentInstance,
+          to: phone,
+          text: msg,
+        });
+        const delivered = delivery.outcome === "accepted";
         await sb.from("ai_wa_messages").insert({
           tenant_id: row.tenant_id,
           phone,
@@ -1246,10 +1708,62 @@ serve(async (req) => {
             kind: "trial_closing_offer",
             offer_id: offer.offer_id || null,
             entregue: delivered,
+            delivery_outcome: delivery.outcome,
           },
         });
         if (delivered) result.closing_offers++;
         else result.failures.push(`closing_offer ${offer.offer_id || "?"}`);
+      }
+
+      const { data: failedOffers, error: failedOffersError } = await sb.rpc(
+        "trial_closing_failed_offer_deliveries",
+        { p_limit: 10 },
+      );
+      if (failedOffersError) throw new Error(failedOffersError.message);
+      for (const row of (failedOffers || [])) {
+        const t = byTenant[row.tenant_id];
+        const offer = row.offer || {};
+        if (!t?.studentInstance || !offer.url) continue;
+        const phone = cleanPhone(row.lead_phone || "");
+        if (phone.length < 12) continue;
+        const msg = studentOfferMessage({
+          leadName: row.lead_name,
+          teacherName: null,
+          url: String(offer.url),
+          value: Number(offer.value),
+          frequency: Number(offer.frequency),
+          duration: Number(offer.duration),
+          slots: (offer.slots || []) as Slot[],
+          startDate: String(offer.start_date || ""),
+          dueDay: Number(offer.due_day || 10),
+          enrollmentFee: Number(offer.enrollment_fee || 0),
+        });
+        const delivery = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: t.studentInstance,
+          to: phone,
+          text: msg,
+        });
+        const delivered = delivery.outcome === "accepted";
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: row.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
+          content: msg,
+          meta: {
+            kind: "trial_closing_offer_retry",
+            flow_id: row.flow_id,
+            offer_id: offer.offer_id,
+            entregue: delivered,
+            delivery_outcome: delivery.outcome,
+          },
+        });
+        if (delivered) result.closing_offers++;
+        else {result.failures.push(
+            `closing_offer_retry ${offer.offer_id || "?"}`,
+          );}
       }
 
       const { data: overdue, error: overdueError } = await sb.rpc(

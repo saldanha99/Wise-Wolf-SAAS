@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import hubMarketingPages from './hubMarketingPages.json';
 import systemMarketingPages from '../marketing/systemMarketingPages.json';
+import portalLinkPages from '../marketing/portalLinkPages.json';
 import {
   generateHubStaticHtml,
   renderHubMarketingHtml,
@@ -93,8 +94,13 @@ describe('Hub static HTML generation', () => {
     const expectedGeneratedPathCount =
       Object.keys(hubMarketingPages).length * 2 +
       Object.keys(systemMarketingPages).length +
+      Object.keys(portalLinkPages).length +
       6;
     expect(generatedPaths).toHaveLength(expectedGeneratedPathCount);
+    const enrollmentHtml = await readFile(path.join(distDir, 'matricula/index.html'), 'utf8');
+    expect(enrollmentHtml).toContain('Sua matrícula | Wise Wolf Languages');
+    expect(enrollmentHtml).toContain('content="noindex, nofollow"');
+    expect(enrollmentHtml).not.toContain('hub-overview-og');
     expect(teacherSystemHtml).toContain('https://hub.wisewolflanguage.com.br/professores');
     expect(schoolDedicatedHtml).toContain('https://hub.wisewolflanguage.com.br/escolas');
     expect(dedicatedNotFoundHtml).toContain('content="noindex, nofollow"');

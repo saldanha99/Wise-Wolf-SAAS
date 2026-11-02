@@ -174,6 +174,12 @@ values
   ('ped-eval-catalog-a', 'Pedagogical Evaluation Catalog A'),
   ('ped-eval-catalog-b', 'Pedagogical Evaluation Catalog B');
 
+-- Mudança feita por professor avisa o grupo de Coordenação desde a migration
+-- 20260922024045; sem canal configurado a gravação é recusada.
+insert into public.tenant_notice_channels (tenant_id, channel, group_jid)
+values ('ped-eval-catalog-a', 'coordenacao', '120363000000000005@g.us'),
+       ('ped-eval-catalog-b', 'coordenacao', '120363000000000006@g.us');
+
 insert into auth.users (
   id,
   aud,

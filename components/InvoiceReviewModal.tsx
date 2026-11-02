@@ -75,7 +75,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/80 backdrop-blur-xs animate-in fade-in duration-200">
             <div className="bg-brand-surface w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-brand-border dark:border-brand-border">
                 {/* Header */}
                 <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/50">
@@ -175,7 +175,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                     <textarea
                                         value={rejectionReason}
                                         onChange={(e) => setRejectionReason(e.target.value)}
-                                        className="w-full h-32 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500 mb-3 placeholder:text-red-300"
+                                        className="w-full h-32 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-red-500 mb-3 placeholder:text-red-300"
                                         placeholder="Descreva o problema com a nota..."
                                         autoFocus
                                     />

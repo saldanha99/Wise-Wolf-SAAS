@@ -173,7 +173,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-20 relative font-sans">
-      <header className="bg-indigo-950 bg-gradient-to-r from-tenant-primary to-purple-600 text-white p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-lg mb-6 sm:mb-8">
+      <header className="bg-indigo-950 bg-linear-to-r from-tenant-primary to-purple-600 text-white p-6 sm:p-8 rounded-4xl sm:rounded-[2.5rem] shadow-lg mb-6 sm:mb-8">
         <h2 className="text-2xl sm:text-4xl font-black tracking-tighter">Meu Financeiro</h2>
         <p className="text-white/80 text-sm mt-1">Acompanhe seus planos, pagamentos e histórico de mensalidades.</p>
       </header>
@@ -218,7 +218,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
           <div className="absolute top-0 right-0 p-12 opacity-10">
             <ShieldCheck size={180} />
           </div>
-          <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm shrink-0">
+          <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-xs shrink-0">
             <AlertCircle size={32} className="text-red-400" />
           </div>
           <div className="flex-1 relative z-10">
@@ -263,7 +263,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
             <div className="mt-4 flex flex-col gap-3">
               {overduePayments.map(payment => (
-                <div key={payment.id} className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-brand-surface p-4 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm gap-4">
+                <div key={payment.id} className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-brand-surface p-4 rounded-xl border border-red-100 dark:border-red-900/50 shadow-xs gap-4">
                   <div className="min-w-0">
                     <p className="text-xs font-black text-brand-muted uppercase tracking-widest">
                       Vencimento {formatDate(payment.due_date)}
@@ -307,7 +307,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
             </p>
             <div className="mt-4 flex flex-col gap-3">
               {payments.filter(p => p.status === 'PENDING').map(payment => (
-                <div key={payment.id} className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-brand-surface p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-sm gap-4">
+                <div key={payment.id} className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-brand-surface p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-xs gap-4">
                   <div className="min-w-0">
                     <p className="text-xs font-black text-brand-muted uppercase tracking-widest">
                       Vencimento {formatDate(payment.due_date)}
@@ -415,7 +415,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
       </div>
 
-      <section ref={billingMethodRef} id="forma-pagamento" tabIndex={-1} aria-label="Forma de pagamento da sua conta" className="scroll-mt-6 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tenant-primary">
+      <section ref={billingMethodRef} id="forma-pagamento" tabIndex={-1} aria-label="Forma de pagamento da sua conta" className="scroll-mt-6 rounded-2xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-tenant-primary">
         {billingLinkRequested && (
           <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
             Você está no financeiro {studentContext?.profile?.full_name ? <>de <b>{studentContext.profile.full_name}</b></> : 'da conta conectada'}. Confira se esta é a conta do aluno correto. Se não for, saia e entre na conta certa. Abrir este link não altera o cartão nem cobra valores; qualquer cobrança vencida será apresentada para sua confirmação.

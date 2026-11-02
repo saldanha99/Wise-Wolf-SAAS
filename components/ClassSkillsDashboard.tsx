@@ -9,8 +9,8 @@ interface Props {
 }
 
 const SKILLS = [
-    { id: 'speaking', label: 'Speaking', color: '#ec4899' },
-    { id: 'pronunciation', label: 'Pronúncia', color: '#a855f7' },
+    { id: 'speaking', label: 'Speaking', color: '#CC213B' },
+    { id: 'pronunciation', label: 'Pronúncia', color: '#2E3FA8' },
     { id: 'listening', label: 'Listening', color: '#3b82f6' },
     { id: 'reading', label: 'Reading', color: '#06b6d4' },
     { id: 'writing', label: 'Writing', color: '#10b981' },
@@ -172,13 +172,13 @@ const ClassSkillsDashboard: React.FC<Props> = ({ user, tenantId }) => {
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Buscar aluno..."
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
                         />
                     </div>
                     <select
                         value={sortBy}
                         onChange={e => setSortBy(e.target.value)}
-                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
                     >
                         <option value="avg">Ordenar: Média geral</option>
                         <option value="name">Ordenar: Nome</option>

@@ -203,7 +203,7 @@ const StudentPlansManager: React.FC = () => {
 
                     return (
                         <div key={plan.id} className={`group bg-brand-surface border ${isGlobal ? 'border-purple-200 dark:border-purple-900/30' : 'border-brand-border'} rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-blue-500/20`}>
-                            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${plan.is_active ? 'from-blue-500/10 to-indigo-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
+                            <div className={`absolute top-0 right-0 w-24 h-24 bg-linear-to-br ${plan.is_active ? 'from-blue-500/10 to-indigo-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
 
                             <div className="flex justify-between items-start mb-4 relative z-10">
                                 <div className="max-w-[70%]">
@@ -212,7 +212,7 @@ const StudentPlansManager: React.FC = () => {
                                             Template Global
                                         </div>
                                     )}
-                                    <h4 className="font-black text-brand-text text-lg break-words">{plan.name}</h4>
+                                    <h4 className="font-black text-brand-text text-lg wrap-break-word">{plan.name}</h4>
                                     <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider mt-1 ${plan.is_active ? 'bg-blue-100 text-blue-600' : 'bg-brand-surface-2 text-brand-muted'}`}>
                                         {plan.is_active ? 'Ativo' : 'Inativo'}
                                     </div>
@@ -269,7 +269,7 @@ const StudentPlansManager: React.FC = () => {
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in">
                     <div className="bg-brand-surface w-full max-w-2xl rounded-[2.5rem] p-8 border border-brand-border dark:border-brand-border shadow-2xl overflow-y-auto max-h-[90vh]">
                         <h3 className="text-2xl font-black text-brand-text mb-6">
                             {editingPlan ? 'Editar Modelo de Plano' : 'Novo Modelo de Plano'}
@@ -282,7 +282,7 @@ const StudentPlansManager: React.FC = () => {
                                     type="text"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                     placeholder="Ex: Start 2x Semanal"
                                 />
                             </div>
@@ -292,7 +292,7 @@ const StudentPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.lessons_per_week}
                                     onChange={e => setFormData({ ...formData, lessons_per_week: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -301,7 +301,7 @@ const StudentPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.contract_duration}
                                     onChange={e => setFormData({ ...formData, contract_duration: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -310,7 +310,7 @@ const StudentPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.monthly_price}
                                     onChange={e => setFormData({ ...formData, monthly_price: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 space-y-2">
@@ -321,7 +321,7 @@ const StudentPlansManager: React.FC = () => {
                                         type="text"
                                         value={formData.landing_page_slug}
                                         onChange={e => setFormData({ ...formData, landing_page_slug: e.target.value })}
-                                        className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                        className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                         placeholder="(Auto-gerado se vazio)"
                                     />
                                 </div>
@@ -331,7 +331,7 @@ const StudentPlansManager: React.FC = () => {
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full h-24 bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600 resize-none"
+                                    className="w-full h-24 bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600 resize-none"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 flex items-center gap-3">

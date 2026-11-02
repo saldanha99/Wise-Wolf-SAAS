@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Save, Loader2, Check, Bell, BellOff, Eye, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { DEFAULT_REMINDER_TEMPLATE, REMINDER_TEMPLATE_VARIABLES } from '../services/whatsappService';
+import { DEFAULT_REMINDER_TEMPLATE, REMINDER_TEMPLATE_VARIABLES, reminderTemplateToStore } from '../services/whatsappService';
 
 interface Props {
     user: { id: string };
@@ -54,7 +54,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
             const { error } = await supabase
                 .from('profiles')
                 .update({
-                    lesson_reminder_template: template.trim() || null,
+                    // Igual ao padrão vira null: antes, só ligar a automação gravava o
+                    // padrão da época como modelo próprio, e ele nunca mais mudava.
+                    lesson_reminder_template: reminderTemplateToStore(template),
                     date_automation_enabled: automationEnabled,
                 })
                 .eq('id', user.id);
@@ -110,7 +112,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
                         <div className="min-w-0">
                             <h3 className="font-black text-slate-800 dark:text-white text-sm">Lembrete de Aula via WhatsApp</h3>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Disparado automaticamente 60 minutos antes de cada aula</p>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Disparado automaticamente 30 minutos antes de cada aula</p>
                         </div>
                     </div>
                 </div>
@@ -126,7 +128,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                                 </p>
                                 <p className="text-xs text-slate-500">
                                     {automationEnabled
-                                        ? 'Seus alunos receberão um lembrete automático 1h antes de cada aula.'
+                                        ? 'Seus alunos receberão um lembrete automático 30 minutos antes de cada aula.'
                                         : 'Ative para começar a enviar lembretes automáticos.'}
                                 </p>
                             </div>
@@ -137,9 +139,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             aria-checked={automationEnabled}
                             aria-label={automationEnabled ? 'Desativar automação de lembretes' : 'Ativar automação de lembretes'}
                             onClick={() => setAutomationEnabled(!automationEnabled)}
-                            className={`relative h-6 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                            className={`relative h-6 w-12 shrink-0 rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
                         >
-                            <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${automationEnabled ? 'translate-x-6' : ''}`} />
+                            <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${automationEnabled ? 'translate-x-6' : ''}`} />
                         </button>
                     </div>
                 </div>
@@ -179,7 +181,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             onChange={e => setTemplate(e.target.value)}
                             rows={10}
                             placeholder={DEFAULT_REMINDER_TEMPLATE}
-                            className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 resize-y"
                         />
                         <p className="text-[10px] text-slate-400 mt-2">{template.length}/1000 caracteres</p>
                     </div>
@@ -191,7 +193,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
 
                         {/* Mock WhatsApp chat bubble */}
-                        <div className="bg-[#dcf8c6] dark:bg-emerald-900/30 rounded-xl rounded-tl-sm p-4 max-w-sm shadow-sm relative">
+                        <div className="bg-[#dcf8c6] dark:bg-emerald-900/30 rounded-xl rounded-tl-sm p-4 max-w-sm shadow-xs relative">
                             <p className="text-sm text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">{preview}</p>
                             <div className="text-[10px] text-slate-500 text-right mt-2">
                                 {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} ✓✓
@@ -200,6 +202,9 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
 
                         <p className="text-[10px] text-slate-400 mt-3">
                             Exemplo simulando uma aula da Maria às 19:00 com o prof. João da escola Wise Wolf São Paulo.
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            Aula com registro (termo aceito) é na sala da escola no Google Meet: o link dela entra no {'{class_link}'} ou, se o seu modelo não tiver o marcador, numa linha no fim da mensagem. Aula sem sala da escola: o lembrete automático não leva link, e o botão "Disparar" põe no {'{class_link}'} o link de sempre do aluno.
                         </p>
                     </div>
                 </div>
@@ -212,7 +217,7 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                         </div>
                     ) : (
                         <p className="min-w-0 text-xs text-slate-500">
-                            Variáveis vazias (ex.: link da aula sem cadastro) virão como string vazia.
+                            Variáveis vazias (ex.: {'{class_link}'} no lembrete automático de aula sem sala da escola) somem da mensagem.
                         </p>
                     )}
                     <button

@@ -186,7 +186,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
             <p className="text-brand-muted">Bem-vindo ao painel de controle mestre.</p>
           </div>
           <div className="flex gap-4">
-            <div className="bg-brand-surface px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-brand-border flex items-center gap-2">
+            <div className="bg-brand-surface px-4 py-2 rounded-xl text-sm font-bold shadow-xs border border-brand-border flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 font-black">
                 SA
               </div>

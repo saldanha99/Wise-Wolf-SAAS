@@ -1,0 +1,617 @@
+// Termo de registro das aulas (Meet): regras de tela e textos.
+// As regras que valem estão no banco (migrations 20260926120000,
+// 20260926200000 e 20260927100000 — termo v3, aceite por versão); aqui ficam
+// só o espelho para a tela avisar antes de chamar o servidor.
+
+export type RecordingDecision = 'NONE' | 'ACCEPTED' | 'REFUSED' | 'REVOKED';
+export type SignerRelation = 'SELF' | 'GUARDIAN' | 'SCHOOL';
+/** Por que o responsável responde; nulo = adulto comprovado pela escola. */
+export type GuardianReason = 'KIDS' | 'MINOR' | 'AGE_UNKNOWN';
+
+/** Nome da edge function que manda o código de 6 dígitos pelo WhatsApp. */
+export const CODE_FUNCTION = 'lesson-recording-code';
+export const CODE_LENGTH = 6;
+
+export const CONSENT_PATH = '/registro-das-aulas';
+
+export const DECISION_LABEL: Record<RecordingDecision, string> = {
+  NONE: 'Sem resposta',
+  ACCEPTED: 'Autorizado',
+  REFUSED: 'Não autorizado',
+  REVOKED: 'Revogado',
+};
+
+export const RELATION_LABEL: Record<SignerRelation, string> = {
+  SELF: 'o próprio aluno',
+  GUARDIAN: 'responsável',
+  SCHOOL: 'registrado pela escola',
+};
+
+export function asDecision(value: unknown): RecordingDecision {
+  return value === 'ACCEPTED' || value === 'REFUSED' || value === 'REVOKED' ? value : 'NONE';
+}
+
+// ---------------------------------------------------------------------------
+// Modo de autorização por escola (migration 20260929100000). Decisão da
+// direção de 27/09/2026: a escola pode autorizar o registro das aulas por
+// padrão (SCHOOL_DEFAULT) — sem link, sem código, sem aceite; cada pessoa pode
+// pedir para não ser registrada. INDIVIDUAL_CONSENT é o modelo do termo aceito
+// por pessoa (e o padrão de quem não decidiu). Quem decide o efeito é o
+// servidor; aqui ficam só a leitura defensiva e os textos.
+
+export type AuthorizationMode = 'SCHOOL_DEFAULT' | 'INDIVIDUAL_CONSENT';
+
+/** Servidor antigo (sem o campo) ou valor desconhecido = aceite individual. */
+export function asAuthorizationMode(value: unknown): AuthorizationMode {
+  return value === 'SCHOOL_DEFAULT' ? 'SCHOOL_DEFAULT' : 'INDIVIDUAL_CONSENT';
+}
+
+/** Recusa ou revogação: no modo da escola, é o pedido para não registrar. */
+export function isObjection(value: unknown): boolean {
+  return value === 'REFUSED' || value === 'REVOKED';
+}
+
+export const SCHOOL_DEFAULT_LABEL = 'Autorizado pela escola';
+export const OBJECTION_LABEL = 'Pediu para não registrar';
+
+export const AUTHORIZATION_MODE_LABEL: Record<AuthorizationMode, string> = {
+  SCHOOL_DEFAULT: 'Registro autorizado pela escola',
+  INDIVIDUAL_CONSENT: 'Aceite individual pelo termo',
+};
+
+export const AUTHORIZATION_MODE_TEXT: Record<AuthorizationMode, string> = {
+  SCHOOL_DEFAULT:
+    'O registro das aulas faz parte das aulas da escola (contrato ou decisão da escola). Alunos e professores ativos estão autorizados sem link nem código; quem não quiser ser registrado pede, e o pedido vale na hora. Menores de idade também ficam autorizados, e o pedido para não registrar pode vir do responsável.',
+  INDIVIDUAL_CONSENT:
+    'A transcrição da aula só acontece quando o aluno (ou o responsável, se for menor) e o professor autorizaram pelo termo. Cada um responde uma vez; vale até revogar.',
+};
+
+/** O que muda ao trocar de modo — a tela mostra antes de confirmar. */
+export const AUTHORIZATION_SWITCH_EFFECT: Record<AuthorizationMode, string[]> = {
+  SCHOOL_DEFAULT: [
+    'Alunos e professores ativos passam a ter as aulas registradas sem link, sem código e sem aceite — inclusive os menores de idade.',
+    'Quem já pediu para não ser registrado (recusou ou revogou) continua sem registro.',
+    'A sala da escola continua só para o professor com a conta Google confirmada.',
+    'O envio do termo e o link por aluno saem da tela; mensagens do termo que estavam na fila são canceladas.',
+    'A mudança vale na hora e fica registrada com o seu nome, a data e o motivo.',
+  ],
+  INDIVIDUAL_CONSENT: [
+    'Cada aluno (ou responsável) e cada professor volta a precisar aceitar o termo vigente.',
+    'As próximas aulas de quem ainda não aceitou deixam de ser registradas na hora; as que já terminaram seguem os prazos do aviso.',
+    'O envio do termo e o link por aluno voltam à tela.',
+    'A mudança vale na hora e fica registrada com o seu nome, a data e o motivo.',
+  ],
+};
+
+export interface AuthorizationHistoryItem {
+  mode: AuthorizationMode;
+  since: string | null;
+  decidedOn: string | null;
+  decidedByName: string | null;
+  reason: string | null;
+  source: 'MIGRATION' | 'APP' | null;
+}
+
+export interface AuthorizationSummary {
+  mode: AuthorizationMode;
+  current: AuthorizationHistoryItem | null;
+  history: AuthorizationHistoryItem[];
+  noticeVersions: { STUDENT: string | null; TEACHER: string | null };
+  canChange: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function asTrimmed(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function asHistoryItem(value: unknown): AuthorizationHistoryItem | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  return {
+    mode: asAuthorizationMode(record.mode),
+    since: asTrimmed(record.since),
+    decidedOn: asTrimmed(record.decided_on),
+    decidedByName: asTrimmed(record.decided_by_name),
+    reason: asTrimmed(record.reason),
+    source: record.source === 'MIGRATION' || record.source === 'APP' ? record.source : null,
+  };
+}
+
+/** `authorization` do painel (list_lesson_recording_consents); ausente = individual. */
+export function asAuthorizationSummary(value: unknown): AuthorizationSummary {
+  const record = asRecord(value) || {};
+  const versions = asRecord(record.notice_versions) || {};
+  return {
+    mode: asAuthorizationMode(record.mode),
+    current: asHistoryItem(record.current),
+    history: Array.isArray(record.history)
+      ? record.history.map(asHistoryItem).filter((item): item is AuthorizationHistoryItem => item !== null)
+      : [],
+    noticeVersions: { STUDENT: asTrimmed(versions.STUDENT), TEACHER: asTrimmed(versions.TEACHER) },
+    canChange: record.can_change === true,
+  };
+}
+
+/** "27/09/2026" a partir de `AAAA-MM-DD` (dia da decisão, sem mexer no fuso). */
+export function formatDecidedOn(value: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+/** Mensagem pronta para o aluno pedir, pelo WhatsApp da escola, para não ser registrado. */
+export function objectionRequestMessage(schoolName: string | null | undefined): string {
+  const school = schoolName?.trim() || 'escola';
+  return `Olá! Sou aluno(a) da ${school} e peço que as minhas aulas não sejam registradas (transcritas).`;
+}
+
+/** Motivo fora da lista, com responsável exigido, vira idade desconhecida. */
+export function asGuardianReason(value: unknown, requiresGuardian?: boolean): GuardianReason | null {
+  if (value === 'KIDS' || value === 'MINOR' || value === 'AGE_UNKNOWN') return value;
+  return requiresGuardian ? 'AGE_UNKNOWN' : null;
+}
+
+/** Explicação para a família de por que quem responde é o responsável. */
+export function guardianReasonText(reason: GuardianReason, firstName: string): string {
+  if (reason === 'AGE_UNKNOWN') {
+    return `A escola ainda não cadastrou a data de nascimento de ${firstName}. Por segurança, quem responde é o responsável legal. Se ${firstName} já tem 18 anos, peça à escola para cadastrar a data de nascimento e abra o link de novo.`;
+  }
+  return `Como ${firstName} é menor de idade, quem responde é o responsável legal.`;
+}
+
+/**
+ * Por que um aceite gravado não vale para transcrever (servidor decide).
+ * TERM_UPDATED: a pessoa autorizou uma versão anterior à vigente (migration
+ * 20260927100000) — só vale depois de aceitar o texto novo.
+ */
+export type NotEffectiveReason = 'GUARDIAN_REQUIRED' | 'UNVERIFIED' | 'TERM_UPDATED';
+
+export function asNotEffectiveReason(value: unknown): NotEffectiveReason | null {
+  return value === 'GUARDIAN_REQUIRED' || value === 'UNVERIFIED' || value === 'TERM_UPDATED' ? value : null;
+}
+
+/**
+ * Texto da página pública quando a última resposta foi "autorizo" mas ela não
+ * vale mais — em vez de "Situação atual: Autorizado", que faria o responsável
+ * fechar a página achando que está resolvido.
+ */
+export function notEffectiveText(reason: NotEffectiveReason, firstName: string, decidedVersion?: string | null): string {
+  if (reason === 'TERM_UPDATED') {
+    const which = decidedVersion ? ` (a versão ${decidedVersion})` : '';
+    return `O termo mudou desde a última resposta: a autorização anterior${which} não vale para as próximas aulas de ${firstName}. Leia a nova versão abaixo e responda de novo.`;
+  }
+  if (reason === 'UNVERIFIED') {
+    return `A autorização anterior foi registrada sem a confirmação pelo WhatsApp e não vale mais. Responda de novo abaixo para as aulas de ${firstName} serem registradas.`;
+  }
+  return `A autorização anterior foi dada pelo próprio aluno e não vale: ${firstName} é menor de idade (ou a escola não confirmou a idade). O responsável precisa responder abaixo.`;
+}
+
+// ---------------------------------------------------------------------------
+// Quem é a escola no termo (migration 20260927100000). O texto guarda só
+// marcadores; o servidor devolve os valores lidos dos dados da própria escola
+// (Configurações → Escola e legal) e a tela troca. Dado da Wise Wolf nunca
+// fica escrito no código.
+
+export const TERM_MARKERS = ['escola_nome', 'escola_documento', 'escola_contato_privacidade'] as const;
+export type TermMarker = typeof TERM_MARKERS[number];
+
+/** Valores dos marcadores e o que falta a escola preencher. */
+export type TermSchoolIdentity = Record<TermMarker, string> & { missing: SchoolIdentityGap[] };
+export type SchoolIdentityGap = 'razao_social' | 'cnpj' | 'contato_privacidade';
+
+/** Texto neutro quando o servidor não mandou o valor (versão anterior do banco). */
+const MARKER_FALLBACK: Record<TermMarker, string> = {
+  escola_nome: 'a escola',
+  escola_documento: 'CNPJ não informado pela escola',
+  escola_contato_privacidade: 'a direção da escola, pelo WhatsApp da escola',
+};
+
+const GAPS: SchoolIdentityGap[] = ['razao_social', 'cnpj', 'contato_privacidade'];
+
+/** Lê `school_identity` do servidor; nada aproveitável vira os textos neutros. */
+export function asTermSchoolIdentity(value: unknown, schoolName?: string | null): TermSchoolIdentity {
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const text = (key: TermMarker): string => {
+    const raw = record[key];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : '';
+  };
+  const missing = Array.isArray(record.missing)
+    ? record.missing.filter((gap): gap is SchoolIdentityGap => GAPS.includes(gap as SchoolIdentityGap))
+    : [];
+  return {
+    escola_nome: text('escola_nome') || schoolName?.trim() || MARKER_FALLBACK.escola_nome,
+    escola_documento: text('escola_documento') || MARKER_FALLBACK.escola_documento,
+    escola_contato_privacidade: text('escola_contato_privacidade') || MARKER_FALLBACK.escola_contato_privacidade,
+    missing,
+  };
+}
+
+/**
+ * Troca os marcadores do termo pelos dados da escola, numa passada só (o valor
+ * trocado nunca é relido como marcador). Marcador desconhecido fica como está.
+ */
+export function fillTermMarkers(body: string | null | undefined, identity: TermSchoolIdentity): string {
+  return String(body || '').replace(/\{([a-z_]+)\}/g, (whole, key: string) =>
+    (TERM_MARKERS as readonly string[]).includes(key) ? identity[key as TermMarker] : whole);
+}
+
+/** O que a direção precisa completar para o termo identificar a escola. */
+export const SCHOOL_IDENTITY_GAP_LABEL: Record<SchoolIdentityGap, string> = {
+  razao_social: 'razão social',
+  cnpj: 'CNPJ',
+  contato_privacidade: 'contato de privacidade (LGPD)',
+};
+
+/**
+ * O servidor recusa o aceite de uma versão que não é a vigente (a tela manda
+ * a versão que mostrou): a tela recarrega o texto e pede a resposta de novo.
+ */
+export const TERM_CHANGED_ERROR = 'termo_mudou';
+
+/** Aviso da página pública depois de recarregar o texto novo (o código continua valendo). */
+export function termChangedNotice(version: string | null | undefined): string {
+  const which = version ? ` (versão ${version})` : '';
+  return `O termo mudou enquanto você lia${which}. Leia o texto novo acima e confirme de novo: o código que você recebeu continua valendo.`;
+}
+
+/** Por que o link foi fechado pelo servidor. */
+export type LinkBlockedReason = 'CODE_ATTEMPTS' | 'CODE_SENDS';
+
+export function asLinkBlockedReason(value: unknown): LinkBlockedReason | null {
+  return value === 'CODE_ATTEMPTS' || value === 'CODE_SENDS' ? value : null;
+}
+
+/** Explicação para a escola, no painel, de por que o último link fechou. */
+export const LINK_BLOCKED_LABEL: Record<LinkBlockedReason, string> = {
+  CODE_ATTEMPTS: 'O último link foi bloqueado: muitos códigos digitados errado. Confirme com a família e gere um link novo.',
+  CODE_SENDS: 'O último link foi bloqueado: pediram códigos demais por ele. Confirme com a família e gere um link novo.',
+};
+
+/** Painel: telefone do responsável existe no cadastro, mas a escola não confirmou. */
+export const GUARDIAN_PHONE_UNCONFIRMED_TEXT =
+  'O telefone do responsável no cadastro não foi confirmado pela escola, então o código não sai. Cadastre o responsável em “Contatos verificados” na ficha do aluno (ou corrija o telefone pela ficha) e gere um link novo.';
+
+/** Painel: responsável com o mesmo número do aluno. */
+export const GUARDIAN_PHONE_SAME_AS_STUDENT_TEXT =
+  'O telefone do responsável é o mesmo do aluno. Confira se esse número é mesmo do responsável: é ele que recebe o código.';
+
+/** Explicação curta para a escola, no painel. */
+export const GUARDIAN_REASON_LABEL: Record<GuardianReason, string> = {
+  KIDS: 'Turma infantil · responde o responsável',
+  MINOR: 'Menor de idade · responde o responsável',
+  AGE_UNKNOWN: 'Idade não cadastrada pela escola · responde o responsável',
+};
+
+/** Só dígitos, no máximo `max` (campo do código). */
+export function onlyDigits(value: string, max = CODE_LENGTH): string {
+  return value.replace(/\D/g, '').slice(0, max);
+}
+
+export function isSixDigitCode(value: string): boolean {
+  return /^[0-9]{6}$/.test(value);
+}
+
+/** "30 segundos", "2 minutos", "1 hora". */
+export function formatWait(seconds: number | null | undefined): string {
+  const total = Math.max(1, Math.ceil(Number(seconds) || 60));
+  if (total < 60) return `${total} segundos`;
+  const minutes = Math.ceil(total / 60);
+  if (minutes < 60) return minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+  const hours = Math.ceil(minutes / 60);
+  return hours === 1 ? '1 hora' : `${hours} horas`;
+}
+
+/** Junta espaços repetidos e apara as pontas, como o servidor faz. */
+export function normalizeSignerName(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+/** Nome e sobrenome, entre 5 e 120 caracteres (mesma regra do servidor). */
+export function isFullName(value: string): boolean {
+  const name = normalizeSignerName(value);
+  return name.length >= 5 && name.length <= 120 && /^\S+( \S+)+$/.test(name);
+}
+
+export function consentLink(origin: string, token: string): string {
+  return `${origin.replace(/\/+$/, '')}${CONSENT_PATH}?token=${encodeURIComponent(token)}`;
+}
+
+/** Só dígitos; número brasileiro sem DDI ganha o 55. */
+export function whatsappDigits(phone: string | null | undefined): string | null {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return digits.length <= 11 ? `55${digits}` : digits;
+}
+
+export function consentWhatsAppMessage(input: {
+  studentName: string;
+  schoolName?: string | null;
+  link: string;
+  forGuardian: boolean;
+  guardianReason?: GuardianReason | null;
+}): string {
+  const firstName = normalizeSignerName(input.studentName).split(' ')[0] || 'o aluno';
+  const school = input.schoolName?.trim() || 'a escola';
+  const opening = !input.forGuardian
+    ? `Olá, ${firstName}! Aqui é da ${school}. Precisamos da sua autorização para o registro das aulas.`
+    : input.guardianReason === 'AGE_UNKNOWN'
+      ? `Olá! Aqui é da ${school}. Precisamos da autorização do responsável por ${firstName} para o registro das aulas.`
+      : `Olá! Aqui é da ${school}. Como ${firstName} é menor de idade, precisamos da sua autorização como responsável para o registro das aulas.`;
+  return [
+    opening,
+    'As aulas passam a ser transcritas pelo Google Meet (sem vídeo), para registrar o que foi trabalhado e dar continuidade ao aprendizado, inclusive se houver troca de professor.',
+    `O termo completo e a autorização estão neste link (leva 1 minuto): ${input.link}`,
+    'Para confirmar que é você, a página manda um código de 6 dígitos para este WhatsApp.',
+    'Dá para mudar de ideia quando quiser, pelo mesmo link.',
+  ].join('\n\n');
+}
+
+export function whatsappUrl(phone: string | null | undefined, message: string): string | null {
+  const digits = whatsappDigits(phone);
+  return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : null;
+}
+
+const ERRORS: Record<string, string> = {
+  contagem_mudou: 'A lista mudou desde a conferência. Confira de novo antes de enviar.',
+  envio_em_andamento: 'Já há uma mensagem deste aluno na fila.',
+  reenvio_so_depois_de_3_dias: 'O reenvio só é liberado 3 dias depois do último envio.',
+  aluno_ja_decidiu: 'Este aluno já respondeu ao termo.',
+  sem_contato: 'Sem telefone para enviar. Complete o cadastro do aluno.',
+  avisos_de_aluno_desligados: 'Os avisos a alunos estão desligados nas configurações da escola.',
+  portal_da_escola_indefinido:
+    'A escola ainda não tem um endereço do portal confirmado para o link do termo. Fale com o suporte da plataforma.',
+  nome_completo_obrigatorio: 'Digite nome e sobrenome.',
+  responsavel_obrigatorio: 'Quem autoriza é o responsável: o aluno é menor de idade ou a escola ainda não cadastrou a data de nascimento.',
+  codigo_incorreto: 'Código incorreto. Confira a mensagem no WhatsApp e digite de novo.',
+  codigo_invalido: 'Digite os 6 números do código.',
+  codigo_expirado: 'O código venceu ou não vale mais. Peça um código novo.',
+  codigo_bloqueado: 'Muitas tentativas erradas. Peça um código novo.',
+  limite_de_envios: 'Já mandamos 3 códigos na última hora. Espere um pouco para pedir outro.',
+  limite_diario: 'Já mandamos 6 códigos por este link hoje. Espere para pedir outro.',
+  link_bloqueado: 'Este link foi bloqueado por segurança (muitos códigos pedidos ou digitados errado). Peça um link novo à escola.',
+  aguarde: 'O WhatsApp da escola está com fila. Tente pedir o código de novo em instantes.',
+  telefone_nao_cadastrado: 'A escola não tem este WhatsApp no cadastro. Peça à escola para cadastrar e mandar um link novo.',
+  whatsapp_indisponivel: 'O WhatsApp da escola está fora do ar agora. Tente de novo mais tarde ou fale com a escola.',
+  whatsapp_recusou: 'O WhatsApp não aceitou a mensagem para este número. Fale com a escola.',
+  kids_classification_requires_direction: 'Só a direção ou a coordenação classifica o aluno como infantil.',
+  data_de_nascimento_invalida: 'Data de nascimento inválida.',
+  link_expirado: 'Este link expirou ou foi substituído. Peça um novo à escola.',
+  relacao_invalida: 'Escolha se você é o aluno ou o responsável.',
+  resposta_invalida: 'Não foi possível registrar a resposta. Tente de novo.',
+  sem_permissao: 'Você não tem permissão para esta ação.',
+  aluno_invalido: 'Aluno não encontrado.',
+  pessoa_invalida: 'Pessoa não encontrada.',
+  informe_o_motivo: 'Informe o motivo (pelo menos 10 caracteres).',
+  complete_seu_nome_no_perfil: 'Complete seu nome no perfil antes de responder.',
+  // O professor só autoriza com a conta Google confirmada por login (migration
+  // 20260926180000): sem esta entrada o cartão mostrava "Algo deu errado".
+  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
+  // O aceite vale para o texto que a pessoa leu (migration 20260927100000): a
+  // escola publicou outra versão enquanto a tela estava aberta.
+  [TERM_CHANGED_ERROR]: 'O termo mudou enquanto você lia. Leia a nova versão e responda de novo.',
+  // Registro autorizado pela escola (migration 20260929100000).
+  registro_autorizado_pela_escola:
+    'A escola autoriza o registro das aulas: não há termo para aceitar nem link para enviar. Quem não quiser ser registrado pode pedir.',
+  somente_a_direcao: 'Só a direção da escola pode fazer isso.',
+  modo_invalido: 'Escolha como a escola autoriza o registro.',
+  aviso_nao_publicado: 'O aviso do registro das aulas ainda não foi publicado. Fale com o suporte da plataforma.',
+  nao_ha_pedido_para_desfazer: 'Não há pedido para não registrar a desfazer.',
+  so_no_registro_autorizado_pela_escola: 'Desfazer o pedido só existe quando a escola autoriza o registro. No aceite individual, a pessoa responde de novo pelo termo.',
+  // O pedido que o professor fez no app só ele desfaz (migration 20260929100000).
+  pedido_do_proprio_professor: 'O próprio professor pediu, no app, para não ter as aulas registradas: só ele desfaz, em “Salas e continuidade”.',
+};
+
+/**
+ * No registro autorizado pela escola não existe "link novo": a escola não gera
+ * link nem manda termo (a página só serve a quem recebeu um link antes). Onde o
+ * texto do aceite individual manda pedir um link novo, aqui a pessoa fala com a
+ * escola pelo WhatsApp — é por lá que o pedido para não registrar chega.
+ */
+const SCHOOL_DEFAULT_ERRORS: Record<string, string> = {
+  link_bloqueado:
+    'Este link foi bloqueado por segurança (muitos códigos pedidos ou digitados errado). Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  link_expirado:
+    'Este link expirou ou foi substituído. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+  telefone_nao_cadastrado:
+    'A escola não tem este WhatsApp no cadastro. Para pedir que as aulas não sejam registradas, fale com a escola pelo WhatsApp.',
+};
+
+/** Traduz o código de erro do servidor; mensagem desconhecida vira texto genérico. */
+export function consentErrorMessage(raw: string | null | undefined, mode: AuthorizationMode = 'INDIVIDUAL_CONSENT'): string {
+  const text = String(raw || '');
+  const table = mode === 'SCHOOL_DEFAULT' ? { ...ERRORS, ...SCHOOL_DEFAULT_ERRORS } : ERRORS;
+  const code = Object.keys(table)
+    .sort((a, b) => b.length - a.length)
+    .find(key => text.includes(key));
+  return code ? table[code] : 'Algo deu errado. Tente de novo em instantes.';
+}
+
+/** Erro do código com as tentativas restantes ou a espera, quando o servidor diz. */
+export function codeErrorMessage(input: {
+  error?: string | null;
+  attemptsLeft?: number | null;
+  retryAfterSeconds?: number | null;
+  /** Modo da escola do link: no registro autorizado pela escola não há link novo a pedir. */
+  mode?: AuthorizationMode;
+}): string {
+  const code = String(input.error || '');
+  if (code === 'codigo_incorreto' && Number(input.attemptsLeft) > 0) {
+    const left = Number(input.attemptsLeft);
+    return `Código incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`} para este código.`;
+  }
+  if ((code === 'limite_de_envios' || code === 'limite_diario' || code === 'aguarde') && input.retryAfterSeconds) {
+    return `${consentErrorMessage(code, input.mode)} Tente em ${formatWait(input.retryAfterSeconds)}.`;
+  }
+  return consentErrorMessage(code, input.mode);
+}
+
+export function formatDecisionDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+// ---------------------------------------------------------------------------
+// Envio em lote (migration 20260926210000). As regras valem no banco; aqui só
+// os rótulos e as contas que a tela mostra.
+
+export type ConsentRecipient = 'STUDENT' | 'GUARDIAN';
+export type RequestState = 'QUEUED' | 'SENT' | 'UNCERTAIN' | 'NOT_SENT';
+
+export const RECIPIENT_LABEL: Record<ConsentRecipient, string> = {
+  STUDENT: 'aluno',
+  GUARDIAN: 'responsável',
+};
+
+export const REQUEST_STATE_LABEL: Record<RequestState, string> = {
+  QUEUED: 'Na fila',
+  SENT: 'Enviado',
+  UNCERTAIN: 'Envio incerto',
+  NOT_SENT: 'Não enviado',
+};
+
+const MISSING_CONTACT: Record<string, string> = {
+  idade_nao_cadastrada:
+    'Idade não confirmada pela escola e sem telefone do responsável. Cadastre a data de nascimento (maior de idade recebe no próprio número) ou o telefone do responsável.',
+  menor_sem_telefone_do_responsavel: 'Menor de idade sem telefone do responsável no cadastro.',
+  responsavel_nao_confirmado:
+    'O telefone do responsável no cadastro não foi confirmado pela escola (foi gravado pelo próprio aluno, não tem registro de quem gravou ou é de um responsável de fora da escola). Confirme o contato em Qualidade dos contatos.',
+  sem_telefone: 'Sem telefone no cadastro.',
+};
+
+/** Por que o aluno está "sem contato" — com o que falta cadastrar. */
+export function missingContactLabel(reason: string | null | undefined): string {
+  return MISSING_CONTACT[String(reason || '')] || 'Sem telefone para enviar.';
+}
+
+const NOT_SENT: Record<string, string> = {
+  aluno_ja_decidiu: 'respondeu antes do envio',
+  contato_mudou: 'o contato mudou antes do envio',
+  link_substituido_ou_vencido: 'o link foi substituído antes do envio',
+  mensagem_alterada: 'a mensagem foi alterada na fila',
+  aluno_nao_esta_ativo: 'o aluno deixou de estar ativo',
+  termo_mudou_de_versao: 'o termo mudou de versão antes do envio',
+  avisos_de_aluno_desligados: 'avisos a alunos desligados',
+  no_whatsapp_instance: 'WhatsApp da escola desconectado',
+  invalid_phone: 'telefone inválido',
+  removido_da_fila: 'removido da fila',
+  test_fixture_suppressed: 'conta de teste',
+  pedido_vencido: 'ficou mais de 2 dias na fila sem sair',
+  portal_da_escola_indefinido: 'a escola está sem endereço do portal',
+  portal_mudou: 'o endereço do portal mudou antes do envio',
+  link_sem_telefone_do_pedido: 'o link não tinha o telefone da mensagem',
+  registro_autorizado_pela_escola: 'a escola passou a autorizar o registro das aulas',
+};
+
+/** Motivo de uma mensagem que não saiu, em português. */
+export function notSentReasonLabel(reason: string | null | undefined): string {
+  const raw = String(reason || '');
+  if (NOT_SENT[raw]) return NOT_SENT[raw];
+  if (raw.startsWith('provider_http_')) return 'o WhatsApp recusou o envio';
+  if (raw.includes('attempts_exhausted')) return 'tentativas esgotadas';
+  return 'não saiu';
+}
+
+/**
+ * Quando a mensagem na fila deve sair: o horário marcado ou o adiamento (fora
+ * da janela, ritmo ou teto do WhatsApp), o que for mais tarde.
+ */
+export function queuedSendAt(
+  scheduledFor: string | null | undefined,
+  nextAttemptAt?: string | null,
+): string | null {
+  const times = [scheduledFor, nextAttemptAt]
+    .map(value => (value ? new Date(value).getTime() : Number.NaN))
+    .filter(time => !Number.isNaN(time));
+  return times.length ? new Date(Math.max(...times)).toISOString() : null;
+}
+
+/**
+ * Até quando o envio em lote pula o aluno que recebeu link gerado à mão (3
+ * dias, a mesma regra do banco). Nulo quando não pula mais.
+ */
+export function manualLinkHoldUntil(
+  manualLinkAt: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!manualLinkAt) return null;
+  const created = new Date(manualLinkAt).getTime();
+  if (Number.isNaN(created)) return null;
+  const until = created + 3 * 24 * 60 * 60 * 1000;
+  return until > now.getTime() ? new Date(until).toISOString() : null;
+}
+
+/** "Reenviar" liberado? Quem decide é o servidor; a tela só espelha a data. */
+export function resendAllowed(availableAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!availableAt) return false;
+  const date = new Date(availableAt);
+  return !Number.isNaN(date.getTime()) && date.getTime() <= now.getTime();
+}
+
+const TZ = 'America/Sao_Paulo';
+
+function dayKey(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { timeZone: TZ });
+}
+
+function weekdayAndDay(date: Date): string {
+  const weekday = date.toLocaleDateString('pt-BR', { timeZone: TZ, weekday: 'short' }).replace(/\.$/, '');
+  const day = date.toLocaleDateString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+  return `${weekday} ${day}`;
+}
+
+function clock(date: Date): string {
+  return date.toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** "sáb 26/09 às 19:50" no horário de Brasília. */
+export function formatSendTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${weekdayAndDay(date)} às ${clock(date)}`;
+}
+
+/** Janela do lote: "sáb 26/09, das 14:05 às 14:38" ou "de sáb 26/09 às 19:50 até seg 28/09 às 09:12". */
+export function sendWindowText(first: string | null | undefined, last: string | null | undefined): string {
+  if (!first) return '';
+  const start = new Date(first);
+  const end = new Date(last || first);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+  if (start.getTime() === end.getTime()) return formatSendTime(first);
+  if (dayKey(start) === dayKey(end)) return `${weekdayAndDay(start)}, das ${clock(start)} às ${clock(end)}`;
+  return `de ${formatSendTime(first)} até ${formatSendTime(last)}`;
+}
+
+type RpcErrorLike = { code?: string | null; message?: string | null } | null | undefined;
+
+/**
+ * RPC que ainda não existe no banco (PostgREST devolve PGRST202; Postgres,
+ * 42883). A tela mostra o recurso como indisponível em vez de quebrar.
+ */
+export function isMissingRpcError(error: RpcErrorLike): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  return /could not find the function|function .* does not exist/i.test(String(error.message || ''));
+}
+
+export type GoogleIdentityState =
+  | { status: 'verified'; email: string; verifiedAt: string }
+  | { status: 'missing'; email: string | null }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+/** Resposta de `get_my_google_identity`: `{ email, verified_at }` ou nulo. */
+export function googleIdentityState(data: unknown, error: RpcErrorLike): GoogleIdentityState {
+  if (error) return isMissingRpcError(error) ? { status: 'unavailable' } : { status: 'error' };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return { status: 'missing', email: null };
+  const record = row as Record<string, unknown>;
+  const email = typeof record.email === 'string' && record.email.trim() ? record.email.trim() : null;
+  const verifiedAt = typeof record.verified_at === 'string' && record.verified_at.trim() ? record.verified_at : null;
+  return email && verifiedAt ? { status: 'verified', email, verifiedAt } : { status: 'missing', email };
+}

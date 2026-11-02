@@ -4,6 +4,10 @@ import { User, Mail, Lock, Phone, Award, CheckCircle, AlertCircle, ArrowRight, L
 import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import { contractIncludesLessonRecording } from '../lib/contractTerms';
+import { offeredContractTermsVersion } from '../services/contractTermsService';
+import { openGoogleAuthorization } from '../lib/googleAuthorizationWindow';
+import { parseTeacherProviderIdentity } from '../lib/teacherProviderIdentity';
 
 const TeacherOnboarding: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -20,12 +24,20 @@ const TeacherOnboarding: React.FC = () => {
     const [pixKey, setPixKey] = useState('');
     const [meetLink, setMeetLink] = useState('');
     const [avatarUrl, setAvatarUrl] = useState('');
+    const [googleProof, setGoogleProof] = useState('');
+    const [googleAuthorizationUrl, setGoogleAuthorizationUrl] = useState('');
+    const [googleEmail, setGoogleEmail] = useState('');
+    const [googleBusy, setGoogleBusy] = useState(false);
+    const [googleError, setGoogleError] = useState('');
 
     // New Fields for Contract
     const [rg, setRg] = useState('');
     const [cpf, setCpf] = useState('');
     const [address, setAddress] = useState('');
     const [birthDate, setBirthDate] = useState('');
+    const [companyName, setCompanyName] = useState('');
+    const [cnpj, setCnpj] = useState('');
+    const [companyAddress, setCompanyAddress] = useState('');
     const [userIp, setUserIp] = useState('');
     const [contractAccepted, setContractAccepted] = useState(false);
 
@@ -71,6 +83,71 @@ const TeacherOnboarding: React.FC = () => {
         : null;
     const schoolIdentity = getSchoolContractIdentity(schoolInfo);
     const teacherContractReadiness = getTeacherContractReadiness(schoolInfo, offerData?.hourlyRate);
+    // Versão do contrato que a escola do convite oferece (edge
+    // tenant-legal-assets): esta tela MOSTRA, congela no PDF e ENVIA a mesma.
+    // Só a escola que decidiu registrar as aulas oferece a Cláusula 11ª.
+    const contractTermsVersion = offeredContractTermsVersion('TEACHER', offerData);
+    const providerIdentity = { companyName, cnpj, companyAddress, representativeCpf: cpf, representativeHasAuthority: true };
+    const providerReady = contractTermsVersion < 3 || Boolean(parseTeacherProviderIdentity(providerIdentity));
+    useEffect(() => { setContractAccepted(false); }, [companyName, cnpj, companyAddress, cpf, name, contractTermsVersion]);
+    const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractTermsVersion);
+    const googleAccountRequired = offerData?.googleAccountRequired === true;
+    const offerId = new URLSearchParams(window.location.search).get('offer') || '';
+
+    const startGoogleConfirmation = async () => {
+        setGoogleBusy(true); setGoogleError(''); setGoogleEmail('');
+        setGoogleProof(''); setGoogleAuthorizationUrl('');
+        try {
+            const { result, opened } = await openGoogleAuthorization(async () => {
+                const { data, error } = await supabase.functions.invoke('google-meet', {
+                    body: { action: 'teacher_invite_google_start', offerId },
+                });
+                if (error || !data?.proof || !data?.authorization_url) throw new Error();
+                return data as { proof: string; authorization_url: string };
+            });
+            setGoogleProof(result.proof);
+            if (!opened) setGoogleAuthorizationUrl(result.authorization_url);
+        } catch {
+            setGoogleError('Não foi possível iniciar a confirmação. Confira o convite e tente novamente.');
+        } finally { setGoogleBusy(false); }
+    };
+
+    useEffect(() => {
+        if (!googleProof || googleEmail) return;
+        const refresh = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const { data, error } = await supabase.functions.invoke('google-meet', {
+                    body: { action: 'teacher_invite_google_status', offerId, proof: googleProof },
+                });
+                if (!error && data?.verified && data?.email) {
+                    setGoogleEmail(data.email); setGoogleError('');
+                }
+            } catch { /* A conferência manual continua disponível. */ }
+        };
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, [googleProof, googleEmail, offerId]);
+
+    const checkGoogleConfirmation = async () => {
+        if (!googleProof) return;
+        setGoogleBusy(true); setGoogleError('');
+        try {
+            const { data, error } = await supabase.functions.invoke('google-meet', {
+                body: { action: 'teacher_invite_google_status', offerId, proof: googleProof },
+            });
+            if (error || !data?.verified || !data?.email) {
+                throw new Error('Ainda não recebemos a confirmação do Google. Termine o login na outra aba e tente novamente.');
+            }
+            setGoogleEmail(data.email);
+        } catch (error) {
+            setGoogleError((error as Error).message);
+        } finally { setGoogleBusy(false); }
+    };
 
     const openContract = async () => {
         const offerId = new URLSearchParams(window.location.search).get('offer');
@@ -89,7 +166,12 @@ const TeacherOnboarding: React.FC = () => {
 
     const goToContract = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!teacherContractReadiness.isReady) {
+        if (!providerReady) { setContractError('Confira a razão social, o CNPJ, o endereço da empresa e o CPF do representante antes de continuar.'); return; }
+        if (googleAccountRequired && !googleEmail) {
+            setGoogleError('Confirme primeiro a conta Google com que você entrará nas aulas.');
+            return;
+        }
+        if (!teacherContractReadiness.isReady || !providerReady) {
             setContractError(`A escola precisa configurar ${teacherContractReadiness.missingFields.join(', ')} antes de emitir este contrato.`);
             return;
         }
@@ -101,6 +183,12 @@ const TeacherOnboarding: React.FC = () => {
 
     const handleRegister = async () => {
         if (!offerData || !contractAccepted) return;
+        if (!providerReady) { setContractError('Confira os dados da empresa e do representante antes de assinar.'); setContractAccepted(false); return; }
+        if (googleAccountRequired && !googleEmail) {
+            setContractError('Confirme a conta Google das aulas antes de assinar.');
+            setStep('FORM');
+            return;
+        }
         if (!teacherContractReadiness.isReady) {
             setContractError(`A assinatura foi bloqueada porque faltam: ${teacherContractReadiness.missingFields.join(', ')}.`);
             setContractAccepted(false);
@@ -119,12 +207,16 @@ const TeacherOnboarding: React.FC = () => {
                 const el = document.getElementById('teacher-contract-print');
                 if (!el) throw new Error('Documento do contrato indisponível para captura.');
                 const html2pdf = (await import('html2pdf.js')).default;
+                // O Safari do iPhone recusa canvas acima de ~16,7 milhões de pixels,
+                // e o contrato inteiro na largura do celular passa disso com escala 1,5.
+                const capturedArea = Math.max(1, el.scrollWidth * el.scrollHeight);
+                const captureScale = Math.min(1.5, Math.sqrt(15_000_000 / capturedArea));
                 // O plugin aceita `pagebreak` em runtime, mas a declaração de tipos
                 // publicada pelo pacote ainda não expõe essa opção.
                 const pdfOptions = {
                         margin: 8,
                         image: { type: 'jpeg', quality: 0.85 },
-                        html2canvas: { scale: 1.5, useCORS: true },
+                        html2canvas: { scale: captureScale, useCORS: true },
                         jsPDF: { unit: 'mm', format: 'a4' },
                         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
                     };
@@ -136,7 +228,7 @@ const TeacherOnboarding: React.FC = () => {
                 if (!contractPdfBase64) throw new Error('PDF jurídico vazio.');
             } catch (pdfErr) {
                 console.error('PDF jurídico do contrato não foi gerado:', pdfErr);
-                throw new Error('Não foi possível congelar a versão jurídica do contrato. Verifique a assinatura da escola e tente novamente.');
+                throw new Error('Não foi possível gerar o PDF do contrato neste aparelho. Tente novamente; se persistir, abra o convite em outro navegador.');
             }
 
             const { data, error: fnError } = await supabase.functions.invoke('register-teacher', {
@@ -147,6 +239,7 @@ const TeacherOnboarding: React.FC = () => {
                     phone: phone.replace(/\D/g, ''), // Send clean phone
                     pixKey,
                     meetLink,
+                    googleIdentityProof: googleProof,
                     avatar: avatarUrl,
                     offerPayload: new URLSearchParams(window.location.search).get('offer'),
                     rg,
@@ -155,6 +248,11 @@ const TeacherOnboarding: React.FC = () => {
                     birthDate,
                     contractAccepted: true,
                     rateUnit: 'PER_LESSON',
+                    // Versão do texto que esta tela mostrou e o PDF congelou
+                    // (a que a escola do convite oferece). O servidor recusa
+                    // (409) a página antiga, sem a versão, e a desatualizada.
+                    contractTermsVersion,
+                    ...(contractTermsVersion >= 3 ? { providerIdentity } : {}),
                     acceptedAt: new Date().toISOString(),
                     userIp: userIp || 'Pendente',
                     contractPdfBase64
@@ -163,7 +261,9 @@ const TeacherOnboarding: React.FC = () => {
 
             if (fnError) {
                 if (fnError.context instanceof Response && fnError.context.status === 409) {
-                    throw new Error('O convite foi atualizado. Recarregue a página para revisar o valor por aula antes de assinar.');
+                    let serverMessage = '';
+                    try { serverMessage = String((await fnError.context.json())?.error || ''); } catch { /* resposta sem JSON */ }
+                    throw new Error(serverMessage || 'O contrato, o convite ou a confirmação Google mudou. Recarregue a página e tente novamente.');
                 }
                 throw new Error(fnError.message || "Erro ao conectar com o servidor.");
             }
@@ -234,7 +334,9 @@ const TeacherOnboarding: React.FC = () => {
                                     className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer"
                                 />
                                 <label htmlFor="accept-contract" className="text-sm font-bold text-brand-text cursor-pointer select-none">
-                                    Li e aceito os termos do contrato de prestação de serviço docente.
+                                    {withLessonRecording
+                                        ? 'Li e aceito os termos do contrato de prestação de serviço docente, inclusive a Cláusula 11ª (registro das aulas: transcrição e anotações automáticas do Google Meet, sem vídeo).'
+                                        : 'Li e aceito os termos do contrato de prestação de serviço docente.'}
                                 </label>
                             </div>
                             <div className="ml-0 flex flex-wrap items-center gap-2 rounded-lg border border-brand-border bg-brand-surface-2 p-2 text-[10px] font-mono uppercase tracking-wider text-brand-muted sm:ml-8">
@@ -250,7 +352,7 @@ const TeacherOnboarding: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleRegister}
-                                disabled={loading || !teacherContractReadiness.isReady || !contractAccepted}
+                                disabled={loading || !teacherContractReadiness.isReady || !providerReady || !contractAccepted}
                                 className="flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-700 disabled:scale-95 disabled:grayscale disabled:opacity-30 sm:w-auto sm:px-10"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20} /> Assinar e Concluir</>}
@@ -269,6 +371,8 @@ const TeacherOnboarding: React.FC = () => {
                         school={schoolInfo}
                         hourlyRate={offerData?.hourlyRate}
                         rateUnit="PER_LESSON"
+                        termsVersion={contractTermsVersion}
+                        providerIdentity={providerIdentity}
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                         acceptedAt={teacherContractReadiness.isReady && contractAccepted ? new Date().toISOString() : undefined}
                         userIp={userIp}
@@ -300,7 +404,7 @@ const TeacherOnboarding: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 py-12 px-4 font-sans">
+        <div className="min-h-screen bg-linear-to-br from-slate-50 to-indigo-50 py-12 px-4 font-sans">
             <div className="max-w-4xl mx-auto flex flex-col md:flex-row bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
 
                 {/* Left Side: Offer Details */}
@@ -365,7 +469,7 @@ const TeacherOnboarding: React.FC = () => {
                                     placeholder="URL da foto (opcional)"
                                     value={avatarUrl}
                                     onChange={e => setAvatarUrl(e.target.value)}
-                                    className="text-xs w-full bg-brand-surface-2 border-none rounded-lg px-3 py-2 text-brand-muted outline-none focus:ring-1 focus:ring-tenant-primary"
+                                    className="text-xs w-full bg-brand-surface-2 border-none rounded-lg px-3 py-2 text-brand-muted outline-hidden focus:ring-1 focus:ring-tenant-primary"
                                 />
                             </div>
                         </div>
@@ -409,10 +513,37 @@ const TeacherOnboarding: React.FC = () => {
                                 value={meetLink} onChange={e => setMeetLink(e.target.value)}
                                 icon={<LinkIcon size={16} />}
                             />
+                            {googleAccountRequired && (
+                                <div data-tour="teacher-invite-google" className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-5 text-sm text-slate-800">
+                                    <p className="font-black">Obrigatório: confirme a conta Google das suas aulas</p>
+                                    <p className="mt-2 leading-relaxed">Escolha a <strong>sua conta Google com que você entrará nas reuniões do Google Meet</strong>. Ela será vinculada ao seu cadastro para você entrar como coanfitrião nas salas oficiais da escola. Pode ser diferente do e-mail de acesso ao portal. Não use a conta central da escola nem a de outra pessoa.</p>
+                                    {googleEmail && <p className="mt-3 font-bold text-emerald-700">Conta confirmada: {googleEmail}</p>}
+                                    {!googleEmail ? (
+                                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                                            <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar minha conta Google</button>
+                                            {googleAuthorizationUrl && <a href={googleAuthorizationUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white">Abrir login Google ↗</a>}
+                                            {googleProof && <button type="button" disabled={googleBusy} onClick={() => void checkGoogleConfirmation()} className="font-bold text-indigo-700 underline">Já confirmei</button>}
+                                        </div>
+                                    ) : (
+                                        <button type="button" disabled={googleBusy} onClick={() => void startGoogleConfirmation()} className="mt-2 font-bold text-indigo-700 underline">Usar outra conta ou confirmar novamente</button>
+                                    )}
+                                    {googleError && <p role="alert" className="mt-3 font-bold text-red-700">{googleError}</p>}
+                                    {googleAuthorizationUrl && <p className="mt-2 text-sm font-bold text-amber-800">O navegador bloqueou a nova aba. Toque em “Abrir login Google”.</p>}
+                                    {googleProof && !googleEmail && <p role="status" className="mt-2 text-sm">Conclua o login na aba do Google. Ao voltar, conferimos a confirmação automaticamente.</p>}
+                                    <p className="mt-2 text-xs text-slate-600">O link do Google dura 10 minutos. Não compartilhe sua senha ou código com a escola.</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Personal Info for Contract */}
                         <div className="space-y-5 border-t border-brand-border pt-6">
+                            {contractTermsVersion >= 3 && <div data-tour="teacher-provider-identity" className="space-y-4 rounded-xl border border-brand-border p-4">
+                                <p className="text-sm font-bold">Empresa que presta os serviços</p>
+                                <Input label="Razão social / nome empresarial" value={companyName} onChange={e => setCompanyName(e.target.value)} required maxLength={160} />
+                                <Input label="CNPJ da empresa" value={cnpj} onChange={e => setCnpj(e.target.value.toUpperCase())} required maxLength={18} />
+                                <Input label="Endereço completo da empresa" value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} required maxLength={300} />
+                                <p className="text-xs text-brand-muted">Ao assinar, você declara poderes para representar essa empresa. Confira os dados antes de concluir.</p>
+                            </div>}
                             <h3 className="text-xs font-black uppercase tracking-widest text-brand-muted mb-2 flex items-center gap-2">
                                 <FileText size={14} /> Dados para Contrato
                             </h3>
@@ -461,94 +592,71 @@ const TeacherOnboarding: React.FC = () => {
     );
 };
 
-const Input = ({ label, value, onChange, icon, type = "text", required = false }: any) => (
+const Input = ({ label, icon, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: React.ReactNode }) => {
+    const id = React.useId();
+    return (
     <div className="space-y-1.5">
-        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted ml-1 flex items-center gap-1">
-            {label} {required && <span className="text-red-400">*</span>}
+        <label htmlFor={id} className="text-[10px] font-black uppercase tracking-widest text-brand-muted ml-1 flex items-center gap-1">
+            {label} {props.required && <span className="text-red-400">*</span>}
         </label>
         <div className="relative group">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none group-focus-within:text-tenant-primary transition-colors">
                 {icon}
             </div>
             <input
-                type={type}
-                required={required}
-                value={value}
-                onChange={onChange}
-                className="w-full pl-11 pr-4 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary transition-all placeholder:text-brand-muted"
+                {...props}
+                id={id}
+                className="w-full pl-11 pr-4 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary transition-all placeholder:text-brand-muted"
             />
         </div>
     </div>
-);
+    );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FUNIL DE MENTALIDADE PJ — o candidato só chega ao contrato depois de LER o
-// manifesto e ACERTAR o quiz de compreensão. Objetivo: ele enxergar grandeza e
-// seriedade — é o CNPJ DELE em jogo, ele é uma empresa prestando serviço.
+// Orientação pré-contratual e perguntas de compreensão; sem renúncia de direitos.
 // ─────────────────────────────────────────────────────────────────────────────
+// Orientação de leitura: não substitui o contrato nem decide a natureza da relação.
 const QUIZ: { q: string; options: string[]; correct: number; explain: string }[] = [
     {
-        q: '1. Qual é a natureza da sua relação com a escola contratante?',
-        options: [
-            'Serei funcionário CLT da escola',
-            'Sou uma EMPRESA (meu CNPJ) prestando serviço para outra empresa — sem vínculo empregatício',
-            'Serei estagiário com supervisão diária',
-        ],
+        q: '1. O que a assinatura de um contrato por PJ demonstra?',
+        options: ['Impede qualquer reconhecimento de emprego', 'Documenta o acordo proposto; a natureza da relação também depende de como o trabalho acontece', 'Dispensa a identificação da empresa'],
         correct: 1,
-        explain: 'Exato: é contrato entre empresas. Seu CNPJ, sua reputação e sua autonomia — com liberdade e responsabilidade de dono.',
+        explain: 'O texto, o cadastro e a execução precisam ser coerentes. Direitos indisponíveis não são renunciados no cadastro.',
     },
     {
-        q: '2. O que acontece quando você falta a uma aula?',
-        options: [
-            'Nada, é só avisar depois',
-            'Minha ofensiva do turbo reinicia em zero, a aula precisa de reposição e o aluno pode ser transferido se virar rotina',
-            'Recebo advertência por escrito',
-        ],
+        q: '2. Antes de assumir um novo atendimento, o que você precisa conferir?',
+        options: ['Só o nome do aluno', 'Objeto, disponibilidade, agenda, remuneração e condições antes do aceite', 'Nada, todo aluno já está aceito pelo contrato geral'],
         correct: 1,
-        explain: 'Isso. Assiduidade é o coração do negócio: falta derruba seu ganho, gera reposição e, se repetir, o aluno troca de professor.',
+        explain: 'Aceite o compromisso depois de conferir as condições. Uma proposta não aceita não é uma aula confirmada.',
     },
     {
-        q: '3. Como uma aula conta para o seu pagamento?',
-        options: [
-            'Basta eu lançar no sistema',
-            'O aluno confirma a presença pelo WhatsApp; se a resposta dele divergir do meu lançamento, o pagamento daquela aula fica retido até a coordenação resolver',
-            'A escola confia sem verificação',
-        ],
+        q: '3. Como tratar uma divergência sobre uma aula?',
+        options: ['Inventar um registro para encerrar a pendência', 'Preservar os registros, informar a escola e permitir a apuração das informações', 'Considerar que o silêncio do aluno prova tudo'],
         correct: 1,
-        explain: 'Correto: temos verificação antifraude com o aluno. Lançamento honesto + aula dada = pagamento garantido, sem stress.',
+        explain: 'Uma reclamação ou um registro isolado precisa ser examinado com as demais informações.',
     },
     {
-        q: '4. Como funciona uma saída correta da escola contratante?',
-        options: [
-            'Posso simplesmente parar de dar aula quando quiser',
-            'Aviso com 30 dias, ajudo na transição dos alunos e recebo o último fechamento com bônus de 10%; sumir sem aviso gera multa contratual',
-            'Preciso pedir demissão por carta registrada',
-        ],
+        q: '4. Como comunicar o encerramento da prestação?',
+        options: ['Parar sem informar a escola', 'Comunicar por escrito, observar o prazo e as hipóteses de redução ou saída antecipada do contrato e organizar a transição', 'Permanecer até a escola encontrar substituto, sem limite'],
         correct: 1,
-        explain: 'Isso! Saída elegante é premiada; abandono é penalizado. Profissional de verdade fecha ciclos direito.',
+        explain: 'A saída tem data e deve seguir o instrumento aceito. Não depende de permanecer indefinidamente ou de aceitar novos alunos.',
     },
     {
-        q: '5. O que você emite todo mês depois de receber o repasse?',
-        options: [
-            'Nada, o Pix já resolve',
-            'Um recibo de papel assinado',
-            'A NFS-e do meu CNPJ (emissor nacional gov.br/nfse ou app MEI), no valor do fechamento, anexada na plataforma',
-        ],
+        q: '5. Como cumprir as obrigações fiscais da empresa?',
+        options: ['O PIX substitui a nota fiscal', 'Todo professor precisa ser MEI', 'Manter cadastro regular e emitir a nota conforme a legislação e o regime aplicável'],
         correct: 2,
-        explain: 'Perfeito: empresa fatura com nota. É sua obrigação fiscal como PJ — e leva menos de 5 minutos no app MEI.',
+        explain: 'O enquadramento e o emissor da nota dependem da situação fiscal da empresa.',
     },
 ];
 
 const MANIFESTO: { emoji: string; title: string; text: string }[] = [
-    { emoji: '🏢', title: 'Você é uma empresa', text: 'A escola contratante não admite você como funcionário neste fluxo — celebra uma parceria entre EMPRESAS. É o seu CNPJ que assina, fatura e constrói reputação aqui. Aja como dono, porque você é.' },
-    // ⚠️ Sem valor de aula escrito aqui: a tabela é `teacher_pay_tiers` e muda por
-    // decisão da direção. Quando esta tela citava "R$ 9,50/10,50", prometia uma
-    // faixa que não existia — o professor via na tela e não via na folha.
-    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, ao atingir a carteira mínima indicada no painel e 30 dias consecutivos sem falta, destrava o turbo — a aula passa a valer mais conforme a antiguidade do aluno. O card "Turbo" no seu painel mostra sua ofensiva e os valores da carteira. Uma falta reinicia a ofensiva em zero.' },
-    { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
-    { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
-    { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },
-    { emoji: '🤝', title: 'Saída com elegância', text: 'Um dia você pode querer seguir outro caminho — sem problema. Avise com 30 dias, ajude na transição dos alunos e receba seu último fechamento com bônus de 10%. Sumir sem aviso gera multa contratual e queima sua reputação.' },
+    { emoji: '🏢', title: 'Confira as partes', text: 'Verifique quem contrata, quem presta o serviço e quem representa a empresa. A proposta de contratação por PJ não contém garantia sobre a natureza jurídica da relação na prática.' },
+    { emoji: '📅', title: 'Proposta e compromisso', text: 'Informe sua disponibilidade e confira as condições antes de assumir o atendimento. Depois do aceite, cumpra as aulas combinadas e comunique impedimentos pelo canal oficial.' },
+    { emoji: '🛡️', title: 'Registros verdadeiros', text: 'Registre o atendimento como ocorreu. Divergências são examinadas com as informações das partes; o cadastro não autoriza lançamento fictício nem substitui a apuração.' },
+    { emoji: '📈', title: 'Confira sua remuneração', text: 'Leia o valor por aula e as condições comerciais do documento. Eventuais bonificações seguem o instrumento ou a política aplicável; esta orientação não cria novas faixas ou promessas de ganho.' },
+    { emoji: '🤝', title: 'Você pode encerrar', text: 'Comunique a saída por escrito e confira o prazo contratual, as possibilidades de acordo e os motivos que possam justificar uma saída antecipada. A transição preserva o atendimento e a remuneração devida, sem permanência indefinida.' },
+    { emoji: '🧾', title: 'Cadastro fiscal', text: 'Mantenha a identificação da empresa e emita os documentos fiscais conforme a legislação aplicável. Em caso de dúvida sobre enquadramento, confira com seu contador.' },
 ];
 
 const MindsetFunnel: React.FC<{ name: string; schoolName: string; onBack: () => void; onDone: () => void }> = ({ name, schoolName, onBack, onDone }) => {
@@ -569,7 +677,7 @@ const MindsetFunnel: React.FC<{ name: string; schoolName: string; onBack: () => 
             <div className="max-w-3xl mx-auto px-4 py-8 sm:py-12 pb-32">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mb-2">Etapa 2 de 3 · Mentalidade profissional · {schoolName}</p>
                 <h1 className="text-2xl sm:text-3xl font-black text-brand-text leading-tight">
-                    {name ? `${name.split(' ')[0]}, antes` : 'Antes'} de assinar: aqui você não é funcionário. <span className="text-brand-accent">Você é uma empresa.</span>
+                    {name ? `${name.split(' ')[0]}, conheça` : 'Conheça'} a proposta antes de assinar: <span className="text-brand-accent">autonomia, atendimento e transição.</span>
                 </h1>
                 <p className="text-sm text-brand-muted mt-2 leading-relaxed">
                     Leia com atenção — o quiz no final é obrigatório e só libera o contrato com todas as respostas certas.

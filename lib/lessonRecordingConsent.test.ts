@@ -1,0 +1,381 @@
+import { describe, expect, it } from 'vitest';
+import {
+  asAuthorizationMode,
+  asAuthorizationSummary,
+  AUTHORIZATION_SWITCH_EFFECT,
+  formatDecidedOn,
+  isObjection,
+  objectionRequestMessage,
+  asDecision,
+  asGuardianReason,
+  asLinkBlockedReason,
+  asNotEffectiveReason,
+  asTermSchoolIdentity,
+  codeErrorMessage,
+  consentErrorMessage,
+  formatSendTime,
+  manualLinkHoldUntil,
+  missingContactLabel,
+  notSentReasonLabel,
+  queuedSendAt,
+  resendAllowed,
+  sendWindowText,
+  consentLink,
+  consentWhatsAppMessage,
+  fillTermMarkers,
+  formatWait,
+  googleIdentityState,
+  guardianReasonText,
+  isFullName,
+  isMissingRpcError,
+  isSixDigitCode,
+  normalizeSignerName,
+  notEffectiveText,
+  onlyDigits,
+  whatsappDigits,
+  whatsappUrl,
+  SCHOOL_IDENTITY_GAP_LABEL,
+  TERM_CHANGED_ERROR,
+  TERM_MARKERS,
+  termChangedNotice,
+} from './lessonRecordingConsent';
+
+describe('nome de quem autoriza', () => {
+  it('normaliza espaços como o servidor', () => {
+    expect(normalizeSignerName('  Maria   da  Silva ')).toBe('Maria da Silva');
+  });
+
+  it('exige nome e sobrenome', () => {
+    expect(isFullName('Maria')).toBe(false);
+    expect(isFullName('Maria Silva')).toBe(true);
+    expect(isFullName('  Ana   Paula ')).toBe(true);
+    expect(isFullName('A B')).toBe(false);
+    expect(isFullName(`Maria ${'x'.repeat(120)}`)).toBe(false);
+  });
+});
+
+describe('link e WhatsApp', () => {
+  it('monta o link público com o token', () => {
+    expect(consentLink('https://system.wisewolflanguage.com.br/', 'a'.repeat(64)))
+      .toBe(`https://system.wisewolflanguage.com.br/registro-das-aulas?token=${'a'.repeat(64)}`);
+  });
+
+  it('põe o DDI 55 em número brasileiro sem ele', () => {
+    expect(whatsappDigits('(11) 99999-0000')).toBe('5511999990000');
+    expect(whatsappDigits('5511999990000')).toBe('5511999990000');
+    expect(whatsappDigits('123')).toBeNull();
+    expect(whatsappDigits(null)).toBeNull();
+  });
+
+  it('não abre WhatsApp sem telefone', () => {
+    expect(whatsappUrl('', 'oi')).toBeNull();
+    expect(whatsappUrl('11999990000', 'oi')).toBe('https://wa.me/5511999990000?text=oi');
+  });
+
+  it('fala com o responsável quando o aluno é menor', () => {
+    const message = consentWhatsAppMessage({
+      studentName: 'Pedro Fixture',
+      schoolName: 'Escola Fixture',
+      link: 'https://exemplo.invalid/x',
+      forGuardian: true,
+    });
+    expect(message).toContain('Como Pedro é menor de idade');
+    expect(message).toContain('https://exemplo.invalid/x');
+    expect(message).toContain('sem vídeo');
+  });
+
+  it('fala direto com o aluno adulto', () => {
+    const message = consentWhatsAppMessage({
+      studentName: 'Ana Fixture',
+      link: 'https://exemplo.invalid/y',
+      forGuardian: false,
+    });
+    expect(message.startsWith('Olá, Ana!')).toBe(true);
+    expect(message).toContain('a escola');
+  });
+});
+
+describe('respostas do servidor', () => {
+  it('traduz os códigos de erro', () => {
+    expect(consentErrorMessage('ERROR: responsavel_obrigatorio')).toContain('responsável');
+    expect(consentErrorMessage('link_expirado')).toContain('expirou');
+    expect(consentErrorMessage('qualquer coisa')).toContain('Tente de novo');
+    expect(consentErrorMessage(undefined)).toContain('Tente de novo');
+  });
+
+  it('decisão desconhecida vira "sem resposta"', () => {
+    expect(asDecision('ACCEPTED')).toBe('ACCEPTED');
+    expect(asDecision('REVOKED')).toBe('REVOKED');
+    expect(asDecision('outra')).toBe('NONE');
+    expect(asDecision(null)).toBe('NONE');
+  });
+});
+
+describe('envio em lote', () => {
+  it('mostra o horário de Brasília com o dia da semana', () => {
+    // 26/09/2026 é sábado; 22:50 UTC = 19:50 em Brasília.
+    expect(formatSendTime('2026-09-26T22:50:00Z')).toBe('sáb 26/09 às 19:50');
+    expect(formatSendTime(null)).toBe('');
+    expect(formatSendTime('não é data')).toBe('');
+  });
+
+  it('descreve a janela do lote no mesmo dia e atravessando o domingo', () => {
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:38:00Z')).toBe('seg 28/09, das 14:05 às 14:38');
+    expect(sendWindowText('2026-09-26T22:50:00Z', '2026-09-28T12:12:00Z'))
+      .toBe('de sáb 26/09 às 19:50 até seg 28/09 às 09:12');
+    expect(sendWindowText('2026-09-28T17:05:00Z', '2026-09-28T17:05:00Z')).toBe('seg 28/09 às 14:05');
+  });
+
+  it('reenvio só depois da data que o servidor liberou', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(resendAllowed('2026-09-28T11:59:00Z', now)).toBe(true);
+    expect(resendAllowed('2026-09-29T12:00:00Z', now)).toBe(false);
+    expect(resendAllowed(null, now)).toBe(false);
+  });
+
+  it('diz o que falta cadastrar para quem está sem contato', () => {
+    expect(missingContactLabel('idade_nao_cadastrada')).toContain('data de nascimento');
+    expect(missingContactLabel('menor_sem_telefone_do_responsavel')).toContain('responsável');
+    expect(missingContactLabel(undefined)).toContain('Sem telefone');
+  });
+
+  it('mostra quando sai a mensagem adiada (janela, ritmo ou teto)', () => {
+    expect(queuedSendAt('2026-09-26T22:50:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:00:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', '2026-09-28T12:00:00Z')).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt('2026-09-28T12:03:00Z', null)).toBe('2026-09-28T12:03:00.000Z');
+    expect(queuedSendAt(null, null)).toBeNull();
+  });
+
+  it('link gerado à mão segura o envio em lote por 3 dias', () => {
+    const now = new Date('2026-09-28T12:00:00Z');
+    expect(manualLinkHoldUntil('2026-09-27T12:00:00Z', now)).toBe('2026-09-30T12:00:00.000Z');
+    expect(manualLinkHoldUntil('2026-09-24T12:00:00Z', now)).toBeNull();
+    expect(manualLinkHoldUntil(null, now)).toBeNull();
+    expect(manualLinkHoldUntil('não é data', now)).toBeNull();
+  });
+
+  it('explica o responsável que a escola ainda não confirmou', () => {
+    expect(missingContactLabel('responsavel_nao_confirmado')).toContain('Qualidade dos contatos');
+  });
+
+  it('traduz o motivo de mensagem que não saiu', () => {
+    expect(notSentReasonLabel('pedido_vencido')).toContain('2 dias');
+    expect(notSentReasonLabel('aluno_ja_decidiu')).toBe('respondeu antes do envio');
+    expect(notSentReasonLabel('provider_http_400')).toBe('o WhatsApp recusou o envio');
+    expect(notSentReasonLabel('qualquer')).toBe('não saiu');
+  });
+
+  it('traduz os erros do envio', () => {
+    expect(consentErrorMessage('contagem_mudou')).toContain('Confira de novo');
+    expect(consentErrorMessage('ERROR: reenvio_so_depois_de_3_dias')).toContain('3 dias');
+    expect(consentErrorMessage('portal_da_escola_indefinido')).toContain('portal');
+  });
+});
+
+describe('responsável e idade (fail-closed)', () => {
+  it('motivo fora da lista com responsável exigido vira idade desconhecida', () => {
+    expect(asGuardianReason('MINOR')).toBe('MINOR');
+    expect(asGuardianReason('KIDS', true)).toBe('KIDS');
+    expect(asGuardianReason(null, true)).toBe('AGE_UNKNOWN');
+    expect(asGuardianReason('outro', true)).toBe('AGE_UNKNOWN');
+    expect(asGuardianReason(null, false)).toBeNull();
+  });
+
+  it('explica à família por que o responsável responde', () => {
+    expect(guardianReasonText('AGE_UNKNOWN', 'Ana')).toContain('ainda não cadastrou a data de nascimento de Ana');
+    expect(guardianReasonText('MINOR', 'Ana')).toContain('Como Ana é menor de idade');
+    expect(guardianReasonText('KIDS', 'Ana')).toContain('menor de idade');
+  });
+
+  it('mensagem do link não chama de menor quem só não tem idade cadastrada', () => {
+    const message = consentWhatsAppMessage({
+      studentName: 'Bruno Fixture',
+      link: 'https://exemplo.invalid/z',
+      forGuardian: true,
+      guardianReason: 'AGE_UNKNOWN',
+    });
+    expect(message).toContain('autorização do responsável por Bruno');
+    expect(message).not.toContain('menor de idade');
+    expect(message).toContain('código de 6 dígitos');
+  });
+});
+
+describe('código do WhatsApp', () => {
+  it('campo aceita só 6 números', () => {
+    expect(onlyDigits('12a3-45678')).toBe('123456');
+    expect(isSixDigitCode('123456')).toBe(true);
+    expect(isSixDigitCode('12345')).toBe(false);
+    expect(isSixDigitCode('12345a')).toBe(false);
+  });
+
+  it('erro do código diz as tentativas restantes e a espera', () => {
+    expect(codeErrorMessage({ error: 'codigo_incorreto', attemptsLeft: 4 })).toContain('Restam 4 tentativas');
+    expect(codeErrorMessage({ error: 'codigo_incorreto', attemptsLeft: 1 })).toContain('Resta 1 tentativa');
+    expect(codeErrorMessage({ error: 'codigo_bloqueado' })).toContain('código novo');
+    expect(codeErrorMessage({ error: 'limite_de_envios', retryAfterSeconds: 1200 })).toContain('Tente em 20 minutos');
+    expect(codeErrorMessage({ error: 'telefone_nao_cadastrado' })).toContain('cadastrar');
+  });
+
+  it('formata a espera', () => {
+    expect(formatWait(30)).toBe('30 segundos');
+    expect(formatWait(60)).toBe('1 minuto');
+    expect(formatWait(3000)).toBe('50 minutos');
+    expect(formatWait(3600)).toBe('1 hora');
+    expect(formatWait(null)).toBe('1 minuto');
+  });
+
+  it('o código mais específico vence na tradução do erro', () => {
+    expect(consentErrorMessage('ERROR: teacher_google_identity_required')).toContain('conta Google');
+    expect(consentErrorMessage('kids_classification_requires_direction')).toContain('infantil');
+  });
+});
+
+describe('conta Google do professor', () => {
+  it('rota ainda não publicada é indisponível, não erro', () => {
+    expect(isMissingRpcError({ code: 'PGRST202', message: 'x' })).toBe(true);
+    expect(isMissingRpcError({ code: '42883', message: 'x' })).toBe(true);
+    expect(isMissingRpcError({ message: 'Could not find the function public.get_my_google_identity' })).toBe(true);
+    expect(isMissingRpcError({ code: '42501', message: 'sem_permissao' })).toBe(false);
+    expect(googleIdentityState(null, { code: 'PGRST202' })).toEqual({ status: 'unavailable' });
+    expect(googleIdentityState(null, { code: '500', message: 'timeout' })).toEqual({ status: 'error' });
+  });
+
+  it('só conta como confirmada com e-mail e data de confirmação', () => {
+    expect(googleIdentityState(null, null)).toEqual({ status: 'missing', email: null });
+    expect(googleIdentityState({ email: 'p@gmail.com', verified_at: null }, null)).toEqual({ status: 'missing', email: 'p@gmail.com' });
+    expect(googleIdentityState([{ email: 'p@gmail.com', verified_at: '2026-09-26T12:00:00Z' }], null))
+      .toEqual({ status: 'verified', email: 'p@gmail.com', verifiedAt: '2026-09-26T12:00:00Z' });
+  });
+});
+
+describe('aceite que não vale e link bloqueado', () => {
+  it('página explica por que o aceite anterior não vale, em vez de mostrar "Autorizado"', () => {
+    expect(asNotEffectiveReason('GUARDIAN_REQUIRED')).toBe('GUARDIAN_REQUIRED');
+    expect(asNotEffectiveReason('qualquer')).toBeNull();
+    expect(notEffectiveText('GUARDIAN_REQUIRED', 'Pedro')).toMatch(/responsável precisa responder/);
+    expect(notEffectiveText('UNVERIFIED', 'Pedro')).toMatch(/sem a confirmação pelo WhatsApp/);
+  });
+
+  it('teto do dia e link bloqueado têm texto próprio', () => {
+    expect(codeErrorMessage({ error: 'limite_diario', retryAfterSeconds: 7200 })).toBe(
+      'Já mandamos 6 códigos por este link hoje. Espere para pedir outro. Tente em 2 horas.',
+    );
+    expect(consentErrorMessage('link_bloqueado')).toMatch(/Peça um link novo à escola/);
+    expect(asLinkBlockedReason('CODE_ATTEMPTS')).toBe('CODE_ATTEMPTS');
+    expect(asLinkBlockedReason('CODE_SENDS')).toBe('CODE_SENDS');
+    expect(asLinkBlockedReason(null)).toBeNull();
+  });
+});
+
+describe('termo v3: a escola no texto e o aceite por versão', () => {
+  const identity = asTermSchoolIdentity({
+    escola_nome: 'Escola Fixture Idiomas LTDA',
+    escola_documento: 'CNPJ 11.222.333/0001-81',
+    escola_contato_privacidade: 'Encarregada Fixture — privacidade@escola.invalid',
+    missing: [],
+  });
+
+  it('troca os três marcadores pelos dados da escola', () => {
+    const body = 'A escola: {escola_nome}, {escola_documento}. Contato para assuntos de privacidade: {escola_contato_privacidade}.';
+    expect(fillTermMarkers(body, identity)).toBe(
+      'A escola: Escola Fixture Idiomas LTDA, CNPJ 11.222.333/0001-81. Contato para assuntos de privacidade: Encarregada Fixture — privacidade@escola.invalid.',
+    );
+    expect(TERM_MARKERS).toEqual(['escola_nome', 'escola_documento', 'escola_contato_privacidade']);
+  });
+
+  it('valor que parece marcador não é trocado de novo, e marcador desconhecido fica como está', () => {
+    const tricky = asTermSchoolIdentity({ escola_nome: '{escola_documento}', escola_documento: 'CNPJ 1', escola_contato_privacidade: 'x@y.z' });
+    expect(fillTermMarkers('{escola_nome} / {outro_marcador}', tricky)).toBe('{escola_documento} / {outro_marcador}');
+    expect(fillTermMarkers(null, identity)).toBe('');
+  });
+
+  it('servidor antigo ou dado faltando: texto neutro, nunca o marcador cru', () => {
+    const empty = asTermSchoolIdentity(undefined, 'Escola Exibida');
+    expect(fillTermMarkers('{escola_nome}, {escola_documento}. Contato: {escola_contato_privacidade}.', empty)).toBe(
+      'Escola Exibida, CNPJ não informado pela escola. Contato: a direção da escola, pelo WhatsApp da escola.',
+    );
+    expect(asTermSchoolIdentity(undefined).escola_nome).toBe('a escola');
+  });
+
+  it('diz o que a direção precisa completar, ignorando lacuna desconhecida', () => {
+    const gaps = asTermSchoolIdentity({ missing: ['cnpj', 'contato_privacidade', 'outra_coisa'] }).missing;
+    expect(gaps).toEqual(['cnpj', 'contato_privacidade']);
+    expect(gaps.map(gap => SCHOOL_IDENTITY_GAP_LABEL[gap])).toEqual(['CNPJ', 'contato de privacidade (LGPD)']);
+  });
+
+  it('aceite de versão anterior: a página diz que o termo mudou', () => {
+    expect(asNotEffectiveReason('TERM_UPDATED')).toBe('TERM_UPDATED');
+    expect(notEffectiveText('TERM_UPDATED', 'Pedro', 'v2')).toMatch(/O termo mudou.*\(a versão v2\).*Leia a nova versão/);
+    expect(notEffectiveText('TERM_UPDATED', 'Pedro')).not.toMatch(/versão v/);
+  });
+
+  it('servidor recusa o aceite de versão que não é a vigente: mensagem própria, e o código continua valendo', () => {
+    expect(TERM_CHANGED_ERROR).toBe('termo_mudou');
+    expect(consentErrorMessage('termo_mudou')).toBe('O termo mudou enquanto você lia. Leia a nova versão e responda de novo.');
+    expect(codeErrorMessage({ error: 'termo_mudou' })).toMatch(/O termo mudou enquanto você lia/);
+    expect(termChangedNotice('v3')).toMatch(/\(versão v3\).*o código que você recebeu continua valendo/);
+    expect(termChangedNotice(null)).not.toMatch(/versão v/);
+  });
+});
+
+// Registro autorizado pela escola (migration 20260929100000).
+describe('modo de autorização por escola', () => {
+  it('lê o modo com defesa: ausente ou desconhecido é o aceite individual', () => {
+    expect(asAuthorizationMode('SCHOOL_DEFAULT')).toBe('SCHOOL_DEFAULT');
+    expect(asAuthorizationMode('INDIVIDUAL_CONSENT')).toBe('INDIVIDUAL_CONSENT');
+    expect(asAuthorizationMode(undefined)).toBe('INDIVIDUAL_CONSENT');
+    expect(asAuthorizationMode('qualquer')).toBe('INDIVIDUAL_CONSENT');
+    expect(isObjection('REFUSED')).toBe(true);
+    expect(isObjection('REVOKED')).toBe(true);
+    expect(isObjection('OBJECTION_WITHDRAWN')).toBe(false);
+    expect(isObjection('ACCEPTED')).toBe(false);
+    // Desfazer o pedido não é aceite: no painel individual, "sem resposta".
+    expect(asDecision('OBJECTION_WITHDRAWN')).toBe('NONE');
+  });
+
+  it('resume a trilha do painel', () => {
+    const summary = asAuthorizationSummary({
+      mode: 'SCHOOL_DEFAULT',
+      current: { mode: 'SCHOOL_DEFAULT', since: '2026-09-29T12:00:00Z', decided_on: '2026-09-27', decided_by_name: ' Diretor ', reason: 'Motivo', source: 'MIGRATION' },
+      history: [{ mode: 'SCHOOL_DEFAULT', decided_on: '2026-09-27' }, 'lixo'],
+      notice_versions: { STUDENT: 'v4', TEACHER: 'v4' },
+      can_change: true,
+    });
+    expect(summary.mode).toBe('SCHOOL_DEFAULT');
+    expect(summary.current?.decidedByName).toBe('Diretor');
+    expect(summary.current?.source).toBe('MIGRATION');
+    expect(summary.history).toHaveLength(1);
+    expect(summary.noticeVersions.STUDENT).toBe('v4');
+    expect(summary.canChange).toBe(true);
+    expect(asAuthorizationSummary(null)).toMatchObject({ mode: 'INDIVIDUAL_CONSENT', current: null, canChange: false });
+    expect(formatDecidedOn('2026-09-27')).toBe('27/09/2026');
+    expect(formatDecidedOn(null)).toBe('');
+  });
+
+  it('textos: o que muda ao trocar, o pedido pronto e os erros do servidor', () => {
+    expect(AUTHORIZATION_SWITCH_EFFECT.SCHOOL_DEFAULT.join(' ')).toMatch(/inclusive os menores de idade/);
+    expect(AUTHORIZATION_SWITCH_EFFECT.SCHOOL_DEFAULT.join(' ')).toMatch(/conta Google confirmada/);
+    expect(AUTHORIZATION_SWITCH_EFFECT.INDIVIDUAL_CONSENT.join(' ')).toMatch(/aceitar o termo vigente/);
+    expect(objectionRequestMessage('Escola Fixture')).toBe(
+      'Olá! Sou aluno(a) da Escola Fixture e peço que as minhas aulas não sejam registradas (transcritas).');
+    expect(consentErrorMessage('registro_autorizado_pela_escola')).toMatch(/não há termo para aceitar nem link/);
+    expect(consentErrorMessage('so_no_registro_autorizado_pela_escola')).toMatch(/Desfazer o pedido só existe/);
+    expect(consentErrorMessage('nao_ha_pedido_para_desfazer')).toMatch(/Não há pedido/);
+    expect(consentErrorMessage('somente_a_direcao')).toMatch(/Só a direção/);
+    expect(notSentReasonLabel('registro_autorizado_pela_escola')).toBe('a escola passou a autorizar o registro das aulas');
+    expect(consentErrorMessage('ERROR: pedido_do_proprio_professor')).toMatch(/só ele desfaz/);
+  });
+
+  it('no modo da escola não existe "link novo": link bloqueado, vencido ou telefone fora do cadastro mandam falar com a escola', () => {
+    // A escola não gera link no modo dela (create_lesson_recording_consent_link recusa).
+    for (const code of ['link_bloqueado', 'link_expirado', 'telefone_nao_cadastrado']) {
+      expect(consentErrorMessage(code), code).toMatch(/link novo|Peça um novo/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).toMatch(/fale com a escola pelo WhatsApp/);
+      expect(consentErrorMessage(code, 'SCHOOL_DEFAULT'), code).not.toMatch(/link novo|Peça um novo/);
+      expect(codeErrorMessage({ error: code, mode: 'SCHOOL_DEFAULT' }), code).toMatch(/fale com a escola pelo WhatsApp/);
+    }
+    // O resto é igual nos dois modos.
+    expect(consentErrorMessage('codigo_expirado', 'SCHOOL_DEFAULT')).toBe(consentErrorMessage('codigo_expirado'));
+    expect(codeErrorMessage({ error: 'limite_de_envios', retryAfterSeconds: 120, mode: 'SCHOOL_DEFAULT' })).toMatch(/Tente em 2 minutos/);
+  });
+});

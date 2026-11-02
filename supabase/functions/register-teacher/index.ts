@@ -10,6 +10,14 @@ import {
   releaseInviteClaim,
 } from "../_shared/invite-registration.ts";
 import { loadTenantCentralWhatsAppContext } from "../_shared/tenant-communication.ts";
+import {
+  assertOfferedTeacherContractTermsVersion,
+  ContractTermsVersionMismatchError,
+  offeredTeacherContractTermsVersion,
+  recordTeacherContractTerms,
+  requestedTeacherContractTermsVersion,
+} from "./contract-terms.ts";
+import { parseTeacherProviderIdentity } from "./provider-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +29,7 @@ const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
 const MAX_BODY_BYTES = 8_500_000;
 
 class InputError extends Error {}
+class GoogleIdentityRequiredError extends Error {}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -156,7 +165,21 @@ async function handleRequest(req: Request): Promise<Response> {
   try {
     const body = await requestBody(req);
     if (body.rateUnit !== "PER_LESSON") {
-      return json({ error: "Atualize a pagina para revisar o valor por aula antes de assinar." }, 409);
+      return json({
+        error:
+          "Atualize a pagina para revisar o valor por aula antes de assinar.",
+      }, 409);
+    }
+    // A pagina antiga nao mandava a versao do texto que mostrou (e congelou no
+    // PDF): contrato novo so nasce com a versao que a escola oferece.
+    const requestedTermsVersion = requestedTeacherContractTermsVersion(
+      body.contractTermsVersion,
+    );
+    if (requestedTermsVersion === null) {
+      return json({
+        error:
+          "Atualize a pagina para revisar o contrato atualizado antes de assinar.",
+      }, 409);
     }
     const email = normalizedEmail(body.email);
     const password = requiredString(body.password, "password", 8, 128);
@@ -186,6 +209,35 @@ async function handleRequest(req: Request): Promise<Response> {
     const contractPdf = decodeContractPdf(body.contractPdfBase64);
 
     invite = await claimInvite(admin, body.offerPayload, "TEACHER_INVITE");
+    const { data: googleRequired, error: googleRequiredError } = await admin
+      .rpc(
+        "teacher_invite_google_required",
+        { p_offer_id: invite.offerId },
+      );
+    if (googleRequiredError) {
+      throw new Error("teacher_google_requirement_unavailable");
+    }
+    const googleIdentityProof = typeof body.googleIdentityProof === "string"
+      ? body.googleIdentityProof.trim()
+      : "";
+    if (googleRequired && !/^[a-zA-Z0-9_-]{43}$/.test(googleIdentityProof)) {
+      throw new GoogleIdentityRequiredError();
+    }
+    // So a escola que decidiu registrar as aulas oferece a clausula; a pagina
+    // tem de ter mostrado a versao que a escola do convite oferece AGORA.
+    const contractTermsVersion = assertOfferedTeacherContractTermsVersion(
+      requestedTermsVersion,
+      await offeredTeacherContractTermsVersion(admin, invite.tenantId),
+    );
+    const providerIdentity = contractTermsVersion >= 3
+      ? parseTeacherProviderIdentity(body.providerIdentity)
+      : null;
+    if (
+      contractTermsVersion >= 3 &&
+      (!providerIdentity || providerIdentity.representativeCpf !== cpf)
+    ) {
+      throw new InputError("providerIdentity");
+    }
     const hourlyRate = Number(invite.data.hourlyRate);
     const subject = String(invite.data.subject).trim();
     const schoolInfo = invite.data.schoolInfo as Record<string, unknown>;
@@ -223,11 +275,38 @@ async function handleRequest(req: Request): Promise<Response> {
       cpf,
       address,
       birth_date: birthDate,
+      ...(providerIdentity
+        ? {
+          cnpj: providerIdentity.cnpj,
+          cnpj_company_name: providerIdentity.companyName,
+        }
+        : {}),
       contract_accepted: true,
       accepted_at: acceptedAt,
       user_ip: trustedIp,
     });
     if (profileError) throw new Error("profile_creation_failed");
+
+    // A prova vem do login Google aberto NO convite, não de um e-mail digitado
+    // nem de um checkbox. A RPC confere convite, claim e uso único da prova.
+    if (googleRequired) {
+      const proofBytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(googleIdentityProof),
+      );
+      const proofHash = Array.from(new Uint8Array(proofBytes))
+        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const { error: identityError } = await admin.rpc(
+        "teacher_invite_google_claim",
+        {
+          p_offer_id: invite.offerId,
+          p_proof_hash: proofHash,
+          p_claim_token: invite.claimToken,
+          p_teacher_id: userId,
+        },
+      );
+      if (identityError) throw new GoogleIdentityRequiredError();
+    }
 
     signedDocumentPath =
       `${invite.tenantId}/${userId}/contrato-prestacao-servicos-${Date.now()}.pdf`;
@@ -249,14 +328,29 @@ async function handleRequest(req: Request): Promise<Response> {
           cpf,
           address,
           birthDate,
+          ...(providerIdentity ? { providerIdentity } : {}),
         },
         legal_snapshot: schoolInfo,
-        commercial_snapshot: { hourlyRate, subject, rateUnit: "PER_LESSON" },
+        commercial_snapshot: {
+          hourlyRate,
+          subject,
+          rateUnit: "PER_LESSON",
+          contractTermsVersion,
+        },
         signed_document_path: signedDocumentPath,
         accepted_at: acceptedAt,
         accepted_ip: trustedIp,
       });
     if (contractRecordError) throw new Error("contract_snapshot_failed");
+    // Mesma versao na tabela de aceites (migration 20260927150000), onde
+    // aluno e professor ficam com a mesma regra de leitura.
+    await recordTeacherContractTerms(admin, {
+      tenantId: invite.tenantId,
+      userId,
+      offerId: invite.offerId,
+      termsVersion: contractTermsVersion,
+      acceptedAt,
+    });
     const { error: documentUpdateError } = await admin.from("profiles")
       .update({ signed_document_url: signedDocumentPath })
       .eq("id", userId)
@@ -285,7 +379,11 @@ async function handleRequest(req: Request): Promise<Response> {
           : "";
         const message = `Ola ${
           name.split(/\s+/)[0]
-        }! Sua conta de professor na ${communication.identity.brandName} foi criada.\n\nLogin: ${email}\n\nPor seguranca, sua senha nao e enviada por mensagem. O contrato assinado esta disponivel na area autenticada.${accessLine}`;
+        }! Sua conta de professor na ${communication.identity.brandName} foi criada.\n\nLogin: ${email}\n\nPor seguranca, sua senha nao e enviada por mensagem. O contrato assinado esta disponivel na area autenticada.${
+          googleRequired
+            ? "\n\nNas aulas da escola, entre no Google Meet com a mesma conta Google que voce confirmou no cadastro."
+            : ""
+        }${accessLine}`;
         await fetch(
           `${baseUrl}/message/sendText/${
             encodeURIComponent(communication.instanceName)
@@ -329,6 +427,18 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     if (error instanceof InputError) {
       return json({ error: "Revise os dados obrigatorios do cadastro." }, 400);
+    }
+    if (error instanceof GoogleIdentityRequiredError) {
+      return json({
+        error:
+          "Confirme a conta Google que voce usara nas aulas antes de assinar o contrato.",
+      }, 409);
+    }
+    if (error instanceof ContractTermsVersionMismatchError) {
+      return json({
+        error:
+          "Atualize a pagina para revisar o contrato atualizado antes de assinar.",
+      }, 409);
     }
     if (error instanceof InviteRegistrationError) {
       return json(

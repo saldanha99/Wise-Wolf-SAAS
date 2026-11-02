@@ -419,7 +419,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                 {columns.map(col => (
                     <div key={col.id} className="min-w-[320px] flex-1 flex flex-col">
                         {/* Column Header */}
-                        <div className="bg-brand-surface p-4 rounded-t-[24px] border-b border-slate-50 dark:border-brand-border shadow-sm flex justify-between items-center sticky top-0 z-10">
+                        <div className="bg-brand-surface p-4 rounded-t-[24px] border-b border-slate-50 dark:border-brand-border shadow-xs flex justify-between items-center sticky top-0 z-10">
                             <div className="flex items-center gap-3">
                                 <div className={`w-3 h-3 rounded-full ${col.color} shadow-[0_0_8px_currentColor] opacity-80`} />
                                 <h3 className="font-black text-xs uppercase tracking-widest text-brand-text dark:text-slate-200">
@@ -576,7 +576,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
             {/* Schedule Modal */}
             {schedulingLead && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-300">
                     <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
                         <button
                             onClick={() => setSchedulingLead(null)}
@@ -640,7 +640,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             )}
             {/* Conversion Modal */}
             {convertingLead && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-300">
                     <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-3xl max-h-[92vh] overflow-y-auto w-full relative">
                         <button
                             onClick={() => setConvertingLead(null)}
@@ -773,7 +773,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                                             itemIndex === index ? { ...item, day: event.target.value } : item
                                                         ),
                                                     }))}
-                                                    className="bg-transparent text-sm font-bold text-brand-text outline-none"
+                                                    className="bg-transparent text-sm font-bold text-brand-text outline-hidden"
                                                 >
                                                     <option value="">Dia</option>
                                                     {ENROLLMENT_WEEKDAYS.map(day => (
@@ -791,7 +791,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                                             itemIndex === index ? { ...item, time: event.target.value } : item
                                                         ),
                                                     }))}
-                                                    className="bg-transparent text-sm font-bold text-brand-text outline-none"
+                                                    className="bg-transparent text-sm font-bold text-brand-text outline-hidden"
                                                 />
                                             </div>
                                         ))}

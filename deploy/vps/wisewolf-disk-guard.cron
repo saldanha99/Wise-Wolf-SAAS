@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Verificação local independente do aplicativo Codex.
+*/15 * * * * root /usr/bin/flock -n /run/lock/wisewolf-disk-guard.lock /opt/wisewolf/disk-guard.sh >> /var/log/wisewolf-disk-guard.log 2>&1

@@ -85,10 +85,14 @@ select v, 'trial-closing-qa', '7e190000-0000-4000-8000-000000000052',
   '5511900000191', now() - interval '2 hours', 'scheduled', 'experimental'
 from fx where k = 'appointment';
 
+-- trial_status nasce 'SCHEDULED' no fluxo real (medido em 23/09/2026: nenhuma
+-- experimental CLAIMED dos ultimos 90 dias tem o campo nulo). O retorno de
+-- trial_closing_teacher_asks filtra por `trial_status not in (...)` sem
+-- coalesce, entao um fixture com nulo some do resultado por NULL-logic.
 insert into public.opportunities(id, tenant_id, kind, status, conversion_status, winner_teacher_id,
-  trial_appointment_id, student_name, student_phone, feedback_required, slots_proposed)
+  trial_appointment_id, student_name, student_phone, feedback_required, slots_proposed, trial_status)
 select o.v, 'trial-closing-qa', 'TRIAL', 'CLAIMED', 'OPEN', '7e190000-0000-4000-8000-000000000052',
-  a.v, 'Aluno Sintetico Fechamento', '5511900000191', true, '[]'::jsonb
+  a.v, 'Aluno Sintetico Fechamento', '5511900000191', true, '[]'::jsonb, 'SCHEDULED'
 from (select v from fx where k = 'opportunity') o, (select v from fx where k = 'appointment') a;
 
 -- [1] a experimental terminada vira pergunta à professora
@@ -178,6 +182,40 @@ select pg_temp.assert_true(
     'trial-closing-qa', '7e190000-0000-4000-8000-000000000053', 'DONE', 'A2', 4, '2x_semana'
   ) ->> 'handled')::boolean), true) = false,
   '[6] professora sem pergunta aberta deveria seguir para os outros agentes'
+);
+
+-- [7] isenção da taxa: com o início a até 7 dias a página mostra taxa zero, e a
+-- cobrança lê offers.enrollment_fee (begin_enrollment_offer) — a oferta tem de
+-- gravar a mesma isenção que a página mostra (migration 20260926130000).
+create temporary table fee_offer as
+select o.id from public.offers o, fx
+ where fx.k = 'opportunity' and o.opportunity_id = fx.v and o.kind = 'ENROLLMENT'
+   and o.revoked_at is null;
+update public.offers
+   set enrollment_fee = 49.90,
+       payload = jsonb_set(coalesce(payload, '{}'::jsonb), '{enrollmentFee}', '49.90'::jsonb, true)
+ where id = (select id from fee_offer);
+update private.trial_closing_flows
+   set plan = jsonb_set(plan, '{start_date}',
+     to_jsonb(to_char((now() at time zone 'America/Sao_Paulo')::date + 20, 'YYYY-MM-DD')), true)
+ where offer_id = (select id from fee_offer);
+select public.get_offer_public((select id from fee_offer));
+select pg_temp.assert_true(
+  (select enrollment_fee from public.offers where id = (select id from fee_offer)) = 49.90,
+  '[7] com o início daqui a 20 dias a taxa continua'
+);
+update private.trial_closing_flows
+   set plan = jsonb_set(plan, '{start_date}',
+     to_jsonb(to_char((now() at time zone 'America/Sao_Paulo')::date + 3, 'YYYY-MM-DD')), true)
+ where offer_id = (select id from fee_offer);
+select pg_temp.assert_true(
+  ((select public.get_offer_public((select id from fee_offer))) ->> 'enrollmentFee')::numeric = 0,
+  '[7] com o início a até 7 dias a página mostra taxa zero'
+);
+select pg_temp.assert_true(
+  (select enrollment_fee = 0 and (payload ->> 'enrollmentFee')::numeric = 0
+     from public.offers where id = (select id from fee_offer)),
+  '[7] a oferta grava a isenção que a página mostrou (é dela que a cobrança lê)'
 );
 
 rollback;

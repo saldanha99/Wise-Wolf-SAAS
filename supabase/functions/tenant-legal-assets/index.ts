@@ -80,6 +80,17 @@ function uuid(value: unknown, field: string): string {
   return value.trim();
 }
 
+export function normalizeAffiliateCouponInput(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ApiError(400, "INVALID_COUPON", "Cupom inválido");
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized.length < 4 || normalized.length > 64) {
+    throw new ApiError(400, "INVALID_COUPON", "Cupom inválido");
+  }
+  return normalized;
+}
+
 function serviceClient() {
   const url = Deno.env.get("SUPABASE_URL")?.trim() || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
@@ -101,6 +112,43 @@ function isOperationalStatus(value: unknown): boolean {
     operationalTenantStatuses.has(value.trim().toLowerCase());
 }
 
+/**
+ * Versao do contrato que a escola da oferta oferece aos contratos novos
+ * (public.contract_terms_offered_version, migration 20260927150000). A pagina
+ * de matricula e o convite do professor MOSTRAM e GRAVAM esta versao; so a
+ * escola que decidiu registrar as aulas oferece a clausula. Resposta estranha
+ * nao vira versao nenhuma: sem saber o texto, o contrato nao e mostrado.
+ */
+export function offeredContractTermsVersion(value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
+    return value;
+  }
+  throw new ApiError(
+    503,
+    "CONTRACT_TERMS_UNAVAILABLE",
+    "Contract terms are unavailable",
+  );
+}
+
+async function loadOfferedContractTermsVersion(
+  admin: ReturnType<typeof serviceClient>,
+  tenantId: string,
+  kind: "STUDENT" | "TEACHER",
+): Promise<number> {
+  const { data, error } = await admin.rpc("contract_terms_offered_version", {
+    p_tenant: tenantId,
+    p_contract_kind: kind,
+  });
+  if (error) {
+    throw new ApiError(
+      503,
+      "CONTRACT_TERMS_UNAVAILABLE",
+      "Contract terms are unavailable",
+    );
+  }
+  return offeredContractTermsVersion(data);
+}
+
 export function offerKindMatches(
   offerType: unknown,
   persistedKind: unknown,
@@ -109,6 +157,52 @@ export function offerKindMatches(
   return offerType === "teacher"
     ? persistedKind === "TEACHER_INVITE"
     : offerType === "vendor" && persistedKind === "VENDOR_INVITE";
+}
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const HTTPS_URL = /^https:\/\/[^\s"<>]+$/;
+
+/**
+ * Marca pública da escola (cores e logo) para a página do convite de
+ * afiliado — as mesmas regras da página de renovação: valor fora do formato
+ * vira null e a tela cai no visual padrão. Nada de school_info aqui.
+ */
+export function publicSchoolBrand(branding: unknown): {
+  brandPrimary: string | null;
+  brandSecondary: string | null;
+  schoolLogoUrl: string | null;
+} {
+  const record = isRecord(branding) ? branding : {};
+  const hex = (value: unknown) =>
+    typeof value === "string" && HEX_COLOR.test(value) ? value : null;
+  return {
+    brandPrimary: hex(record.primaryColor),
+    brandSecondary: hex(record.secondaryColor),
+    schoolLogoUrl:
+      typeof record.logoUrl === "string" && HTTPS_URL.test(record.logoUrl)
+        ? record.logoUrl
+        : null,
+  };
+}
+
+/** Falha ao ler a marca nunca derruba o convite: a página usa o padrão. */
+async function loadPublicSchoolBrand(
+  admin: ReturnType<typeof serviceClient>,
+  tenantId: unknown,
+): Promise<ReturnType<typeof publicSchoolBrand>> {
+  if (typeof tenantId !== "string" || !tenantId) {
+    return publicSchoolBrand(null);
+  }
+  try {
+    const { data, error } = await admin
+      .from("tenants")
+      .select("branding")
+      .eq("id", tenantId)
+      .maybeSingle();
+    return publicSchoolBrand(error ? null : data?.branding);
+  } catch {
+    return publicSchoolBrand(null);
+  }
 }
 
 async function activeTenantId(context: RequestAuthContext): Promise<string> {
@@ -188,8 +282,19 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       kind: data.kind,
       commissionRate: data.commissionRate,
       suggestedName: data.suggestedName,
+      // Cupom reservado no convite e nome da escola: a página de cadastro
+      // explica o programa com os dados reais do afiliado.
+      affiliateCode: typeof data.affiliateCode === "string"
+        ? data.affiliateCode
+        : null,
+      linkedStudentId: typeof data.linkedStudentId === "string"
+        ? data.linkedStudentId
+        : null,
+      schoolName: typeof data.schoolName === "string" ? data.schoolName : null,
       tenantId: data.tenantId,
       _offerId: data._offerId,
+      // Cor e logo da escola: a página do convite leva a marca de quem convida.
+      ...(await loadPublicSchoolBrand(admin, data.tenantId)),
     });
   }
 
@@ -217,9 +322,31 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
       "Legal signature is missing",
     );
   }
+  const contractTermsVersion = await loadOfferedContractTermsVersion(
+    admin,
+    tenantId,
+    body.offerType === "teacher" ? "TEACHER" : "STUDENT",
+  );
+  let googleAccountRequired = false;
+  if (body.offerType === "teacher") {
+    const { data: required, error: requirementError } = await admin.rpc(
+      "teacher_invite_google_required",
+      { p_offer_id: offerId },
+    );
+    if (requirementError) {
+      throw new ApiError(
+        503,
+        "GOOGLE_REQUIREMENT_UNAVAILABLE",
+        "Google requirement is unavailable",
+      );
+    }
+    googleAccountRequired = required === true;
+  }
   return json({
     ...data,
     [body.offerType === "teacher" ? "schoolInfo" : "_schoolInfo"]: materialized,
+    contractTermsVersion,
+    ...(body.offerType === "teacher" ? { googleAccountRequired } : {}),
   });
 }
 
@@ -238,6 +365,24 @@ async function resolveCurrent(
     { publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL") },
   );
   return json({ tenantId: tenant.tenantId, schoolInfo });
+}
+
+/**
+ * Como o contrato do professor exibe o valor. `rateUnit` e o que o convite
+ * (register-teacher) grava e o que a folha le (teacher_student_rate troca a
+ * regua de pagamento com rateUnit = PER_LESSON). O aceite pelo app
+ * (accept_teacher_contract, migration 20260927150000) NAO grava rateUnit, para
+ * nao mudar pagamento, e grava displayRateUnit = PER_LESSON: a tela assinada
+ * mostrou o valor por aula, e sem isso a copia mostraria metade dele (a regra
+ * do contrato antigo por hora). So PER_LESSON e aceito como exibicao.
+ */
+export function teacherContractRateUnit(
+  commercial: Record<string, unknown>,
+): string | undefined {
+  if (typeof commercial.rateUnit === "string" && commercial.rateUnit) {
+    return commercial.rateUnit;
+  }
+  return commercial.displayRateUnit === "PER_LESSON" ? "PER_LESSON" : undefined;
 }
 
 async function resolveContract(
@@ -268,7 +413,29 @@ async function resolveContract(
     throw new ApiError(503, "CONTRACT_UNAVAILABLE", "Contract is unavailable");
   }
   if (!data) {
-    throw new ApiError(404, "CONTRACT_NOT_FOUND", "Contract not found");
+    const { data: teacher, error: teacherError } = await context.admin
+      .from("profiles")
+      .select("full_name,contract_accepted")
+      .eq("tenant_id", tenant.tenantId)
+      .eq("id", userId)
+      .eq("role", "TEACHER")
+      .maybeSingle();
+    if (teacherError) {
+      throw new ApiError(
+        503,
+        "CONTRACT_UNAVAILABLE",
+        "Contract is unavailable",
+      );
+    }
+    if (!teacher) {
+      throw new ApiError(404, "CONTRACT_NOT_FOUND", "Contract not found");
+    }
+    return json({
+      archiveStatus: "MISSING",
+      full_name: teacher.full_name,
+      contractAccepted: teacher.contract_accepted === true,
+      canSign: context.userId === userId && teacher.contract_accepted !== true,
+    });
   }
 
   const party = isRecord(data.party_snapshot) ? data.party_snapshot : {};
@@ -287,8 +454,14 @@ async function resolveContract(
     cpf: party.cpf,
     address: party.address,
     birth_date: party.birthDate,
+    providerIdentity: party.providerIdentity || null,
     hourly_rate: commercial.hourlyRate,
-    rateUnit: commercial.rateUnit,
+    rateUnit: teacherContractRateUnit(commercial),
+    // Versão do texto assinado (register-teacher grava desde 27/09/2026).
+    // Ausente = contrato de antes: a tela mostra o texto antigo.
+    contractTermsVersion: Number.isInteger(commercial.contractTermsVersion)
+      ? commercial.contractTermsVersion
+      : null,
     contract_accepted: true,
     accepted_at: data.accepted_at,
     user_ip: data.accepted_ip,
@@ -304,6 +477,8 @@ export async function handleRequest(req: Request): Promise<Response> {
   try {
     const body = await requestBody(req);
     if (body.action === "offer") return await resolveOffer(body);
+    // Cupom de afiliado é interno da escola (aplicado ao gerar o link): a
+    // página pública não oferece mais esse caminho.
     if (body.action !== "current" && body.action !== "contract") {
       throw new ApiError(400, "INVALID_ACTION", "Unsupported action");
     }

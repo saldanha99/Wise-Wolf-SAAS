@@ -51,7 +51,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
     return (
         <div className="bg-brand-surface rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-brand-border overflow-hidden">
             {/* Header */}
-            <div className="relative overflow-hidden bg-emerald-700 bg-gradient-to-r from-emerald-500 to-teal-600 p-6 text-white">
+            <div className="relative overflow-hidden bg-emerald-700 bg-linear-to-r from-emerald-500 to-teal-600 p-6 text-white">
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-1">
                         <Gift size={18} className="text-emerald-200" />
@@ -91,7 +91,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
                             readOnly
                             aria-label="Link de indicação"
                             value={affiliateLink}
-                            className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-emerald-300 outline-none"
+                            className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-emerald-300 outline-hidden"
                         />
                     </div>
                     <button

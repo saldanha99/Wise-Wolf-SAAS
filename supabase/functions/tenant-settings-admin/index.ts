@@ -262,6 +262,9 @@ const schoolInfoKeys = [
   "legalRepresentativeName",
   "legalRepresentativeSignaturePath",
   "privacyContactEmail",
+  // Encarregado de dados (LGPD): o termo de registro das aulas (v3) mostra o
+  // nome ao lado do contato de privacidade.
+  "privacyOfficerName",
 ] as const;
 
 function isValidCnpj(value: string): boolean {

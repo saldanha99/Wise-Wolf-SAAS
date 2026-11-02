@@ -14,6 +14,8 @@ interface HubAuthDialogProps {
   initialMode: 'login' | 'signup';
   initialAudience: HubAudience;
   checkoutIntent?: HubCheckoutIntent | null;
+  // Convite de aluno: muda a copy (não é "descoberta grátis") e trava a audiência em LEARNER.
+  invite?: { teacher_name: string; learner_name: string } | null;
   onClose: () => void;
   onAuthenticated: (audience: HubAudience, accountName?: string) => Promise<void>;
 }
@@ -22,11 +24,12 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
   initialMode,
   initialAudience,
   checkoutIntent,
+  invite = null,
   onClose,
   onAuthenticated,
 }) => {
   const [mode, setMode] = useState(initialMode);
-  const [audience, setAudience] = useState<HubAudience>(initialMode === 'signup' ? 'EDUCATOR' : initialAudience);
+  const [audience, setAudience] = useState<HubAudience>(invite ? 'LEARNER' : initialMode === 'signup' ? 'EDUCATOR' : initialAudience);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -146,8 +149,8 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
   };
 
   return (
-    <div className="hub-auth-overlay fixed inset-0 z-[100] flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" data-hub-theme={theme} role="dialog" aria-modal="true" aria-labelledby="hub-auth-title">
-      <div ref={dialogRef} className="hub-auth-panel max-h-[96dvh] w-full max-w-xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-[2rem] sm:p-8">
+    <div className="hub-auth-overlay fixed inset-0 z-100 flex items-end justify-center bg-[#020611]/90 p-0 backdrop-blur-xl sm:items-center sm:p-5" data-hub-theme={theme} role="dialog" aria-modal="true" aria-labelledby="hub-auth-title">
+      <div ref={dialogRef} className="hub-auth-panel max-h-[96dvh] w-full max-w-xl overflow-y-auto rounded-t-4xl border border-white/10 bg-[#0b1426] p-6 text-white shadow-[0_40px_120px_-35px_rgba(0,0,0,.95)] sm:rounded-4xl sm:p-8">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400">Wise Wolf Hub · acesso protegido</p>
@@ -155,7 +158,7 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
               {confirmationSent
                 ? 'Confirme seu e-mail'
                 : mode === 'signup'
-                  ? continuingCheckout ? 'Crie sua conta para continuar' : 'Comece sua descoberta grátis'
+                  ? invite ? `Entre na turma de ${invite.teacher_name}` : continuingCheckout ? 'Crie sua conta para continuar' : 'Comece sua descoberta grátis'
                   : 'Bem-vindo de volta'}
             </h2>
           </div>
@@ -176,8 +179,9 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
               <div className="hub-auth-context mt-7 flex items-center gap-3 rounded-2xl border border-blue-400/25 bg-blue-500/10 p-4">
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-300"><BookOpen size={20} /></div>
                 <div>
-                  <p className="text-sm font-black text-white">Acesso profissional para educadores</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-400">Biblioteca e planejamento pedagógico ficam separados do Wolfie individual e do sistema institucional.</p>
+                  {/* Quem chega por convite é aluno do professor: a conta não tem plano nem biblioteca própria. */}
+                  <p className="text-sm font-black text-white">{invite ? `Conta de aluno de ${invite.teacher_name}` : 'Acesso profissional para educadores'}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">{invite ? 'Sem mensalidade do Hub: você recebe os materiais e a jornada que seu professor preparou e pratica entre as aulas.' : 'Biblioteca e planejamento pedagógico ficam separados do Wolfie individual e do sistema institucional.'}</p>
                 </div>
               </div>
             )}
@@ -187,18 +191,18 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
                 <>
                   <label className="block">
                     <span className="mb-2 block text-xs font-black text-slate-300">Seu nome</span>
-                    <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" />
+                    <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Como devemos chamar você?" />
                   </label>
                 </>
               )}
               <label className="block">
                 <span className="mb-2 block text-xs font-black text-slate-300">E-mail</span>
-                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@email.com" />
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="voce@email.com" />
               </label>
               <label className="block">
                 <span className="mb-2 block text-xs font-black text-slate-300">Senha</span>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required className="w-full rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3.5 pr-12 text-white outline-none placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Mínimo de 8 caracteres" />
+                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required className="w-full rounded-xl border border-white/10 bg-white/4.5 px-4 py-3.5 pr-12 text-white outline-hidden placeholder:text-slate-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" placeholder="Mínimo de 8 caracteres" />
                   <button type="button" onClick={() => setShowPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
                 </div>
               </label>
@@ -207,14 +211,14 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
 
               <button type="submit" disabled={loading} className="hub-auth-submit flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,.9)] hover:bg-blue-500 disabled:opacity-60">
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <ArrowRight size={18} />}
-                {loading ? 'Preparando...' : mode === 'signup' ? continuingCheckout ? 'Criar conta e continuar' : 'Criar conta e descobrir' : 'Entrar no Hub'}
+                {loading ? 'Preparando...' : mode === 'signup' ? invite ? 'Criar conta e entrar na turma' : continuingCheckout ? 'Criar conta e continuar' : 'Criar conta e descobrir' : 'Entrar no Hub'}
               </button>
             </form>
 
             <p className="hub-auth-switch mt-6 text-center text-sm text-slate-400">
               {mode === 'signup' ? 'Já possui uma conta?' : 'Ainda não possui uma conta?'}{' '}
-              <button type="button" onClick={() => { const nextMode = mode === 'signup' ? 'login' : 'signup'; setMode(nextMode); if (nextMode === 'signup') setAudience('EDUCATOR'); setError(''); }} className="font-black text-blue-400">
-                {mode === 'signup' ? 'Entrar' : 'Começar grátis'}
+              <button type="button" onClick={() => { const nextMode = mode === 'signup' ? 'login' : 'signup'; setMode(nextMode); if (nextMode === 'signup') setAudience(invite ? 'LEARNER' : 'EDUCATOR'); setError(''); }} className="font-black text-blue-400">
+                {mode === 'signup' ? 'Entrar' : invite ? 'Criar conta de aluno' : 'Começar grátis'}
               </button>
             </p>
           </>

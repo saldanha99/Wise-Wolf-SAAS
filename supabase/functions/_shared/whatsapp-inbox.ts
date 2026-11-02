@@ -326,11 +326,19 @@ export function normalizeEvolutionEventName(value: unknown): string {
 
 export function isEvolutionInboxJidAllowed(
   remoteJid: string,
-  managementGroupJid: string | null | undefined,
+  managementGroupJid: string | string[] | null | undefined,
 ): boolean {
   if (remoteJid.endsWith("@s.whatsapp.net")) return true;
-  return remoteJid.endsWith("@g.us") &&
-    remoteJid === String(managementGroupJid || "").trim();
+  if (!remoteJid.endsWith("@g.us")) return false;
+  // Grupo da Gestão ou um dos canais de aviso (coordenação, comercial,
+  // direção): a lista vem de `notice_channel_jids`, não de entrada de rede.
+  const allowed =
+    (Array.isArray(managementGroupJid)
+      ? managementGroupJid
+      : [managementGroupJid])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  return allowed.includes(remoteJid);
 }
 
 function secondsFromTimestamp(value: unknown): number | null {

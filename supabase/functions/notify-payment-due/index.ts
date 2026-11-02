@@ -1,9 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
-import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
+import {
+  requestOutboundPermit,
+  resolveWhatsAppDestination,
+  sendWhatsTextToResolvedDestinationDetailed,
+  settleOutboundPermit,
+  THROTTLE_MAX_INLINE_WAIT_MS,
+} from "../_shared/evolution-send.ts";
 import {
   claimOutboundMessage,
+  deferOutboundMessageClaim,
   finishOutboundMessage,
   markOutboundMessageSubmittingDecision,
 } from "../_shared/student-billing-period-guard.ts";
@@ -12,6 +19,8 @@ import {
   type TenantCentralWhatsAppContext,
 } from "../_shared/tenant-communication.ts";
 import {
+  resolveAsaasIntegration,
+  type ResolvedAsaasIntegration,
   type ResolvedEvolutionIntegration,
   resolveEvolutionIntegration,
 } from "../_shared/tenant-integration-broker.ts";
@@ -23,6 +32,11 @@ import {
   paymentNotificationFinish,
   resolvePaymentRecipient,
 } from "./core.ts";
+import {
+  enabledDailyTenants,
+  runDailyCollections,
+  schoolDate,
+} from "./daily.ts";
 
 // Cron diário: avisa o aluno X dias antes do vencimento da mensalidade (WhatsApp).
 // Envia pela instância central da escola (admin do tenant). Idempotente via due_reminder_sent_at.
@@ -33,6 +47,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 const DAYS_AHEAD = 3; // avisa 3 dias antes
+const ACTIVE_STUDENT_WINDOW_DAYS = 30;
+const SECOND_WAVE_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // Régua de vencidas: dias APÓS o vencimento em que o aluno é lembrado de novo.
 //
@@ -43,9 +59,9 @@ const DAYS_AHEAD = 3; // avisa 3 dias antes
 // fatura de 05/08 de uma aluna ficou parada em silêncio: um aviso no dia 2 e
 // nada mais, enquanto ela seguia tendo aula.
 //
-// Três toques bastam. Mais que isso vira perseguição e o aluno bloqueia o
-// número da escola — aí a escola perde o canal, não só a fatura.
-const OVERDUE_MILESTONES = [3, 10, 20];
+// O quarto marco é uma comunicação única, após 30 dias, com dois canais
+// independentes. Não retroage para dívidas anteriores à janela da régua.
+const OVERDUE_MILESTONES = [3, 10, 20, 30];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -61,8 +77,64 @@ serve(async (req) => {
 
     const today = new Date();
     const limit = new Date(today.getTime() + DAYS_AHEAD * 86400_000);
-    const todayISO = today.toISOString().split("T")[0];
+    const todayISO = schoolDate(today);
     const limitISO = limit.toISOString().split("T")[0];
+
+    const body = await req.json().catch(() => ({}));
+    const daily = (scope?: { tenant_id: string; student_ids: string[] }) => {
+      const instances: Record<string, TenantCentralWhatsAppContext | null> = {};
+      const evolution: Record<string, ResolvedEvolutionIntegration> = {};
+      const asaas: Record<string, ResolvedAsaasIntegration> = {};
+      return runDailyCollections(supabase, todayISO, {
+        readProvider: (charge) => readProviderPayment(supabase, charge, asaas),
+        stillStudies: (charge) =>
+          aindaEstuda(supabase, charge.tenant_id, charge.student_id),
+        recipient: (charge) => resolveRecipient(supabase, charge, instances),
+        whatsapp: async (charge, input) =>
+          deliverPaymentNotification(supabase, {
+            tenantId: charge.tenant_id,
+            studentId: charge.student_id,
+            paymentId: charge.id,
+            notificationKind: input.kind,
+            integration: await resolveTenantEvolutionIntegration(
+              supabase,
+              charge.tenant_id,
+              evolution,
+            ),
+            instance: input.instance,
+            phone: input.phone,
+            text: input.text,
+          }),
+      }, scope);
+    };
+    if (
+      body?.mode === "DAILY_COLLECTION" && body.campaign_date === todayISO &&
+      typeof body.tenant_id === "string" && Array.isArray(body.student_ids) &&
+      body.student_ids.length > 0 && body.student_ids.length <= 100 &&
+      body.student_ids.every((id: unknown) =>
+        typeof id === "string" && /^[0-9a-f-]{36}$/.test(id)
+      ) &&
+      Object.keys(body).length === 4
+    ) {
+      const result = await daily(body);
+      return new Response(JSON.stringify(result), {
+        status: result.failures ? 207 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (isSecondWaveRequest(body, todayISO)) {
+      const result = await segundaOnda(supabase, todayISO);
+      return new Response(JSON.stringify(result), {
+        status: result.failures > 0 ? 207 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (body && typeof body === "object" && Object.keys(body).length > 0) {
+      return new Response(JSON.stringify({ error: "invalid_request" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Cobranças pendentes que vencem nos próximos DAYS_AHEAD dias e ainda não foram avisadas
     const { data: charges, error } = await supabase
@@ -104,6 +176,12 @@ serve(async (req) => {
           suprimidas++;
           registrarSupressao(c.id, bloqueio);
           failures.push(`${c.id}: cobrança suprimida (${bloqueio})`);
+          continue;
+        }
+        if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
+          failures.push(
+            `${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`,
+          );
           continue;
         }
         const dest = await resolveRecipient(supabase, c, instCache);
@@ -152,6 +230,7 @@ serve(async (req) => {
       instCache,
       integrationCache,
     );
+    const dailyResult = await daily();
 
     return new Response(
       JSON.stringify({
@@ -160,6 +239,7 @@ serve(async (req) => {
         suppressed: suprimidas + regua.suprimidas,
         failures: failures.length + regua.motivos.length,
         reasons: [...failures, ...regua.motivos].slice(0, 10),
+        daily: dailyResult,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -170,6 +250,225 @@ serve(async (req) => {
     });
   }
 });
+
+function isSecondWaveRequest(
+  body: unknown,
+  todayISO: string,
+): body is { mode: "SECOND_WAVE"; campaign_date: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const input = body as Record<string, unknown>;
+  return Object.keys(input).length === 2 && input.mode === "SECOND_WAVE" &&
+    input.campaign_date === todayISO;
+}
+
+type SecondWavePayment = {
+  id: string;
+  student_id: string;
+  tenant_id: string;
+  asaas_payment_id: string | null;
+  value: number;
+  due_date: string;
+  invoice_url: string | null;
+};
+
+type ProviderPayment = {
+  id: string;
+  status: string;
+  dueDate: string;
+  value: number;
+  invoiceUrl: string | null;
+  customer: string | null;
+  subscription: string | null;
+  deleted: boolean;
+};
+
+async function segundaOnda(supabase: any, campaignDate: string) {
+  const result = {
+    campaign_date: campaignDate,
+    considered: 0,
+    sent: 0,
+    skipped: 0,
+    failures: 0,
+    reasons: [] as string[],
+  };
+  const { data, error } = await supabase.from("student_payments")
+    .select(
+      "id,student_id,tenant_id,asaas_payment_id,value,due_date,invoice_url",
+    )
+    .in("status", ["OVERDUE", "PENDING", "DUNNING_REQUESTED"])
+    .lt("due_date", campaignDate)
+    .order("due_date", { ascending: false })
+    .limit(200);
+  if (error) throw new Error("second_wave_candidates_unavailable");
+
+  const instanceCache: Record<string, TenantCentralWhatsAppContext | null> = {};
+  const evolutionCache: Record<string, ResolvedEvolutionIntegration> = {};
+  const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
+  const notificationKind = `PAYMENT_OVERDUE_WAVE2_${
+    campaignDate.replaceAll("-", "")
+  }`;
+
+  for (const raw of data || []) {
+    const payment = raw as SecondWavePayment;
+    result.considered++;
+    try {
+      if (!payment.asaas_payment_id) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: asaas_payment_id_missing`);
+        continue;
+      }
+      if (
+        !(await aindaEstuda(supabase, payment.tenant_id, payment.student_id))
+      ) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: student_not_current`);
+        continue;
+      }
+      const provider = await readProviderPayment(
+        supabase,
+        payment,
+        asaasCache,
+      );
+      if (
+        provider.status !== "OVERDUE" || provider.dueDate >= campaignDate
+      ) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: provider_not_overdue`);
+        continue;
+      }
+      if (await sentWithinSecondWaveInterval(supabase, payment.id)) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: recent_collection_message`);
+        continue;
+      }
+      const recipient = await resolveRecipient(
+        supabase,
+        payment,
+        instanceCache,
+      );
+      if (!recipient.ok) {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: ${recipient.motivo}`);
+        continue;
+      }
+      const integration = await resolveTenantEvolutionIntegration(
+        supabase,
+        payment.tenant_id,
+        evolutionCache,
+      );
+      let text = `Oi ${recipient.nome}, aqui é a ${recipient.brandName}.\n\n` +
+        `Este é um segundo lembrete: a mensalidade de *${
+          brl(provider.value)
+        }*, ` +
+        `vencida em *${
+          dataBR(provider.dueDate)
+        }*, continua *em aberto* no Asaas. ` +
+        `Pedimos que regularize o pagamento assim que possível.`;
+      const invoiceUrl = provider.invoiceUrl || payment.invoice_url;
+      if (invoiceUrl) text += `\n\nLink para pagamento: ${invoiceUrl}`;
+      text +=
+        `\n\nSe já pagou, envie o comprovante para conferirmos a baixa. Se precisar negociar ou tiver alguma dúvida, responda esta mensagem.`;
+
+      const delivery = await deliverPaymentNotification(supabase, {
+        tenantId: payment.tenant_id,
+        studentId: payment.student_id,
+        paymentId: payment.id,
+        notificationKind,
+        integration,
+        instance: recipient.instance,
+        phone: recipient.phone,
+        text,
+      });
+      if (delivery.status === "SENT") {
+        if (delivery.sentNow) result.sent++;
+        else result.skipped++;
+      } else if (delivery.status === "SKIPPED") {
+        result.skipped++;
+        result.reasons.push(`${payment.id}: ${delivery.reason}`);
+      } else {
+        result.failures++;
+        result.reasons.push(`${payment.id}: ${delivery.reason}`);
+      }
+    } catch (error) {
+      result.failures++;
+      result.reasons.push(
+        `${payment.id}: ${
+          error instanceof Error ? error.message : "second_wave_failed"
+        }`,
+      );
+    }
+  }
+  result.reasons = result.reasons.slice(0, 30);
+  return result;
+}
+
+async function sentWithinSecondWaveInterval(supabase: any, paymentId: string) {
+  const cutoff = new Date(Date.now() - SECOND_WAVE_MIN_INTERVAL_MS)
+    .toISOString();
+  const { count, error } = await supabase.from(
+    "asaas_outbound_message_attempts",
+  )
+    .select("id", { count: "exact", head: true })
+    .eq("provider_entity_id", paymentId)
+    .eq("status", "SENT")
+    .gte("updated_at", cutoff);
+  if (error) throw new Error("recent_collection_lookup_failed");
+  return (count ?? 0) > 0;
+}
+
+async function readProviderPayment(
+  supabase: any,
+  payment: SecondWavePayment,
+  cache: Record<string, ResolvedAsaasIntegration>,
+): Promise<ProviderPayment> {
+  if (!cache[payment.tenant_id]) {
+    cache[payment.tenant_id] = await resolveAsaasIntegration(
+      supabase,
+      payment.tenant_id,
+      "payment.read",
+    );
+  }
+  const integration = cache[payment.tenant_id];
+  const response = await fetch(
+    `${integration.baseUrl}/payments/${
+      encodeURIComponent(payment.asaas_payment_id || "")
+    }`,
+    { headers: { access_token: integration.apiKey } },
+  );
+  if (!response.ok) throw new Error("provider_payment_read_failed");
+  const raw = await response.json().catch(() => null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("provider_payment_invalid");
+  }
+  const provider = raw as Record<string, unknown>;
+  const id = typeof provider.id === "string" ? provider.id : "";
+  const status = typeof provider.status === "string"
+    ? provider.status.toUpperCase()
+    : "";
+  const dueDate = typeof provider.dueDate === "string" ? provider.dueDate : "";
+  const value = Number(provider.value);
+  if (
+    id !== payment.asaas_payment_id ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+    !Number.isFinite(value) || value <= 0
+  ) {
+    throw new Error("provider_payment_invalid");
+  }
+  return {
+    id,
+    status: provider.deleted === true ? "DELETED" : status,
+    dueDate,
+    value,
+    invoiceUrl: typeof provider.invoiceUrl === "string"
+      ? provider.invoiceUrl
+      : null,
+    customer: typeof provider.customer === "string" ? provider.customer : null,
+    subscription: typeof provider.subscription === "string"
+      ? provider.subscription
+      : null,
+    deleted: provider.deleted === true,
+  };
+}
 
 async function markDueReminder(
   supabase: any,
@@ -251,13 +550,13 @@ async function resolveRecipient(
 
   // Aluno inativo/arquivado/suspenso/desligado: o diretor optou por NÃO notificar.
   // Pula SEM marcar como enviado → se reativar, volta a receber o aviso.
-  const st = student?.status || "Ativo";
-  const inativo =
-    ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"]
-      .includes(st) ||
-    student?.status_financial === "ARCHIVED" ||
-    ["suspended", "offboarded"].includes(student?.lifecycle_status || "");
-  if (inativo) {
+  const eligibility = await supabase.rpc("is_student_notifiable", {
+    p_id: charge.student_id,
+  });
+  if (eligibility.error) {
+    throw new Error("student_notification_revalidation_failed");
+  }
+  if (eligibility.data !== true) {
     return {
       ok: false,
       phone: "",
@@ -313,10 +612,10 @@ async function resolveRecipient(
 }
 
 /**
- * O aluno ainda estuda? (agenda ativa OU aula lançada nos últimos 90 dias)
+ * O aluno ainda estuda? (agenda ativa OU aula lançada nos últimos 30 dias)
  *
- * ⚠️ Trava DELIBERADA da régua de vencidas, e só dela — o aviso de "vai vencer"
- * continua indo para todo mundo.
+ * A mesma trava protege o aviso pré-vencimento e a régua de vencidas. Um perfil
+ * legado ainda marcado como ativo não basta para autorizar cobrança automática.
  *
  * Motivo: na simulação contra a produção, 2 dos 3 alvos eram alunos que já
  * tinham parado (0 aula em 90 dias) e cuja cobrança segue aberta só porque
@@ -339,7 +638,8 @@ async function aindaEstuda(
   if ((agenda ?? 0) > 0) return true;
 
   const limite =
-    new Date(Date.now() - 90 * 86400_000).toISOString().split("T")[0];
+    new Date(Date.now() - ACTIVE_STUDENT_WINDOW_DAYS * 86400_000).toISOString()
+      .split("T")[0];
   const { count: aulas } = await supabase.from("class_logs")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
@@ -370,7 +670,9 @@ async function reguaVencidas(
 
   const { data: vencidas, error: overdueError } = await supabase
     .from("student_payments")
-    .select("id, student_id, tenant_id, value, due_date, invoice_url")
+    .select(
+      "id, student_id, tenant_id, value, due_date, invoice_url, asaas_payment_id, provider_customer_id, authoritative_subscription_id",
+    )
     .in("status", ["OVERDUE", "PENDING"])
     .lt("due_date", hoje.toISOString().split("T")[0])
     // Janela fechada: não perseguir dívida antiga indefinidamente. Fatura mais
@@ -393,8 +695,10 @@ async function reguaVencidas(
     (vencidas || []).map((c: { id: string }) => c.id),
   );
   let suprimidas = 0;
-
+  const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
+  const dailyTenants = new Set(await enabledDailyTenants(supabase));
   for (const c of vencidas || []) {
+    if (dailyTenants.has(c.tenant_id)) continue;
     try {
       const diasVencida = Math.floor(
         (hoje.getTime() - new Date(c.due_date + "T00:00:00").getTime()) /
@@ -427,10 +731,10 @@ async function reguaVencidas(
         motivos.push(`${c.id}: marcador legado indisponível`);
         continue;
       }
-      if (jaEnviado) continue;
+      if (jaEnviado && marco !== 30) continue;
 
       if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
-        motivos.push(`${c.id}: aluno sem agenda/aula 90d (decisão do diretor)`);
+        motivos.push(`${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`);
         continue;
       }
 
@@ -439,23 +743,89 @@ async function reguaVencidas(
         motivos.push(`${c.id}: ${dest.motivo}`);
         continue;
       }
+      if (marco === 30) {
+        const thirtyDay = await verifyThirtyDayCollection(
+          supabase,
+          c,
+          asaasCache,
+        );
+        if (!thirtyDay.ok) {
+          motivos.push(`${c.id}: ${thirtyDay.reason}`);
+          continue;
+        }
+        const text = `Oi ${dest.nome}, aqui é a ${dest.brandName}.\n\n` +
+          `A mensalidade de *${brl(c.value)}*, vencida em *${
+            dataBR(c.due_date)
+          }*, ` +
+          `continua em aberto há 30 dias. O contrato permite suspender as aulas ` +
+          `após a tolerância de pagamento. Se houver suspensão, ao retomar ` +
+          `confirmaremos a disponibilidade de professor e horário. Para ` +
+          `regularizar ou conversar, responda esta mensagem.\n\n` +
+          `Fatura: ${thirtyDay.invoiceUrl}\n\n` +
+          `Se já pagou, envie o comprovante para conferirmos a baixa.`;
+        if (!jaEnviado) {
+          const integration = await resolveTenantEvolutionIntegration(
+            supabase,
+            c.tenant_id,
+            integrationCache,
+          );
+          const delivery = await deliverPaymentNotification(supabase, {
+            tenantId: c.tenant_id,
+            studentId: c.student_id,
+            paymentId: c.id,
+            notificationKind: kind,
+            integration,
+            instance: dest.instance,
+            phone: dest.phone,
+            text,
+          });
+          if (delivery.status === "SENT") {
+            await recordAutomationSent(supabase, kind, c.id, c.due_date);
+            if (delivery.sentNow) enviados++;
+          } else {
+            motivos.push(`${c.id}: WhatsApp ${delivery.reason}`);
+          }
+        }
+        // A primeira consulta precede um POST ao WhatsApp. Releia a fatura
+        // antes do segundo canal: uma baixa no intervalo bloqueia o e-mail.
+        const beforeEmail = await verifyThirtyDayCollection(
+          supabase,
+          c,
+          asaasCache,
+        );
+        if (!beforeEmail.ok) {
+          motivos.push(`${c.id}: e-mail suprimido (${beforeEmail.reason})`);
+          continue;
+        }
+        const email = await deliverThirtyDayEmail(supabase, c, {
+          recipientEmail: beforeEmail.email,
+          recipientName: dest.nome,
+          brandName: dest.brandName,
+          invoiceUrl: beforeEmail.invoiceUrl,
+        });
+        if (email !== "SENT" && email !== "ALREADY_ATTEMPTED") {
+          motivos.push(`${c.id}: e-mail ${email}`);
+        }
+        continue;
+      }
       const integration = await resolveTenantEvolutionIntegration(
         supabase,
         c.tenant_id,
         integrationCache,
       );
 
-      let text = `Oi ${dest.nome}! Aqui é a ${dest.brandName}.\n\n` +
-        `Sua mensalidade de *${brl(c.value)}*, com vencimento em *${
+      let text = `Oi ${dest.nome}, aqui é a ${dest.brandName}.\n\n` +
+        `Identificamos que a mensalidade de *${brl(c.value)}*, vencida em *${
           dataBR(c.due_date)
-        }*, ` +
-        `consta como *em aberto* por aqui.`;
+        }*, ainda consta *em aberto* em nosso sistema. ` +
+        `Pedimos que regularize o pagamento para evitar que a pendência continue em atraso.`;
       if (c.invoice_url) {
-        text +=
-          `\n\nSe já pagou, pode ignorar. Se ainda não, o link está aqui: ${c.invoice_url}`;
-      } else {text +=
-          `\n\nSe já pagou, pode ignorar. Se ainda não, é só chamar que a gente te ajuda.`;}
-      text += `\n\nQualquer dúvida, estamos por aqui. 💜`;
+        text += `\n\nVocê pode pagar pela própria fatura: ${c.invoice_url}`;
+      } else {
+        text += `\n\nResponda esta mensagem para receber o link da fatura.`;
+      }
+      text +=
+        `\n\nSe já pagou, por favor nos envie o comprovante para conferirmos a baixa. Se precisar de ajuda, é só responder.`;
 
       const delivery = await deliverPaymentNotification(supabase, {
         tenantId: c.tenant_id,
@@ -479,6 +849,204 @@ async function reguaVencidas(
   }
 
   return { enviados, motivos, suprimidas };
+}
+
+type ThirtyDayCharge = SecondWavePayment & {
+  provider_customer_id: string | null;
+  authoritative_subscription_id: string | null;
+};
+
+async function verifyThirtyDayCollection(
+  supabase: any,
+  charge: ThirtyDayCharge,
+  asaasCache: Record<string, ResolvedAsaasIntegration>,
+): Promise<{ ok: boolean; reason: string; email: string; invoiceUrl: string }> {
+  const reject = (reason: string) => ({
+    ok: false,
+    reason,
+    email: "",
+    invoiceUrl: "",
+  });
+  if (
+    !charge.student_id || !charge.tenant_id || !charge.asaas_payment_id ||
+    !charge.provider_customer_id || !charge.authoritative_subscription_id
+  ) {
+    return reject("vínculo da cobrança incompleto");
+  }
+  const { data: local, error: localError } = await supabase
+    .from("student_payments")
+    .select(
+      "status,provider_status,due_date,value,exclusion_reason,refunded_amount,student_id,tenant_id,asaas_payment_id",
+    )
+    .eq("id", charge.id).maybeSingle();
+  if (
+    localError || !local || local.status !== "OVERDUE" ||
+    local.provider_status !== "OVERDUE" || local.exclusion_reason ||
+    Number(local.refunded_amount || 0) > 0 ||
+    local.student_id !== charge.student_id ||
+    local.tenant_id !== charge.tenant_id ||
+    local.asaas_payment_id !== charge.asaas_payment_id ||
+    local.due_date !== charge.due_date
+  ) {
+    return reject("estado local divergente ou não cobrável");
+  }
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select(
+      "id,email,role,status,lifecycle_status,status_financial,is_test_account,contract_accepted,accepted_at,subscription_id,guardian_id,guardian_cpf",
+    )
+    .eq("id", charge.student_id).eq("tenant_id", charge.tenant_id)
+    .maybeSingle();
+  if (
+    profileError || !profile || profile.role !== "STUDENT" ||
+    profile.status !== "Ativo" || profile.lifecycle_status !== "active" ||
+    profile.status_financial === "ARCHIVED" ||
+    profile.is_test_account === true ||
+    profile.contract_accepted !== true || !profile.accepted_at ||
+    profile.subscription_id !== charge.authoritative_subscription_id ||
+    profile.guardian_id || profile.guardian_cpf
+  ) {
+    return reject("aluno ou contrato não elegível");
+  }
+  const { data: membership, error: membershipError } = await supabase
+    .from("tenant_memberships").select("user_id")
+    .eq("user_id", charge.student_id).eq("tenant_id", charge.tenant_id)
+    .eq("role", "STUDENT").eq("status", "ACTIVE").maybeSingle();
+  if (membershipError || !membership) return reject("vínculo escolar inativo");
+  const { data: settings, error: settingsError } = await supabase
+    .from("tenant_admin_settings")
+    .select("student_notifications_enabled")
+    .eq("tenant_id", charge.tenant_id).maybeSingle();
+  if (settingsError || settings?.student_notifications_enabled !== true) {
+    return reject("notificações de alunos desativadas");
+  }
+  const { data: authData, error: authError } = await supabase.auth.admin
+    .getUserById(charge.student_id);
+  const email = String(profile.email || "").trim().toLowerCase();
+  if (
+    authError || !authData?.user?.email_confirmed_at ||
+    authData.user.email?.toLowerCase() !== email ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    email.endsWith("@accounts.invalid")
+  ) {
+    return reject("e-mail do titular não confirmado");
+  }
+  if (!asaasCache[charge.tenant_id]) {
+    asaasCache[charge.tenant_id] = await resolveAsaasIntegration(
+      supabase,
+      charge.tenant_id,
+      "payment.read",
+    );
+  }
+  if (asaasCache[charge.tenant_id].baseUrl.includes("sandbox")) {
+    return reject("integração Asaas de teste");
+  }
+  const provider = await readProviderPayment(supabase, charge, asaasCache);
+  if (
+    provider.status !== "OVERDUE" || provider.dueDate !== charge.due_date ||
+    Math.abs(provider.value - Number(charge.value)) > 0.009 ||
+    provider.customer !== charge.provider_customer_id ||
+    provider.subscription !== charge.authoritative_subscription_id
+  ) {
+    return reject("Asaas diverge da fatura local");
+  }
+  let invoiceUrl = "";
+  try {
+    const url = new URL(provider.invoiceUrl || "");
+    if (
+      url.protocol === "https:" &&
+      ["asaas.com", "www.asaas.com"].includes(url.hostname)
+    ) {
+      invoiceUrl = url.toString();
+    }
+  } catch { /* Fatura sem link válido: nunca trocar por outra. */ }
+  if (!invoiceUrl) return reject("link da própria fatura indisponível");
+  return { ok: true, reason: "", email, invoiceUrl };
+}
+
+async function deliverThirtyDayEmail(
+  supabase: any,
+  charge: ThirtyDayCharge,
+  input: {
+    recipientEmail: string;
+    recipientName: string;
+    brandName: string;
+    invoiceUrl: string;
+  },
+): Promise<string> {
+  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
+  if (!apiKey || !fromEmail) return "PROVIDER_UNAVAILABLE";
+  const key = `wise-wolf-overdue-30-${charge.id}`;
+  const { data: attempt, error: insertError } = await supabase
+    .from("payment_overdue_email_attempts")
+    .insert({
+      tenant_id: charge.tenant_id,
+      payment_id: charge.id,
+      student_id: charge.student_id,
+      milestone: 30,
+      due_date: charge.due_date,
+      recipient_email: input.recipientEmail,
+      provider_idempotency_key: key,
+      status: "SUBMITTING",
+    }).select("id").single();
+  if (insertError?.code === "23505") return "ALREADY_ATTEMPTED";
+  if (insertError || !attempt?.id) return "CLAIM_FAILED";
+
+  const body = `Olá, ${input.recipientName}.\n\n` +
+    `A mensalidade de ${brl(charge.value)}, vencida em ${
+      dataBR(charge.due_date)
+    }, ` +
+    `continua em aberto há 30 dias. O contrato permite suspender as aulas ` +
+    `após a tolerância de pagamento. Se houver suspensão, ao retomar ` +
+    `confirmaremos a disponibilidade de professor e horário. Para ` +
+    `regularizar ou conversar, responda este e-mail ou contate a escola.\n\n` +
+    `Fatura: ${input.invoiceUrl}\n\n` +
+    `Se já pagou, envie o comprovante para conferirmos a baixa.`;
+  let status = "UNKNOWN";
+  let providerMessageId: string | null = null;
+  let providerHttpStatus: number | null = null;
+  let lastError: string | null = null;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [input.recipientEmail],
+        subject: `Mensalidade em aberto - ${
+          input.brandName.replace(/[\r\n]/g, " ")
+        }`,
+        text: body,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    providerHttpStatus = response.status;
+    const result = await response.json().catch(() => null);
+    providerMessageId = typeof result?.id === "string" ? result.id : null;
+    if (response.ok && providerMessageId) status = "SENT";
+    else if (response.status >= 400 && response.status < 500) {
+      status = "REJECTED";
+      lastError = "provider_rejected";
+    } else lastError = "provider_outcome_unknown";
+  } catch {
+    lastError = "provider_outcome_unknown";
+  }
+  const { error: finishError } = await supabase
+    .from("payment_overdue_email_attempts")
+    .update({
+      status,
+      provider_message_id: providerMessageId,
+      provider_http_status: providerHttpStatus,
+      last_error: lastError,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", attempt.id).eq("status", "SUBMITTING");
+  return finishError ? "RESULT_NOT_PERSISTED" : status;
 }
 
 /**
@@ -574,8 +1142,42 @@ async function deliverPaymentNotification(
     };
   }
 
+  const resolvedDestination = await resolveWhatsAppDestination({
+    base: input.integration.baseUrl,
+    keys: [input.integration.apiKey],
+    instance: input.instance,
+    to: input.phone,
+  });
+  const permit = await requestOutboundPermit(
+    input.instance,
+    resolvedDestination,
+  );
+  if (permit?.allowed === false) {
+    const retryAfterSeconds = Math.max(
+      60,
+      Math.ceil(Number(permit.wait_ms || 60_000) / 1000),
+    );
+    await deferOutboundMessageClaim(supabase, claim, {
+      retryAfterSeconds,
+      reason: `throttled_${permit.kind || "outbound"}`,
+    });
+    return {
+      status: "SKIPPED",
+      sentNow: false,
+      reason: `throttled_${permit.kind || "outbound"}`,
+    };
+  }
+  if (permit?.allowed) {
+    const waitMs = Math.min(
+      Math.max(0, Number(permit.wait_ms || 0)),
+      THROTTLE_MAX_INLINE_WAIT_MS,
+    );
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
   const mark = await markOutboundMessageSubmittingDecision(supabase, claim);
   if (mark.ok !== true || mark.status !== "SUBMITTING") {
+    await settleOutboundPermit(permit?.ledger_id, false);
     return {
       status: mark.status === "SUPPRESSED" ? "SUPPRESSED" : "SKIPPED",
       sentNow: false,
@@ -583,14 +1185,19 @@ async function deliverPaymentNotification(
     };
   }
 
-  const providerResult = await sendWhatsTextDetailed({
+  const providerResult = await sendWhatsTextToResolvedDestinationDetailed({
     base: input.integration.baseUrl,
     keys: [input.integration.apiKey],
     instance: input.instance,
-    to: input.phone,
+    to: resolvedDestination,
     text: input.text,
     delayMs: 800,
+    throttle: "skip",
   });
+  await settleOutboundPermit(
+    permit?.ledger_id,
+    providerResult.outcome === "accepted",
+  );
   const finish = paymentNotificationFinish(providerResult);
   try {
     await finishOutboundMessage(supabase, claim, finish);

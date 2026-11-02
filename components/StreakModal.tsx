@@ -85,7 +85,7 @@ const StreakModal: React.FC<{ userId: string; streak: number; practicedToday: bo
             {open && (
                 <motion.div
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[300] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+                    className="fixed inset-0 z-300 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4"
                     onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}
                 >
                     <motion.div

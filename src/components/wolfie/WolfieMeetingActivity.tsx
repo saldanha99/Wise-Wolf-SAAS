@@ -922,7 +922,7 @@ export function WolfieMeetingActivity({
 
               {constructionRetryResult
                 ? (
-                  <section className="rounded-3xl border border-amber-300 bg-brand-surface p-5 shadow-sm sm:p-7 dark:border-amber-700">
+                  <section className="rounded-3xl border border-amber-300 bg-brand-surface p-5 shadow-xs sm:p-7 dark:border-amber-700">
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
                       Nova tentativa do roteiro completo
                     </p>
@@ -931,7 +931,7 @@ export function WolfieMeetingActivity({
                         <h2
                           ref={stageHeadingRef}
                           tabIndex={-1}
-                          className="text-2xl font-black text-brand-text outline-none"
+                          className="text-2xl font-black text-brand-text outline-hidden"
                         >
                           Revise os seis blocos em conjunto
                         </h2>
@@ -1058,7 +1058,7 @@ export function WolfieMeetingActivity({
                   </section>
                 )
                 : (
-                  <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+                  <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-accent">
@@ -1067,7 +1067,7 @@ export function WolfieMeetingActivity({
                     <h2
                       ref={stageHeadingRef}
                       tabIndex={-1}
-                      className="mt-2 text-2xl font-black text-brand-text outline-none"
+                      className="mt-2 text-2xl font-black text-brand-text outline-hidden"
                     >
                       {currentSection.title}
                     </h2>
@@ -1326,7 +1326,7 @@ export function WolfieMeetingActivity({
           <main className="mx-auto max-w-6xl px-4 py-6 sm:px-7 lg:py-8">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
               <section className="min-w-0">
-                <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+                <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-accent">
@@ -1335,7 +1335,7 @@ export function WolfieMeetingActivity({
                       <h2
                         ref={stageHeadingRef}
                         tabIndex={-1}
-                        className="mt-2 text-2xl font-black text-brand-text outline-none sm:text-3xl"
+                        className="mt-2 text-2xl font-black text-brand-text outline-hidden sm:text-3xl"
                       >
                         Memorize a lógica, não cada palavra
                       </h2>
@@ -1604,7 +1604,7 @@ export function WolfieMeetingActivity({
                           ...current,
                           confidence: Number(event.target.value),
                         }))}
-                      className={`mt-3 w-full accent-[var(--brand-accent)] ${focusRing}`}
+                      className={`mt-3 w-full accent-(--brand-accent) ${focusRing}`}
                     />
                   </div>
 
@@ -1704,7 +1704,7 @@ export function WolfieMeetingActivity({
             <div className="min-w-0 space-y-5">
               <ScenarioCard session={readaptationSession} />
 
-              <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+              <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-7">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-accent">
                     Desafio de transferência
@@ -1712,7 +1712,7 @@ export function WolfieMeetingActivity({
                   <h2
                     ref={stageHeadingRef}
                     tabIndex={-1}
-                    className="mt-2 text-2xl font-black text-brand-text outline-none sm:text-3xl"
+                    className="mt-2 text-2xl font-black text-brand-text outline-hidden sm:text-3xl"
                   >
                     Conduza a nova reunião com suas próprias palavras
                   </h2>
@@ -1737,7 +1737,7 @@ export function WolfieMeetingActivity({
                     )}
                     className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
                       responseMode === "text"
-                        ? "bg-brand-surface text-brand-accent shadow-sm"
+                        ? "bg-brand-surface text-brand-accent shadow-xs"
                         : "text-brand-muted"
                     } disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
                   >
@@ -1755,7 +1755,7 @@ export function WolfieMeetingActivity({
                     )}
                     className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
                       responseMode === "voice"
-                        ? "bg-brand-surface text-brand-accent shadow-sm"
+                        ? "bg-brand-surface text-brand-accent shadow-xs"
                         : "text-brand-muted"
                     } disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
                   >

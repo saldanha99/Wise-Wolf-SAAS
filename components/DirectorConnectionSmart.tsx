@@ -115,7 +115,7 @@ const DirectorConnectionSmart: React.FC = () => {
                             value={nameInput}
                             onChange={(e) => setNameInput(e.target.value)}
                             placeholder="Ex: Wise Wolf"
-                            className="w-full px-4 py-3 rounded-xl bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border focus:border-purple-500 outline-none transition-all pl-10"
+                            className="w-full px-4 py-3 rounded-xl bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border focus:border-purple-500 outline-hidden transition-all pl-10"
                         />
                         <Search className="absolute left-3 top-3.5 text-brand-muted" size={18} />
                     </div>

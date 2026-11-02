@@ -6,10 +6,15 @@ do $test$
 declare
   admin_id uuid:=gen_random_uuid();teacher_id uuid:=gen_random_uuid();student_id uuid:=gen_random_uuid();
   outsider_id uuid:=gen_random_uuid();other_student uuid:=gen_random_uuid();session_id uuid:=gen_random_uuid();other_session uuid:=gen_random_uuid();future_session uuid:=gen_random_uuid();
-  result jsonb;artifact_id uuid;summary_id uuid;blocked boolean;nonce jsonb;original_count bigint;
+  result jsonb;artifact_id uuid;summary_id uuid;blocked boolean;nonce jsonb;original_count bigint;claim_id text;
   today date:=(now() at time zone 'America/Sao_Paulo')::date;
 begin
   perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+  -- A fila do Meet é global (todas as escolas, 30 por vez) e este teste confere a
+  -- ORDEM dela. No release ele roda no banco de produção: um job real vencido na
+  -- frente (sala urgente, re-consulta) reprovaria o teste sem defeito nenhum. As
+  -- conexões reais saem do ar só dentro desta transação (o rollback devolve).
+  update private.google_workspace_connections set status='REAUTH_REQUIRED' where status='CONNECTED';
   insert into public.tenants(id,name) values('meet-docs-fixture','Meet docs fixture'),('meet-other-fixture','Meet other fixture');
   insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
     (admin_id,'meet-admin@example.invalid','{"provider":"email"}','{"test_fixture":true}'),
@@ -23,6 +28,9 @@ begin
   update public.profiles set tenant_id='meet-other-fixture',lifecycle_status='active',is_test_account=true,
     role=case when id=outsider_id then 'SCHOOL_ADMIN' else 'STUDENT' end where id in(outsider_id,other_student);
   update public.profiles set professor_id=teacher_id where id=student_id;
+  -- Conta Google confirmada pelo professor (20260926180000): é ela o coanfitrião.
+  insert into private.teacher_google_identities(teacher_id,tenant_id,google_sub,google_email,email_verified)
+    values(teacher_id,'meet-docs-fixture','docs-teacher-sub','teacher@example.invalid',true);
   insert into public.tenant_memberships(tenant_id,user_id,role,status)
     select tenant_id,id,role,'ACTIVE' from public.profiles where id in(admin_id,teacher_id,student_id,outsider_id,other_student)
     on conflict(tenant_id,user_id) do update set role=excluded.role,status='ACTIVE';
@@ -50,9 +58,14 @@ begin
 
   result:=public.google_meet_backend('room_claim','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('organizer_sub','synthetic-sub','cohost_email','teacher@example.invalid'));
   perform pg_temp.meet_assert((result->>'claimed')::boolean,'first room reservation not acquired');
+  claim_id:=result->'room'->>'claim_id';
   result:=public.google_meet_backend('room_claim','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('organizer_sub','synthetic-sub','cohost_email','teacher@example.invalid'));
   perform pg_temp.meet_assert(not (result->>'claimed')::boolean,'concurrent room creates duplicate');
-  perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY'));
+  perform pg_temp.meet_assert(not (result->'room' ? 'claim_id'),'room reservation token leaks to a non-owner');
+  -- Só quem tem a reserva grava o link (20260926170000).
+  blocked:=false;begin perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY'));exception when object_not_in_prerequisite_state then blocked:=true;end;
+  perform pg_temp.meet_assert(blocked,'room link saved without the creation reservation');
+  perform public.google_meet_backend('room_save','meet-docs-fixture',teacher_id,session_id,jsonb_build_object('space_name','spaces/fixture','meeting_uri','https://meet.google.com/abc-defg-hij','state','READY','claim_id',claim_id));
   insert into public.lesson_occurrences(tenant_id,session_id,source_type,source_id,class_date,start_time,scheduled_start_at,scheduled_end_at,entitlement_date,status)
     values('meet-docs-fixture',session_id,'booking','active-fixture',today,'14:00',now()-interval '1 hour',now()-interval '30 minutes',today,'SCHEDULED'),
     ('meet-docs-fixture',session_id,'booking','archived-fixture',today,'14:00',now()-interval '1 hour',now()-interval '30 minutes',today,'SUPERSEDED');
@@ -86,7 +99,17 @@ begin
     values(future_session,'meet-docs-fixture',student_id,teacher_id,today+1,now()+interval '2 hours',now()+interval '3 hours','meet-future-fixture',false);
   result:=public.get_pending_google_meet_sync_sessions();
   perform pg_temp.meet_assert(not exists(select 1 from jsonb_array_elements(result) job where job->>'lesson_session_id'=future_session::text),'future room scheduled without documentation permission');
+  -- Sem aceite e sem sala a sessão não volta: o app usa o link de sempre (o botão
+  -- ficou vazio de 13/09 a 26/09/2026 porque toda sessão voltava com link nulo).
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',student_id,'role','authenticated')::text,true);
+  perform pg_temp.meet_assert(public.get_my_lesson_rooms(today+1,today+1)='[]'::jsonb,'session without consent or room hides the usual lesson link');
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
   update public.lesson_sessions set documentation_consent=true where id=future_session;
+  -- Com aceite a sala da escola é esperada: volta sem link (não abre sala pessoal).
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',student_id,'role','authenticated')::text,true);
+  result:=public.get_my_lesson_rooms(today+1,today+1);
+  perform pg_temp.meet_assert(jsonb_array_length(result)=1 and result->0->>'meeting_uri' is null,'authorized session without ready room opens a personal room');
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
   result:=public.get_pending_google_meet_sync_sessions();
   perform pg_temp.meet_assert(exists(select 1 from jsonb_array_elements(result) job where job->>'lesson_session_id'=future_session::text and job->>'operation'='PREPARE_ROOM'),'authorized upcoming room not queued');
   perform pg_temp.meet_assert(result->0->>'lesson_session_id'=future_session::text,'past document backlog takes priority over upcoming room preparation');

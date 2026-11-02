@@ -166,7 +166,7 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
             key={value}
             type="button"
             onClick={() => { setSelected(value); setFeedback(null); }}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tenant-primary ${selected === value ? 'border-tenant-primary bg-tenant-primary/10 text-tenant-primary dark:border-indigo-300 dark:bg-indigo-500/25 dark:text-white' : 'border-brand-border bg-brand-surface text-brand-muted hover:border-tenant-primary/50 dark:text-slate-200 dark:hover:border-indigo-300 dark:hover:text-white'}`}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-xs font-black transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-tenant-primary ${selected === value ? 'border-tenant-primary bg-tenant-primary/10 text-tenant-primary dark:border-indigo-300 dark:bg-indigo-500/25 dark:text-white' : 'border-brand-border bg-brand-surface text-brand-muted hover:border-tenant-primary/50 dark:text-slate-200 dark:hover:border-indigo-300 dark:hover:text-white'}`}
           >
             <Icon size={17} /> {text}
           </button>
@@ -189,7 +189,7 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
             onChange={(event) => changeCard('holderName', event.target.value)}
             autoComplete="cc-name"
             placeholder="Nome impresso no cartão"
-            className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white"
+            className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white"
           />
           <input
             value={card.number}
@@ -197,12 +197,12 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
             autoComplete="cc-number"
             inputMode="numeric"
             placeholder="Número do cartão"
-            className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white"
+            className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white"
           />
           <div className="grid grid-cols-3 gap-2">
-            <input value={card.expiryMonth} onChange={(event) => changeCard('expiryMonth', event.target.value)} autoComplete="cc-exp-month" inputMode="numeric" placeholder="MM" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
-            <input value={card.expiryYear} onChange={(event) => changeCard('expiryYear', event.target.value)} autoComplete="cc-exp-year" inputMode="numeric" placeholder="AAAA" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
-            <input value={card.ccv} onChange={(event) => changeCard('ccv', event.target.value)} autoComplete="cc-csc" inputMode="numeric" type="password" placeholder="CVV" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
+            <input value={card.expiryMonth} onChange={(event) => changeCard('expiryMonth', event.target.value)} autoComplete="cc-exp-month" inputMode="numeric" placeholder="MM" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
+            <input value={card.expiryYear} onChange={(event) => changeCard('expiryYear', event.target.value)} autoComplete="cc-exp-year" inputMode="numeric" placeholder="AAAA" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
+            <input value={card.ccv} onChange={(event) => changeCard('ccv', event.target.value)} autoComplete="cc-csc" inputMode="numeric" type="password" placeholder="CVV" className="rounded-xl border border-blue-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-tenant-primary dark:border-blue-900 dark:bg-slate-950 dark:text-white" />
           </div>
         </div>
       )}

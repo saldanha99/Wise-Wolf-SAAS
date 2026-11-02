@@ -377,7 +377,7 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className={`group flex min-h-52 flex-col rounded-3xl border border-brand-border bg-brand-surface p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${styles.surface} ${focusRing}`}
+      className={`group flex min-h-52 flex-col rounded-3xl border border-brand-border bg-brand-surface p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${styles.surface} ${focusRing}`}
     >
       <div className="flex items-start justify-between gap-3">
         <span
@@ -926,7 +926,7 @@ export function WolfieDiscoveryHome({
                 key={featured.title}
                 type="button"
                 onClick={() => onChooseExperience(item)}
-                className={`group flex w-[min(84vw,22rem)] shrink-0 snap-start flex-col rounded-3xl border border-brand-border bg-gradient-to-br p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md sm:min-h-72 ${
+                className={`group flex w-[min(84vw,22rem)] shrink-0 snap-start flex-col rounded-3xl border border-brand-border bg-linear-to-br p-5 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md sm:min-h-72 ${
                   featuredStyles[index % featuredStyles.length]
                 } ${focusRing}`}
               >
@@ -976,7 +976,7 @@ export function WolfieDiscoveryHome({
           </p>
         </div>
 
-        <div className="mt-6 rounded-3xl border border-brand-border bg-brand-surface p-4 shadow-sm sm:p-5">
+        <div className="mt-6 rounded-3xl border border-brand-border bg-brand-surface p-4 shadow-xs sm:p-5">
           <label className="relative block">
             <Search
               size={18}
@@ -988,7 +988,7 @@ export function WolfieDiscoveryHome({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Busque por rotina, medicina, entrevista, TOEFL, cozinha…"
-              className={`h-12 w-full rounded-2xl border border-brand-border bg-brand-bg pl-11 pr-11 text-sm text-brand-text outline-none placeholder:text-brand-muted focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 ${focusRing}`}
+              className={`h-12 w-full rounded-2xl border border-brand-border bg-brand-bg pl-11 pr-11 text-sm text-brand-text outline-hidden placeholder:text-brand-muted focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 ${focusRing}`}
             />
             {query
               ? (
@@ -1046,7 +1046,7 @@ export function WolfieDiscoveryHome({
                   setSkillFilter(
                     event.target.value as "all" | ExperienceSkill,
                   )}
-                className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-none focus:border-brand-accent ${focusRing}`}
+                className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-hidden focus:border-brand-accent ${focusRing}`}
               >
                 {SKILL_FILTERS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -1065,7 +1065,7 @@ export function WolfieDiscoveryHome({
                       ? "all"
                       : Number(event.target.value),
                   )}
-                className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-none focus:border-brand-accent ${focusRing}`}
+                className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-hidden focus:border-brand-accent ${focusRing}`}
               >
                 <option value="all">Qualquer duração</option>
                 {[1, 3, 5, 10, 15].map((duration) => (
@@ -1120,7 +1120,7 @@ export function WolfieDiscoveryHome({
                       setAudienceFilter(
                         event.target.value as "all" | ExperienceAudience,
                       )}
-                    className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-none focus:border-brand-accent ${focusRing}`}
+                    className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-hidden focus:border-brand-accent ${focusRing}`}
                   >
                     {AUDIENCE_FILTERS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1139,7 +1139,7 @@ export function WolfieDiscoveryHome({
                       setModalityFilter(
                         event.target.value as "all" | ExperienceModality,
                       )}
-                    className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-none focus:border-brand-accent ${focusRing}`}
+                    className={`h-11 w-full rounded-xl border border-brand-border bg-brand-bg px-3 text-xs font-bold text-brand-text outline-hidden focus:border-brand-accent ${focusRing}`}
                   >
                     {MODALITY_FILTERS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1168,7 +1168,7 @@ export function WolfieDiscoveryHome({
               return (
                 <section
                   key={universe.id}
-                  className="rounded-[2rem] border border-brand-border bg-brand-surface p-4 shadow-sm sm:p-6"
+                  className="rounded-4xl border border-brand-border bg-brand-surface p-4 shadow-xs sm:p-6"
                   aria-labelledby={`${universe.id}-title`}
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1281,7 +1281,7 @@ export function WolfieDiscoveryHome({
         className="mt-10 grid gap-4 lg:grid-cols-2"
         aria-label="Minha jornada e revisão inteligente"
       >
-        <article className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-6">
+        <article className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs sm:p-6">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent">
               <BarChart3 size={20} aria-hidden="true" />
@@ -1342,7 +1342,7 @@ export function WolfieDiscoveryHome({
         <button
           type="button"
           onClick={onOpenRepertoire}
-          className={`group rounded-3xl border border-brand-border bg-brand-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md sm:p-6 ${focusRing}`}
+          className={`group rounded-3xl border border-brand-border bg-brand-surface p-5 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md sm:p-6 ${focusRing}`}
         >
           <div className="flex items-start justify-between gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300">

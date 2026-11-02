@@ -227,7 +227,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
             )}
 
             {showConfirmModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
                     <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-3xl border border-brand-border bg-brand-surface p-6 shadow-2xl">
                         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
                             <Sparkles size={24} />
@@ -259,7 +259,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
                 </div>
             )}
 
-            <header className="border-b border-brand-border bg-gradient-to-r from-violet-50 via-brand-surface to-indigo-50 p-5 dark:from-violet-950/30 dark:via-brand-surface dark:to-indigo-950/30 sm:p-6">
+            <header className="border-b border-brand-border bg-linear-to-r from-violet-50 via-brand-surface to-indigo-50 p-5 dark:from-violet-950/30 dark:via-brand-surface dark:to-indigo-950/30 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-500/20">
@@ -347,7 +347,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
                                 onClick={() => setActiveActivity(activity)}
                                 className={`group flex min-h-32 w-full items-center gap-4 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg motion-reduce:transform-none ${cfg.border} ${cfg.bg}`}
                             >
-                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-surface shadow-sm">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-surface shadow-xs">
                                     <Icon size={20} className={cfg.color} aria-hidden="true" />
                                 </div>
                                 <div className="min-w-0 flex-1">

@@ -40,6 +40,14 @@ const ITEMS: Item[] = [
   { key: 'avisos_pagamento', label: 'Avisos de pagamento sem entrega confirmada', tab: 'student-payments', icon: AlertTriangle, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
   { key: 'pagamentos_sem_aluno', label: 'Pagamentos aguardando identificação do aluno', tab: 'reconciliation', icon: Wallet, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
   { key: 'conciliacao_asaas', label: 'Divergências atuais entre Asaas e plataforma', tab: 'reconciliation', icon: AlertTriangle, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
+  // Rascunho de resumo de aula (IA ou notas do Gemini) parado há 3+ dias: a
+  // memória do aluno só recebe o aprovado, e depois da retenção das fontes o
+  // rascunho não pode mais ser aprovado. A fila fica em "Salas e continuidade".
+  { key: 'resumos_para_revisar', label: 'Resumos de aula parados há 3 dias ou mais', tab: 'lesson-sessions', icon: FileText, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
+  // Professor com aula nos próximos 14 dias sem a conta Google confirmada por
+  // login (20260929100000): a sala da escola só nasce depois disso — mesmo com
+  // o registro autorizado pela escola, a aula dele segue pelo link de sempre.
+  { key: 'professores_sem_conta_google', label: 'Professores sem conta Google confirmada (a sala da escola só nasce depois)', tab: 'recording-consents', icon: ShieldAlert, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
 ];
 
 type LoadState = 'loading' | 'success' | 'error';

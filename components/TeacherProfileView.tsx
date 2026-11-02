@@ -37,7 +37,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
   const tabs: [string, string][] = [['overview', 'Visão Geral'], ['students', 'Alunos'], ['classes', 'Aulas'], ['financial', 'Fechamentos'], ['history', 'Histórico']];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-brand-surface w-full max-w-3xl rounded-3xl border border-brand-border shadow-2xl my-6" onClick={e => e.stopPropagation()}>
         {loading ? <div className="p-16 flex justify-center"><Loader2 className="animate-spin text-brand-accent" size={32} /></div>
         : d?.error ? <div className="p-12 text-center"><AlertTriangle className="mx-auto text-amber-500 mb-3" size={32} /><p className="text-brand-text font-bold">{d.error === 'sem_permissao' ? 'Sem acesso.' : 'Erro ao carregar.'}</p><button onClick={onClose} className="mt-4 px-4 py-2 bg-brand-surface-2 rounded-xl text-sm font-bold">Fechar</button></div>

@@ -49,7 +49,7 @@ const Sidebar = () => {
     return (
         <nav
             className={`sticky top-0 h-screen shrink-0 border-r transition-all duration-300 ease-in-out ${open ? 'w-64' : 'w-16'
-                } border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-2 shadow-sm`}
+                } border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-2 shadow-xs`}
         >
             <TitleSection open={open} />
 
@@ -141,7 +141,7 @@ const Option = ({ Icon, title, selected, setSelected, open, notifs }: any) => {
         <button
             onClick={() => setSelected(title)}
             className={`relative flex h-11 w-full items-center rounded-md transition-all duration-200 ${isSelected
-                    ? "bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-sm border-l-2 border-blue-500"
+                    ? "bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-xs border-l-2 border-blue-500"
                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
                 }`}
         >
@@ -198,7 +198,7 @@ const TitleSection = ({ open }: { open: boolean }) => {
 
 const Logo = () => {
     return (
-        <div className="grid size-10 shrink-0 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
+        <div className="grid size-10 shrink-0 place-content-center rounded-lg bg-linear-to-br from-blue-500 to-blue-600 shadow-xs">
             <svg
                 width="20"
                 height="auto"
@@ -276,7 +276,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-xs hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                             <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -288,7 +288,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+12% from last month</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-xs hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
                             <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -300,7 +300,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+5% from last week</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-xs hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                             <ShoppingCart className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -312,7 +312,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+8% from yesterday</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-xs hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
                             <Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -329,7 +329,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Recent Activity */}
                 <div className="lg:col-span-2">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-xs">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Activity</h3>
                             <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
@@ -377,7 +377,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
 
                 {/* Quick Stats */}
                 <div className="space-y-6">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-xs">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Quick Stats</h3>
                         <div className="space-y-4">
                             <div className="flex justify-between items-center">
@@ -406,7 +406,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-xs">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Top Products</h3>
                         <div className="space-y-3">
                             {['iPhone 15 Pro', 'MacBook Air M2', 'AirPods Pro', 'iPad Air'].map((product, i) => (

@@ -97,7 +97,7 @@ const SaasSalesPage: React.FC = () => {
                         </div>
                     </div>
                     <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 rounded-[3rem] blur-3xl transform rotate-6"></div>
+                        <div className="absolute inset-0 bg-linear-to-tr from-indigo-500/20 to-purple-500/20 rounded-[3rem] blur-3xl transform rotate-6"></div>
                         <img
                             src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?ixlib=rb-4.0.3&auto=format&fit=crop&w=2426&q=80"
                             alt="Dashboard Preview"
@@ -122,7 +122,7 @@ const SaasSalesPage: React.FC = () => {
                             { icon: Shield, title: 'Financeiro Blindado', desc: 'Emita boletos e pix automáticos, reduza a inadimplência com régua de cobrança.' }
                         ].map((feat, i) => (
                             <div key={i} className="p-8 rounded-3xl bg-brand-surface-2 border border-brand-border hover:shadow-lg transition-all group">
-                                <div className="w-14 h-14 bg-brand-surface rounded-2xl shadow-sm text-indigo-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <div className="w-14 h-14 bg-brand-surface rounded-2xl shadow-xs text-indigo-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                     <feat.icon size={28} />
                                 </div>
                                 <h3 className="text-xl font-bold mb-3">{feat.title}</h3>
@@ -135,7 +135,7 @@ const SaasSalesPage: React.FC = () => {
 
             {/* CTA / Form Section */}
             <section id="demo" className="py-24 px-6 bg-brand-surface text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-indigo-900/50 to-transparent pointer-events-none"></div>
+                <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-indigo-900/50 to-transparent pointer-events-none"></div>
                 <div className="max-w-5xl mx-auto grid lg:grid-cols-2 gap-16 items-center relative z-10">
                     <div>
                         <h2 className="text-4xl lg:text-5xl font-black mb-6">Pronto para escalar sua escola?</h2>

@@ -24,6 +24,33 @@ interface PendingSession {
   teacher_id: string;
   teacher_name: string | null;
   hourly_rate: number;
+  /** Sala da escola no Meet (experimental): o que o Google viu, quando já conferiu. */
+  meet?: {
+    state: string;
+    outcome: string | null;
+    teacher_minutes: number;
+    lead_minutes: number;
+    evaluated_at: string | null;
+  } | null;
+}
+
+// Por que a conferência automática deixou esta aula para a direção decidir.
+// A aula que o Meet comprovou (os dois juntos, ou professor esperou e o lead
+// não veio) já sai desta lista sozinha.
+export function meetNote(meet: PendingSession['meet']): { text: string; tone: 'info' | 'warn' } | null {
+  if (!meet) return null;
+  const m = `professor ${meet.teacher_minutes} min · aluno ${meet.lead_minutes} min na sala`;
+  switch (meet.outcome) {
+    case 'TEACHER_ABSENT': return { text: `Meet: o professor não entrou na sala da escola (${m}).`, tone: 'warn' };
+    case 'CONFLICT': return { text: `Meet: o aluno não entrou, mas a aula foi lançada como dada (${m}). Confira com o professor.`, tone: 'warn' };
+    case 'UNCERTAIN': return { text: `Meet: presença curta ou planilha ilegível (${m}). Decida pela conversa com o professor.`, tone: 'warn' };
+    case 'NO_CONFERENCE': return { text: 'Meet: ninguém abriu a sala da escola — a aula pode ter sido por outro link.', tone: 'warn' };
+    case 'NO_REPORT': return { text: 'Meet: a sala foi usada, mas o Google não gerou o relatório de presença.', tone: 'warn' };
+    default:
+      return meet.state === 'READY'
+        ? { text: 'Meet: conferindo a presença na sala da escola. Se o Google comprovar, a aula sai daqui sozinha.', tone: 'info' }
+        : null;
+  }
 }
 
 const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
@@ -96,6 +123,9 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
         <div>
           <h2 className="text-3xl font-black text-brand-text tracking-tight">Experimentais & Treinamentos</h2>
           <p className="text-brand-muted text-sm">Confirme as aulas realizadas, após o término dos 30 minutos agendados, para que o professor seja remunerado.</p>
+          <p data-tour="trial-meet-settlement" className="text-brand-muted text-xs mt-1">
+            Experimental na sala da escola no Meet é conferida sozinha: professor e aluno juntos na sala = aula paga; professor esperou e o aluno não entrou = não veio. Aqui só fica o que o Google não conseguiu comprovar.
+          </p>
         </div>
         <button onClick={load} className="inline-flex items-center gap-2 px-4 py-2 bg-brand-surface-2 rounded-xl text-xs font-black uppercase tracking-widest text-brand-muted hover:text-brand-text transition-colors">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
@@ -152,6 +182,12 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
                     <span className="flex items-center gap-1"><CalendarClock size={12} /> {fmt(s.start_time)}</span>
                     <span className="flex items-center gap-1 font-bold text-emerald-600"><DollarSign size={12} /> R$ {Number(s.hourly_rate).toFixed(2).replace('.', ',')}</span>
                   </div>
+                  {(() => {
+                    const note = meetNote(s.meet);
+                    return note ? (
+                      <p className={`mt-1.5 text-[11px] font-bold ${note.tone === 'warn' ? 'text-amber-600' : 'text-sky-600'}`}>{note.text}</p>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Ações */}

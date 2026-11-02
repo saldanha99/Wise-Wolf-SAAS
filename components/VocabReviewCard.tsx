@@ -95,7 +95,7 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
 
     if (loading) {
         return (
-            <div role="status" aria-live="polite" className="overflow-hidden rounded-[2rem] border border-amber-200 bg-brand-surface shadow-sm dark:border-amber-800/30">
+            <div role="status" aria-live="polite" className="overflow-hidden rounded-4xl border border-amber-200 bg-brand-surface shadow-xs dark:border-amber-800/30">
                 <div className="flex items-center gap-3 border-b border-brand-border bg-amber-50 p-5 dark:bg-amber-900/10">
                     <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300"><Loader2 className="animate-spin" size={19} /></span>
                     <div>
@@ -110,7 +110,7 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
 
     if (loadError) {
         return (
-            <div role="alert" className="flex flex-col gap-3 rounded-[2rem] border border-amber-200 bg-amber-50 p-5 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+            <div role="alert" className="flex flex-col gap-3 rounded-4xl border border-amber-200 bg-amber-50 p-5 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                     <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
                     <div>
@@ -133,7 +133,7 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
         const total = stats.correct + stats.wrong;
         const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
         return (
-            <div className="bg-gradient-to-br from-emerald-50 to-cyan-50 dark:from-emerald-900/20 dark:to-cyan-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-[2.5rem] p-8 text-center">
+            <div className="bg-linear-to-br from-emerald-50 to-cyan-50 dark:from-emerald-900/20 dark:to-cyan-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-[2.5rem] p-8 text-center">
                 <Check size={32} className="text-emerald-500 mx-auto mb-3" />
                 <h3 className="text-lg font-black text-slate-800 dark:text-white">Sessão de revisão concluída!</h3>
                 <p className="text-sm text-slate-500 mt-1">
@@ -153,7 +153,7 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
     const item = reviews[idx];
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-amber-200 dark:border-amber-800/30 overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-amber-200 dark:border-amber-800/30 overflow-hidden shadow-xs">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-amber-50 dark:bg-amber-900/10">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center">
@@ -179,7 +179,7 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
                     type="button"
                     onClick={() => setFlipped(f => !f)}
                     aria-pressed={flipped}
-                    className="flex min-h-[200px] w-full items-center justify-center rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center transition-all hover:shadow-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-200 motion-reduce:transition-none dark:border-amber-800/30 dark:from-amber-900/20 dark:to-orange-900/20"
+                    className="flex min-h-[200px] w-full items-center justify-center rounded-2xl border border-amber-100 bg-linear-to-br from-amber-50 to-orange-50 p-8 text-center transition-all hover:shadow-lg focus:outline-hidden focus-visible:ring-4 focus-visible:ring-amber-200 motion-reduce:transition-none dark:border-amber-800/30 dark:from-amber-900/20 dark:to-orange-900/20"
                 >
                     {!flipped ? (
                         <div className="text-center">

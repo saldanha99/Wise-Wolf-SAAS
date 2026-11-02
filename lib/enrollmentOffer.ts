@@ -186,12 +186,24 @@ const ENROLLMENT_OFFER_ERRORS: Array<[string, string]> = [
     ['teacher_slot_unavailable', 'O professor não disponibilizou um dos horários selecionados. Atualize a grade.'],
     ['teacher_slot_occupied', 'Um dos horários selecionados já está ocupado. Atualize a grade antes de gerar o link.'],
     ['enrollment_schedule_reserved', 'Esse horário acabou de ser reservado por outra matrícula. Escolha outro slot.'],
+    // Reserva de agenda paga ao professor (aluno com início futuro).
+    ['teacher_slot_held', 'Esse horário está reservado na agenda do professor para um aluno que começa em breve. Escolha outro horário.'],
+    ['future_start_hold_requires_future_start', 'A reserva de agenda é para aluno que começa numa data futura. Ajuste o início das aulas ou desmarque a reserva.'],
+    ['future_start_hold_invalid_amount', 'Informe o valor da reserva para o professor (maior que zero, até R$ 1.000).'],
+    ['future_start_hold_student_required', 'Informe o nome do aluno da reserva: é o que aparece na agenda e na folha do professor.'],
+    ['future_start_hold_closing_not_pending', 'A folha deste mês do professor já foi fechada. Nada foi criado: nem o link, nem a reserva.'],
+    ['future_start_hold_already_exists', 'Esta oferta já tem uma reserva de agenda com outro valor.'],
+    ['future_start_hold_offer_closed', 'A oferta foi revogada ou venceu. Gere um novo link.'],
     ['enrollment_schedule_changed', 'A disponibilidade mudou desde a criação do link. Gere uma nova grade antes de continuar.'],
     ['dependent_student_phone_invalid', 'Informe um WhatsApp válido do aluno, separado do telefone do responsável financeiro.'],
     ['dependent_guardian_contact_invalid', 'O responsável financeiro precisa ter nome, CPF, e-mail e WhatsApp válidos antes da criação do link. Atualize o cadastro do titular.'],
     ['pro_rata_not_applicable', 'O prorrata não se aplica a plano de aula avulsa. Desative essa opção ou escolha um plano recorrente.'],
     ['invalid_enrollment_billing_period', 'Revise a data de início e o mês do primeiro vencimento.'],
     ['enrollment_first_billing_date_passed', 'O primeiro vencimento desta oferta já passou. Gere um novo link com datas atualizadas.'],
+    // Indicação de afiliado (camada affiliateCoupon de create_enrollment_offer).
+    ['cupom de afiliado invalido', 'Cupom de afiliado inválido ou inativo. Confira o código com o aluno ou busque pelo nome de quem indicou.'],
+    ['cupom de afiliado nao se aplica', 'O cupom de afiliado vale só para plano (mensal, semestral ou anual), não para aula avulsa.'],
+    ['afiliado nao gera link', 'Afiliado não gera link de matrícula: a indicação dele é feita pelo cupom.'],
     ['42501', 'Não foi possível confirmar sua autorização para gerar o link. Atualize a sessão e tente novamente.'],
 ];
 

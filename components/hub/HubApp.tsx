@@ -172,6 +172,43 @@ const HubAccountChooser: React.FC<{
   </div>
 );
 
+// Convite de aluno: o professor manda `/?convite=<token>` pelo WhatsApp. O
+// token sobrevive ao login/cadastro em sessionStorage e é consumido uma vez.
+const INVITE_STORAGE_KEY = 'wisewolf.hub.invite';
+const INVITE_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
+export const readHubInviteToken = (search: string, storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null): string | null => {
+  const fromUrl = new URLSearchParams(search).get('convite')?.trim().toLowerCase() || '';
+  if (INVITE_TOKEN_PATTERN.test(fromUrl)) {
+    try { storage?.setItem(INVITE_STORAGE_KEY, fromUrl); } catch {}
+    return fromUrl;
+  }
+  try {
+    const stored = storage?.getItem(INVITE_STORAGE_KEY) || '';
+    return INVITE_TOKEN_PATTERN.test(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearHubInviteToken = (storage: Pick<Storage, 'removeItem'> | null) => {
+  try { storage?.removeItem(INVITE_STORAGE_KEY); } catch {}
+};
+
+export interface HubInvitePreview {
+  learner_name: string;
+  account_name: string;
+  teacher_name: string;
+}
+
+const INVITE_ERRORS: Record<string, string> = {
+  INVITE_INVALID: 'Este convite não é mais válido. Peça um link novo ao seu professor.',
+  CANNOT_ACCEPT_OWN_INVITE: 'Você é o professor deste convite — ele é para o seu aluno.',
+  ALREADY_EDUCATOR_HERE: 'Esta conta já é de professor neste ambiente; o convite é para uma conta de aluno.',
+  ALREADY_SEATED: 'Você já tem um lugar neste ambiente. Entre normalmente.',
+  SEATS_EXHAUSTED: 'O professor não tem mais vagas de aluno no plano dele. Avise-o.',
+};
+
 const HubApp: React.FC = () => {
   const marketingPage = resolveHubMarketingPage();
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']>(null);
@@ -186,6 +223,10 @@ const HubApp: React.FC = () => {
   const [accountLoading, setAccountLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState('');
+  const [inviteToken, setInviteToken] = useState<string | null>(() => readHubInviteToken(window.location.search, window.sessionStorage));
+  const [invitePreview, setInvitePreview] = useState<HubInvitePreview | null>(null);
+  const [inviteError, setInviteError] = useState('');
+  const acceptingInviteRef = useRef(false);
   const [planIntent, setPlanIntent] = useState<HubCheckoutIntent | null>(() => {
     try {
       return restoreHubCheckoutIntent(window.location.href, window.localStorage);
@@ -347,6 +388,67 @@ const HubApp: React.FC = () => {
   }, [loadAccountContext, marketingPage]);
 
   useEffect(() => {
+    if (!inviteToken) return;
+    let mounted = true;
+    void supabase.rpc('hub_learner_invite_preview', { p_token: inviteToken }).then(({ data }) => {
+      if (!mounted) return;
+      const payload = data as Record<string, unknown> | null;
+      if (payload?.ok === true) {
+        setInvitePreview({
+          learner_name: String(payload.learner_name || ''),
+          account_name: String(payload.account_name || ''),
+          teacher_name: String(payload.teacher_name || payload.account_name || ''),
+        });
+      } else {
+        setInviteError(INVITE_ERRORS.INVITE_INVALID);
+      }
+    });
+    return () => { mounted = false; };
+  }, [inviteToken]);
+
+  // Aceita o convite assim que existe sessão: cria o assento na conta do
+  // professor e abre direto o ambiente dele (sem trial, sem escolher conta).
+  const acceptInvite = useCallback(async (userId: string) => {
+    if (!inviteToken || acceptingInviteRef.current) return;
+    acceptingInviteRef.current = true;
+    setAccountLoading(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hub_accept_learner_invite', { p_token: inviteToken });
+      if (rpcError) throw rpcError;
+      const payload = data as Record<string, unknown> | null;
+      if (payload?.ok !== true) {
+        const code = typeof payload?.code === 'string' ? payload.code : 'INVITE_INVALID';
+        // Quem já tem lugar entra normalmente; os outros veem o motivo.
+        if (code !== 'ALREADY_SEATED') setInviteError(INVITE_ERRORS[code] || INVITE_ERRORS.INVITE_INVALID);
+        if (code === 'ALREADY_SEATED' || code === 'ALREADY_EDUCATOR_HERE' || code === 'CANNOT_ACCEPT_OWN_INVITE') {
+          clearHubInviteToken(window.sessionStorage);
+          setInviteToken(null);
+          await loadAccountContext(userId, selectedAccountIdRef.current);
+        }
+        return;
+      }
+      clearHubInviteToken(window.sessionStorage);
+      setInviteToken(null);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('convite');
+        window.history.replaceState(window.history.state, '', url.toString());
+      } catch {}
+      await loadAccountContext(userId, String(payload.account_id));
+    } catch (caught) {
+      console.error('Wise Wolf Hub invite acceptance failed', caught);
+      setInviteError('Não foi possível entrar pelo convite agora. Tente de novo em instantes.');
+    } finally {
+      acceptingInviteRef.current = false;
+      setAccountLoading(false);
+    }
+  }, [inviteToken, loadAccountContext]);
+
+  useEffect(() => {
+    if (session && inviteToken && !accountLoading && !loading) void acceptInvite(session.user.id);
+  }, [session, inviteToken, accountLoading, loading, acceptInvite]);
+
+  useEffect(() => {
     if (bootstrap?.plan?.product_family === 'WOLFIE_STANDALONE') {
       window.location.replace('https://wolfie.wisewolflanguage.com.br/app/praticar');
     }
@@ -494,6 +596,30 @@ const HubApp: React.FC = () => {
           {error && <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center text-sm font-bold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{error}</p>}
           <div className="mt-7 text-center"><button onClick={logout} className="text-sm font-black text-brand-muted hover:text-brand-text">Sair desta conta</button></div>
         </section>
+      </div>
+    );
+  }
+
+  if (inviteToken && !session) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-brand-bg p-5 text-brand-text">
+        <section className="w-full max-w-xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-7 text-center shadow-xl sm:p-12">
+          <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-tenant-primary text-3xl shadow-lg shadow-tenant-primary/20">🐺</div>
+          <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-tenant-primary">Convite do seu professor</p>
+          {inviteError ? (
+            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">{inviteError}</p>
+          ) : (
+            <>
+              <h1 className="mt-3 text-3xl font-extrabold tracking-tight">{invitePreview ? `${invitePreview.teacher_name} reservou um lugar para ${invitePreview.learner_name}` : 'Carregando convite...'}</h1>
+              <p className="mt-4 leading-7 text-brand-muted">Aqui você recebe os materiais e a jornada que seu professor preparou, faz as tarefas e pratica entre as aulas. Crie sua conta de aluno ou entre com a que já tem.</p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <button type="button" disabled={!invitePreview} onClick={() => setAuthDialog({ mode: 'signup', audience: 'LEARNER' })} className="rounded-2xl bg-tenant-primary px-6 py-3.5 text-sm font-black text-white disabled:opacity-60">Criar minha conta de aluno</button>
+                <button type="button" disabled={!invitePreview} onClick={() => setAuthDialog({ mode: 'login', audience: 'LEARNER' })} className="rounded-2xl border border-brand-border bg-brand-surface-2 px-6 py-3.5 text-sm font-black text-brand-text disabled:opacity-60">Já tenho conta</button>
+              </div>
+            </>
+          )}
+        </section>
+        {authDialog && <HubAuthDialog initialMode={authDialog.mode} initialAudience={authDialog.audience} invite={invitePreview} onClose={() => setAuthDialog(null)} onAuthenticated={async () => { const { data } = await supabase.auth.getSession(); if (data.session) { setSession(data.session); setAuthDialog(null); await acceptInvite(data.session.user.id); } }} />}
       </div>
     );
   }

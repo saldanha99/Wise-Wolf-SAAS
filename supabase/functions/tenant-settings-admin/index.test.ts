@@ -50,6 +50,42 @@ Deno.test("normaliza configuracoes sem aceitar autoridade de tenant", () => {
   assert(rejected, "tenantId fornecido pelo cliente deve ser rejeitado");
 });
 
+Deno.test("guarda o encarregado de dados que o termo das aulas mostra", () => {
+  const normalized = normalizeSettings(
+    settings({
+      schoolInfo: {
+        legalName: "Escola Teste LTDA",
+        privacyContactEmail: "privacidade@escola-teste.invalid",
+        privacyOfficerName: "  Encarregada   Teste ",
+      },
+    }),
+    "tenant-a",
+    {},
+  );
+  assert(
+    normalized.schoolInfo?.privacyContactEmail ===
+      "privacidade@escola-teste.invalid",
+    "contato de privacidade deve ser mantido",
+  );
+  assert(
+    typeof normalized.schoolInfo?.privacyOfficerName === "string" &&
+      normalized.schoolInfo.privacyOfficerName.includes("Encarregada"),
+    "encarregado de dados deve ser aceito no JSON da escola",
+  );
+
+  let rejected = false;
+  try {
+    normalizeSettings(
+      settings({ schoolInfo: { privacyOfficerName: "x".repeat(161) } }),
+      "tenant-a",
+      {},
+    );
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, "encarregado com mais de 160 caracteres deve ser recusado");
+});
+
 Deno.test("aceita somente estados operacionais de tenant", () => {
   for (const status of ["active", "ACTIVE", " trial ", "trialing"]) {
     assert(

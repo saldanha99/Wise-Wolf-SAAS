@@ -249,6 +249,19 @@ serve(async (req) => {
         status: 403,
       });
     }
+    // Este cron só inicia contatos (pós-aula e lembretes de matrícula).
+    // Respostas a mensagens recebidas continuam no whatsapp-inbound, sem espera.
+    const hourBRT = Number(new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date()));
+    if (hourBRT < 9 || hourBRT >= 20) {
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "outside_business_hours" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
     const sb = createClient(url, serviceKey);
 
     const result = {
@@ -380,7 +393,7 @@ serve(async (req) => {
     const doneTrialsResult = await sb
       .from("opportunities")
       .select(
-        "id, tenant_id, student_name, student_phone, created_at, trial_appointment_id, winner_teacher_id, professor_id, conversion_status, feedback_required",
+        "id, tenant_id, student_name, student_phone, created_at, trial_appointment_id, conversion_status",
       )
       .eq("kind", "TRIAL")
       .eq("status", "CLAIMED")
@@ -428,30 +441,6 @@ serve(async (req) => {
       }
       if (!log?.created_at) continue; // aula ainda não aconteceu/lançada
       if (log.created_at > oneHourAgo) continue; // dá 1h de folga antes de cutucar
-
-      if (opp.feedback_required === true) {
-        const { data: feedback, error: feedbackError } = await sb
-          .from("trial_feedback")
-          .select("id,booking_id,teacher_id")
-          .eq("opportunity_id", opp.id)
-          .eq("tenant_id", opp.tenant_id)
-          .limit(1)
-          .maybeSingle();
-        if (feedbackError) {
-          result.failures.push(`trial_feedback_unavailable ${opp.id}`);
-          continue;
-        }
-        const responsibleTeacherId = opp.winner_teacher_id || opp.professor_id;
-        if (
-          !feedback?.id ||
-          !responsibleTeacherId ||
-          feedback.booking_id !== opp.trial_appointment_id ||
-          feedback.teacher_id !== responsibleTeacherId
-        ) {
-          result.awaiting_feedback++;
-          continue;
-        }
-      }
 
       // Uma proposta só conta se o link e a oferta correspondente continuarem
       // utilizáveis ou se a matrícula já tiver começado/concluído. Link PENDING
@@ -523,9 +512,10 @@ serve(async (req) => {
         if (
           internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12
         ) {
-          const msg = `🎓 *Experimental dada, falta a proposta!*\n\n*${
-            opp.student_name || "-"
-          }* fez a aula experimental e ainda não tem link de matrícula gerado.\n\nGere a proposta em Experimental → Gerar Contrato enquanto o interesse está quente. 🔥`;
+          const msg =
+            `🎓 *Experimental concluída, fechamento em andamento*\n\n*${
+              opp.student_name || "-"
+            }* fez a aula experimental e ainda não tem link de matrícula. Confira a conversa e confirme plano, grade com o aluno e a professora, início e vencimento antes de gerar a proposta. Não repita perguntas já respondidas.`;
           await deliverClaimed({
             kind: alertKind,
             subjectId: opp.id,
@@ -549,9 +539,9 @@ serve(async (req) => {
         if (
           internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12
         ) {
-          const msg = `⚠️ *Proposta ainda não gerada há +24h*\n\n*${
+          const msg = `⚠️ *Fechamento pendente há +24h*\n\n*${
             opp.student_name || "-"
-          }* fez a experimental ontem e continua sem link de matrícula. O interesse esfria rápido — vale gerar a proposta ou ligar pro aluno.`;
+          }* fez a experimental e continua sem link de matrícula. Confira o histórico e o que falta confirmar com aluno e professora; gere a proposta apenas quando os termos estiverem completos.`;
           await deliverClaimed({
             kind: escalateKind,
             subjectId: opp.id,

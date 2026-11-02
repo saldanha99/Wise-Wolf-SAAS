@@ -15,7 +15,7 @@
 // ⚠️ Ao adicionar coluna em `profiles`, acrescente aqui também, senão o teste
 // `profileColumns.test.ts` acusa falso positivo na tela que já está certa.
 export const PROFILE_COLUMNS: readonly string[] = [
-  'accepted_at', 'account_number', 'address', 'address_number', 'agency', 'asaas_customer_id',
+  'accepted_at', 'account_number', 'address', 'address_number', 'affiliate_code', 'agency', 'asaas_customer_id',
   'asaas_subscription_end_date', 'asaas_subscription_status', 'asaas_subscription_synced_at',
   'attendance_phone', 'audit_status', 'avatar_url', 'avoided_topics', 'bank_name',
   'birth_date', 'can_oral_test', 'class_frequency', 'cnpj', 'cnpj_company_name',

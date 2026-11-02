@@ -231,7 +231,7 @@ export function WolfieCoachSheet({
 
   return (
     <div
-      className={`fixed inset-0 z-[230] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-5 ${className}`}
+      className={`fixed inset-0 z-230 flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-xs sm:items-center sm:p-5 ${className}`}
     >
       <div className="absolute inset-0" aria-hidden="true" />
       <section
@@ -241,7 +241,7 @@ export function WolfieCoachSheet({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         data-coach-intent={state.learnerIntent}
-        className="relative max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-slate-950 p-5 text-white shadow-[0_-24px_80px_rgba(2,6,23,.55)] sm:rounded-[2rem] sm:p-7"
+        className="relative max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-4xl border border-white/10 bg-slate-950 p-5 text-white shadow-[0_-24px_80px_rgba(2,6,23,.55)] sm:rounded-4xl sm:p-7"
       >
         <div className="flex items-start gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-violet-300/20 bg-violet-400/10 text-violet-200">
@@ -255,7 +255,7 @@ export function WolfieCoachSheet({
               ref={headingRef}
               id={titleId}
               tabIndex={-1}
-              className="mt-1 text-xl font-black outline-none sm:text-2xl"
+              className="mt-1 text-xl font-black outline-hidden sm:text-2xl"
             >
               {copy.title}
             </h2>
@@ -268,7 +268,7 @@ export function WolfieCoachSheet({
           </div>
         </div>
 
-        <dl className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.045] p-4 sm:grid-cols-3">
+        <dl className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/4.5 p-4 sm:grid-cols-3">
           <div>
             <dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Interlocutor
@@ -303,7 +303,7 @@ export function WolfieCoachSheet({
               type="button"
               onClick={onResume}
               disabled={resumeDisabled}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-violet-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-violet-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
             >
               {resumeLabel}
               <ArrowRight size={17} aria-hidden="true" />

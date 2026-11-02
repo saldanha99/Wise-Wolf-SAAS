@@ -35,6 +35,8 @@ O responsável pode registrar presença pelo fluxo existente e, separadamente, i
 
 No WhatsApp, responder à mensagem da aula com 1/2/3 registra retorno de qualidade. Relatos textuais explícitos também podem ser vinculados a uma auditoria recente de contato verificado. O servidor confere escola, instância, destinatário atual e identificação da mensagem. Se houver ambiguidade, solicita contexto; nunca escolhe um filho/aula arbitrariamente. Essa resposta não altera a folha.
 
+Correção de 28/09/2026: número 1/2/3 **sem citar a mensagem**, com auditoria enviada nas últimas 48 h para a mesma escola/instância/destinatário, pede o link ou RESPONDER. Não grava confirmação por inferência e não cai no acompanhamento semanal antigo. Falha na consulta interrompe o roteamento, sem reconhecimento falso. Sem auditoria recente, outros menus continuam funcionando. O acompanhamento também veta resposta da IA que fale como aluno ou cumprimente a própria atendente; encaminha para humano sem enviar o texto inválido.
+
 A Central mostra sessões previstas, auditorias criadas, enviadas, entregues, lidas, retornos, falhas e lançamentos pendentes. Recibos de leitura dependem do provedor e das configurações do destinatário. Ausência de resposta não é aprovação. Os indicadores têm denominadores diferentes: uma sessão pedagógica pode agrupar vários blocos financeiros.
 
 Casos permitem atribuir responsável, registrar análise, aguardar retorno, resolver e acompanhar. Relatos, correções e decisões permanecem no histórico. Casos com correção de relato não desaparecem automaticamente. O job `wisewolf-lesson-quality-queue` materializa sessões e abre casos de falta de lançamento há mais de 24 horas e falha/incerteza de entrega. Os alertas não enviam penalizações nem modificam pagamento.

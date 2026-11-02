@@ -1,3 +1,4 @@
+import LessonHistoryPanel from './LessonHistoryPanel';
 import React, { useState, useEffect } from 'react';
 import { LogOut, CalendarOff, Loader2, AlertCircle, CheckCircle, ChevronDown, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -15,6 +16,7 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
     const [profile, setProfile] = useState<any>(null);
     const [absences, setAbsences] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showHistory, setShowHistory] = useState(false);
 
     // Offboarding
     const [offReason, setOffReason] = useState('');
@@ -77,6 +79,8 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
 
     return (
         <div className="space-y-4">
+            <button onClick={() => setShowHistory(!showHistory)} className="px-4 py-3 rounded-xl border border-brand-border font-bold">Conferir histórico de aulas e encerramento</button>
+            {showHistory && <LessonHistoryPanel user={{ id: user.id, role: 'TEACHER' }} teacherId={user.id} />}
             {/* OFFBOARDING */}
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
@@ -113,13 +117,13 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
                                 <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Motivo</label>
                                 <textarea value={offReason} onChange={e => setOffReason(e.target.value)} rows={3}
                                     placeholder="Por que está saindo? Esse texto vai pro admin."
-                                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-rose-500" />
                             </div>
                             <div>
                                 <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Último dia de trabalho</label>
                                 <input type="date" value={offLastDay} onChange={e => setOffLastDay(e.target.value)}
                                     min={new Date().toISOString().split('T')[0]}
-                                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-rose-500" />
                             </div>
                             {offMsg && (
                                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-300">{offMsg}</div>
@@ -151,12 +155,12 @@ const TeacherWorkflows: React.FC<Props> = ({ user }) => {
                         <div>
                             <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Início</label>
                             <input type="date" value={absStart} onChange={e => setAbsStart(e.target.value)}
-                                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500" />
                         </div>
                         <div>
                             <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Fim</label>
                             <input type="date" value={absEnd} onChange={e => setAbsEnd(e.target.value)}
-                                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                                className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500" />
                         </div>
                     </div>
                     <div>

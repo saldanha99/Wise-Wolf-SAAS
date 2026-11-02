@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     Users,
     Search,
@@ -22,8 +22,10 @@ import {
     AlertTriangle,
     CalendarOff,
     Flame,
-    Zap
+    Zap,
+    GraduationCap,
 } from 'lucide-react';
+import { Kpi3D, PageHero3D, Ring3D, Tilt3D, type Tone } from './depth/Depth3D';
 import { Teacher, UserRole } from '../types';
 import { calculateTeacherStreak, filterTeachersByView, getTeacherLifecycle, TeacherListView } from '../lib/teacherManagement';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
@@ -32,7 +34,20 @@ import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
 import TeacherFinancials from './TeacherFinancials';
 import AbsenceCoverageManager from './AbsenceCoverageManager';
-import TeacherTurboOverview from './TeacherTurboOverview';
+import TeacherTurboOverview, { type TeacherTurboRow } from './TeacherTurboOverview';
+
+const CardAction: React.FC<{ tone: Tone; icon: React.ReactNode; label: string; onClick: () => void; title?: string; ariaLabel?: string }> = ({ tone, icon, label, onClick, title, ariaLabel }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        title={title || label}
+        aria-label={ariaLabel}
+        className={`ww-lift tone-${tone} inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider`}
+        style={{ color: 'rgb(var(--tone))', borderColor: 'rgb(var(--tone) / 0.28)', background: 'rgb(var(--tone) / 0.08)' }}
+    >
+        {icon} {label}
+    </button>
+);
 
 interface TeacherManagementProps {
     teachers: Teacher[];
@@ -60,8 +75,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
     const setTeacherLifecycle = async (teacher: any, status: 'active' | 'suspended' | 'offboarded') => {
         const labels: Record<string, string> = {
-            suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.\n\n⚠️ Os convites de aula experimental são enviados no GRUPO de WhatsApp dos professores. Para ele parar de recebê-los, remova-o do grupo manualmente no WhatsApp.`,
-            offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).\n\n⚠️ Remova-o também do GRUPO de WhatsApp dos professores — os convites de experimental são disparados no grupo e o sistema não consegue barrar por lá.`,
+            suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.\n\nNovas oportunidades são enviadas individualmente e ficam bloqueadas para professores suspensos. Confira também a participação dele nos grupos antigos da escola.`,
+            offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).\n\nNovas oportunidades e novos aceites ficam bloqueados para o professor desligado. Confira também a participação dele nos grupos antigos da escola.`,
             active: `Reativar ${teacher.name}?\n\nVolta ao cruzamento de agenda e às automações.`,
         };
         const reason = status === 'active' ? null : window.prompt(labels[status] + '\n\nMotivo:', '');
@@ -251,477 +266,237 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     const activeTeachersCount = teachers.filter((teacher) => effLifecycle(teacher) === 'active').length;
     const inactiveTeachersCount = teachers.length - activeTeachersCount;
 
-    return (
-        <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl md:text-3xl font-black text-gray-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
-                        <Users className="text-tenant-primary" size={28} /> Gestão do Corpo Docente
-                    </h2>
-                    <p className="text-gray-500 dark:text-brand-muted text-sm">Administre os professores, contratos e atribuições.</p>
-                </div>
-                <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
-                    <button
-                        onClick={() => setIsInviteModalOpen(true)}
-                        className="w-full md:w-auto bg-brand-surface text-tenant-primary border border-tenant-primary/20 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-tenant-primary/5 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
-                    >
-                        <Link size={18} /> Convidar (Link)
-                    </button>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="w-full md:w-auto bg-[#002366] bg-tenant-primary text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-lg shadow-tenant-primary/20 flex items-center justify-center gap-2 whitespace-nowrap"
-                    >
-                        <Plus size={18} /> Novo Professor
-                    </button>
-                </div>
-            </header>
+    // Turbo, ofensiva e carteira pela regra oficial (list_teacher_turbo_overview),
+    // a mesma da seção "Ofensiva do Turbo".
+    const [turboRows, setTurboRows] = useState<TeacherTurboRow[] | null>(null);
+    const turboById = useMemo(() => Object.fromEntries((turboRows || []).map(r => [r.teacher_id, r])) as Record<string, TeacherTurboRow>, [turboRows]);
+    const turboTotals = useMemo(() => ({
+        active: (turboRows || []).filter(r => r.turbo_status === 'ACTIVE').length,
+        building: (turboRows || []).filter(r => r.turbo_status === 'BUILDING').length,
+        suspended: (turboRows || []).filter(r => r.turbo_status === 'SUSPENDED').length,
+    }), [turboRows]);
+    const carteiraTotal = teachers
+        .filter(t => effLifecycle(t) === 'active')
+        .reduce((sum, t) => sum + Number(turboById[t.id]?.students_active ?? t.studentsCount ?? 0), 0);
 
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl"><Users size={24} /></div>
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Total Professores</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">{teachers.length}</p>
-                    </div>
-                </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-xl"><CheckCircle size={24} /></div>
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Ativos</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">{activeTeachersCount}</p>
-                    </div>
-                </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl"><Zap size={24} /></div>
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Modo Turbo (30d+)</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">
-                            {teachers.filter(t => {
-                                const s = calculateTeacherStreak(t.createdAt, t.lastTeacherAbsenceAt);
-                                return s.isEligibleForTurbo || t.turboActive === true;
-                            }).length}
-                        </p>
-                    </div>
-                </div>
-                <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-xl"><Briefcase size={24} /></div>
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Custo Hora Médio</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">{(() => {
-                          const rates = teachers.map(t => Number(t.hourlyRate || 0)).filter(v => v > 0);
-                          const avg = rates.length ? rates.reduce((s, v) => s + v, 0) / rates.length : 0;
-                          return `R$ ${avg.toFixed(2).replace('.', ',')}`;
-                        })()}</p>
-                    </div>
-                </div>
+    return (
+        <div className="ww-stage space-y-6 md:space-y-8 animate-in fade-in duration-500">
+            <PageHero3D
+                icon={<Users size={26} />}
+                eyebrow="Professores"
+                title="Gestão do Corpo Docente"
+                subtitle="Administre os professores, contratos e atribuições."
+                actions={
+                    <>
+                        <button
+                            onClick={() => setIsInviteModalOpen(true)}
+                            className="ww-lift w-full md:w-auto bg-brand-surface text-tenant-primary dark:text-brand-accent border border-tenant-primary/25 dark:border-brand-border px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 whitespace-nowrap shadow-sm"
+                        >
+                            <Link size={17} /> Convidar (Link)
+                        </button>
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="ww-block tone-brand w-full md:w-auto px-5 py-3 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 whitespace-nowrap"
+                        >
+                            <Plus size={17} className="relative" /> <span className="relative">Novo Professor</span>
+                        </button>
+                    </>
+                }
+            />
+
+            {/* Números do corpo docente */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <Kpi3D
+                    icon={<Users size={20} />}
+                    tone="sky"
+                    label="Professores ativos"
+                    value={`${activeTeachersCount}`}
+                    hint={`${teachers.length} no total · ${inactiveTeachersCount} suspenso${inactiveTeachersCount === 1 ? '' : 's'} ou desligado${inactiveTeachersCount === 1 ? '' : 's'}`}
+                    ring={teachers.length ? (100 * activeTeachersCount) / teachers.length : 0}
+                />
+                <Kpi3D
+                    icon={<GraduationCap size={20} />}
+                    tone="emerald"
+                    label="Alunos na carteira"
+                    value={`${carteiraTotal}`}
+                    hint={activeTeachersCount ? `média de ${(carteiraTotal / activeTeachersCount).toFixed(1).replace('.', ',')} por professor ativo` : 'Nenhum professor ativo'}
+                />
+                <Kpi3D
+                    icon={<Zap size={20} />}
+                    tone="orange"
+                    label="Turbo ativo"
+                    value={turboRows ? `${turboTotals.active}` : '—'}
+                    hint={turboRows
+                        ? `${turboTotals.building} em construção${turboTotals.suspended ? ` · ${turboTotals.suspended} para analisar` : ''}`
+                        : 'Calculando pela regra oficial…'}
+                />
+                <Kpi3D
+                    icon={<Briefcase size={20} />}
+                    tone="violet"
+                    label="Custo hora médio"
+                    value={(() => {
+                        const rates = teachers.map(t => Number(t.hourlyRate || 0)).filter(v => v > 0);
+                        const avg = rates.length ? rates.reduce((s, v) => s + v, 0) / rates.length : 0;
+                        return `R$ ${avg.toFixed(2).replace('.', ',')}`;
+                    })()}
+                    hint="Valor cadastrado no perfil; a folha usa a faixa de cada aula"
+                />
             </div>
 
-            <TeacherTurboOverview tenantId={currentTenantId} />
+            <TeacherTurboOverview tenantId={currentTenantId} onRows={setTurboRows} />
 
-            {/* Main List */}
-            <div className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2.5rem] shadow-sm overflow-hidden">
-                <div className="p-6 border-b dark:border-brand-border flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <h3 className="font-black text-gray-800 dark:text-slate-200 text-xs uppercase tracking-widest">Lista de Professores</h3>
-                    <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nome ou email..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-sm outline-none transition-all"
-                        />
+            {/* Lista */}
+            <section className="ww-slab overflow-hidden">
+                <div className="p-5 sm:p-6 border-b border-brand-border/60 flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="ww-orb tone-brand h-11 w-11"><Users size={18} /></div>
+                        <div>
+                            <h3 className="font-black text-brand-text">Lista de Professores</h3>
+                            <p className="text-xs text-brand-muted">Toque no cartão para ver a agenda; as ações ficam embaixo.</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                        <div className="flex gap-1 rounded-2xl border border-brand-border bg-brand-surface-2/60 p-1" role="tablist" aria-label="Filtrar professores por situação">
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={listView === 'active'}
+                                onClick={() => setListView('active')}
+                                className={`flex-1 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${listView === 'active' ? 'ww-block tone-emerald' : 'text-brand-muted hover:text-brand-text'}`}
+                            >
+                                <span className="relative">Ativos ({activeTeachersCount})</span>
+                            </button>
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={listView === 'inactive'}
+                                onClick={() => setListView('inactive')}
+                                className={`flex-1 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${listView === 'inactive' ? 'ww-block tone-amber' : 'text-brand-muted hover:text-brand-text'}`}
+                            >
+                                <span className="relative">Suspensos / desligados ({inactiveTeachersCount})</span>
+                            </button>
+                        </div>
+                        <div className="relative w-full sm:w-64">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" size={15} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por nome ou email..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-brand-surface-2/70 border border-brand-border focus:border-tenant-primary rounded-xl text-sm text-brand-text outline-hidden transition-all"
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div className="px-6 pt-4 border-b dark:border-brand-border">
-                    <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Filtrar professores por situação">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={listView === 'active'}
-                            onClick={() => setListView('active')}
-                            className={`px-4 py-3 rounded-t-xl text-xs font-black uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${listView === 'active' ? 'border-emerald-500 text-emerald-600 bg-emerald-50/60 dark:bg-emerald-900/10' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
-                        >
-                            Ativos ({activeTeachersCount})
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={listView === 'inactive'}
-                            onClick={() => setListView('inactive')}
-                            className={`px-4 py-3 rounded-t-xl text-xs font-black uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${listView === 'inactive' ? 'border-amber-500 text-amber-600 bg-amber-50/60 dark:bg-amber-900/10' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
-                        >
-                            Suspensos / desligados ({inactiveTeachersCount})
-                        </button>
-                    </div>
-                </div>
-
-                <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+                <div data-tour="teachers-cards" className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
                     {filteredTeachers.map(teacher => {
                         const lc = effLifecycle(teacher);
-                        const statusClass = lc === 'offboarded'
-                            ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
-                            : lc === 'suspended'
-                                ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                : teacher.status === 'Férias'
-                                    ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30';
+                        const statusTone = lc === 'offboarded' ? 'rose' : lc === 'suspended' || teacher.status === 'Férias' ? 'amber' : 'emerald';
                         const statusLabel = lc === 'offboarded' ? 'Desligado' : lc === 'suspended' ? 'Suspenso' : teacher.status;
-                        const streak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
+                        const turbo = turboById[teacher.id];
+                        // A ofensiva e a carteira vêm da regra oficial do servidor
+                        // quando ela já chegou; antes disso, a conta local de sempre.
+                        const localStreak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
+                        const streakDays = turbo ? Number(turbo.streak_days || 0) : localStreak.consecutiveDays;
+                        const students = turbo ? Number(turbo.students_active || 0) : teacher.studentsCount;
+                        const turboLabel = turbo
+                            ? turbo.turbo_status === 'ACTIVE' ? 'Turbo ativo'
+                                : turbo.turbo_status === 'BUILDING' ? `Turbo em ${turbo.days_to_activate}d`
+                                    : turbo.turbo_status === 'SUSPENDED' ? 'Turbo em análise'
+                                        : `Faltam ${turbo.students_missing} aluno${turbo.students_missing === 1 ? '' : 's'}`
+                            : '—';
+                        const turboTone = turbo?.turbo_status === 'ACTIVE' ? 'orange' : turbo?.turbo_status === 'SUSPENDED' ? 'rose' : turbo?.turbo_status === 'BUILDING' ? 'sky' : 'slate';
+                        const tpiTone = teacher.tpi >= 90 ? 'emerald' : teacher.tpi >= 70 ? 'amber' : 'rose';
 
                         return (
-                            <article key={teacher.id} className="p-4 sm:p-5 space-y-4">
-                                <div className="flex items-start gap-3 min-w-0">
-                                    <img src={teacher.avatar} alt="" className="w-12 h-12 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border shrink-0" />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-bold text-sm text-gray-800 dark:text-slate-200 truncate">{teacher.name}</p>
-                                        <p className="text-xs text-gray-400 dark:text-brand-muted truncate">{teacher.email}</p>
-                                    </div>
-                                    <span className={`shrink-0 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wide border whitespace-nowrap ${statusClass}`}>
-                                        {statusLabel}
+                            <Tilt3D key={teacher.id} as="article" max={4} className="ww-slab p-4 sm:p-5 flex flex-col gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')}
+                                    className="flex items-start gap-3 min-w-0 text-left"
+                                    title="Ver agenda"
+                                >
+                                    <span className="relative shrink-0">
+                                        {teacher.avatar
+                                            ? <img src={teacher.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-lg ring-4 ring-white/70 dark:ring-white/10" />
+                                            : <span className="ww-orb tone-brand w-14 h-14 text-base font-black">{teacher.name.split(' ').slice(0, 2).map(p => p[0]).join('')}</span>}
+                                        <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full ring-2 ring-brand-surface tone-${statusTone}`} style={{ background: 'rgb(var(--tone))' }} aria-hidden="true" />
                                     </span>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3 min-w-0">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Módulo</p>
-                                        <p className="font-bold text-gray-700 dark:text-slate-200 truncate">{teacher.module}</p>
-                                    </div>
-                                    <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Alunos</p>
-                                        <p className="font-black text-gray-700 dark:text-slate-200">{teacher.studentsCount}</p>
-                                    </div>
-                                    <div className="rounded-xl bg-orange-50 dark:bg-orange-900/10 p-3">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-orange-500 mb-1 flex items-center gap-1"><Flame size={11} /> Ofensiva</p>
-                                        <p className="font-black text-gray-700 dark:text-slate-200">
-                                            {streak.consecutiveDays} {streak.consecutiveDays === 1 ? 'dia' : 'dias'}
-                                        </p>
-                                        <p className="text-[8px] text-gray-400 mt-0.5">
-                                            {streak.hasAbsenceReset ? 'Desde última falta' : 'Sem faltas do prof.'}
-                                        </p>
-                                    </div>
-                                    <div className={`rounded-xl p-3 ${streak.isEligibleForTurbo && teacher.turboActive === true ? 'bg-emerald-50 dark:bg-emerald-900/10' : streak.isEligibleForTurbo ? 'bg-blue-50 dark:bg-blue-900/10' : 'bg-gray-50 dark:bg-brand-surface-2'}`}>
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 flex items-center gap-1"><Zap size={11} /> Modo turbo</p>
-                                        <p className={`font-black text-xs ${streak.isEligibleForTurbo && teacher.turboActive === true ? 'text-emerald-600' : streak.isEligibleForTurbo ? 'text-blue-600' : 'text-gray-700 dark:text-slate-200'}`}>
-                                            {teacher.turboActive === true && streak.isEligibleForTurbo ? 'Ligado' : streak.isEligibleForTurbo ? 'Apto' : 'Indisponível'}
-                                        </p>
-                                        {!streak.isEligibleForTurbo && (
-                                            <p className="text-[8px] text-amber-600 dark:text-amber-400 mt-0.5">
-                                                Faltam {streak.daysRemainingForTurbo}d ({streak.consecutiveDays}/30)
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block font-black text-brand-text truncate">{teacher.name}</span>
+                                        <span className="block text-xs text-brand-muted truncate">{teacher.email}</span>
+                                        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                            <span className={`tone-${statusTone} px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border`} style={{ color: 'rgb(var(--tone))', borderColor: 'rgb(var(--tone) / 0.3)', background: 'rgb(var(--tone) / 0.1)' }}>
+                                                {statusLabel}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-muted"><BookOpen size={11} className="text-tenant-primary dark:text-brand-accent" /> {teacher.module}</span>
+                                        </span>
+                                    </span>
+                                    <Ring3D value={teacher.tpi} tone={tpiTone} size={50} unit="" label={`Avaliação TPI ${teacher.tpi} de 100`} />
+                                </button>
 
                                 {(teacher.specializations || []).length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {(teacher.specializations || []).map(s => (
-                                            <span key={s} className="px-2 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-100 dark:border-amber-800">
+                                    <div className="flex flex-wrap gap-1.5 -mt-1">
+                                        {(teacher.specializations || []).slice(0, 4).map(s => (
+                                            <span key={s} className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-500/25">
                                                 {s}
                                             </span>
                                         ))}
+                                        {(teacher.specializations || []).length > 4 && (
+                                            <span className="px-2 py-0.5 bg-brand-surface-2 text-brand-muted text-[9px] font-black rounded-full">
+                                                +{(teacher.specializations || []).length - 4}
+                                            </span>
+                                        )}
                                     </div>
                                 )}
 
-                                <div>
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Avaliação (TPI)</span>
-                                        <span className="text-xs font-black text-gray-700 dark:text-slate-300">{teacher.tpi}</span>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="rounded-xl bg-brand-surface-2/70 p-2.5 shadow-inner">
+                                        <p className="text-[9px] font-black uppercase tracking-wider text-brand-muted flex items-center gap-1"><GraduationCap size={11} /> Alunos</p>
+                                        <p className="text-lg font-black text-brand-text leading-tight">{students}</p>
                                     </div>
-                                    <div className="w-full h-2 bg-gray-100 dark:bg-brand-surface-2 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full ${teacher.tpi >= 90 ? 'bg-emerald-500' : teacher.tpi >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                            style={{ width: `${teacher.tpi}%` }}
-                                        />
+                                    <div className="rounded-xl bg-orange-500/10 p-2.5 shadow-inner">
+                                        <p className="text-[9px] font-black uppercase tracking-wider text-orange-600 dark:text-orange-400 flex items-center gap-1"><Flame size={11} /> Ofensiva</p>
+                                        <p className="text-lg font-black text-brand-text leading-tight">{streakDays}<span className="text-[10px] font-bold text-brand-muted"> {streakDays === 1 ? 'dia' : 'dias'}</span></p>
+                                    </div>
+                                    <div className={`tone-${turboTone} rounded-xl p-2.5 shadow-inner`} style={{ background: 'rgb(var(--tone) / 0.1)' }} title={teacher.turboBlockedBy ? `Motivo: ${teacher.turboBlockedBy}` : undefined}>
+                                        <p className="text-[9px] font-black uppercase tracking-wider flex items-center gap-1" style={{ color: 'rgb(var(--tone))' }}><Zap size={11} /> Turbo</p>
+                                        <p className="text-[11px] font-black text-brand-text leading-tight mt-1">{turboLabel}</p>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')} className="px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                        <BookOpen size={15} /> Agenda
-                                    </button>
-                                    <button onClick={() => handleEdit(teacher)} className="px-3 py-2.5 rounded-xl bg-gray-100 dark:bg-brand-surface-2 text-gray-700 dark:text-slate-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                        <Briefcase size={15} /> Editar
-                                    </button>
-                                    <button onClick={() => setViewingFinancialsId(teacher.id)} className="px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                        <DollarSign size={15} /> Financeiro
-                                    </button>
-                                    <button onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })} className="px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                        <CalendarOff size={15} /> Ausência
-                                    </button>
+                                <div className="mt-auto flex flex-wrap gap-1.5 pt-3 border-t border-brand-border/60">
+                                    <CardAction tone="brand" icon={<BookOpen size={14} />} label="Agenda" onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')} />
+                                    <CardAction tone="slate" icon={<Briefcase size={14} />} label="Editar" ariaLabel={`Editar ${teacher.name}`} onClick={() => handleEdit(teacher)} />
+                                    <CardAction tone="emerald" icon={<DollarSign size={14} />} label="Financeiro" onClick={() => setViewingFinancialsId(teacher.id)} />
+                                    <CardAction tone="amber" icon={<CalendarOff size={14} />} label="Ausência" title="Registrar ausência e cobrir aulas" onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })} />
                                     {lc === 'active' ? (
                                         <>
-                                            <button onClick={() => setTeacherLifecycle(teacher, 'suspended')} className="px-3 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900/40 text-amber-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                                <UserX size={15} /> Suspender
-                                            </button>
-                                            <button onClick={() => setTeacherLifecycle(teacher, 'offboarded')} className="px-3 py-2.5 rounded-xl border border-red-200 dark:border-red-900/40 text-red-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                                <AlertTriangle size={15} /> Desligar
-                                            </button>
+                                            <CardAction tone="amber" icon={<UserX size={14} />} label="Suspender" title="Suspender (sai do cruzamento de agenda)" onClick={() => setTeacherLifecycle(teacher, 'suspended')} />
+                                            <CardAction tone="rose" icon={<AlertTriangle size={14} />} label="Desligar" title="Desligar definitivamente" onClick={() => setTeacherLifecycle(teacher, 'offboarded')} />
                                         </>
                                     ) : (
-                                        <button onClick={() => setTeacherLifecycle(teacher, 'active')} className="col-span-2 px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
-                                            <UserCheck size={15} /> Reativar professor
-                                        </button>
+                                        <CardAction tone="emerald" icon={<UserCheck size={14} />} label="Reativar" title="Reativar professor" onClick={() => setTeacherLifecycle(teacher, 'active')} />
                                     )}
                                 </div>
-                            </article>
+                            </Tilt3D>
                         );
                     })}
                     {filteredTeachers.length === 0 && (
-                        <div className="px-6 py-12 text-center text-gray-400 dark:text-brand-muted">
-                            <Users size={40} className="mb-3 mx-auto opacity-50" />
-                            <p className="text-sm font-bold">Nenhum professor encontrado</p>
+                        <div className="col-span-full px-6 py-12 text-center text-brand-muted">
+                            <span className="ww-orb tone-slate h-14 w-14 mx-auto mb-3"><Users size={24} /></span>
+                            <p className="text-sm font-bold text-brand-text">Nenhum professor encontrado</p>
                             <p className="text-xs">Tente buscar por outro termo ou adicione um novo.</p>
                         </div>
                     )}
                 </div>
-
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left min-w-[980px]">
-                        <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] uppercase font-black text-gray-500 dark:text-brand-muted">
-                            <tr>
-                                <th className="px-6 py-4">Professor</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Módulo Principal</th>
-                                <th className="px-6 py-4">Alunos</th>
-                                <th className="px-6 py-4">Ofensiva</th>
-                                <th className="px-6 py-4">Modo turbo</th>
-                                <th className="px-6 py-4">Avaliação (TPI)</th>
-                                <th className="px-6 py-4 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                            {filteredTeachers.map(teacher => (
-                                <tr key={teacher.id} className="hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-colors group">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center gap-3">
-                                            <img src={teacher.avatar} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border" />
-                                            <div>
-                                                <p className="font-bold text-sm text-gray-800 dark:text-slate-200">{teacher.name}</p>
-                                                <p className="text-xs text-gray-400 dark:text-brand-muted">{teacher.email}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {(() => {
-                                            const lc = effLifecycle(teacher);
-                                            const cls = lc === 'offboarded'
-                                                ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
-                                                : lc === 'suspended'
-                                                    ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                                    : teacher.status === 'Férias'
-                                                        ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                                        : 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30';
-                                            const label = lc === 'offboarded' ? 'Desligado' : lc === 'suspended' ? 'Suspenso' : teacher.status;
-                                            return (
-                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border ${cls}`}>
-                                                    {label}
-                                                </span>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <BookOpen size={14} className="text-tenant-primary shrink-0" />
-                                                <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.module}</span>
-                                            </div>
-                                            {(teacher.specializations || []).length > 0 && (
-                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                    {(teacher.specializations || []).slice(0, 2).map(s => (
-                                                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-100 dark:border-amber-800">
-                                                            {s}
-                                                        </span>
-                                                    ))}
-                                                    {(teacher.specializations || []).length > 2 && (
-                                                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-brand-surface-2 text-gray-400 text-[9px] font-black rounded-full">
-                                                            +{(teacher.specializations || []).length - 2}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <Users size={14} className="text-gray-400" />
-                                            <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.studentsCount}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        {(() => {
-                                            const streak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
-                                            return (
-                                                <div>
-                                                    <div className="flex items-center gap-2 text-orange-600">
-                                                        <Flame size={15} />
-                                                        <span className="text-xs font-black">{streak.consecutiveDays} {streak.consecutiveDays === 1 ? 'dia' : 'dias'} consecutivos</span>
-                                                    </div>
-                                                    <p className="mt-1 text-[9px] text-gray-400">
-                                                        {streak.hasAbsenceReset ? 'Desde a última falta' : 'Sem falta do professor'}
-                                                    </p>
-                                                </div>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        {(() => {
-                                            const streak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
-                                            const isTurboOn = streak.isEligibleForTurbo && teacher.turboActive === true;
-                                            const isApto = streak.isEligibleForTurbo && !isTurboOn;
-
-                                            if (isTurboOn) {
-                                                return (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-100 dark:bg-emerald-900/20">
-                                                            <Zap size={12} className="text-emerald-500 fill-emerald-500" />
-                                                            Ligado (Ativo)
-                                                        </span>
-                                                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-                                                            Meta de 30d atingida
-                                                        </span>
-                                                    </div>
-                                                );
-                                            }
-
-                                            if (isApto) {
-                                                return (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-blue-50 text-blue-600 border border-blue-100 dark:bg-blue-900/20">
-                                                            <Zap size={12} />
-                                                            Apto (Desligado)
-                                                        </span>
-                                                        <span className="text-[9px] text-gray-400">
-                                                            30+ dias sem falta
-                                                        </span>
-                                                    </div>
-                                                );
-                                            }
-
-                                            return (
-                                                <div className="flex flex-col gap-1 min-w-[150px]">
-                                                    <div className="flex items-center justify-between gap-1">
-                                                        <span
-                                                            title={teacher.turboBlockedBy ? `Motivo: ${teacher.turboBlockedBy}` : undefined}
-                                                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 text-gray-500 border border-gray-200 dark:bg-brand-surface-2 dark:text-slate-400"
-                                                        >
-                                                            <Zap size={10} className="text-gray-400" />
-                                                            Indisponível
-                                                        </span>
-                                                        <span className="text-[9px] font-black text-amber-600 dark:text-amber-400">
-                                                            Faltam {streak.daysRemainingForTurbo}d
-                                                        </span>
-                                                    </div>
-                                                    <div className="w-full bg-gray-100 dark:bg-brand-surface-2 rounded-full h-1.5 overflow-hidden">
-                                                        <div
-                                                            className="bg-amber-500 h-1.5 rounded-full transition-all"
-                                                            style={{ width: `${streak.turboProgressPct}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-[8px] text-gray-400">
-                                                        {streak.consecutiveDays}/30 dias para ativar
-                                                    </span>
-                                                </div>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex-1 w-20 h-1.5 bg-gray-100 dark:bg-brand-surface-2 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full ${teacher.tpi >= 90 ? 'bg-emerald-500' : teacher.tpi >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                                    style={{ width: `${teacher.tpi}%` }}
-                                                />
-                                            </div>
-                                            <span className="text-xs font-black text-gray-700 dark:text-slate-300">{teacher.tpi}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')}
-                                                className="p-2 text-tenant-primary hover:bg-blue-50 dark:hover:bg-brand-surface-2 rounded-lg transition-all"
-                                                title="Ver Agenda"
-                                            >
-                                                <BookOpen size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleEdit(teacher)}
-                                                className="p-2 text-gray-400 hover:text-tenant-primary hover:bg-gray-100 dark:hover:bg-brand-surface-2 rounded-lg transition-all"
-                                                title="Editar Professor"
-                                                aria-label={`Editar ${teacher.name}`}
-                                            >
-                                                <Briefcase size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => setViewingFinancialsId(teacher.id)}
-                                                className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
-                                                title="Ver Financeiro"
-                                            >
-                                                <DollarSign size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })}
-                                                className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
-                                                title="Registrar ausência e cobrir aulas"
-                                            >
-                                                <CalendarOff size={18} />
-                                            </button>
-                                            {(() => {
-                                                const lc = effLifecycle(teacher);
-                                                return lc === 'active' ? (
-                                                    <>
-                                                        <button
-                                                            onClick={() => setTeacherLifecycle(teacher, 'suspended')}
-                                                            className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
-                                                            title="Suspender (sai do cruzamento de agenda)"
-                                                        >
-                                                            <UserX size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setTeacherLifecycle(teacher, 'offboarded')}
-                                                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                                                            title="Desligar definitivamente"
-                                                        >
-                                                            <AlertTriangle size={18} />
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setTeacherLifecycle(teacher, 'active')}
-                                                        className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
-                                                        title="Reativar professor"
-                                                    >
-                                                        <UserCheck size={18} />
-                                                    </button>
-                                                );
-                                            })()}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredTeachers.length === 0 && (
-                                <tr>
-                                    <td colSpan={8} className="px-6 py-12 text-center">
-                                        <div className="flex flex-col items-center justify-center text-gray-300 dark:text-brand-muted">
-                                            <Users size={48} className="mb-4 opacity-50" />
-                                            <p className="text-sm font-bold">Nenhum professor encontrado</p>
-                                            <p className="text-xs">Tente buscar por outro termo ou adicione um novo.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            </section>
 
             {/* Add Teacher Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-brand-surface w-full max-w-2xl rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-brand-surface w-full max-w-2xl rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/50 dark:bg-brand-surface-2/50">
                             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2">
                                 <UserPlusIcon /> {editingTeacherId ? 'Editar Professor' : 'Novo Professor'}
@@ -762,7 +537,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 <select
                                                     value={(formData as any).status}
                                                     onChange={e => setFormData({ ...formData, status: e.target.value } as any)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-none transition-all"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-hidden transition-all"
                                                 >
                                                     <option value="Ativo">Ativo</option>
                                                     <option value="Férias">Férias</option>
@@ -830,8 +605,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             )}
 
             {isInviteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-brand-surface w-full max-w-md rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden relative">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-brand-surface w-full max-w-md rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden relative">
                         <button
                             onClick={() => setIsInviteModalOpen(false)}
                             className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-brand-surface-2 rounded-full transition-colors z-10"
@@ -844,8 +619,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             )}
 
             {viewingFinancialsId && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-brand-surface w-full max-w-5xl rounded-[2rem] shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
+                    <div className="bg-brand-surface w-full max-w-5xl rounded-4xl shadow-2xl border border-gray-100 dark:border-brand-border overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/50 dark:bg-brand-surface-2/50 shrink-0">
                             <h3 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2">
                                 <DollarSign className="text-emerald-500" />
@@ -895,7 +670,7 @@ const Input = ({ label, placeholder, value, onChange, icon }: any) => (
                 value={value}
                 onChange={onChange}
                 placeholder={placeholder}
-                className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-none transition-all"
+                className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-gray-200 dark:border-brand-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 focus:border-tenant-primary outline-hidden transition-all"
             />
         </div>
     </div>

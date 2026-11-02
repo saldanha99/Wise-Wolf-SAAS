@@ -51,6 +51,7 @@ export const teacherMenuItems = (pendingLessonsCount: number): NavItem[] => [
   { id: 'lessons', label: 'Lançar Aula', icon: BookOpen, section: 'Dia a dia', primary: true, short: 'Lançar' },
   { id: 'lesson-sessions', label: 'Salas e continuidade', icon: Video, section: 'Dia a dia', short: 'Salas' },
   { id: 'pending', label: 'Pendentes', icon: AlertCircle, section: 'Dia a dia', badge: pendingLessonsCount, primary: true },
+  { id: 'lesson-history', label: 'Histórico de aulas', icon: FileText, section: 'Dia a dia', short: 'Histórico' },
   { id: 'reschedules', label: 'Reposições', icon: Repeat, section: 'Dia a dia' },
   { id: 'students', label: 'Alunos', icon: Users, section: 'Dia a dia' },
   { id: 'meeting_links', label: 'Links de Aula', icon: Video, section: 'Dia a dia', short: 'Links' },
@@ -60,6 +61,7 @@ export const teacherMenuItems = (pendingLessonsCount: number): NavItem[] => [
   { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles, section: 'Pedagógico' },
   { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico', short: 'Skills' },
   { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Pedagógico', short: 'Orais' },
+  { id: 'teacher-handbook', label: 'Manual do Professor', icon: Shield, section: 'Pedagógico', short: 'Manual' },
   { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico', short: 'Treinos' },
   { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Pedagógico' },
 
@@ -80,6 +82,9 @@ export const studentMenuItems: NavItem[] = [
   { id: 'ai-tutor', label: 'Praticar com o Wolfie', icon: Sparkles, badge: 'NOVO' },
   { id: 'practice', label: 'Minhas Trilhas', icon: Target },
   { id: 'schedule', label: 'Aulas', icon: Calendar },
+  // O próprio registro das aulas: só resumos aprovados pelo professor
+  // (get_my_lesson_records). Decisão da direção, onda 2 do Meet.
+  { id: 'lesson-records', label: 'Aulas registradas', icon: FileText },
   { id: 'meeting_links', label: 'Links', icon: Video },
   { id: 'materials', label: 'Materiais', icon: Book },
   { id: 'financial', label: 'Financeiro', icon: CreditCard },
@@ -119,12 +124,11 @@ export const superAdminMenuItems: NavItem[] = [
   { id: 'automation', label: 'Smart', icon: Zap },
 ];
 
+// Afiliado indica pelo cupom — não gera link de matrícula nem de experimental
+// (a porta do banco recusa). O menu dele é o painel e o guia do programa.
 export const salespersonMenuItems: NavItem[] = [
-  { id: 'vendor_dashboard', label: 'Dashboard', icon: TrendingUp },
-  { id: 'vendor_schedule', label: 'Agenda Professores', icon: CalendarClock },
-  { id: 'vendor_trial', label: 'Link Experimental', icon: Zap },
-  { id: 'vendor_enrollment', label: 'Gerar Matrícula', icon: UserPlus },
-  { id: 'vendor_commissions', label: 'Minhas Comissões', icon: DollarSign },
+  { id: 'vendor_dashboard', label: 'Painel', icon: TrendingUp },
+  { id: 'vendor_guide', label: 'Como funciona', icon: BookOpen },
 ];
 
 /** Lista de itens do papel. Puro: recebe o contador em vez de ler estado. */

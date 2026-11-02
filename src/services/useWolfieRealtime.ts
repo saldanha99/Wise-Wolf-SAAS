@@ -43,7 +43,8 @@ export type WolfieRealtimeFallbackReason =
   | "connection_failed"
   | "session_limit_reached"
   | "idle_timeout"
-  | "quota_exceeded";
+  | "quota_exceeded"
+  | "provider_billing_blocked";
 
 export interface WolfieRealtimeOptions {
   /**
@@ -1394,7 +1395,9 @@ export function useWolfieRealtime(
         const failure = await readFallbackPayload(response);
         connectingRef.current = false;
         return markFallback(
-          failure.code === "REALTIME_QUOTA_EXCEEDED"
+          failure.code === "REALTIME_PROVIDER_BILLING_BLOCKED"
+            ? "provider_billing_blocked"
+            : failure.code === "REALTIME_QUOTA_EXCEEDED"
             ? "quota_exceeded"
             : "service_unavailable",
           failure.message,

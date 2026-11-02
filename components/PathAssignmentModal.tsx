@@ -248,8 +248,8 @@ const PathAssignmentModal: React.FC<Props> = ({ path, user, tenantId, onClose })
     )).length;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="path-assignment-title" tabIndex={-1} className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[95vh] sm:max-h-[85vh] overflow-hidden shadow-2xl flex flex-col safe-bottom outline-none">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-200 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="path-assignment-title" tabIndex={-1} className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[95vh] sm:max-h-[85vh] overflow-hidden shadow-2xl flex flex-col safe-bottom outline-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
@@ -276,7 +276,7 @@ const PathAssignmentModal: React.FC<Props> = ({ path, user, tenantId, onClose })
                             disabled={saving}
                             placeholder="Buscar aluno..."
                             aria-label="Buscar aluno para atribuir trilha"
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-violet-500"
                         />
                     </div>
                     {eligibleCount > 0 && (
@@ -309,7 +309,7 @@ const PathAssignmentModal: React.FC<Props> = ({ path, user, tenantId, onClose })
                                     disabled={saving}
                                     placeholder="Ex.: adequação ao objetivo atual do aluno"
                                     rows={2}
-                                    className="mt-2 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-900/60 dark:bg-slate-900 dark:text-white"
+                                    className="mt-2 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-800 outline-hidden focus:ring-2 focus:ring-amber-400 dark:border-amber-900/60 dark:bg-slate-900 dark:text-white"
                                 />
                                 <p className="mt-1 text-right text-[9px] font-bold text-amber-700 dark:text-amber-300">{switchReason.length}/500</p>
                             </div>

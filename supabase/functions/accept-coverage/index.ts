@@ -53,7 +53,9 @@ function page(title: string, accent: Accent, content: string): string {
     :root{color-scheme:dark}*{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#e2e8f0;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:20px}
     main{width:100%;max-width:420px;text-align:center;padding:40px;background:#1e293b;border-radius:24px;border:1px solid #334155;box-shadow:0 20px 50px rgb(0 0 0 / 25%)}
-    .logo{font-size:48px;margin-bottom:8px}h1{font-size:20px;margin:0 0 12px;color:${COLORS[accent]}}
+    .logo{font-size:48px;margin-bottom:8px}h1{font-size:20px;margin:0 0 12px;color:${
+    COLORS[accent]
+  }}
     p{font-size:14px;line-height:1.55;color:#94a3b8;margin:0}strong{color:#e2e8f0}
     form{display:grid;gap:10px;margin-top:24px}button{width:100%;border:0;border-radius:12px;padding:13px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
     .accept{background:#34d399;color:#052e16}.decline{background:#334155;color:#e2e8f0}.hint{margin-top:16px;font-size:12px;color:#64748b}
@@ -112,8 +114,9 @@ function formatDate(value: unknown): string | null {
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month - 1 ||
     date.getUTCDate() !== day
-  )
+  ) {
     return null;
+  }
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(date);
 }
 
@@ -124,17 +127,37 @@ function formatTime(value: unknown): string | null {
   return match ? `${match[1]}:${match[2]}` : null;
 }
 
+// O formulário NÃO leva `action`: posta para a própria URL do link
+// (`/functions/v1/accept-coverage?token=…`). O `url.pathname` visto aqui dentro
+// é `/accept-coverage` — o Kong tira o `/functions/v1` antes de repassar — e
+// postar para ele caía na rota do painel do Kong, que pede usuário e senha
+// (Basic Auth). Mesmo desenho do convite de treinamento.
 function invitePage(
   token: string,
-  actionPath: string,
   classDate: unknown,
   classTime: unknown,
+  offeredRate: unknown,
 ): Response {
   const date = formatDate(classDate) ?? "data informada";
   const time = formatTime(classTime) ?? "horário informado";
+  const rate =
+    typeof offeredRate === "number" && Number.isFinite(offeredRate) &&
+      offeredRate > 0
+      ? `${
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+          .format(offeredRate)
+      } por aula de 30 minutos`
+      : "Tarifa normal do professor por aula de 30 minutos";
   const content = `<h1>Convite para cobertura de aula</h1>
-    <p>A coordenação precisa de uma cobertura em <strong>${escapeHtml(date)}</strong>, às <strong>${escapeHtml(time)}</strong>. Você pode assumir essa aula?</p>
-    <form method="post" action="${escapeHtml(actionPath)}" autocomplete="off">
+    <p>A coordenação precisa de uma cobertura em <strong>${
+    escapeHtml(date)
+  }</strong>, às <strong>${
+    escapeHtml(time)
+  }</strong>. Você pode assumir essa aula?</p>
+    <p style="margin-top:16px"><strong>${
+    escapeHtml(rate)
+  }</strong>. O pagamento depende do lançamento da aula pagável.</p>
+    <form method="post" autocomplete="off">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button class="accept" type="submit" name="decision" value="accept">Confirmar cobertura</button>
       <button class="decline" type="submit" name="decision" value="decline">Não posso cobrir</button>
@@ -167,16 +190,17 @@ function resolutionResponse(
   if (!result || result.ok !== true) {
     return result?.ok === false
       ? respond(
-          "Cobertura indisponível",
-          "Este convite não pode mais ser utilizado. Fale com a coordenação se precisar confirmar a situação.",
-          "warning",
-          409,
-        )
+        "Cobertura indisponível",
+        "Este convite não pode mais ser utilizado. Fale com a coordenação se precisar confirmar a situação.",
+        "warning",
+        409,
+      )
       : safeError(503);
   }
 
-  const status =
-    typeof result.status === "string" ? result.status.toLowerCase() : "";
+  const status = typeof result.status === "string"
+    ? result.status.toLowerCase()
+    : "";
   const date = formatDate(result.class_date);
   const time = formatTime(result.class_time);
   const when = date && time ? ` de ${date} às ${time}` : "";
@@ -191,8 +215,8 @@ function resolutionResponse(
       conflict
         ? "Esta cobertura já havia sido confirmada e não pode mais ser recusada por este link."
         : already
-          ? "Você já havia confirmado esta cobertura. Obrigado! 💜"
-          : `Você assumiu a aula${when}. Ela será contabilizada no seu pagamento. Obrigado! 🐺💜`,
+        ? "Você já havia confirmado esta cobertura. Obrigado! 💜"
+        : `Você assumiu a aula${when}. Ela será contabilizada no seu pagamento. O contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login) chegam no seu WhatsApp em instantes. Obrigado! 🐺💜`,
       "success",
     );
   }
@@ -204,8 +228,8 @@ function resolutionResponse(
       conflict
         ? "Esta cobertura já havia sido recusada e não pode mais ser confirmada por este link."
         : already
-          ? "Você já havia recusado esta cobertura."
-          : `Tudo bem. A coordenação será avisada e buscará outro professor${when}.`,
+        ? "Você já havia recusado esta cobertura."
+        : `Tudo bem. A coordenação será avisada e buscará outro professor${when}.`,
       "warning",
     );
   }
@@ -239,19 +263,20 @@ async function readLimitedBody(req: Request): Promise<string | null> {
 
 async function handleGet(url: URL): Promise<Response> {
   const token = normalizedToken(url.searchParams.get("token"));
-  if (!token)
+  if (!token) {
     return respond(
       "Link inválido",
       "Este link de cobertura é inválido.",
       "danger",
       400,
     );
+  }
 
   const supabase = serviceClient();
   if (!supabase) return safeError(503);
   const { data: coverage, error } = await supabase
     .from("class_coverages")
-    .select("status,class_date,class_time,invite_expires_at")
+    .select("status,class_date,class_time,invite_expires_at,offered_rate")
     .eq("token", token)
     .maybeSingle();
 
@@ -286,8 +311,9 @@ async function handleGet(url: URL): Promise<Response> {
     );
   }
   const explicitExpiry = Date.parse(String(coverage.invite_expires_at || ""));
-  const classDate =
-    typeof coverage.class_date === "string" ? coverage.class_date : "";
+  const classDate = typeof coverage.class_date === "string"
+    ? coverage.class_date
+    : "";
   const classTime = formatTime(coverage.class_time) || "";
   const classStart = Date.parse(`${classDate}T${classTime}:00-03:00`);
   if (
@@ -303,9 +329,9 @@ async function handleGet(url: URL): Promise<Response> {
   }
   return invitePage(
     token,
-    url.pathname,
     coverage.class_date,
     coverage.class_time,
+    coverage.offered_rate,
   );
 }
 
@@ -359,12 +385,28 @@ async function handlePost(req: Request): Promise<Response> {
   const supabase = serviceClient();
   if (!supabase) return safeError(503);
   const accept = decision === "accept";
-  const { data, error } = await supabase.rpc("resolve_coverage_invite", {
-    p_token: token,
-    p_accept: accept,
-  });
+  // Mesma decisão de sempre + o pacote do aluno (contato, nível, últimas
+  // aulas) para o substituto, aviso à família e resumo no grupo da Gestão —
+  // tudo enfileirado no banco (migration 20260917200000).
+  const { data, error } = await supabase.rpc(
+    "resolve_coverage_invite_and_brief",
+    {
+      p_token: token,
+      p_accept: accept,
+    },
+  );
+  if (error?.code === "PT412") {
+    return respond(
+      "Termo individual pendente",
+      "Esta cobertura ainda não foi confirmada. Entre no portal da escola, abra Meu Contrato > Termos por aluno e confira o termo e a assinatura da escola antes de assinar. Depois volte a este convite. A assinatura é feita apenas pela sua conta autenticada.",
+      "neutral",
+      409,
+    );
+  }
   if (error) {
-    console.error("resolve_coverage_invite failed", { code: error.code });
+    console.error("resolve_coverage_invite_and_brief failed", {
+      code: error.code,
+    });
     return safeError(503);
   }
   return resolutionResponse(data, accept);

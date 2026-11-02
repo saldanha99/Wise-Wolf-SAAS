@@ -3,6 +3,8 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
+  LESSON_RECORDING_CONSENT_KIND,
+  lessonRecordingConsentDelivery,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -41,6 +43,10 @@ Deno.test("CONFLICT_TEACHER_ALERT usa audiência professor e somente central", (
 Deno.test("aceite familiar usa exclusivamente a central e audiência aluno", () => {
   assertEquals(queueAudience("SCHEDULE_CHANGE_FAMILY_ACCEPTANCE"), {
     audience: "student",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience("TEACHER_CHANGE_GROUP"), {
+    audience: "teacher",
     centralOnly: true,
   });
 });
@@ -84,6 +90,24 @@ Deno.test("avisos de ciclo de vida distinguem aluno, professor e destino", () =>
     audience: "student",
     centralOnly: false,
   });
+});
+
+Deno.test("avisos de matrícula fechada saem exclusivamente pela central", () => {
+  assertEquals(queueAudience("ENROLLMENT_STUDENT_CONFIRMED"), {
+    audience: "student",
+    centralOnly: false,
+  });
+  for (
+    const kind of [
+      "ENROLLMENT_MANAGEMENT_CLOSED",
+      "ENROLLMENT_TEACHER_CLOSED",
+    ]
+  ) {
+    assertEquals(queueAudience(kind), {
+      audience: "teacher",
+      centralOnly: true,
+    });
+  }
 });
 
 Deno.test("avisos de ciclo de vida são acolhedores e não expõem motivo interno", () => {
@@ -248,4 +272,232 @@ Deno.test("alerta de conflito é reconstruído com dados atuais", () => {
       "Recebemos uma divergência sobre a aula de 28/08 às 19:30 com Bruno Souza.\n" +
       "Pode nos contar como foi essa aula? Enquanto analisamos, somente esta aula fica em revisão.",
   );
+});
+
+Deno.test("fila: vetado pelo teto volta para pending, nunca failed", () => {
+  const d = queueDeliveryDecision({
+    outcome: "rejected",
+    messageId: null,
+    httpStatus: 429,
+    throttled: true,
+    retryAfterMs: 60_000,
+    throttleKind: "outreach",
+  });
+  assertEquals(d.status, "pending");
+  assertEquals(d.reason, "throttled_outreach");
+  assertEquals(d.releaseOccurrenceReceipt, true);
+});
+
+Deno.test("pedido do termo de registro sai só pela central, com audiência aluno", () => {
+  assertEquals(queueAudience(LESSON_RECORDING_CONSENT_KIND), {
+    audience: "student",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience(" lesson_recording_consent_request "), {
+    audience: "student",
+    centralOnly: true,
+  });
+});
+
+Deno.test("revalidação do termo autoriza só destino de pessoa com o link do termo no portal da escola", () => {
+  const token = "a".repeat(64);
+  const portal = "https://system.wisewolflanguage.com.br";
+  const message =
+    `Olá, Ana! Aqui é da Escola.\n\nTermo completo e resposta (leva 1 minuto): ${portal}/registro-das-aulas?token=${token}`;
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "11 98888-0001",
+      message,
+      portal,
+    }),
+    { ok: true, destination: "5511988880001", message },
+  );
+  // Escola com domínio próprio verificado: o link é o do portal dela.
+  const customPortal = "https://escola.exemplo.com.br";
+  const customMessage = message.replace(portal, customPortal);
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: customMessage,
+      portal: customPortal,
+    }).ok,
+    true,
+  );
+  // Grupo nunca recebe o termo de um aluno.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "120363000000000000@g.us",
+      message,
+      portal,
+    }).ok,
+    false,
+  );
+  // Link de outro domínio que o portal da escola não sai.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: message.replace(portal, "https://exemplo.invalid"),
+      portal,
+    }),
+    {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_payload_invalid",
+    },
+  );
+  // Sem portal (ou portal que não é https://host) não sai.
+  for (
+    const badPortal of [
+      undefined,
+      "",
+      "http://system.wisewolflanguage.com.br",
+      "https://x.com/caminho",
+    ]
+  ) {
+    assertEquals(
+      lessonRecordingConsentDelivery({
+        ok: true,
+        destination: "5511988880001",
+        message,
+        portal: badPortal,
+      }).ok,
+      false,
+    );
+  }
+  // Token com um caractere a mais não é o link do termo.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: true,
+      destination: "5511988880001",
+      message: `${message}0`,
+      portal,
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("revalidação do termo recusada cancela sem nova tentativa", () => {
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false, reason: "aluno_ja_decidiu" }),
+    { ok: false, retryable: false, reason: "aluno_ja_decidiu" },
+  );
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false }),
+    {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_no_longer_valid",
+    },
+  );
+  // Pedido parado dias na fila é cancelado, não adiado.
+  assertEquals(
+    lessonRecordingConsentDelivery({ ok: false, reason: "pedido_vencido" }),
+    { ok: false, retryable: false, reason: "pedido_vencido" },
+  );
+  // Resposta ilegível do banco é indisponibilidade: tenta de novo depois.
+  assertEquals(lessonRecordingConsentDelivery(null), {
+    ok: false,
+    retryable: true,
+    reason: "lesson_recording_consent_snapshot_unavailable",
+  });
+});
+
+Deno.test("fora da janela ou do ritmo o termo é adiado, sem gastar tentativa", () => {
+  // Sábado 21h -> segunda 9h: o adiamento de uma vez vai até 1 h (teto do
+  // defer_notification_delivery); o banco manda adiar de novo na próxima.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      retryable: true,
+      reason: "fora_da_janela_de_envio",
+      defer_seconds: 36 * 3600,
+    }),
+    {
+      ok: false,
+      retryable: true,
+      reason: "fora_da_janela_de_envio",
+      deferSeconds: 3600,
+    },
+  );
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      retryable: true,
+      reason: "ritmo_do_termo",
+      defer_seconds: 89.2,
+    }),
+    { ok: false, retryable: true, reason: "ritmo_do_termo", deferSeconds: 90 },
+  );
+  // Adiamento sem número válido vira nova tentativa comum, não envio.
+  for (const bad of [0, -5, "x", null]) {
+    assertEquals(
+      lessonRecordingConsentDelivery({
+        ok: false,
+        retryable: true,
+        reason: "ritmo_do_termo",
+        defer_seconds: bad,
+      }),
+      { ok: false, retryable: true, reason: "ritmo_do_termo" },
+    );
+  }
+  // Recusa definitiva nunca vira adiamento, mesmo com número.
+  assertEquals(
+    lessonRecordingConsentDelivery({
+      ok: false,
+      reason: "contato_mudou",
+      defer_seconds: 60,
+    }),
+    { ok: false, retryable: false, reason: "contato_mudou" },
+  );
+});
+
+Deno.test("avisos do registro das aulas usam o WhatsApp central para cada publico", () => {
+  assertEquals(queueAudience("LESSON_RECORDING_NOTICE_STUDENT"), {
+    audience: "student",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience("LESSON_RECORDING_NOTICE_TEACHER"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});
+
+Deno.test("link oficial do professor sai pela central com audiência professor", () => {
+  assertEquals(queueAudience("TEACHER_MEET_ROOM"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});
+Deno.test("saque do afiliado avisa somente pela instância central", () => {
+  assertEquals(queueAudience("AFFILIATE_WITHDRAWAL_REQUESTED"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});
+
+Deno.test("confirmações de repasse são privadas e saem pela central", () => {
+  for (
+    const kind of ["TEACHER_PAYOUT_CONFIRMED", "AFFILIATE_PAYOUT_CONFIRMED"]
+  ) {
+    const route = queueAudience(kind);
+    assertEquals(route.audience, "teacher");
+    assertEquals(route.centralOnly, true);
+  }
+});
+
+Deno.test("teste oral e lembrete vão pela central aos dois públicos", () => {
+  for (const prefix of ["ORAL_TEST", "ORAL_TEST_REMINDER"]) {
+    assertEquals(queueAudience(`${prefix}_STUDENT`), {
+      audience: "student",
+      centralOnly: true,
+    });
+    assertEquals(queueAudience(`${prefix}_TEACHER`), {
+      audience: "teacher",
+      centralOnly: true,
+    });
+  }
 });

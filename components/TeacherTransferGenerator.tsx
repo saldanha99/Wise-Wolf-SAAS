@@ -37,19 +37,15 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
 
     const freqNum = (() => { const m = String(student.class_frequency || '').match(/\d+/); return m ? parseInt(m[0]) : null; })();
 
-    // Carrega professores do tenant (exclui o professor atual)
+    // Consulta autorizada e a mesma validação que será usada na gravação.
     useEffect(() => {
         if (!tenantId) return;
         (async () => {
-            const { data } = await supabase
-                .from('profiles')
-                .select('id, full_name')
-                .eq('tenant_id', tenantId)
-                .in('role', ['TEACHER', 'teacher'])
-                .order('full_name', { ascending: true });
-            setTeachers((data || []).filter(t => t.id !== student.professor_id));
+            const { data, error } = await supabase.rpc('get_student_transfer_options', { p_student_id: student.id, p_cutover: cutover });
+            if (error || !data?.ok) { setTeachers([]); setError('Não foi possível conferir a disponibilidade.'); return; }
+            setTeachers((data.teachers || []).map((t: any) => ({ ...t, full_name: t.name })));
         })();
-    }, [tenantId, student.professor_id]);
+    }, [tenantId, student.id, cutover]);
 
     // Ao escolher o novo professor, calcula horários LIVRES (disponibilidade − bookings)
     useEffect(() => {
@@ -58,27 +54,12 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
         (async () => {
             setLoadingSlots(true);
             setSelected([]);
-            const [{ data: avail }, { data: bks }] = await Promise.all([
-                supabase.from('teacher_availability').select('day_of_week, start_time, end_time').eq('teacher_id', toTeacher),
-                supabase.from('bookings').select('day_of_week, time_slot').eq('teacher_id', toTeacher).not('day_of_week', 'is', null),
-            ]);
             if (cancelled) return;
-            const booked = new Set((bks || []).map((b: any) => `${b.day_of_week}|${String(b.time_slot).slice(0, 5)}`));
-            const out: Slot[] = [];
-            for (const a of (avail || [])) {
-                const dayName = DAY_PT[Number(a.day_of_week)] || String(a.day_of_week);
-                const startH = parseInt(String(a.start_time).slice(0, 2));
-                const endH = parseInt(String(a.end_time).slice(0, 2));
-                for (let h = startH; h < endH; h++) {
-                    const time = `${String(h).padStart(2, '0')}:00`;
-                    if (!booked.has(`${dayName}|${time}`)) out.push({ day_of_week: dayName, time_slot: time });
-                }
-            }
-            setFreeSlots(out);
+            setFreeSlots(teachers.find(t => t.id === toTeacher)?.slots || []);
             setLoadingSlots(false);
         })();
         return () => { cancelled = true; };
-    }, [toTeacher]);
+    }, [toTeacher, teachers]);
 
     const toggleSlot = (s: Slot) => {
         setSelected(prev => {
@@ -115,7 +96,7 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
     const waLink = `https://wa.me/?text=${encodeURIComponent(`Olá ${teacherName}! Temos uma proposta de transferência de aluno para você. Aceite ou recuse por aqui: ${link}`)}`;
 
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={onClose}>
             <div className="bg-brand-surface rounded-3xl w-full max-w-lg border border-brand-border shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="px-6 py-5 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                     <div className="flex items-center gap-2">
@@ -141,7 +122,7 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
                                 onChange={e => { setTeacherSearch(e.target.value); setToTeacher(''); setShowTeacherList(true); }}
                                 onFocus={() => { setTeacherSearch(''); setShowTeacherList(true); }}
                                 placeholder="Buscar professor..."
-                                className="w-full pl-9 pr-4 py-3 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full pl-9 pr-4 py-3 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500"
                             />
                         </div>
                         {showTeacherList && (
@@ -194,12 +175,12 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-1 flex items-center gap-1"><Calendar size={11} /> Início com o novo prof.</label>
                             <input type="date" value={cutover} min={new Date().toISOString().split('T')[0]} onChange={e => setCutover(e.target.value)}
-                                className="w-full px-3 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500" />
+                                className="w-full px-3 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500" />
                         </div>
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-1 block">Motivo (interno)</label>
                             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex.: faltas / insatisfação"
-                                className="w-full px-3 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500" />
+                                className="w-full px-3 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-indigo-500" />
                         </div>
                     </div>
 
@@ -214,7 +195,7 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
                     ) : (
                         <div className="space-y-3 animate-in fade-in">
                             <div className="bg-brand-surface-2 border border-brand-border rounded-xl p-3 flex items-center gap-2">
-                                <input readOnly value={link} className="flex-1 bg-transparent text-xs font-mono text-emerald-600 outline-none truncate" />
+                                <input readOnly value={link} className="flex-1 bg-transparent text-xs font-mono text-emerald-600 outline-hidden truncate" />
                                 <button onClick={copy} className="px-3 py-1.5 rounded-lg bg-brand-surface text-xs font-bold flex items-center gap-1 border border-brand-border">
                                     {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}{copied ? 'Copiado' : 'Copiar'}
                                 </button>

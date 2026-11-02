@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { localMonth } from '../lib/dateUtils';
-import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
+import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck, Clock } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 import AjusteRepasseModal from './AjusteRepasseModal';
@@ -9,6 +9,26 @@ import TeacherPixKey from './TeacherPixKey';
 
 interface InvoiceManagerProps {
     tenantId?: string;
+}
+
+/**
+ * Linha da PRÉVIA do mês em aberto (payroll_month_preview): professor sem
+ * fechamento ainda, com o valor lido das aulas já lançadas + ajustes — a mesma
+ * conta do Financeiro dele. Antes o mês corrente ficava em branco até o dia 1º,
+ * e cobertura lançada "não aparecia na contabilidade" do substituto.
+ */
+interface PayrollPreviewRow {
+    teacher_id: string;
+    name: string;
+    lessons: number;
+    amount: number | string;
+    status: string;
+    previa: boolean;
+    adjustments: number | string | null;
+    received: { count: number; amount: number | string; pending?: number };
+    ceded: { count: number };
+    /** Parte do valor que veio do Turbo (payroll_month_rows_with_turbo). */
+    turbo?: { aulas: number; extra: number | string };
 }
 
 const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
@@ -23,6 +43,8 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const [reportInvoice, setReportInvoice] = useState<any>(null);
     // Lançamento manual (reserva de agenda, bônus, desconto) direto no repasse.
     const [ajusteInvoice, setAjusteInvoice] = useState<any>(null);
+    // Prévia por professor do mês sem fechamento (aulas já lançadas + ajustes).
+    const [preview, setPreview] = useState<PayrollPreviewRow[]>([]);
 
     useEffect(() => {
         if (tenantId) fetchInvoices();
@@ -43,6 +65,14 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
 
             if (error) throw error;
             setInvoices(closings || []);
+
+            // Quem ainda não tem fechamento neste mês aparece como prévia.
+            const { data: previewData, error: previewError } = await supabase.rpc('payroll_month_preview', {
+                p_month: selectedMonth,
+            });
+            if (previewError) throw previewError;
+            const rows = Array.isArray((previewData as any)?.teachers) ? ((previewData as any).teachers as PayrollPreviewRow[]) : [];
+            setPreview(rows.filter((row) => row.previa === true));
         } catch (err) {
             console.error('Error fetching invoices:', err);
         } finally {
@@ -85,8 +115,22 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     };
 
     const handleStatusUpdate = async (id: string, newStatus: string) => {
+        if (newStatus === 'PAID_WAITING_NF') {
+            const invoice = invoices.find(inv => inv.id === id);
+            if (!window.confirm(`O PIX de R$ ${Number(invoice?.total_amount || 0).toFixed(2).replace('.', ',')} para ${invoice?.teacher?.full_name || 'este professor'} já foi realizado? Confirmar registra a baixa e prepara o aviso automático no WhatsApp.`)) return;
+        }
         setUpdating(id);
         try {
+            if (newStatus === 'PAID_WAITING_NF') {
+                const { data, error } = await supabase.rpc('confirm_teacher_payout', { p_closing_id: id });
+                if (error || !data?.ok) {
+                    if (data?.error === 'PROVIDER_RECONCILIATION_REQUIRED') throw new Error('Há uma transferência Asaas vinculada. Confira a conciliação antes de registrar outro pagamento.');
+                    throw new Error(error?.message || 'Não foi possível confirmar o pagamento.');
+                }
+                if (data.notice?.ok !== true) alert('Pagamento registrado. O aviso não pôde ser preparado: confira o WhatsApp cadastrado do professor.');
+                await fetchInvoices();
+                return;
+            }
             const { error } = await supabase
                 .from('teacher_closings')
                 .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -96,7 +140,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             // Optimistic update
             setInvoices(invoices.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
         } catch (err) {
-            alert('Erro ao atualizar status.');
+            alert(err instanceof Error ? err.message : 'Erro ao atualizar status.');
         } finally {
             setUpdating(null);
         }
@@ -136,6 +180,9 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const totalPending = filteredInvoices
         .filter(i => i.status === 'PENDENTE' || i.status === 'WAITING_PAYMENT' || i.status === 'CONFIRMADO')
         .reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
+    const filteredPreview = preview.filter(row => row.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const previewTotal = filteredPreview.reduce((acc, row) => acc + Number(row.amount || 0), 0);
+    const money = (v: unknown) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
     return (
         <div className="p-8 max-w-[1600px] mx-auto min-h-screen bg-brand-surface-2/50 dark:bg-brand-surface/50">
@@ -152,14 +199,14 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     <p className="text-brand-muted font-medium">Gestão de fechamentos, autorizações e pagamentos.</p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-brand-surface dark:bg-brand-surface-2 p-2 rounded-2xl shadow-sm border border-brand-border">
+                <div className="flex items-center gap-4 bg-brand-surface dark:bg-brand-surface-2 p-2 rounded-2xl shadow-xs border border-brand-border">
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
                         className="bg-transparent border-none text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-0 uppercase cursor-pointer"
                     />
-                    <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                     <div className="flex items-center gap-2 px-3">
                         <CheckCircle2 size={16} className="text-emerald-500" />
                         <span className="text-xs font-black text-brand-muted uppercase tracking-wider">{filteredInvoices.length} Professores</span>
@@ -167,23 +214,36 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                 </div>
             </div>
 
+            <p data-tour="payout-confirmation" className="mb-6 rounded-xl border border-brand-border bg-brand-surface p-4 text-sm text-brand-muted">
+                Depois de fazer o PIX, use <strong>Confirmar PIX feito</strong>. A baixa registra a data e prepara
+                automaticamente a confirmação no WhatsApp do professor. No PIX integrado, o aviso depende da transferência concluída.
+            </p>
+
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 {/* ... Stats ... */}
-                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-sm relative overflow-hidden group">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-tenant-primary/5 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-tenant-primary/10" />
                     <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Total da Folha</p>
                     <h3 className="text-3xl font-black text-brand-text tracking-tight">
                         R$ {totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
-                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-sm relative overflow-hidden group">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-yellow-400/20" />
                     <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Pendente Pagamento</p>
                     <h3 className="text-3xl font-black text-yellow-600 dark:text-yellow-400 tracking-tight">
                         R$ {totalPending.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
+                {!loading && filteredPreview.length > 0 && (
+                    <div className="bg-brand-surface dark:bg-brand-surface-2 p-6 rounded-3xl border border-brand-border dark:border-brand-border shadow-xs relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-sky-400/10 rounded-full blur-2xl -mr-16 -mt-16 transition-all group-hover:bg-sky-400/20" />
+                        <p className="text-brand-muted text-xs font-black uppercase tracking-widest mb-1">Prévia · sem fechamento ainda</p>
+                        <h3 className="text-3xl font-black text-sky-700 dark:text-sky-300 tracking-tight">{money(previewTotal)}</h3>
+                        <p className="text-[10px] font-bold text-brand-muted mt-1">{filteredPreview.length} professor{filteredPreview.length === 1 ? '' : 'es'} · aulas já lançadas + ajustes</p>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -194,10 +254,10 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                         placeholder="Buscar professor..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 bg-brand-surface dark:bg-brand-surface-2 border-none rounded-2xl shadow-sm text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 transition-all placeholder:text-brand-muted"
+                        className="w-full pl-12 pr-4 py-4 bg-brand-surface dark:bg-brand-surface-2 border-none rounded-2xl shadow-xs text-sm font-medium focus:ring-2 focus:ring-tenant-primary/20 transition-all placeholder:text-brand-muted"
                     />
                 </div>
-                <div className="flex gap-2 p-1.5 bg-brand-surface dark:bg-brand-surface-2 rounded-2xl shadow-sm overflow-x-auto">
+                <div className="flex gap-2 p-1.5 bg-brand-surface dark:bg-brand-surface-2 rounded-2xl shadow-xs overflow-x-auto">
                     {['ALL', 'PENDENTE', 'AGUARDANDO_NF', 'ANALISE', 'COMPLETED'].map((status) => (
                         <button
                             key={status}
@@ -221,7 +281,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     <p className="text-xs font-bold uppercase tracking-widest">Carregando dados...</p>
                 </div>
             ) : (
-                <div className="bg-brand-surface dark:bg-brand-surface-2 rounded-[2rem] shadow-sm border border-brand-border overflow-hidden">
+                <div className="bg-brand-surface dark:bg-brand-surface-2 rounded-4xl shadow-xs border border-brand-border overflow-hidden">
                     {/* ... Header Row ... */}
                     <div className="grid grid-cols-12 gap-4 p-6 border-b border-brand-border dark:border-brand-border text-[10px] font-black text-brand-muted uppercase tracking-widest bg-brand-surface-2/50 dark:bg-brand-surface-2/50">
                         <div className="col-span-3">Professor</div>
@@ -253,7 +313,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     <img
                                         src={invoice.teacher?.avatar_url || `https://ui-avatars.com/api/?name=${invoice.teacher?.full_name}`}
                                         alt={invoice.teacher?.full_name}
-                                        className="w-10 h-10 rounded-xl object-cover shadow-sm bg-brand-surface"
+                                        className="w-10 h-10 rounded-xl object-cover shadow-xs bg-brand-surface"
                                     />
                                     <div className="min-w-0">
                                         <p className="font-bold text-brand-text text-sm truncate">{invoice.teacher?.full_name}</p>
@@ -324,16 +384,17 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                                 onClick={(e) => { e.stopPropagation(); handleStatusUpdate(invoice.id, 'PAID_WAITING_NF'); }}
                                                 disabled={updating === invoice.id}
                                                 className="px-3 py-1.5 bg-brand-surface-2 text-brand-muted rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors flex items-center gap-1 disabled:opacity-50"
-                                                title="Marcar como Pago (Manual)"
+                                                title="Confirmar PIX já realizado e avisar o professor"
                                             >
                                                 {updating === invoice.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                Confirmar PIX feito
                                             </button>
 
                                             {/* Auto Pay (Asaas) */}
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handlePayViaPix(invoice); }}
                                                 disabled={updating === invoice.id}
-                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
+                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-xs shadow-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
                                                 title="Pagar via Pix (Asaas)"
                                             >
                                                 {updating === invoice.id ? <Loader2 size={12} className="animate-spin" /> : <DollarSign size={12} />}
@@ -346,7 +407,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     {(invoice.status === 'UNDER_REVIEW' || invoice.status === 'COMPLETED') && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); }}
-                                            className="px-3 py-1.5 bg-purple-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-colors shadow-sm shadow-purple-500/20 flex items-center gap-1"
+                                            className="px-3 py-1.5 bg-purple-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-colors shadow-xs shadow-purple-500/20 flex items-center gap-1"
                                         >
                                             <FileText size={12} />
                                             {invoice.status === 'COMPLETED' ? 'Ver Nota' : 'Revisar'}
@@ -370,9 +431,105 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
 
                         {filteredInvoices.length === 0 && (
                             <div className="p-12 text-center">
-                                <p className="text-brand-muted font-medium">Nenhum registro encontrado para este período.</p>
+                                <p className="text-brand-muted font-medium">
+                                    {filteredPreview.length > 0
+                                        ? 'Nenhum fechamento gerado para este mês ainda — o fechamento oficial nasce no dia 1º. A prévia abaixo mostra o que já está lançado.'
+                                        : 'Nenhum registro encontrado para este período.'}
+                                </p>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* PRÉVIA do mês em aberto: professor sem fechamento, valor das aulas já
+                lançadas (v_payable_class_logs) + ajustes — a mesma conta que ele vê no
+                Financeiro. Cobertura já está no dono certo: o lançamento é de quem deu
+                a aula. O fechamento oficial continua nascendo no dia 1º. */}
+            {!loading && filteredPreview.length > 0 && (
+                <div data-tour="payroll-preview" className="mt-8 bg-brand-surface dark:bg-brand-surface-2 rounded-4xl shadow-xs border border-sky-200 dark:border-sky-900/60 overflow-hidden">
+                    <div className="p-6 border-b border-brand-border bg-sky-50/60 dark:bg-sky-900/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm font-black text-brand-text uppercase tracking-widest flex items-center gap-2">
+                                <Clock size={16} className="text-sky-600" /> Prévia do mês em aberto
+                            </h2>
+                            <p className="text-xs text-brand-muted mt-1">
+                                Aulas já lançadas por cada professor (a mesma conta do Financeiro dele) + ajustes combinados. Cobertura conta para quem deu a aula. O fechamento oficial é gerado no dia 1º.
+                            </p>
+                        </div>
+                        <span className="text-xs font-black text-sky-700 dark:text-sky-300 uppercase tracking-widest">{money(previewTotal)}</span>
+                    </div>
+                    <div className="grid grid-cols-12 gap-4 p-6 border-b border-brand-border text-[10px] font-black text-brand-muted uppercase tracking-widest bg-brand-surface-2/50">
+                        <div className="col-span-4">Professor</div>
+                        <div className="col-span-1 text-center">Aulas</div>
+                        <div className="col-span-3 text-center">Coberturas</div>
+                        <div className="col-span-2 text-center">Valor até agora</div>
+                        <div className="col-span-2 text-right">Ações</div>
+                    </div>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                        {filteredPreview.map((row) => {
+                            const received = Number(row.received?.count || 0);
+                            const pending = Number(row.received?.pending || 0);
+                            const ceded = Number(row.ceded?.count || 0);
+                            const adjustments = Number(row.adjustments || 0);
+                            const turbo = Number(row.turbo?.extra || 0);
+                            return (
+                                <div
+                                    key={row.teacher_id}
+                                    onClick={() => setReportInvoice({ teacher_id: row.teacher_id, month_year: selectedMonth })}
+                                    title="Ver relatório do professor (aulas já lançadas)"
+                                    className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-brand-surface-2 dark:hover:bg-slate-700/30 transition-colors cursor-pointer"
+                                >
+                                    <div className="col-span-4 flex items-center gap-3 min-w-0">
+                                        <img
+                                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}`}
+                                            alt={row.name}
+                                            className="w-10 h-10 rounded-xl object-cover shadow-xs bg-brand-surface"
+                                        />
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-brand-text text-sm truncate">{row.name}</p>
+                                            <TeacherPixKey teacherId={row.teacher_id} />
+                                        </div>
+                                    </div>
+                                    <div className="col-span-1 text-center">
+                                        <span className="font-bold text-brand-text dark:text-slate-300 bg-brand-surface-2 dark:bg-slate-700 px-2 py-1 rounded-lg text-xs">{row.lessons}</span>
+                                    </div>
+                                    <div className="col-span-3 text-center text-xs font-bold text-brand-muted">
+                                        {received === 0 && ceded === 0 ? (
+                                            <span className="text-slate-300">—</span>
+                                        ) : (
+                                            <span>
+                                                {received > 0 && <span className="text-emerald-600">↪ {received} recebida{received === 1 ? '' : 's'}</span>}
+                                                {received > 0 && ceded > 0 && ' · '}
+                                                {ceded > 0 && <span className="text-amber-600">↩ {ceded} cedida{ceded === 1 ? '' : 's'}</span>}
+                                                {pending > 0 && (
+                                                    <span className="block text-[10px] text-amber-600">{pending} cobertura{pending === 1 ? '' : 's'} sem aula lançada</span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="col-span-2 text-center">
+                                        <span className="font-black text-brand-text tracking-tight">{money(row.amount)}</span>
+                                        {adjustments !== 0 && (
+                                            <span className="block text-[10px] font-bold text-brand-muted">inclui {money(adjustments)} de ajuste</span>
+                                        )}
+                                        {turbo > 0 && (
+                                            <span data-tour="payroll-turbo" className="block text-[10px] font-black text-amber-600">🔥 +{money(turbo)} de Turbo ({row.turbo?.aulas} aula{row.turbo?.aulas === 1 ? '' : 's'})</span>
+                                        )}
+                                    </div>
+                                    <div className="col-span-2 flex justify-end gap-2">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setAjusteInvoice({ teacher_id: row.teacher_id, teacher: { full_name: row.name }, month_year: selectedMonth, status: 'PENDENTE' }); }}
+                                            title="Lançamento manual (reserva de agenda, bônus, desconto) — entra no fechamento do dia 1º"
+                                            className="p-1.5 rounded-lg text-brand-muted hover:text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+                                        >
+                                            <DollarSign size={16} />
+                                        </button>
+                                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800">Prévia</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

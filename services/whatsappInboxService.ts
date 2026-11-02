@@ -22,6 +22,7 @@ export interface WhatsappConversation {
     unread_count: number;
     assigned_to: string | null;
     human_handoff_until: string | null;
+    handoff_requires_release?: boolean;
     archived: boolean;
     updated_at: string;
 }
@@ -62,7 +63,15 @@ export interface WhatsappSendTextResult {
     status: WhatsappOutboundStatus;
 }
 
+export interface WhatsappMediaFile {
+    base64: string;
+    mimetype: string;
+    fileName: string | null;
+}
+
 export interface WhatsappInboxService {
+    /** Busca o arquivo (áudio, foto, documento) de uma mensagem no provedor, sob demanda. */
+    fetchMedia(tenantId: string, instanceName: string, conversationId: string, messageId: string): Promise<WhatsappMediaFile>;
     listInstances(tenantId: string): Promise<WhatsappInstance[]>;
     listConversations(tenantId: string, instanceName: string): Promise<WhatsappConversation[]>;
     listMessages(tenantId: string, conversationId: string): Promise<WhatsappMessage[]>;
@@ -95,6 +104,7 @@ const CONVERSATION_COLUMNS = [
     'unread_count',
     'assigned_to',
     'human_handoff_until',
+    'handoff_requires_release',
     'archived',
     'updated_at',
 ].join(',');
@@ -282,6 +292,20 @@ export function createWhatsappInboxService(client: InboxClient): WhatsappInboxSe
             await invoke('inbox/markRead', tenantId, instanceName, {
                 conversationId: required(conversationId, 'Conversa'),
             });
+        },
+
+        async fetchMedia(tenantId, instanceName, conversationId, messageId) {
+            const data = await invoke('inbox/media', tenantId, instanceName, {
+                conversationId: required(conversationId, 'Conversa'),
+                messageId: required(messageId, 'Mensagem'),
+            }) as { base64?: unknown; mimetype?: unknown; fileName?: unknown } | null;
+            const base64 = typeof data?.base64 === 'string' ? data.base64 : '';
+            if (!base64) throw new Error('O arquivo desta mensagem não está mais disponível no provedor.');
+            return {
+                base64,
+                mimetype: typeof data?.mimetype === 'string' && data.mimetype ? data.mimetype : 'application/octet-stream',
+                fileName: typeof data?.fileName === 'string' ? data.fileName : null,
+            };
         },
 
         async setHandoff(tenantId, instanceName, conversationId, active) {

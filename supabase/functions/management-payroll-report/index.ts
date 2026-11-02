@@ -9,6 +9,7 @@ import {
   type PayrollSummary,
 } from "../_shared/payroll-message.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -104,9 +105,15 @@ serve(async (req) => {
         result.failures.push(`${tenantId}: canal institucional indisponível`);
         continue;
       }
+      // Folha é dinheiro: canal financeiro (sem grupo próprio, direção → DRE).
+      const canal = await loadTenantNoticeDestination(
+        supabase,
+        tenantId,
+        "financeiro",
+      );
       const destino = resolveTenantConfiguredWhatsAppDestination(
         route,
-        row.destino,
+        canal || row.destino,
       );
       if (!destino) {
         console.error("[whatsapp] destino recusado: nao pertence a escola", {

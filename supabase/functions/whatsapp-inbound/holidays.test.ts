@@ -24,3 +24,12 @@ Deno.test("future years fixed holidays match via annual pattern", () => {
   assertEquals(isHolidayBR("2028-12-25"), true);
   assertEquals(getHolidayBR("2028-12-25"), "Natal");
 });
+
+Deno.test("ponto facultativo não é feriado nacional: Carnaval e Corpus Christi têm aula", () => {
+  assertEquals(isHolidayBR("2026-02-16"), false);
+  assertEquals(isHolidayBR("2026-02-17"), false);
+  assertEquals(isHolidayBR("2026-06-04"), false);
+  assertEquals(isHolidayBR("2027-05-27"), false);
+  assertEquals(getHolidayBR("2026-04-03"), "Paixão de Cristo");
+  assertEquals(getHolidayBR("2027-03-26"), "Paixão de Cristo");
+});

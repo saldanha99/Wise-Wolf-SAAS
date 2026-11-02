@@ -1169,7 +1169,17 @@ async function requireSynchronizedLiveSubscriptionPayments(
     string,
     ProvenDeletedOpenPaymentState
   > = new Map<string, ProvenDeletedOpenPaymentState>(),
-): Promise<void> {
+  options: {
+    /**
+     * Assinatura criada por RENOVAÇÃO assinada de aluno suspenso: a cobrança
+     * ainda não pôde entrar no ledger (ele recusa aluno inativo). Tolerar aqui
+     * e importar depois da ativação, pelo worker — ver
+     * `requeue_asaas_inbox_events_for_renewal_subscription`.
+     */
+    tolerateProviderOnly?: boolean;
+  } = {},
+): Promise<{ providerOnlyIds: string[] }> {
+  const providerOnlyIds: string[] = [];
   const { data, error } = await admin.from("student_payments")
     .select(
       "id,asaas_payment_id,asaas_id,value,due_date,status,provider_status",
@@ -1229,6 +1239,10 @@ async function requireSynchronizedLiveSubscriptionPayments(
     ) continue;
     liveProviderIds.add(provider.id);
     const matches = localByProvider.get(provider.id) || [];
+    if (matches.length === 0 && options.tolerateProviderOnly) {
+      providerOnlyIds.push(provider.id);
+      continue;
+    }
     if (matches.length !== 1) {
       throw new ApiError(
         409,
@@ -1298,6 +1312,7 @@ async function requireSynchronizedLiveSubscriptionPayments(
       "Provider deletion evidence no longer matches the local cancellation snapshot",
     );
   }
+  return { providerOnlyIds };
 }
 
 type OffboardingCustomerInventory = {
@@ -2190,7 +2205,7 @@ async function createEnrollmentOffer(
       .maybeSingle(),
     admin.from("opportunities")
       .select(
-        "id,tenant_id,student_id,student_name,student_phone,status,kind,conversion_status,trial_status,feedback_required,winner_teacher_id,professor_id,trial_appointment_id",
+        "id,tenant_id,student_id,student_name,student_phone,status,kind,conversion_status,trial_status,winner_teacher_id,professor_id,trial_appointment_id",
       )
       .eq("tenant_id", tenantId)
       .eq("id", opportunityId)
@@ -2256,35 +2271,6 @@ async function createEnrollmentOffer(
       "The trial lifecycle is not eligible for enrollment",
     );
   }
-  if (opportunityResult.data.feedback_required) {
-    const { data: feedback, error: feedbackError } = await admin
-      .from("trial_feedback")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("opportunity_id", opportunityId)
-      .eq("booking_id", opportunityResult.data.trial_appointment_id)
-      .eq(
-        "teacher_id",
-        opportunityResult.data.winner_teacher_id ||
-          opportunityResult.data.professor_id,
-      )
-      .maybeSingle();
-    if (feedbackError) {
-      throw new ApiError(
-        503,
-        "DATA_UNAVAILABLE",
-        "Could not validate trial feedback",
-      );
-    }
-    if (!feedback) {
-      throw new ApiError(
-        409,
-        "TRIAL_FEEDBACK_REQUIRED",
-        "The trial feedback must be completed before enrollment",
-      );
-    }
-  }
-
   let normalizedPlan: ReturnType<typeof normalizeEnrollmentPlan>;
   try {
     normalizedPlan = normalizeEnrollmentPlan(planResult.data);
@@ -2589,7 +2575,15 @@ async function requestTrialReschedule(
     `➡️ Pedido: ${brtLabel(requestedStartTime)}\n\n` +
     `*A agenda ainda NÃO foi alterada.*\n` +
     `Responda *SIM #${replyCode}* se consegue atender ou *NÃO #${replyCode}* se não consegue.`;
-  const { error: queueError } = await admin.from("notification_queue").upsert({
+  // INSERT simples, não upsert. `idx_notif_queue_idemp` é PARCIAL
+  // (`where source_id is not null`), e o `on conflict` do supabase-js não
+  // repete o predicado — o Postgres então recusa com "no unique or exclusion
+  // constraint matching the ON CONFLICT specification" e a função devolvia 503
+  // em TODA chamada. Medido em 23/09/2026: "Pedir confirmação ao professor
+  // atual" nunca funcionou, e cada tentativa deixava o pedido como SUPERSEDED.
+  // Conflito aqui é impossível: `source_id` é o request_id que a RPC acabou de
+  // criar, uuid novo a cada chamada.
+  const { error: queueError } = await admin.from("notification_queue").insert({
     tenant_id: tenantId,
     teacher_id: null,
     student_id: null,
@@ -2603,9 +2597,6 @@ async function requestTrialReschedule(
     source_type: "trial_reschedule",
     class_date: brtDate(requestedStartTime),
     notification_kind: "TRIAL_RESCHEDULE_CONFIRMATION",
-  }, {
-    onConflict: "source_id,source_type,class_date,notification_kind",
-    ignoreDuplicates: true,
   });
   if (queueError) {
     await admin.from("trial_reschedule_requests")
@@ -3290,6 +3281,7 @@ export async function handleRequest(req: Request): Promise<Response> {
             "A definitively offboarded student needs a new enrollment",
           );
         }
+        let reactivationRenewalSubscription = false;
         const begun = await beginStudentReactivation(admin, {
           tenantId,
           studentId: target.id,
@@ -3404,11 +3396,29 @@ export async function handleRequest(req: Request): Promise<Response> {
                 claim.customerId,
               );
             requireUniqueLiveProviderCompetences(existingProviderPayments);
+            // Assinatura criada por renovação assinada (aluno suspenso que
+            // renovou): a cobrança dela ainda não está no ledger — o ledger
+            // recusa aluno inativo. Tolerar e importar depois da ativação.
+            const renewalBinding = await admin.rpc(
+              "student_course_renewal_binding_for_subscription",
+              {
+                p_tenant: tenantId,
+                p_student: target.id,
+                p_subscription: claim.subscriptionId,
+              },
+            );
+            const renewalSubscription = Boolean(
+              !renewalBinding.error && renewalBinding.data &&
+                typeof renewalBinding.data === "object",
+            );
+            reactivationRenewalSubscription = renewalSubscription;
             await requireSynchronizedLiveSubscriptionPayments(
               admin,
               tenantId,
               target.id,
               existingProviderPayments,
+              undefined,
+              { tolerateProviderOnly: renewalSubscription },
             );
             const safeNextDueDate = nextStudentDueDate(
               claim.dueDay,
@@ -3500,6 +3510,8 @@ export async function handleRequest(req: Request): Promise<Response> {
                 tenantId,
                 target.id,
                 verifiedPayments,
+                undefined,
+                { tolerateProviderOnly: renewalSubscription },
               );
               requireUniqueLiveProviderCompetences(verifiedPayments);
             } catch (providerError) {
@@ -3545,7 +3557,33 @@ export async function handleRequest(req: Request): Promise<Response> {
             "The subscription was reactivated, but the local snapshot changed",
           );
         }
-        const billing = { subscriptionReactivated: true };
+        // Cadastro ativo: agora o ledger aceita as cobranças da assinatura
+        // da renovação. Os eventos que caíram em TRIAGE voltam para o worker
+        // (caminho normal e guardado); nada é inserido na mão.
+        let renewalChargesRequeued = 0;
+        if (reactivationRenewalSubscription) {
+          const requeued = await admin.rpc(
+            "requeue_asaas_inbox_events_for_renewal_subscription",
+            {
+              p_tenant: tenantId,
+              p_student: target.id,
+              p_subscription: claim.subscriptionId,
+            },
+          );
+          if (requeued.error) {
+            console.error("[school-admin] requeue da renovação falhou", {
+              studentId: target.id,
+              code: requeued.error.code,
+            });
+          } else {
+            renewalChargesRequeued = Number(requeued.data || 0);
+          }
+        }
+        const billing = {
+          subscriptionReactivated: true,
+          renewalSubscription: reactivationRenewalSubscription,
+          renewalChargesRequeued,
+        };
         await writeAudit(admin, auth.context, tenantId, req, {
           action: "setStudentLifecycle",
           resourceType: "student",

@@ -69,7 +69,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in">
             <div className="bg-brand-surface w-full max-w-lg rounded-3xl p-8 border border-brand-border dark:border-brand-border shadow-2xl">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-2xl font-black text-brand-text flex items-center gap-2">
@@ -88,7 +88,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                             <input
                                 value={formData.schoolName}
                                 onChange={e => setFormData({ ...formData, schoolName: e.target.value, slug: slugify(e.target.value) })}
-                                className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden"
                             />
                         </div>
                         <div className="space-y-2">
@@ -99,7 +99,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                                 <input
                                     value={formData.slug}
                                     onChange={e => setFormData({ ...formData, slug: e.target.value })}
-                                    className="bg-transparent border-none font-bold outline-none text-indigo-600 w-full ml-1"
+                                    className="bg-transparent border-none font-bold outline-hidden text-indigo-600 w-full ml-1"
                                 />
                             </div>
                         </div>
@@ -109,7 +109,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                                 <input
                                     value={formData.adminName}
                                     onChange={e => setFormData({ ...formData, adminName: e.target.value })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -117,7 +117,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                                 <input
                                     value={formData.adminEmail}
                                     onChange={e => setFormData({ ...formData, adminEmail: e.target.value })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden"
                                 />
                             </div>
                         </div>
@@ -143,7 +143,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                             <code className="text-xs font-mono text-indigo-600">{generatedLink}</code>
                             <button
                                 onClick={() => navigator.clipboard.writeText(generatedLink)}
-                                className="text-xs font-bold bg-brand-surface shadow-sm px-3 py-1 rounded-lg text-brand-muted hover:text-indigo-600"
+                                className="text-xs font-bold bg-brand-surface shadow-xs px-3 py-1 rounded-lg text-brand-muted hover:text-indigo-600"
                             >
                                 Copiar
                             </button>

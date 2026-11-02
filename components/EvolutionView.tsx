@@ -150,8 +150,8 @@ const EvolutionView: React.FC<EvolutionViewProps> = ({ user }) => {
         <div className="flex flex-col gap-6 min-w-0">
           <AIReportCard studentId={user?.id} />
 
-          <div className="bg-brand-surface p-5 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 min-w-0">
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl shadow-sm shrink-0">
+          <div className="bg-brand-surface p-5 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-xs flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 min-w-0">
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl shadow-xs shrink-0">
               <MessageSquareText size={24} />
             </div>
             <div className="min-w-0 flex-1">

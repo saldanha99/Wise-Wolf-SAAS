@@ -8,6 +8,8 @@ import {
 } from "../_shared/request-auth.ts";
 import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import { loadTenantCentralWhatsAppInstance } from "../_shared/tenant-communication.ts";
+import { enqueueForcedCoverageBriefing } from "./briefing.ts";
+import { coverageOfferedRate, coverageRateText } from "./offered-rate.ts";
 
 /** Motivo em texto livre → enum aceito por `teacher_absences.reason`. */
 export function absenceReasonEnum(
@@ -41,6 +43,13 @@ const EVOLUTION_TOKENS = Array.from(
   ),
 );
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
+// Link que o professor abre: host público (`SUPABASE_URL` é a rede interna,
+// `http://kong:8000` — convite com esse host nunca abre no celular).
+const PUBLIC_FUNCTIONS_URL =
+  (Deno.env.get("SUPABASE_PUBLIC_URL")?.trim() || SUPABASE_URL).replace(
+    /\/$/,
+    "",
+  );
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ABSENCE_DAYS = 31;
@@ -69,6 +78,9 @@ const COVERAGE_SAFE_FIELDS = [
   "confirmed_at",
   "dispatched_at",
   "invite_expires_at",
+  "offered_rate",
+  "offered_rate_set_by",
+  "offered_rate_set_at",
 ].join(",");
 
 const WEEKDAY_BY_NAME: Record<string, number> = {
@@ -90,6 +102,7 @@ interface CoverageItemInput {
   classDate: string;
   classTime: string;
   coverTeacherId: string;
+  offeredRate: number | null;
 }
 
 interface ValidatedCoverageItem extends CoverageItemInput {
@@ -254,40 +267,6 @@ function weekdayIndex(value: unknown): number | null {
 
 function isActiveLifecycle(value: unknown): boolean {
   return stringField(value).toLowerCase() === "active";
-}
-
-function isScheduledBooking(value: unknown): boolean {
-  return stringField(value).toUpperCase() === "SCHEDULED";
-}
-
-function bookingOccursAt(
-  booking: JsonObject,
-  classDate: string,
-  classTime: string,
-  exactTime = true,
-): boolean {
-  if (!isScheduledBooking(booking.status)) return false;
-  const bookingTime = timeMinutes(booking.time_slot);
-  const requestedTime = timeMinutes(classTime);
-  if (bookingTime === null || requestedTime === null) return false;
-  if (
-    exactTime
-      ? bookingTime !== requestedTime
-      : Math.abs(bookingTime - requestedTime) >= CONFLICT_WINDOW_MINUTES
-  ) return false;
-
-  const fixedDate = dateKey(booking.date);
-  if (booking.date !== null && booking.date !== undefined) {
-    return fixedDate === classDate;
-  }
-
-  const requestedDate = parseDateKey(classDate);
-  if (
-    !requestedDate ||
-    weekdayIndex(booking.day_of_week) !== requestedDate.getUTCDay()
-  ) return false;
-  const startsOn = dateKey(booking.start_date);
-  return !startsOn || startsOn <= classDate;
 }
 
 function availabilityCovers(
@@ -490,77 +469,26 @@ async function createAbsence(
     throw new ApiError(404, "professor ausente invalido");
   }
 
-  const { data: bookings, error: bookingsError } = await admin.from("bookings")
-    .select(
-      "id,tenant_id,teacher_id,student_id,day_of_week,time_slot,date,start_date,status",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("teacher_id", teacherId)
-    .in("status", ["SCHEDULED", "scheduled"])
-    .not("student_id", "is", null);
-  if (bookingsError) {
-    dbFailure("affected bookings lookup", bookingsError);
-  }
-
-  const studentIds = [
-    ...new Set(
-      (bookings || []).map((booking: JsonObject) =>
-        String(booking.student_id || "")
-      ).filter(Boolean),
-    ),
-  ];
-  const students = await loadActiveMembers(
-    admin,
-    tenantId,
-    studentIds,
-    "STUDENT",
+  const { data: classes, error: classesError } = await admin.rpc(
+    "coverage_booking_occurrences",
+    {
+      p_tenant: tenantId,
+      p_teacher_ids: [teacherId],
+      p_from: startsAt,
+      p_to: endsAt,
+    },
   );
-  const classes: JsonObject[] = [];
-
-  for (const rawBooking of bookings || []) {
-    const booking = rawBooking as JsonObject;
-    const studentId = String(booking.student_id || "");
-    const student = students.get(studentId);
-    if (!student) {
-      throw new ApiError(
-        409,
-        "booking possui aluno fora do tenant ou inativo",
-      );
-    }
-    const classTime = normalizeTime(booking.time_slot);
-    if (!classTime) {
-      throw new ApiError(409, "booking possui horario invalido");
-    }
-
-    const fixedDate = dateKey(booking.date);
-    const candidateDates = fixedDate ? [fixedDate] : Array.from(
-      { length: intervalDays },
-      (_, index) => formatDateKey(addUtcDays(start, index)),
+  if (classesError) dbFailure("effective coverage agenda", classesError);
+  if ((classes || []).length > MAX_AFFECTED_CLASSES) {
+    throw new ApiError(
+      422,
+      `periodo gera mais de ${MAX_AFFECTED_CLASSES} aulas; reduza o intervalo`,
     );
-    for (const classDate of candidateDates) {
-      if (classDate < startsAt || classDate > endsAt) continue;
-      if (!bookingOccursAt(booking, classDate, classTime)) continue;
-      classes.push({
-        bookingId: String(booking.id),
-        studentId,
-        studentName: student.full_name || "Aluno",
-        classDate,
-        classTime,
-        dow: parseDateKey(classDate)!.getUTCDay(),
-      });
-      if (classes.length > MAX_AFFECTED_CLASSES) {
-        throw new ApiError(
-          422,
-          `periodo gera mais de ${MAX_AFFECTED_CLASSES} aulas; reduza o intervalo`,
-        );
-      }
-    }
   }
-  classes.sort((a, b) =>
-    `${a.classDate}${a.classTime}`.localeCompare(
-      `${b.classDate}${b.classTime}`,
-    )
-  );
+  const canSetRate = caller.profile?.role === "SCHOOL_ADMIN";
+  if (body.action === "previewAbsence") {
+    return json({ ok: true, classes: classes || [], canSetRate });
+  }
 
   const { data: absence, error: absenceError } = await admin.from(
     "teacher_absences",
@@ -594,7 +522,7 @@ async function createAbsence(
       teacher_id: teacherId,
       starts_at: startsAt,
       ends_at: endsAt,
-      affected_classes: classes.length,
+      affected_classes: (classes || []).length,
     },
   });
   if (audit.error) {
@@ -602,10 +530,10 @@ async function createAbsence(
       code: audit.error.code,
     });
   }
-  return json({ ok: true, absence, classes });
+  return json({ ok: true, absence, classes: classes || [], canSetRate });
 }
 
-function parseCoverageItems(value: unknown): CoverageItemInput[] {
+function parseCoverageItems(value: unknown, role: string): CoverageItemInput[] {
   if (!Array.isArray(value) || !value.length) {
     throw new ApiError(400, "items invalidos");
   }
@@ -644,6 +572,7 @@ function parseCoverageItems(value: unknown): CoverageItemInput[] {
       coverTeacherId,
       classDate,
       classTime,
+      offeredRate: coverageOfferedRate(item.offeredRate, role),
     };
   });
 }
@@ -695,6 +624,19 @@ async function validateCoverageItems(
     );
   }
 
+  const { data: occurrences, error: occurrenceError } = await admin.rpc(
+    "coverage_booking_occurrences",
+    {
+      p_tenant: tenantId,
+      p_teacher_ids: [originalTeacherId],
+      p_from: absenceStart,
+      p_to: absenceEnd,
+      p_include_covered: true,
+    },
+  );
+  if (occurrenceError) {
+    dbFailure("effective occurrence validation", occurrenceError);
+  }
   const bookingsById = new Map<string, JsonObject>();
   for (const booking of bookingsResponse.data || []) {
     bookingsById.set(String(booking.id), booking as JsonObject);
@@ -720,7 +662,12 @@ async function validateCoverageItems(
       item.classDate < absenceStart ||
       item.classDate > absenceEnd
     ) throw new ApiError(409, "aula fora do periodo da ausencia");
-    if (!bookingOccursAt(booking, item.classDate, item.classTime)) {
+    if (
+      !(occurrences || []).some((row: JsonObject) =>
+        row.bookingId === item.bookingId && row.studentId === item.studentId &&
+        row.classDate === item.classDate && row.classTime === item.classTime
+      )
+    ) {
       throw new ApiError(
         409,
         "data ou horario nao corresponde ao booking",
@@ -789,13 +736,13 @@ async function validateCoverageItems(
       .select("teacher_id,day_of_week,start_time,end_time")
       .eq("tenant_id", tenantId)
       .in("teacher_id", coverTeacherIds),
-    admin.from("bookings")
-      .select(
-        "id,teacher_id,day_of_week,time_slot,date,start_date,status",
-      )
-      .eq("tenant_id", tenantId)
-      .in("teacher_id", coverTeacherIds)
-      .neq("status", "CANCELLED"),
+    admin.rpc("coverage_booking_occurrences", {
+      p_tenant: tenantId,
+      p_teacher_ids: coverTeacherIds,
+      p_from: minDate,
+      p_to: maxDate,
+      p_include_covered: true,
+    }),
     admin.from("reschedules")
       .select("teacher_id,date,time,used_at")
       .eq("tenant_id", tenantId)
@@ -916,8 +863,9 @@ async function validateCoverageItems(
 
     const hasBookingConflict = (busyBookingsResponse.data || []).some(
       (row: JsonObject) =>
-        String(row.teacher_id) === item.coverTeacherId &&
-        bookingOccursAt(row, item.classDate, item.classTime, false),
+        String(row.teacherId) === item.coverTeacherId &&
+        row.classDate === item.classDate &&
+        sameTimeWindow(row.classTime, item.classTime),
     );
     const hasRescheduleConflict = (reschedulesResponse.data || [])
       .some((row: JsonObject) =>
@@ -987,9 +935,12 @@ async function sendCoverageInvite(
     return "rejected";
   }
   const phone = item.coverPhone;
-  if (!phone || !SUPABASE_URL || !EVOLUTION_TOKENS.length) return "rejected";
+  if (!phone || !PUBLIC_FUNCTIONS_URL || !EVOLUTION_TOKENS.length) {
+    return "rejected";
+  }
 
-  const link = `${SUPABASE_URL}/functions/v1/accept-coverage?token=${token}`;
+  const link =
+    `${PUBLIC_FUNCTIONS_URL}/functions/v1/accept-coverage?token=${token}`;
   const firstName = item.coverName.split(" ")[0] || "Professor";
   const date = parseDateKey(item.classDate)!;
   const dataFmt = new Intl.DateTimeFormat("pt-BR", {
@@ -997,7 +948,9 @@ async function sendCoverageInvite(
   }).format(date);
   const text =
     `Olá ${firstName}! 🐺\n\nA coordenação precisa de uma *cobertura de aula*:\n\n` +
-    `📅 ${dataFmt} às *${item.classTime}*\n👤 Aluno: ${item.studentName}\n\n` +
+    `📅 ${dataFmt} às *${item.classTime}*\n👤 Aluno: ${item.studentName}\n💰 ${
+      coverageRateText(item.offeredRate)
+    }\n\n` +
     `Consegue cobrir? Confirme aqui:\n${link}`;
 
   const result = await sendWhatsTextDetailed({
@@ -1043,7 +996,16 @@ async function requestCoverage(
   if (mode !== "request" && mode !== "force") {
     throw new ApiError(400, "mode invalido");
   }
-  const items = parseCoverageItems(body.items);
+  let items: CoverageItemInput[];
+  try {
+    items = parseCoverageItems(body.items, caller.profile?.role || "");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      caller.profile?.role === "SCHOOL_ADMIN" ? 422 : 403,
+      error instanceof Error ? error.message : "valor invalido",
+    );
+  }
   const absence = await requireAbsence(admin, tenantId, absenceId);
   const validated = await validateCoverageItems(
     admin,
@@ -1106,6 +1068,8 @@ async function requestCoverage(
         confirmed_at: isForce ? new Date().toISOString() : null,
         dispatched_at: null,
         invite_expires_at: inviteExpiresAt,
+        offered_rate: item.offeredRate,
+        offered_rate_set_by: item.offeredRate === null ? null : caller.userId,
       })
       .select(COVERAGE_SAFE_FIELDS)
       .single();
@@ -1130,7 +1094,16 @@ async function requestCoverage(
     }
     if (isForce) {
       successful += 1;
-      out.push({ coverage: safeCoverage });
+      // Forçada = confirmada sem aceite: o substituto recebe o mesmo pacote do
+      // aceite (contato, últimas aulas, sala oficial e link do dossiê).
+      const briefingWarning = await enqueueForcedCoverageBriefing(
+        (fn, args) => admin.rpc(fn, args),
+        coverageId,
+      );
+      out.push({
+        coverage: safeCoverage,
+        ...(briefingWarning ? { warning: briefingWarning } : {}),
+      });
       continue;
     }
 
@@ -1255,7 +1228,20 @@ serve(async (req) => {
     const tenantId = await resolveAuthorizedTenant(auth.context);
     const body = await readJsonObject(req);
     const action = stringField(body.action);
-    if (action === "createAbsence") {
+    if (action === "searchSubstitutes") {
+      const { data, error } = await auth.context.admin.rpc(
+        "coverage_candidates_for_booking",
+        {
+          p_tenant: tenantId,
+          p_booking: requireUuid(body.bookingId, "bookingId"),
+          p_date: stringField(body.classDate),
+          p_time: normalizeTime(body.classTime),
+        },
+      );
+      if (error) dbFailure("coverage candidates", error);
+      return json({ ok: true, slots: data || [] });
+    }
+    if (action === "previewAbsence" || action === "createAbsence") {
       return await createAbsence(
         auth.context.admin,
         auth.context,

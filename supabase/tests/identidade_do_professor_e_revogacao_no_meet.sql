@@ -1,0 +1,818 @@
+-- Núcleo do Meet, parte 2 (migration 20260926180000). Reprova contra o código
+-- anterior: a sala nascia com o e-mail do cadastro (ou o que o chamador mandasse)
+-- como coanfitrião, o professor autorizava o termo sem conta Google confirmada,
+-- a revogação não desligava a sala já criada (nem tirava o link do app), outra
+-- conta Google substituía a central com salas criadas, qualquer professor do aluno
+-- e o suporte liam a transcrição bruta, a coordenação marcava documentação e a
+-- marcação manual passava por cima de recusa/revogação.
+-- Correções da revisão (mesma migration): revogação pouco antes da aula (job
+-- rodando depois do início) ou com a conta central fora do ar não desmarcava a
+-- sessão e a transcrição era importada; o aceite que voltava pelo termo nunca
+-- religava a sessão; trocar a conta do professor rebaixava a sala pronta (link
+-- sumia, aula não era importada); erro da documentação da sala ficava velho.
+-- Integração da onda 1: o aceite "como aluno" que deixa de valer sem decisão
+-- nova (a direção marca KIDS com a aula em andamento) não barrava nada — a sala
+-- seguia ligada e a transcrição do menor era importada (seção 6d).
+\set ON_ERROR_STOP on
+
+begin;
+
+create or replace function pg_temp.p2_assert(p_ok boolean, p_message text)
+returns void language plpgsql as $$
+begin
+  if not coalesce(p_ok, false) then
+    raise exception 'Meet parte 2: %', p_message;
+  end if;
+end;
+$$;
+
+-- Aceite do aluno pelo fluxo real do link (20260926200000): código de 6 dígitos
+-- emitido para a edge (service_role), "entregue" e digitado na página (anon).
+-- Aceite gravado direto, sem código, não vale para marcar aula.
+create or replace function pg_temp.p2_accept_by_link(p_token text, p_signer text)
+returns text language plpgsql as $$
+declare
+  v_issue jsonb;
+  v_result jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_issue := public.issue_lesson_recording_consent_code(p_token, 'SELF');
+  if not coalesce((v_issue ->> 'ok')::boolean, false) then
+    raise exception 'Meet parte 2: código do termo não saiu: %', v_issue;
+  end if;
+  perform public.settle_lesson_recording_consent_code((v_issue ->> 'challenge_id')::uuid, 'SENT', null);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  -- O aceite leva a versão do termo que a página mostrou (20260927100000).
+  v_result := public.decide_lesson_recording_consent_public(p_token, p_signer, 'SELF', true, v_issue ->> 'code',
+    (private.lesson_recording_current_term('STUDENT')).version);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  return v_result ->> 'decision';
+end;
+$$;
+
+do $privileges$
+begin
+  perform pg_temp.p2_assert(
+    not has_table_privilege('authenticated', 'private.teacher_google_identities', 'SELECT')
+    and not has_table_privilege('anon', 'private.teacher_google_identities', 'SELECT')
+    and not has_table_privilege('authenticated', 'private.teacher_google_identities', 'INSERT'),
+    'identidade Google do professor legível ou gravável pelo navegador'
+  );
+  perform pg_temp.p2_assert(
+    has_function_privilege('authenticated', 'public.get_my_google_identity()', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.get_my_google_identity()', 'EXECUTE'),
+    'get_my_google_identity com permissão errada'
+  );
+  perform pg_temp.p2_assert(
+    (select pg_get_userbyid(proowner) = 'postgres' and prosecdef
+       and coalesce(array_to_string(proconfig, ','), '') like '%search_path=%'
+     from pg_proc where oid = 'public.get_my_google_identity()'::regprocedure),
+    'get_my_google_identity sem dono postgres ou sem search_path'
+  );
+  perform pg_temp.p2_assert(
+    not has_function_privilege('authenticated', 'public.google_meet_backend(text,text,uuid,uuid,jsonb)', 'EXECUTE'),
+    'porta do servidor aberta ao navegador'
+  );
+end
+$privileges$;
+
+do $test$
+declare
+  v_admin uuid := gen_random_uuid();
+  v_coord uuid := gen_random_uuid();
+  v_teacher uuid := gen_random_uuid();      -- dá as aulas, confirma a conta Google
+  v_teacher2 uuid := gen_random_uuid();     -- outro professor do mesmo aluno
+  v_noid uuid := gen_random_uuid();         -- professor sem conta Google confirmada
+  v_sub_teacher uuid := gen_random_uuid();  -- substituto: dá a aula sem ser do aluno
+  v_super uuid := gen_random_uuid();        -- suporte da plataforma
+  v_student uuid := gen_random_uuid();
+  v_student2 uuid := gen_random_uuid();
+  v_student3 uuid := gen_random_uuid();
+  v_room_session uuid := gen_random_uuid(); -- aula daqui a 2 h, com sala
+  v_noid_session uuid := gen_random_uuid(); -- aula daqui a 2 h do professor sem conta
+  v_started uuid := gen_random_uuid();      -- aula que começou há 10 min
+  v_past uuid := gen_random_uuid();         -- aula que acabou há 1 h (documentos)
+  v_manual uuid := gen_random_uuid();       -- marcada à mão, aluno revoga depois
+  v_manual_ok uuid := gen_random_uuid();    -- marcada à mão, aluno sem decisão
+  v_sub_session uuid := gen_random_uuid();  -- aula dada pelo substituto
+  v_student4 uuid := gen_random_uuid();     -- revoga 100 min atrás
+  v_student5 uuid := gen_random_uuid();     -- aceita, revoga e aceita de novo
+  v_before uuid := gen_random_uuid();       -- aula do aluno 4 que acabou ANTES da revogação
+  v_after_past uuid := gen_random_uuid();   -- aula do aluno 4 que começou 5 min depois da revogação
+  v_in_progress uuid := gen_random_uuid();  -- aula do aluno 4 em andamento
+  v_cycle uuid := gen_random_uuid();        -- aula do aluno 5 daqui a 7 h
+  v_admin_r uuid := gen_random_uuid();      -- escola com a conta central em REAUTH_REQUIRED
+  v_teacher_r uuid := gen_random_uuid();
+  v_student_r uuid := gen_random_uuid();
+  v_r1 uuid := gen_random_uuid();
+  v_r2 uuid := gen_random_uuid();
+  v_kids_live uuid := gen_random_uuid();    -- aula do aluno 5 em andamento, marcada pelo termo
+  v_kids_done uuid := gen_random_uuid();    -- aula do aluno 5 que acabou, marcada pelo termo
+  v_kids_manual uuid := gen_random_uuid();  -- aula do aluno 5 em andamento, marcada pela direção
+  v_today date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_result jsonb;
+  v_jobs jsonb;
+  v_claim text;
+  v_blocked boolean;
+  v_message text;
+  v_artifact uuid;
+  v_draft uuid;
+  v_room private.google_meet_rooms;
+  v_changed integer;
+  v_token5 text;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  -- A fila do Meet é global (todas as escolas, 30 por vez). No release este teste
+  -- roda no banco de produção: com 30 jobs reais vencidos na frente, as sessões
+  -- de teste sumiriam da lista e o teste reprovaria sem defeito nenhum. As
+  -- conexões reais saem do ar só dentro desta transação (o rollback devolve).
+  update private.google_workspace_connections set status = 'REAUTH_REQUIRED' where status = 'CONNECTED';
+  -- Textos do termo (a cópia só-estrutura não tem os dados; na produção já existem).
+  insert into private.lesson_recording_terms (audience, version, body) values
+    ('STUDENT', 'v1', repeat('Termo de registro do aluno fixture. ', 10)),
+    ('TEACHER', 'v1', repeat('Termo de registro do professor fixture. ', 10))
+  on conflict (audience, version) do nothing;
+  insert into public.tenants (id, name) values
+    ('meet-p2-fixture', 'Meet parte 2 fixture'), ('meet-p2-platform', 'Plataforma fixture'),
+    ('meet-p2-reauth', 'Meet parte 2 conta fora do ar');
+  insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data) values
+    (v_admin, 'p2-admin@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_coord, 'p2-coord@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_teacher, 'p2-teacher@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_teacher2, 'p2-teacher2@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_noid, 'p2-noid@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_sub_teacher, 'p2-sub@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_super, 'p2-super@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student, 'p2-student@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student2, 'p2-student2@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student3, 'p2-student3@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student4, 'p2-student4@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student5, 'p2-student5@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_admin_r, 'p2-admin-r@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_teacher_r, 'p2-teacher-r@example.invalid', '{"provider":"email"}', '{"test_fixture":true}'),
+    (v_student_r, 'p2-student-r@example.invalid', '{"provider":"email"}', '{"test_fixture":true}');
+  update public.profiles
+     set tenant_id = 'meet-p2-fixture', lifecycle_status = 'active', is_test_account = true,
+         role = case when id = v_admin then 'SCHOOL_ADMIN' when id = v_coord then 'COORDINATOR'
+           when id in (v_teacher, v_teacher2, v_noid, v_sub_teacher) then 'TEACHER' else 'STUDENT' end,
+         full_name = case when id = v_admin then 'Direcao Fixture' when id = v_coord then 'Coordenacao Fixture'
+           when id = v_teacher then 'Professora Fixture' when id = v_teacher2 then 'Professor Dois Fixture'
+           when id = v_noid then 'Professor Sem Conta' when id = v_sub_teacher then 'Substituta Fixture'
+           else 'Aluno Fixture' end
+   where id in (v_admin, v_coord, v_teacher, v_teacher2, v_noid, v_sub_teacher, v_student, v_student2, v_student3,
+     v_student4, v_student5);
+  update public.profiles set tenant_id = 'meet-p2-platform', lifecycle_status = 'active', is_test_account = true,
+    role = 'SUPER_ADMIN', full_name = 'Suporte Fixture' where id = v_super;
+  update public.profiles
+     set tenant_id = 'meet-p2-reauth', lifecycle_status = 'active', is_test_account = true,
+         role = case when id = v_admin_r then 'SCHOOL_ADMIN' when id = v_teacher_r then 'TEACHER' else 'STUDENT' end,
+         full_name = case when id = v_admin_r then 'Direcao Reauth' when id = v_teacher_r then 'Professora Reauth'
+           else 'Aluno Reauth' end
+   where id in (v_admin_r, v_teacher_r, v_student_r);
+  update public.profiles set professor_id = v_teacher, professor_id2 = v_teacher2 where id = v_student;
+  update public.profiles set professor_id = v_noid where id = v_student2;
+  update public.profiles set professor_id = v_teacher where id in (v_student3, v_student4, v_student5);
+  update public.profiles set professor_id = v_teacher_r where id = v_student_r;
+  insert into public.tenant_memberships (tenant_id, user_id, role, status)
+    select tenant_id, id, role, 'ACTIVE' from public.profiles
+     where id in (v_admin, v_coord, v_teacher, v_teacher2, v_noid, v_sub_teacher, v_student, v_student2, v_student3,
+       v_student4, v_student5, v_admin_r, v_teacher_r, v_student_r)
+  on conflict (tenant_id, user_id) do update set role = excluded.role, status = 'ACTIVE';
+
+  insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+    scheduled_start_at, scheduled_end_at, source_key, documentation_consent) values
+    (v_room_session, 'meet-p2-fixture', v_student, v_teacher, v_today, now() + interval '2 hours', now() + interval '150 minutes', 'p2-room', true),
+    (v_noid_session, 'meet-p2-fixture', v_student2, v_noid, v_today, now() + interval '2 hours', now() + interval '150 minutes', 'p2-noid', true),
+    (v_started, 'meet-p2-fixture', v_student, v_teacher, v_today, now() - interval '10 minutes', now() + interval '20 minutes', 'p2-started', true),
+    (v_past, 'meet-p2-fixture', v_student, v_teacher, v_today, now() - interval '90 minutes', now() - interval '1 hour', 'p2-past', true),
+    (v_manual, 'meet-p2-fixture', v_student3, v_teacher, v_today, now() + interval '5 hours', now() + interval '330 minutes', 'p2-manual', false),
+    (v_manual_ok, 'meet-p2-fixture', v_student, v_teacher, v_today, now() + interval '6 hours', now() + interval '390 minutes', 'p2-manual-ok', false),
+    (v_sub_session, 'meet-p2-fixture', v_student, v_sub_teacher, v_today, now() - interval '3 hours', now() - interval '150 minutes', 'p2-sub', true),
+    (v_before, 'meet-p2-fixture', v_student4, v_teacher, v_today, now() - interval '4 hours', now() - interval '210 minutes', 'p2-before', true),
+    (v_after_past, 'meet-p2-fixture', v_student4, v_teacher, v_today, now() - interval '95 minutes', now() - interval '65 minutes', 'p2-after-past', true),
+    (v_in_progress, 'meet-p2-fixture', v_student4, v_teacher, v_today, now() - interval '10 minutes', now() + interval '20 minutes', 'p2-in-progress', true),
+    (v_cycle, 'meet-p2-fixture', v_student5, v_teacher, v_today, now() + interval '7 hours', now() + interval '450 minutes', 'p2-cycle', false),
+    (v_r1, 'meet-p2-reauth', v_student_r, v_teacher_r, v_today, now() + interval '3 hours', now() + interval '210 minutes', 'p2-r1', true);
+
+  -- Aluno 4: aceitou há 10 dias e revogou há 100 minutos (5 min antes da aula
+  -- v_after_past). Decisões gravadas direto, com a hora de cada uma.
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, term_audience, term_version, source, recorded_by, decided_at) values
+    ('meet-p2-fixture', v_student4, 'STUDENT', 'ACCEPTED', 'Aluno Quatro Fixture', 'SCHOOL', 'STUDENT', 'v1', 'SCHOOL', v_admin,
+      now() - interval '10 days');
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, source, recorded_by, reason, decided_at) values
+    ('meet-p2-fixture', v_student4, 'STUDENT', 'REVOKED', 'Direcao Fixture', 'SCHOOL', 'SCHOOL', v_admin,
+      'Família pediu para parar pelo WhatsApp.', now() - interval '100 minutes');
+
+  perform public.google_meet_backend('connection_save', 'meet-p2-fixture', v_admin, null, jsonb_build_object(
+    'organizer_sub', 'p2-sub-central', 'organizer_email', 'escola@example.com',
+    'refresh_token_ciphertext', 'synthetic-protected-token', 'granted_scopes', jsonb_build_array('fixture')));
+
+  -- ===== 1. Identidade Google confirmada pelo PRÓPRIO professor ===============
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('identity_nonce_create', 'meet-p2-fixture', v_admin, null,
+      jsonb_build_object('state_hash', repeat('1', 64), 'verifier_ciphertext', 'synthetic'));
+  exception when insufficient_privilege then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'direção abriu o login de identidade de professor');
+  perform public.google_meet_backend('identity_nonce_create', 'meet-p2-fixture', v_teacher, null,
+    jsonb_build_object('state_hash', repeat('2', 64), 'verifier_ciphertext', 'synthetic'));
+  v_result := public.google_meet_backend('nonce_consume', null, null, null, jsonb_build_object('state_hash', repeat('2', 64)));
+  perform pg_temp.p2_assert(v_result ->> 'flow' = 'teacher_identity' and v_result ->> 'actor_id' = v_teacher::text
+    and not (v_result ->> 'allow_replace')::boolean, 'nonce do professor sem o fluxo de identidade');
+  perform public.google_meet_backend('nonce_create', 'meet-p2-fixture', v_admin, null,
+    jsonb_build_object('state_hash', repeat('3', 64), 'verifier_ciphertext', 'synthetic', 'allow_replace', true));
+  v_result := public.google_meet_backend('nonce_consume', null, null, null, jsonb_build_object('state_hash', repeat('3', 64)));
+  perform pg_temp.p2_assert(v_result ->> 'flow' = 'organizer' and (v_result ->> 'allow_replace')::boolean,
+    'pedido de troca de conta não ficou no nonce');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('nonce_create', 'meet-p2-fixture', v_teacher, null,
+      jsonb_build_object('state_hash', repeat('4', 64), 'verifier_ciphertext', 'synthetic'));
+  exception when insufficient_privilege then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'professor abriu o login da conta central');
+
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('identity_save', 'meet-p2-fixture', v_admin, null,
+      jsonb_build_object('google_sub', '1001', 'google_email', 'direcao@example.com', 'email_verified', true));
+  exception when insufficient_privilege then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'identidade de professor gravada pela direção');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('identity_save', 'meet-p2-fixture', v_teacher, null,
+      jsonb_build_object('google_sub', '1002', 'google_email', 'prof@example.com', 'email_verified', false));
+  exception when invalid_parameter_value then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'conta com e-mail não verificado aceita');
+  v_result := public.google_meet_backend('identity_save', 'meet-p2-fixture', v_teacher, null,
+    jsonb_build_object('google_sub', '1002', 'google_email', 'Prof.Pessoal@Example.com', 'email_verified', true));
+  perform pg_temp.p2_assert(v_result ->> 'email' = 'prof.pessoal@example.com' and v_result ->> 'verified_at' is not null,
+    'identidade confirmada não gravada (ou sem normalizar o e-mail)');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('identity_save', 'meet-p2-fixture', v_noid, null,
+      jsonb_build_object('google_sub', '1002', 'google_email', 'prof.pessoal@example.com', 'email_verified', true));
+  exception when unique_violation then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'mesma conta Google confirmada para dois professores ativos');
+  perform public.google_meet_backend('identity_save', 'meet-p2-fixture', v_sub_teacher, null,
+    jsonb_build_object('google_sub', '1003', 'google_email', 'substituta@example.com', 'email_verified', true));
+
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
+  v_result := public.get_my_google_identity();
+  perform pg_temp.p2_assert(v_result ->> 'email' = 'prof.pessoal@example.com' and v_result ? 'verified_at'
+    and not (v_result ? 'google_sub'), 'get_my_google_identity não devolve só e-mail e data');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_noid, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(public.get_my_google_identity() is null, 'professor sem conta recebeu identidade');
+
+  -- ===== 2. Aceite do termo pelo professor exige a conta confirmada ===========
+  v_blocked := false;
+  begin perform public.set_my_lesson_recording_consent(true);
+  exception when others then v_message := sqlerrm; v_blocked := v_message = 'teacher_google_identity_required'; end;
+  perform pg_temp.p2_assert(v_blocked, 'professor autorizou o termo sem conta Google confirmada');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
+  -- O cartão manda a versão do termo que mostrou (20260927100000).
+  perform pg_temp.p2_assert(public.set_my_lesson_recording_consent(true,
+      (private.lesson_recording_current_term('TEACHER')).version) ->> 'decision' = 'ACCEPTED',
+    'professor com conta confirmada não conseguiu autorizar');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- ===== 3. Sala: coanfitrião é a conta confirmada; sem ela, não há sala =======
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('room_claim', 'meet-p2-fixture', v_admin, v_noid_session,
+      jsonb_build_object('organizer_sub', 'p2-sub-central', 'cohost_email', 'cadastro@example.com'));
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'google_teacher_identity_required'; end;
+  perform pg_temp.p2_assert(v_blocked, 'sala criada para professor sem conta Google confirmada');
+  v_jobs := public.get_pending_google_meet_sync_sessions();
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_noid_session::text), 'sala impossível entrou na fila');
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'PREPARE_ROOM'),
+    'sala do professor com conta confirmada fora da fila');
+  -- Sem sala possível, o app usa o link de sempre (antes: link nulo até 15 min antes).
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student2, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_noid_session::text), 'aula sem sala possível segurou o link de sempre');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  v_result := public.google_meet_backend('room_claim', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('organizer_sub', 'p2-sub-central', 'cohost_email', 'atacante@example.com'));
+  v_claim := v_result -> 'room' ->> 'claim_id';
+  perform pg_temp.p2_assert((v_result ->> 'claimed')::boolean and v_result -> 'room' ->> 'cohost_email' = 'prof.pessoal@example.com',
+    'coanfitrião não veio da conta confirmada pelo professor');
+  perform public.google_meet_backend('room_save', 'meet-p2-fixture', v_admin, v_room_session, jsonb_build_object(
+    'state', 'COHOST_PENDING', 'claim_id', v_claim, 'space_name', 'spaces/p2room', 'meeting_uri', 'https://meet.google.com/pdo-isal-aaa'));
+  v_result := public.google_meet_backend('room_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('state', 'READY', 'cohost_email', 'prof.pessoal@example.com'));
+  perform pg_temp.p2_assert(v_result ->> 'artifacts_state' = 'ENABLED' and not (v_result ->> 'cohost_sync_pending')::boolean,
+    'sala nasceu sem a documentação ligada (ou com o coanfitrião pendente)');
+
+  -- O professor confirma OUTRA conta. A sala pronta NÃO é rebaixada: continua
+  -- READY (link entregue, importação normal) e só os membros são acertados.
+  perform public.google_meet_backend('identity_save', 'meet-p2-fixture', v_teacher, null,
+    jsonb_build_object('google_sub', '1004', 'google_email', 'prof.nova@example.com', 'email_verified', true));
+  v_jobs := public.get_pending_google_meet_sync_sessions();
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'PREPARE_ROOM'),
+    'sala com coanfitrião antigo não voltou para a fila');
+  v_result := public.google_meet_backend('room_claim', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('organizer_sub', 'p2-sub-central', 'automatic', true));
+  perform pg_temp.p2_assert(not (v_result ->> 'claimed')::boolean and v_result -> 'room' ->> 'state' = 'READY'
+    and (v_result -> 'room' ->> 'cohost_sync_pending')::boolean
+    and v_result -> 'room' ->> 'cohost_email' = 'prof.nova@example.com' and v_result -> 'room' ->> 'space_name' = 'spaces/p2room',
+    'troca de conta do professor rebaixou a sala pronta (ou não marcou o acerto do coanfitrião)');
+  -- O link continua no app enquanto os membros são acertados.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_room_session::text and x ->> 'meeting_uri' = 'https://meet.google.com/pdo-isal-aaa'),
+    'link da sala pronta sumiu do app com a troca da conta do professor');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  -- Falha ao acertar o membro: a sala segue READY, com erro e nova tentativa.
+  v_result := public.google_meet_backend('room_cohost_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'FAILED', 'cohost_email', 'prof.nova@example.com', 'error_code', 'google_rate_limited'));
+  perform pg_temp.p2_assert(v_result ->> 'state' = 'READY' and (v_result ->> 'cohost_sync_pending')::boolean
+    and v_result ->> 'cohost_error_code' = 'google_rate_limited' and (v_result ->> 'cohost_attempts')::int = 1
+    and (v_result ->> 'cohost_next_attempt_at')::timestamptz between now() + interval '14 minutes' and now() + interval '16 minutes',
+    'falha do coanfitrião mudou o estado da sala ou ficou sem nova tentativa');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text), 'acerto do coanfitrião voltou antes da espera');
+  update private.google_meet_rooms set cohost_next_attempt_at = now() - interval '1 minute' where lesson_session_id = v_room_session;
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'PREPARE_ROOM'),
+    'acerto do coanfitrião não voltou depois da espera');
+  -- READY gravado com o e-mail ANTIGO (a conta trocou no meio do caminho): a pendência fica.
+  v_result := public.google_meet_backend('room_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('state', 'READY', 'cohost_email', 'prof.pessoal@example.com'));
+  perform pg_temp.p2_assert((v_result ->> 'cohost_sync_pending')::boolean, 'READY com o e-mail antigo apagou a pendência');
+  v_result := public.google_meet_backend('room_cohost_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'SYNCED', 'cohost_email', 'prof.nova@example.com'));
+  perform pg_temp.p2_assert(v_result ->> 'state' = 'READY' and not (v_result ->> 'cohost_sync_pending')::boolean
+    and v_result ->> 'cohost_error_code' is null and v_result ->> 'cohost_next_attempt_at' is null,
+    'acerto do coanfitrião não foi registrado');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text), 'sala acertada continuou na fila');
+  -- Aula já dada com o acerto pendente: a importação não espera o coanfitrião.
+  insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+    cohost_email, state, created_by, cohost_sync_pending) values
+    (v_past, 'meet-p2-fixture', 'spaces/p2past', 'https://meet.google.com/pas-tpa-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin, true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_past::text and j ->> 'operation' = 'SYNC_ARTIFACTS'),
+    'sala com o coanfitrião pendente ficou sem importação');
+
+  -- ===== 4. Revogação desliga a documentação da sala já criada ================
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_room_session::text and x ->> 'meeting_uri' = 'https://meet.google.com/pdo-isal-aaa'),
+    'sala pronta com aceite não chegou ao aluno');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_room_session, false, 'Família pediu por WhatsApp para parar o registro.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_jobs := public.get_pending_google_meet_sync_sessions();
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'
+      and (j ->> 'priority_group')::int = 0), 'revogação não pôs a sala na fila para desligar');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_room_session::text), 'sala de quem revogou continuou entregue no app');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  v_result := public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'FAILED', 'error_code', 'google_permission_or_edition_required'));
+  perform pg_temp.p2_assert(v_result ->> 'artifacts_state' = 'ENABLED' and (v_result ->> 'artifacts_attempts')::int = 1
+    and (v_result ->> 'artifacts_next_attempt_at')::timestamptz between now() + interval '14 minutes' and now() + interval '16 minutes'
+    and v_result ->> 'artifacts_error_code' = 'google_permission_or_edition_required' and not (v_result ? 'claim_id'),
+    'falha ao desligar não ficou registrada com nova tentativa em 15 min');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text), 'desligar voltou antes da espera');
+  -- Nova decisão (a autorização volta): erro e espera da tentativa anterior somem.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_room_session, true, 'Família autorizou de novo, conferido no papel.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform pg_temp.p2_assert((select artifacts_error_code is null and artifacts_attempts = 0 and artifacts_next_attempt_at is null
+    from private.google_meet_rooms where lesson_session_id = v_room_session),
+    'aceite de volta deixou o erro e a espera do desligar antigo');
+  -- E a retirada seguinte desliga na hora, sem esperar a espera antiga.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_room_session, false, 'Família pediu de novo para parar o registro.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'),
+    'nova retirada esperou a espera da tentativa antiga');
+  v_result := public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'FAILED', 'error_code', 'google_permission_or_edition_required'));
+  v_result := public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'FAILED', 'error_code', 'google_rate_limited'));
+  perform pg_temp.p2_assert((v_result ->> 'artifacts_next_attempt_at')::timestamptz between now() + interval '29 minutes' and now() + interval '31 minutes',
+    'segunda falha não dobrou a espera');
+  update private.google_meet_rooms set artifacts_next_attempt_at = now() - interval '1 minute' where lesson_session_id = v_room_session;
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'),
+    'desligar não voltou depois da espera');
+  -- Sala que não existe mais no Google (404): para desligar, é o estado pedido —
+  -- sucesso, sem erro na tela.
+  v_result := public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'DISABLED', 'error_code', 'google_resource_unavailable'));
+  perform pg_temp.p2_assert(v_result ->> 'artifacts_state' = 'DISABLED' and (v_result ->> 'artifacts_attempts')::int = 0
+    and v_result ->> 'artifacts_next_attempt_at' is null and v_result ->> 'artifacts_changed_at' is not null
+    and v_result ->> 'artifacts_error_code' is null,
+    'sala desligada não ficou registrada (ou ficou com erro de uma tentativa bem-sucedida)');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text), 'sala já desligada continuou na fila');
+  -- O aceite volta antes da aula: religa.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_room_session, true, 'Família autorizou de novo pelo link, conferido.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text and j ->> 'operation' = 'ENABLE_ARTIFACTS'),
+    'aceite de volta antes da aula não religou a sala');
+  perform public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+    jsonb_build_object('result', 'ENABLED'));
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_room_session::text), 'sala religada continuou na fila');
+  -- Aceite de volta com a aula em andamento: não religa.
+  insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+    cohost_email, state, created_by, artifacts_state) values
+    (v_started, 'meet-p2-fixture', 'spaces/p2started', 'https://meet.google.com/sta-rted-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin, 'DISABLED');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_started::text), 'religou sala de aula já começada');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_room_session,
+      jsonb_build_object('result', 'ON'));
+  exception when invalid_parameter_value then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'estado inventado da documentação aceito');
+
+  -- ===== 5. Transcrição bruta só para o professor da aula, coordenação e direção =
+  v_result := public.google_meet_backend('artifact_save', 'meet-p2-fixture', v_admin, v_past, jsonb_build_object(
+    'provider_name', 'conferenceRecords/p2/smartNotes/n1', 'kind', 'SMART_NOTES', 'document_id', 'n1',
+    'content_sha256', repeat('a', 64), 'source_text', 'FALA-BRUTA-DA-AULA: aluno praticou pedidos.', 'retention_days', 90));
+  v_artifact := (v_result ->> 'id')::uuid;
+  -- A importação grava o rascunho das notas nativas com a conta que conectou,
+  -- que pode ser o suporte: permitido.
+  v_result := public.google_meet_backend('summary_save', 'meet-p2-fixture', v_super, v_past, jsonb_build_object(
+    'status', 'PROPOSED', 'origin', 'GOOGLE_SMART_NOTES', 'content', jsonb_build_object('narrative', 'FALA-BRUTA-DA-AULA: aluno praticou pedidos.'),
+    'source_artifact_ids', jsonb_build_array(v_artifact)));
+  v_draft := (v_result ->> 'id')::uuid;
+  perform public.google_meet_backend('summary_save', 'meet-p2-fixture', v_teacher, v_past, jsonb_build_object(
+    'status', 'VERIFIED', 'origin', 'HUMAN_REVIEW', 'parent_version_id', v_draft,
+    'content', jsonb_build_object('lesson_objective', 'Pedidos no restaurante', 'recommended_next_step', 'Reservar mesa',
+      'narrative', 'Resumo aprovado da aula.'), 'source_artifact_ids', jsonb_build_array(v_artifact)));
+  perform public.google_meet_attendance_backend('attendance_save', 'meet-p2-fixture', v_past, jsonb_build_object(
+    'document_id', 'sheet_p2', 'document_name', 'Relatório de participação em pdo-isal-aaa', 'conference_name', 'conferenceRecords/p2',
+    'source_csv', 'PLANILHA-BRUTA', 'content_sha256', repeat('b', 64), 'retention_days', 90,
+    'participants', jsonb_build_array(jsonb_build_object('name', 'Aluno', 'email', 'aluno.pessoal@example.com', 'role', 'STUDENT')),
+    'teacher_first_join_at', now() - interval '90 minutes', 'teacher_seconds', 1700,
+    'student_first_join_at', now() - interval '88 minutes', 'student_seconds', 1600));
+
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_teacher, v_past);
+  perform pg_temp.p2_assert((v_result ->> 'raw_access')::boolean and jsonb_array_length(v_result -> 'artifacts') = 1
+    and jsonb_array_length(v_result -> 'summaries') = 2 and (v_result -> 'attendance' ->> 'student_seconds')::int = 1600
+    and not (v_result::text like '%PLANILHA-BRUTA%'),
+    'professor da aula não viu a fonte, os rascunhos e a presença (ou viu o CSV)');
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_coord, v_past);
+  perform pg_temp.p2_assert((v_result ->> 'raw_access')::boolean and jsonb_array_length(v_result -> 'artifacts') = 1,
+    'coordenação não viu a transcrição');
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_admin, v_past);
+  perform pg_temp.p2_assert((v_result ->> 'raw_access')::boolean and jsonb_array_length(v_result -> 'artifacts') = 1,
+    'direção não viu a transcrição');
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_teacher2, v_past);
+  perform pg_temp.p2_assert(not (v_result ->> 'raw_access')::boolean and jsonb_array_length(v_result -> 'artifacts') = 0
+    and jsonb_array_length(v_result -> 'summaries') = 1 and v_result -> 'summaries' -> 0 ->> 'status' = 'VERIFIED'
+    and v_result -> 'attendance' = 'null'::jsonb and not (v_result::text like '%FALA-BRUTA-DA-AULA%')
+    and not (v_result::text like '%aluno.pessoal@example.com%'),
+    'outro professor do aluno leu transcrição, rascunho ou presença');
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_super, v_past);
+  perform pg_temp.p2_assert(not (v_result ->> 'raw_access')::boolean and not (v_result::text like '%FALA-BRUTA-DA-AULA%'),
+    'suporte da plataforma leu a transcrição bruta');
+  perform pg_temp.p2_assert(exists (select 1 from private.google_meet_access_events
+    where lesson_session_id = v_past and actor_id = v_teacher2 and action = 'READ_APPROVED_SUMMARIES'),
+    'leitura restrita sem registro próprio');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('summary_save', 'meet-p2-fixture', v_teacher2, v_past, jsonb_build_object(
+      'status', 'VERIFIED', 'origin', 'HUMAN_REVIEW', 'parent_version_id', v_draft,
+      'content', jsonb_build_object('lesson_objective', 'Outro', 'recommended_next_step', 'Outro'),
+      'source_artifact_ids', jsonb_build_array(v_artifact)));
+  exception when insufficient_privilege then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'quem não vê a fonte aprovou resumo');
+  v_blocked := false;
+  begin perform public.google_meet_backend('summary_claim', 'meet-p2-fixture', v_teacher2, v_past);
+  exception when insufficient_privilege then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'quem não vê a fonte pediu resumo pago');
+  -- Estado interno da edge: sem texto bruto, com o que a fila precisa.
+  v_result := public.google_meet_backend('session_state', 'meet-p2-fixture', v_super, v_past);
+  perform pg_temp.p2_assert(jsonb_array_length(v_result -> 'summaries') = 2 and not (v_result -> 'summaries' -> 0 ? 'content')
+    and v_result ->> 'teacher_google_email' = 'prof.nova@example.com' and not (v_result::text like '%FALA-BRUTA-DA-AULA%'),
+    'estado interno trouxe texto bruto ou perdeu a identidade do professor');
+  -- Substituto que deu a aula (sem ser professor do aluno) vê a própria aula.
+  v_result := public.google_meet_backend('session_detail', 'meet-p2-fixture', v_sub_teacher, v_sub_session);
+  perform pg_temp.p2_assert((v_result ->> 'raw_access')::boolean, 'substituto não alcançou a aula que deu');
+
+  -- ===== 5b. Revogação 5 min antes da aula, com o job rodando depois do início =
+  -- Aluno 4 revogou há 100 min. v_after_past começou 95 min atrás (já acabou),
+  -- v_in_progress está em andamento, v_before acabou antes da revogação. As três
+  -- seguem marcadas até o job rodar — e o job antigo só olhava as próximas 24 h.
+  insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+    cohost_email, state, created_by) values
+    (v_after_past, 'meet-p2-fixture', 'spaces/p2afterpast', 'https://meet.google.com/aft-erp-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin),
+    (v_in_progress, 'meet-p2-fixture', 'spaces/p2inprogress', 'https://meet.google.com/inp-rog-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin);
+  -- Antes do job: a sala some do app, a fila desliga a transcrição e não importa nada.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student4, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_in_progress::text), 'sala de quem revogou foi entregue antes de o job rodar');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_jobs := public.get_pending_google_meet_sync_sessions();
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_in_progress::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'),
+    'revogação antes do job não desligou a transcrição da aula em andamento');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_after_past::text and j ->> 'operation' = 'SYNC_ARTIFACTS'),
+    'aula dada depois da revogação entrou na fila de importação');
+  v_result := public.google_meet_backend('session_state', 'meet-p2-fixture', v_admin, v_after_past);
+  perform pg_temp.p2_assert(not (v_result -> 'session' ->> 'documentation_consent')::boolean
+    and (v_result -> 'session' ->> 'documentation_blocked')::boolean,
+    'estado da sessão não trouxe o aceite efetivo');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('artifact_save', 'meet-p2-fixture', v_admin, v_after_past, jsonb_build_object(
+      'provider_name', 'conferenceRecords/p2after/transcripts/t1', 'kind', 'TRANSCRIPT', 'document_id', 't1',
+      'content_sha256', repeat('c', 64), 'source_text', 'Fala depois da revogação.', 'retention_days', 90));
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'documentation_consent_required'; end;
+  perform pg_temp.p2_assert(v_blocked, 'transcrição de aula dada depois da revogação foi importada');
+  v_blocked := false;
+  begin
+    perform public.google_meet_attendance_backend('attendance_save', 'meet-p2-fixture', v_after_past, jsonb_build_object(
+      'document_id', 'sheet_after', 'document_name', 'Relatório de participação em aft-erp-aaa',
+      'source_csv', 'PLANILHA', 'content_sha256', repeat('f', 64), 'retention_days', 90,
+      'participants', '[]'::jsonb));
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'documentation_consent_required'; end;
+  perform pg_temp.p2_assert(v_blocked, 'planilha de presença de aula dada depois da revogação foi guardada');
+  -- A aula que terminou ANTES da revogação segue os prazos do termo.
+  v_result := public.google_meet_backend('artifact_save', 'meet-p2-fixture', v_admin, v_before, jsonb_build_object(
+    'provider_name', 'conferenceRecords/p2before/transcripts/t1', 'kind', 'TRANSCRIPT', 'document_id', 't1',
+    'content_sha256', repeat('d', 64), 'source_text', 'Fala antes da revogação.', 'retention_days', 90));
+  perform pg_temp.p2_assert((v_result ->> 'inserted')::boolean, 'aula anterior à revogação deixou de ser importada');
+  -- O job (rodando DEPOIS do início) desmarca as duas aulas.
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_after_past)
+    and not (select documentation_consent from public.lesson_sessions where id = v_in_progress),
+    'revogação 5 min antes da aula não desmarcou a sessão (job rodou depois do início)');
+  perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_before),
+    'job desmarcou aula que terminou antes da revogação');
+  perform pg_temp.p2_assert(exists (select 1 from private.lesson_documentation_consent_events
+    where session_id = v_after_past and not allowed and reason like 'Termo de registro das aulas%'),
+    'desmarcação da aula sem evento');
+
+  -- ===== 6. Marcação manual: só a direção, sem passar por cima de quem disse não =
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_coord, 'role', 'authenticated')::text, true);
+  v_blocked := false;
+  begin perform public.set_lesson_documentation_consent(v_manual_ok, true, 'Coordenação tentando marcar a aula.');
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'somente_a_direcao'; end;
+  perform pg_temp.p2_assert(v_blocked, 'coordenação marcou documentação');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  v_blocked := false;
+  begin perform public.set_lesson_documentation_consent(v_manual_ok, true, 'curto');
+  exception when invalid_parameter_value then v_blocked := true; end;
+  perform pg_temp.p2_assert(v_blocked, 'marcação sem motivo aceita');
+  perform public.set_lesson_documentation_consent(v_manual_ok, true, 'Autorização em papel, arquivo da secretaria.');
+  perform public.set_lesson_documentation_consent(v_manual, true, 'Autorização em papel, arquivo da secretaria.');
+  perform pg_temp.p2_assert(exists (select 1 from private.lesson_documentation_consent_events
+    where session_id = v_manual and allowed and actor_id = v_admin and reason like 'Autorização em papel%'),
+    'marcação manual sem registro do motivo e de quem marcou');
+  -- O professor sem conta RECUSA o termo (recusar não exige conta Google) e a
+  -- escola não liga por cima.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_noid, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(public.set_my_lesson_recording_consent(false) ->> 'decision' = 'REFUSED',
+    'recusar exigiu conta Google');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  v_blocked := false;
+  begin perform public.set_lesson_documentation_consent(v_noid_session, true, 'Tentando ligar por cima da recusa do professor.');
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'termo_recusado_ou_revogado_pelo_professor'; end;
+  perform pg_temp.p2_assert(v_blocked, 'marcação manual passou por cima da recusa do professor');
+  -- O aluno revoga (pedido à escola): ligar por cima é recusado; desligar sempre pode.
+  perform public.revoke_lesson_recording_consent(v_student3, 'Família pediu para parar pelo WhatsApp.');
+  v_blocked := false;
+  begin perform public.set_lesson_documentation_consent(v_manual, true, 'Tentando ligar por cima da revogação.');
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'termo_recusado_ou_revogado_pelo_aluno'; end;
+  perform pg_temp.p2_assert(v_blocked, 'marcação manual passou por cima da revogação do aluno');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- A revogação que chegou DEPOIS da marcação manual desmarca a sessão no job.
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_manual),
+    'revogação não desfez a marcação manual');
+  perform pg_temp.p2_assert(exists (select 1 from private.lesson_documentation_consent_events
+    where session_id = v_manual and not allowed and reason like '%marcação manual não passa por cima%'),
+    'desmarcação sem motivo registrado');
+  perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_manual_ok),
+    'marcação manual de aluno sem decisão foi desfeita');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_manual, false, 'Confirmando a retirada pedida pela família.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  -- Desligar à mão é o último evento: o termo não liga por cima.
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_manual),
+    'o termo ligou por cima da decisão manual de desligar');
+
+  -- ===== 6c. Aceite que volta pelo termo religa a sessão e a sala =============
+  -- O aceite que vale é o do termo seguro (20260926200000): pelo link, com o
+  -- código do WhatsApp, e — sem data de nascimento atestada — do responsável. O
+  -- aluno 5 é maior pela data que a direção confirma e aceita pelo fluxo real.
+  update public.profiles set phone = '5511955550005' where id = v_student5;
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_student_birth_date(v_student5, date '1990-05-10', 'Documento conferido (fixture)');
+  v_token5 := public.create_lesson_recording_consent_link(v_student5) ->> 'token';
+  perform pg_temp.p2_assert(pg_temp.p2_accept_by_link(v_token5, 'Aluno Cinco Fixture') = 'ACCEPTED',
+    'aceite do aluno 5 pelo link (com código) não registrado');
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_cycle),
+    'os dois aceites não marcaram a sessão');
+  insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+    cohost_email, state, created_by) values
+    (v_cycle, 'meet-p2-fixture', 'spaces/p2cycle', 'https://meet.google.com/cyc-lea-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin);
+  -- Revoga: desmarca e desliga a sala.
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, source, recorded_by, reason) values
+    ('meet-p2-fixture', v_student5, 'STUDENT', 'REVOKED', 'Direcao Fixture', 'SCHOOL', 'SCHOOL', v_admin,
+      'Aluno pediu para parar por enquanto.');
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_cycle),
+    'revogação não desmarcou a sessão marcada pelo termo');
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_cycle::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'),
+    'revogação não desligou a sala');
+  perform public.google_meet_backend('room_artifacts_save', 'meet-p2-fixture', v_admin, v_cycle,
+    jsonb_build_object('result', 'DISABLED'));
+  -- Aceita de novo pelo termo antes da aula (mesmo link, código novo): o job
+  -- remarca e a fila religa.
+  perform pg_temp.p2_assert(pg_temp.p2_accept_by_link(v_token5, 'Aluno Cinco Fixture') = 'ACCEPTED',
+    'novo aceite do aluno 5 pelo link (com código) não registrado');
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_cycle),
+    'aceite de volta pelo termo não remarcou a sessão (o desmarque do próprio termo segurou)');
+  perform pg_temp.p2_assert((select count(*) from private.lesson_documentation_consent_events
+    where session_id = v_cycle and allowed and reason like 'Termo de registro das aulas%') = 2,
+    'remarcação sem evento do termo');
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_cycle::text and j ->> 'operation' = 'ENABLE_ARTIFACTS'),
+    'aceite de volta pelo termo não religou a sala');
+  -- A direção desliga à mão (último evento): com os dois aceites, o termo não religa.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_cycle, false, 'Aula de revisão de prova, sem registro.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_cycle),
+    'o termo ligou por cima da decisão manual de desligar');
+
+  -- ===== 6d. Aceite "como aluno" que deixa de valer com a aula em andamento =====
+  -- O aluno 5 é maior atestado e aceitou pelo link, com código, como aluno. A
+  -- direção descobre que ele é da turma infantil e marca KIDS: o aceite "como
+  -- aluno" deixa de valer (quem responde é o responsável), sem decisão nova e sem
+  -- hora. A sessão marcada PELO TERMO perde o aceite efetivo na hora; a marcada à
+  -- mão pela direção não (a base dela é outra).
+  insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+    scheduled_start_at, scheduled_end_at, source_key, documentation_consent) values
+    (v_kids_live, 'meet-p2-fixture', v_student5, v_teacher, v_today, now() - interval '10 minutes', now() + interval '20 minutes', 'p2-kids-live', true),
+    (v_kids_done, 'meet-p2-fixture', v_student5, v_teacher, v_today, now() - interval '2 hours', now() - interval '90 minutes', 'p2-kids-done', true),
+    (v_kids_manual, 'meet-p2-fixture', v_student5, v_teacher, v_today, now() - interval '5 minutes', now() + interval '25 minutes', 'p2-kids-manual', false);
+  -- As duas primeiras foram marcadas pelo job quando ainda eram futuras (o job só
+  -- marca as próximas 24 h e não mexe em aula começada).
+  insert into private.lesson_documentation_consent_events (session_id, actor_id, allowed, reason, created_at) values
+    (v_kids_live, v_admin, true, 'Termo de registro das aulas: aluno (ou responsável) e professor aceitaram o registro permanente.',
+      now() - interval '1 day'),
+    (v_kids_done, v_admin, true, 'Termo de registro das aulas: aluno (ou responsável) e professor aceitaram o registro permanente.',
+      now() - interval '1 day');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform public.set_lesson_documentation_consent(v_kids_manual, true, 'Autorização do responsável em papel, arquivo da secretaria.');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into private.google_meet_rooms (lesson_session_id, tenant_id, space_name, meeting_uri, organizer_sub,
+    cohost_email, state, created_by) values
+    (v_kids_live, 'meet-p2-fixture', 'spaces/p2kidslive', 'https://meet.google.com/kid-sliv-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin),
+    (v_kids_done, 'meet-p2-fixture', 'spaces/p2kidsdone', 'https://meet.google.com/kid-sdon-aaa', 'p2-sub-central',
+      'prof.nova@example.com', 'READY', v_admin);
+  -- Antes da KIDS: aceite efetivo, sala entregue, aula que acabou na fila de importação.
+  perform pg_temp.p2_assert(private.lesson_recording_active(v_student5, v_teacher)
+    and (public.google_meet_backend('session_state', 'meet-p2-fixture', v_admin, v_kids_live)
+      -> 'session' ->> 'documentation_consent')::boolean,
+    'fixture: o aceite do aluno 5 não valia antes da KIDS');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student5, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_kids_live::text and x ->> 'meeting_uri' = 'https://meet.google.com/kid-sliv-aaa'),
+    'fixture: sala da aula em andamento não chegou ao aluno antes da KIDS');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(public.get_pending_google_meet_sync_sessions()) j
+    where j ->> 'lesson_session_id' = v_kids_done::text and j ->> 'operation' = 'SYNC_ARTIFACTS'),
+    'fixture: aula que acabou fora da fila de importação antes da KIDS');
+
+  update public.profiles set is_kids = true where id = v_student5;
+  perform pg_temp.p2_assert(private.lesson_recording_requires_guardian(v_student5)
+    and not private.lesson_recording_active(v_student5, v_teacher)
+    and (select documentation_consent from public.lesson_sessions where id = v_kids_live),
+    'fixture: a KIDS não derrubou o aceite "como aluno" (ou a sessão já estava desmarcada)');
+  -- Na hora, antes do job: sem aceite efetivo na porta do servidor, no app e na fila.
+  v_result := public.google_meet_backend('session_state', 'meet-p2-fixture', v_admin, v_kids_live);
+  perform pg_temp.p2_assert(not (v_result -> 'session' ->> 'documentation_consent')::boolean
+    and (v_result -> 'session' ->> 'documentation_blocked')::boolean,
+    'aceite "como aluno" que caiu ainda vale na aula em andamento');
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student5, 'role', 'authenticated')::text, true);
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(public.get_my_lesson_rooms(v_today, v_today)) x
+    where x ->> 'session_id' = v_kids_live::text), 'sala da aula de quem virou KIDS continuou entregue no app');
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_jobs := public.get_pending_google_meet_sync_sessions();
+  perform pg_temp.p2_assert(exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_kids_live::text and j ->> 'operation' = 'DISABLE_ARTIFACTS'),
+    'KIDS com a aula em andamento não desligou a transcrição da sala');
+  perform pg_temp.p2_assert(not exists (select 1 from jsonb_array_elements(v_jobs) j
+    where j ->> 'lesson_session_id' = v_kids_done::text and j ->> 'operation' = 'SYNC_ARTIFACTS'),
+    'aula de quem virou KIDS continuou na fila de importação');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('artifact_save', 'meet-p2-fixture', v_admin, v_kids_done, jsonb_build_object(
+      'provider_name', 'conferenceRecords/p2kids/transcripts/t1', 'kind', 'TRANSCRIPT', 'document_id', 't1',
+      'content_sha256', repeat('e', 64), 'source_text', 'Fala do aluno menor.', 'retention_days', 90));
+  exception when insufficient_privilege then v_message := sqlerrm; v_blocked := v_message = 'documentation_consent_required'; end;
+  perform pg_temp.p2_assert(v_blocked, 'transcrição de quem virou KIDS foi importada sem o responsável');
+  -- A marcação à mão da direção não depende do aceite "como aluno".
+  perform pg_temp.p2_assert((public.google_meet_backend('session_state', 'meet-p2-fixture', v_admin, v_kids_manual)
+      -> 'session' ->> 'documentation_consent')::boolean,
+    'KIDS derrubou a marcação manual da direção');
+  -- O job desmarca a aula que ainda não terminou (ela não é remarcada depois de
+  -- começar); a que acabou fica barrada na leitura enquanto durar.
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-fixture');
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_kids_live)
+    and exists (select 1 from private.lesson_documentation_consent_events
+      where session_id = v_kids_live and not allowed
+        and reason like 'Termo de registro das aulas: o aceite do aluno deixou de valer%'),
+    'job não desmarcou a aula em andamento de quem virou KIDS');
+  perform pg_temp.p2_assert((select documentation_consent from public.lesson_sessions where id = v_kids_manual),
+    'job desmarcou a aula marcada à mão pela direção');
+  -- A escola corrige (não era turma infantil): a aula que acabou volta a ser
+  -- importada; a que estava em andamento continua desmarcada.
+  update public.profiles set is_kids = false where id = v_student5;
+  v_result := public.google_meet_backend('artifact_save', 'meet-p2-fixture', v_admin, v_kids_done, jsonb_build_object(
+    'provider_name', 'conferenceRecords/p2kids/transcripts/t1', 'kind', 'TRANSCRIPT', 'document_id', 't1',
+    'content_sha256', repeat('e', 64), 'source_text', 'Fala do aluno.', 'retention_days', 90));
+  perform pg_temp.p2_assert((v_result ->> 'inserted')::boolean,
+    'aula encerrada não voltou a ser importada quando o aceite voltou a valer');
+  perform pg_temp.p2_assert(not (public.google_meet_backend('session_state', 'meet-p2-fixture', v_admin, v_kids_live)
+      -> 'session' ->> 'documentation_consent')::boolean,
+    'aula em andamento desmarcada voltou a valer');
+
+  -- ===== 7. Troca de conta central com salas criadas pede confirmação ==========
+  v_result := public.google_meet_backend('status', 'meet-p2-fixture', v_admin);
+  perform pg_temp.p2_assert((v_result ->> 'rooms_count')::int > 0 and (v_result ->> 'rooms_count')::int =
+    (select count(*) from private.google_meet_rooms where tenant_id = 'meet-p2-fixture'
+      and organizer_sub = 'p2-sub-central' and space_name is not null),
+    'status não conta as salas da conta atual');
+  v_blocked := false;
+  begin
+    perform public.google_meet_backend('connection_save', 'meet-p2-fixture', v_admin, null, jsonb_build_object(
+      'organizer_sub', 'p2-outra-conta', 'organizer_email', 'outra@example.com',
+      'refresh_token_ciphertext', 'synthetic-protected-token-2', 'granted_scopes', jsonb_build_array('fixture')));
+  exception when object_not_in_prerequisite_state then v_message := sqlerrm;
+    v_blocked := v_message = 'google_organizer_change_requires_confirmation'; end;
+  perform pg_temp.p2_assert(v_blocked, 'outra conta Google substituiu a central com salas criadas');
+  perform pg_temp.p2_assert((select organizer_sub = 'p2-sub-central' from private.google_workspace_connections
+    where tenant_id = 'meet-p2-fixture'), 'conexão mudou apesar da recusa');
+  -- A mesma conta reconecta sem pedir nada.
+  perform public.google_meet_backend('connection_save', 'meet-p2-fixture', v_admin, null, jsonb_build_object(
+    'organizer_sub', 'p2-sub-central', 'organizer_email', 'escola@example.com',
+    'refresh_token_ciphertext', 'synthetic-protected-token-3', 'granted_scopes', jsonb_build_array('fixture')));
+  -- Troca pedida pela direção: aceita e registrada.
+  perform public.google_meet_backend('connection_save', 'meet-p2-fixture', v_admin, null, jsonb_build_object(
+    'organizer_sub', 'p2-outra-conta', 'organizer_email', 'outra@example.com', 'allow_replace', true,
+    'refresh_token_ciphertext', 'synthetic-protected-token-4', 'granted_scopes', jsonb_build_array('fixture')));
+  perform pg_temp.p2_assert(exists (select 1 from private.google_meet_access_events
+    where tenant_id = 'meet-p2-fixture' and action = 'ORGANIZER_REPLACED'), 'troca de conta central sem registro');
+  v_result := public.google_meet_backend('status', 'meet-p2-fixture', v_admin);
+  perform pg_temp.p2_assert((v_result ->> 'rooms_count')::int = 0 and v_result -> 'connection' ->> 'organizer_email' = 'outra@example.com',
+    'status depois da troca');
+
+  -- ===== 8. Conta central fora do ar (REAUTH_REQUIRED): a revogação desmarca igual =
+  insert into private.google_workspace_connections (tenant_id, organizer_sub, organizer_email, status, connected_by)
+  values ('meet-p2-reauth', 'p2-reauth-sub', 'reauth@example.com', 'REAUTH_REQUIRED', v_admin_r);
+  insert into private.lesson_recording_consents (tenant_id, subject_id, subject_role, decision, signer_name,
+    signer_relation, source, recorded_by, reason) values
+    ('meet-p2-reauth', v_student_r, 'STUDENT', 'REVOKED', 'Direcao Reauth', 'SCHOOL', 'SCHOOL', v_admin_r,
+      'Família pediu para parar pelo WhatsApp.');
+  v_changed := private.apply_standing_lesson_recording_consent('meet-p2-reauth');
+  perform pg_temp.p2_assert(v_changed >= 1 and not (select documentation_consent from public.lesson_sessions where id = v_r1),
+    'com a conta central fora do ar a revogação não desmarcou a sessão');
+  -- O job de 15 min passa pela escola não conectada (sessão marcada à mão depois).
+  insert into public.lesson_sessions (id, tenant_id, student_id, teacher_id, class_date,
+    scheduled_start_at, scheduled_end_at, source_key, documentation_consent) values
+    (v_r2, 'meet-p2-reauth', v_student_r, v_teacher_r, v_today, now() + interval '5 hours', now() + interval '330 minutes', 'p2-r2', true);
+  perform public.trigger_sync_google_meet_artifacts();
+  perform pg_temp.p2_assert(not (select documentation_consent from public.lesson_sessions where id = v_r2),
+    'o job de 15 min pulou a escola com a conta central fora do ar');
+end
+$test$;
+
+rollback;

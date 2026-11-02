@@ -207,7 +207,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
     }
 
     return (
-        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-sm overflow-hidden p-8">
+        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-xs overflow-hidden p-8">
             <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-2xl flex items-center justify-center">
                     <Smartphone size={24} />
@@ -249,7 +249,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             placeholder={isRecoveryMode ? "Nome exato (ex: prof-daniel-x9z2)" : "Nome da Instância (ex: Prof Daniel)"}
                             value={newInstanceName}
                             onChange={(e) => setNewInstanceName(e.target.value)}
-                            className="flex-1 bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            className="flex-1 bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-bold outline-hidden focus:ring-2 focus:ring-emerald-500/20"
                         />
                         <button
                             onClick={isRecoveryMode ? handleImportInstance : handleCreateInstance}
@@ -313,12 +313,50 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                             description="Onde chegarão os novos leads e confirmações."
                                             dbColumn="directors_group_id"
                                         />
+                                        {/* Canais de aviso: um grupo por assunto. Canal sem grupo cai no grupo da Gestão
+                                            (o mesmo do relatório DRE) — nada se perde enquanto os grupos são criados. */}
+                                        <div data-tour="notice-channels" className="rounded-2xl border border-brand-border bg-brand-surface-2/30 p-4 space-y-1">
+                                            <p className="text-xs font-black uppercase tracking-widest text-brand-text">Canais de aviso da gestão</p>
+                                            <p className="text-xs text-brand-muted">
+                                                Cada assunto tem um grupo: dinheiro (rateio, DRE, folha, caixinha, despesa) em <strong>Financeiro</strong>, decisões e o assistente em <strong>Direção</strong>, agenda (cobertura, ausência, reposição, troca de horário) em <strong>Coordenação</strong>, funil (lead, experimental, pós-experimental) em <strong>Comercial</strong>. O grupo dos professores continua sendo o de oportunidades acima. Canal sem grupo usa o grupo da Gestão (Financeiro usa o da Direção).
+                                            </p>
+                                        </div>
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Direção"
+                                            description="Decisões, planos, renovação, leads de professor e o assistente de gestão. É também o destino de tudo que não tem canal próprio."
+                                            channel="direcao"
+                                        />
+                                        <div data-tour="notice-channel-financeiro">
+                                            <GroupSelector
+                                                user={user}
+                                                instanceName={instance.instance_name}
+                                                label="Financeiro"
+                                                description="Rateio de cada pagamento, DRE, folha do mês (com prévia do mês em aberto), caixinha, despesas e ajustes de repasse pelo assistente."
+                                                channel="financeiro"
+                                            />
+                                        </div>
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Coordenação · Aulas"
+                                            description="Ausência, cobertura, reposição marcada/remarcada, troca de horário, aluno faltando, briefing de experimental."
+                                            channel="coordenacao"
+                                        />
+                                        <GroupSelector
+                                            user={user}
+                                            instanceName={instance.instance_name}
+                                            label="Comercial · Leads"
+                                            description="Lead novo, experimental marcada/aceita/sem professor, pós-experimental, follow-ups."
+                                            channel="comercial"
+                                        />
                                     </div>
                                 )}
                             </div>
                         ) : qrCode ? (
                             <div className="text-center">
-                                <div className="bg-brand-surface p-4 rounded-2xl shadow-sm border border-brand-border inline-block mb-4">
+                                <div className="bg-brand-surface p-4 rounded-2xl shadow-xs border border-brand-border inline-block mb-4">
                                     <img src={qrCode} alt="QR Code" className="w-64 h-64 mix-blend-multiply opacity-90" />
                                 </div>
                                 <p className="text-sm font-bold text-brand-muted animate-pulse">Aguardando leitura do QR Code...</p>
@@ -365,7 +403,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                     placeholder="5511999999999"
                                     value={testNumber}
                                     onChange={(e) => setTestNumber(e.target.value)}
-                                    className="w-full bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-medium outline-hidden focus:ring-2 focus:ring-emerald-500/20"
                                 />
                                 <p className="text-[10px] text-brand-muted mt-1">Inclua o código do país (55 para Brasil).</p>
                             </div>

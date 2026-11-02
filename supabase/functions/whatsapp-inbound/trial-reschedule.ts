@@ -248,3 +248,55 @@ export function selectTeacherRescheduleRequest<
 
   return intent === "decline" && requests.length === 1 ? requests[0] : null;
 }
+
+/**
+ * O lead está pedindo para REMARCAR a experimental que já tem dono, sem dizer
+ * quando?
+ *
+ * Este é o buraco medido em 23/09/2026: `decideTrialAction` só era alcançado
+ * quando o modelo extraía data E hora concretas. "Preciso remarcar", "não vou
+ * conseguir hoje", "posso amanhã?" nunca chegavam lá — o bot respondia bem e o
+ * sistema não registrava nada. A aula da Ana Carolina seguiu de pé às 18:30 na
+ * agenda da professora depois de ela avisar que não podia.
+ *
+ * Só serve para quem JÁ TEM aula aceita: quem ainda não tem professor não está
+ * remarcando, está marcando — e esse caminho é o leilão, que já existe.
+ */
+export function mentionsRescheduleWithoutSlot(text: string): boolean {
+  const t = String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  if (!t.trim()) return false;
+
+  // Pedido explícito de mudar a aula.
+  const pedido =
+    /\b(remarc\w*|reagend\w*|adiar|transferir a aula|trocar (?:o )?hor[aá]rio|mudar (?:o )?hor[aá]rio|mudar (?:a|o) (?:aula|dia)|passar (?:a aula )?para outro dia)\b/
+      .test(t) ||
+    // "não vou conseguir / não vou poder / não consigo" perto de aula ou horário.
+    /\b(nao (?:vou )?(?:vou )?(?:conseguir|poder|dar)|nao consigo|nao da(?:ra)? (?:mais )?(?:certo|pra mim)|imprevisto|surgiu um imprevisto)\b/
+      .test(t);
+  if (!pedido) return false;
+
+  // Cancelamento não é remarcação: quem desiste sai do funil, não vira agenda
+  // nova. Deixar a atendente tratar — e a equipe registrar CANCELADA.
+  if (
+    /\b(cancel\w*|desist\w*|nao tenho mais interesse|nao quero mais)\b/.test(t)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * A mensagem já traz o horário novo? Nesse caso o caminho é o de sempre
+ * (`decideTrialAction`), que move a aula. Aqui interessa o oposto: reconhecer
+ * o pedido QUE NÃO TRAZ horário, para virar estado em vez de virar silêncio.
+ */
+export function rescheduleRequestHasSlot(
+  extracted: { date?: string | null; time?: string | null } | null | undefined,
+): boolean {
+  const date = String(extracted?.date || "");
+  const time = String(extracted?.time || "");
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time);
+}

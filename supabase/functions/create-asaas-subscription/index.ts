@@ -8,6 +8,7 @@ import {
   applyEnrollmentPaymentObservation,
   markEnrollmentFailure,
   markEnrollmentStage,
+  studentBillingTeacherTermsReady,
 } from "../_shared/enrollment-progress.ts";
 import {
   resolveAsaasIntegration,
@@ -266,6 +267,24 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    // Matrícula por link vai até o fim antes dos termos individuais: só a
+    // liberação (agenda e conclusão) espera escola e professor assinarem —
+    // `finish_enrollments_after_teacher_terms`. Fora da matrícula a trava fica.
+    if (
+      !offer &&
+      !await studentBillingTeacherTermsReady(
+        authorization.admin,
+        authorization.tenantId,
+        userId,
+      )
+    ) {
+      return json({
+        success: false,
+        error: "TEACHER_TERM_PENDING",
+        message:
+          "Aguarde a assinatura do termo individual pela escola e pelo professor antes de continuar a cobrança.",
+      }, 409);
+    }
     if (isSelfStudent && !offer) {
       return json({ success: false, error: "enrollment_offer_required" }, 403);
     }

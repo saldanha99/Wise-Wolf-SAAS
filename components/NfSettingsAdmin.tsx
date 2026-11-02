@@ -108,13 +108,13 @@ const NfSettingsAdmin: React.FC<NfSettingsAdminProps> = ({ tenantId }) => {
                                 rows={2}
                                 value={form[campo.key] || ''}
                                 onChange={e => setForm({ ...form, [campo.key]: e.target.value })}
-                                className="mt-1.5 w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                className="mt-1.5 w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
                             />
                         ) : (
                             <input
                                 value={form[campo.key] || ''}
                                 onChange={e => setForm({ ...form, [campo.key]: e.target.value })}
-                                className="mt-1.5 w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                className="mt-1.5 w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
                             />
                         )}
                         {campo.hint && <p className="mt-1 text-[10px] text-brand-muted">{campo.hint}</p>}

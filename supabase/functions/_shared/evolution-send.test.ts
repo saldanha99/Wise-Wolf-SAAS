@@ -7,6 +7,7 @@ import {
   sendWhatsText,
   sendWhatsTextDetailed,
   sendWhatsTextToResolvedDestinationDetailed,
+  setOutboundPermitSource,
 } from "./evolution-send.ts";
 
 const BASE = "https://evolution.test";
@@ -414,4 +415,107 @@ Deno.test("308 no envio resolvido não encaminha apikey nem corpo", async () => 
       false,
     );
   });
+});
+
+// ── Teto e aquecimento (17/09/2026) ────────────────────────────────────────
+Deno.test("teto: permissão negada NÃO chama o provedor e diz quando tentar", async () => {
+  setOutboundPermitSource(() =>
+    Promise.resolve({
+      allowed: false,
+      kind: "outreach",
+      wait_ms: 75_000,
+      reason: "espacamento",
+    })
+  );
+  try {
+    await comFetchFalso(
+      () => new Response(JSON.stringify({ key: { id: "X" } }), { status: 201 }),
+      async (chamadas) => {
+        const r = await sendWhatsTextToResolvedDestinationDetailed({
+          base: BASE,
+          keys: KEYS,
+          instance: "i",
+          to: "5511999990000",
+          text: "oi",
+        });
+        assertEquals(r.outcome, "rejected");
+        assertEquals(r.throttled, true);
+        assertEquals(r.retryAfterMs, 75_000);
+        assertEquals(chamadas.length, 0);
+        assertEquals(
+          await sendWhatsText({
+            base: BASE,
+            keys: KEYS,
+            instance: "i",
+            to: "5511999990000",
+            text: "oi",
+          }),
+          false,
+        );
+      },
+    );
+  } finally {
+    setOutboundPermitSource(null);
+  }
+});
+
+Deno.test("teto: permitido segue para o provedor; 'skip' nem pergunta", async () => {
+  let perguntas = 0;
+  setOutboundPermitSource(() => {
+    perguntas += 1;
+    return Promise.resolve({ allowed: true, kind: "reply", wait_ms: 0 });
+  });
+  try {
+    await comFetchFalso(
+      () =>
+        new Response(JSON.stringify({ key: { id: "OK" } }), { status: 201 }),
+      async (chamadas) => {
+        const r = await sendWhatsTextToResolvedDestinationDetailed({
+          base: BASE,
+          keys: KEYS,
+          instance: "i",
+          to: "5511999990000",
+          text: "oi",
+        });
+        assertEquals(r.outcome, "accepted");
+        assertEquals(chamadas.length, 1);
+        assertEquals(perguntas, 1);
+        await sendWhatsTextToResolvedDestinationDetailed({
+          base: BASE,
+          keys: KEYS,
+          instance: "i",
+          to: "5511999990000",
+          text: "manual",
+          throttle: "skip",
+        });
+        assertEquals(perguntas, 1);
+        assertEquals(chamadas.length, 2);
+      },
+    );
+  } finally {
+    setOutboundPermitSource(null);
+  }
+});
+
+Deno.test("teto: sem régua (null) o envio é o de sempre", async () => {
+  setOutboundPermitSource(() => Promise.resolve(null));
+  try {
+    await comFetchFalso(
+      () =>
+        new Response(JSON.stringify({ key: { id: "OK" } }), { status: 201 }),
+      async (chamadas) => {
+        const ok = await sendWhatsText({
+          base: BASE,
+          keys: KEYS,
+          instance: "i",
+          to: "120363@g.us",
+          text: "oi",
+        });
+        assertEquals(ok, true);
+        assertEquals(chamadas.length, 1);
+      },
+    );
+  } finally {
+    setOutboundPermitSource(null);
+  }
 });

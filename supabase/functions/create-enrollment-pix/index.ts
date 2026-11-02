@@ -10,6 +10,7 @@ import {
   applyEnrollmentPaymentObservation,
   markEnrollmentFailure,
   markEnrollmentStage,
+  studentBillingTeacherTermsReady,
 } from "../_shared/enrollment-progress.ts";
 import {
   resolveAsaasIntegration,
@@ -267,7 +268,11 @@ serve(async (req) => {
     const isSelfStudent = !authorization.isService &&
       authorization.callerId === targetUserId &&
       authorization.callerProfile?.role === "STUDENT";
-    const offer = isSelfStudent
+    // A rotina operacional pode concluir, com service_role, a mesma cobrança
+    // vinculada que o aluno criaria ao retomar o link. Sem carregar a oferta
+    // aqui, a chamada interna cairia no fluxo legado por perfil e perderia a
+    // referência idempotente `enrollment:<offer>:fee`.
+    const offer = isSelfStudent || authorization.isService
       ? await loadClaimedEnrollmentOffer(
         authorization.admin,
         targetUserId,
@@ -275,6 +280,24 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    // Matrícula por link vai até o fim antes dos termos individuais: só a
+    // liberação (agenda e conclusão) espera escola e professor assinarem —
+    // `finish_enrollments_after_teacher_terms`. Fora da matrícula a trava fica.
+    if (
+      !offer &&
+      !await studentBillingTeacherTermsReady(
+        authorization.admin,
+        authorization.tenantId,
+        targetUserId,
+      )
+    ) {
+      return json({
+        success: false,
+        error: "TEACHER_TERM_PENDING",
+        message:
+          "Aguarde a assinatura do termo individual pela escola e pelo professor antes de continuar a cobrança.",
+      }, 409);
+    }
 
     if (isSelfStudent && !offer) {
       return json({ success: false, error: "enrollment_offer_required" }, 403);

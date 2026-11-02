@@ -56,12 +56,12 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
 
     const slides = [
         {
-            icon: <Map size={40} />, cor: '#8b5cf6',
+            icon: <Map size={40} />, cor: '#2E3FA8',
             titulo: `Bem-vindo${nome ? `, ${nome.split(' ')[0]}` : ''}! 🐺`,
             texto: 'Aqui você aprende inglês numa trilha divertida, no seu ritmo. Vamos te mostrar como funciona em 30 segundos.',
         },
         {
-            icon: <Map size={40} />, cor: '#6366f1',
+            icon: <Map size={40} />, cor: '#2E3FA8',
             titulo: 'Siga a trilha',
             texto: 'Cada lição é um passo na sua jornada. Complete uma para desbloquear a próxima — como num jogo.',
         },
@@ -159,7 +159,7 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
     const s = slides[step];
 
     return createPortal(
-        <div className="fixed inset-0 z-[400] overflow-y-auto bg-slate-900/80 p-3 backdrop-blur-sm sm:p-4">
+        <div className="fixed inset-0 z-400 overflow-y-auto bg-slate-900/80 p-3 backdrop-blur-xs sm:p-4">
             <div className="flex min-h-full items-center justify-center">
                 <motion.div
                     ref={dialogRef}
@@ -189,7 +189,7 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
                                 id="student-onboarding-title"
                                 ref={titleRef}
                                 tabIndex={-1}
-                                className="mb-2 text-xl font-black text-slate-800 outline-none dark:text-white sm:mb-3 sm:text-2xl"
+                                className="mb-2 text-xl font-black text-slate-800 outline-hidden dark:text-white sm:mb-3 sm:text-2xl"
                             >
                                 {s.titulo}
                             </h2>

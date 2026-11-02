@@ -210,17 +210,17 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
       {/* Header & Month Picker */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight flex items-center gap-3">
+          <h2 className="text-3xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-tight flex items-center gap-3">
             <DollarSign className="text-brand-accent drop-shadow-[0_0_8px_rgba(var(--brand-accent),0.6)]" size={32} /> Financeiro Unidade
           </h2>
           <p className="text-brand-muted text-sm font-medium">Receitas realizadas e estimativas operacionais de repasse.</p>
         </div>
-        <div className="flex bg-brand-surface p-1.5 rounded-2xl border border-brand-border shadow-sm">
+        <div className="flex bg-brand-surface p-1.5 rounded-2xl border border-brand-border shadow-xs">
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-transparent text-sm font-bold text-brand-text px-4 py-2 outline-none"
+            className="bg-transparent text-sm font-bold text-brand-text px-4 py-2 outline-hidden"
           />
         </div>
       </header>
@@ -238,21 +238,21 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
             <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-12">
               <div>
                 <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Realizado (Pago)</p>
-                <h3 className="text-5xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tighter">
+                <h3 className="text-5xl font-(family-name:--font-display) font-extrabold text-brand-text tracking-tighter">
                   R$ {stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
               </div>
 
               <div className="md:border-l md:border-brand-border md:pl-12">
                 <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest mb-1">Previsão (Contratado)</p>
-                <h3 className="text-4xl font-[family-name:var(--font-display)] font-bold text-brand-muted/70 tracking-tighter">
+                <h3 className="text-4xl font-(family-name:--font-display) font-bold text-brand-muted/70 tracking-tighter">
                   R$ {stats.forecastRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
               </div>
 
             </div>
             <div className="mt-4 flex gap-4">
-              <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30 shadow-sm">
+              <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30 shadow-xs">
                 Margem após folha estimada: R$ {estimatedMarginAfterPayroll.toLocaleString('pt-BR')}
               </span>
             </div>
@@ -268,14 +268,14 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
             </div>
             <div className="w-full h-3 bg-brand-bg rounded-full border border-brand-border/50 p-0.5 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-brand-accent to-indigo-500 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(var(--brand-accent),0.5)]"
+                className="h-full bg-linear-to-r from-brand-accent to-indigo-500 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(var(--brand-accent),0.5)]"
                 style={{ width: `${(stats.totalRevenue / 30000) * 100}%` }}
               />
             </div>
           </div>
         </div>
 
-        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border flex flex-col justify-between shadow-sm relative overflow-hidden hover:border-blue-500/30 transition-colors group">
+        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border flex flex-col justify-between shadow-xs relative overflow-hidden hover:border-blue-500/30 transition-colors group">
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-all duration-700" />
 
           <div>
@@ -286,7 +286,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
               <h4 className="font-black text-brand-text uppercase tracking-widest text-[10px]">Resultado operacional estimado</h4>
             </div>
             <div className="space-y-1">
-              <p className="text-3xl font-[family-name:var(--font-display)] font-black text-brand-text tracking-tight">R$ {estimatedMarginAfterPayroll.toLocaleString('pt-BR')}</p>
+              <p className="text-3xl font-(family-name:--font-display) font-black text-brand-text tracking-tight">R$ {estimatedMarginAfterPayroll.toLocaleString('pt-BR')}</p>
               <p className="text-[10px] text-brand-muted font-bold uppercase">Receita realizada menos folha estimada</p>
             </div>
           </div>
@@ -306,11 +306,11 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
           { label: 'Alunos Ativos', value: stats.activeStudents, icon: <Target size={20} />, color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
           { label: 'Folha estimada', value: `R$ ${stats.totalCosts.toLocaleString('pt-BR')}`, icon: <DollarSign size={20} />, color: 'bg-rose-500/10 text-rose-500 border-rose-500/20' },
         ].map((stat, i) => (
-          <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm flex items-center gap-4 hover:bg-brand-surface-2 transition-colors">
+          <div key={i} className="bg-brand-surface p-6 rounded-4xl border border-brand-border shadow-xs flex items-center gap-4 hover:bg-brand-surface-2 transition-colors">
             <div className={`p-3 rounded-2xl border ${stat.color}`}>{stat.icon}</div>
             <div>
               <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest">{stat.label}</p>
-              <p className="text-lg font-[family-name:var(--font-display)] font-extrabold text-brand-text">{stat.value}</p>
+              <p className="text-lg font-(family-name:--font-display) font-extrabold text-brand-text">{stat.value}</p>
             </div>
           </div>
         ))}
@@ -318,7 +318,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Student Receipts List */}
-        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm flex flex-col">
+        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-xs flex flex-col">
           <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
             <div>
               <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Fluxo de Recebimentos</h3>
@@ -349,24 +349,24 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
                     </td>
                     <td className="px-8 py-5">
                       {receipt.isPaid ? (
-                        <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
+                        <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-3 py-1 rounded-full uppercase shadow-xs">
                           Recebido {receipt.paymentDate}
                         </span>
                       ) : receipt.isAwaitingCredit ? (
-                        <span className="text-[10px] font-black bg-sky-500/10 text-sky-600 border border-sky-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
+                        <span className="text-[10px] font-black bg-sky-500/10 text-sky-600 border border-sky-500/30 px-3 py-1 rounded-full uppercase shadow-xs">
                           Confirmado · aguardando crédito
                         </span>
                       ) : receipt.status === 'OVERDUE' ? (
-                        <span className="text-[10px] font-black bg-rose-500/10 text-rose-500 border border-rose-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
+                        <span className="text-[10px] font-black bg-rose-500/10 text-rose-500 border border-rose-500/30 px-3 py-1 rounded-full uppercase shadow-xs">
                           Atrasado {receipt.dueDate}
                         </span>
                       ) : (
-                        <span className="text-[10px] font-black bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full uppercase border border-amber-500/30 shadow-sm">
+                        <span className="text-[10px] font-black bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full uppercase border border-amber-500/30 shadow-xs">
                           {receipt.status === 'PENDING' ? 'Fatura aberta' : `Status: ${String(receipt.status || 'indisponível').replaceAll('_', ' ')}`}
                         </span>
                       )}
                     </td>
-                    <td className="px-8 py-5 text-right font-[family-name:var(--font-display)] font-extrabold text-brand-text">
+                    <td className="px-8 py-5 text-right font-(family-name:--font-display) font-extrabold text-brand-text">
                       R$ {receipt.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
@@ -377,7 +377,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
         </div>
 
         {/* Teacher Payouts List */}
-        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm flex flex-col">
+        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-xs flex flex-col">
           <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
             <div>
               <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Repasse Professores</h3>
@@ -402,7 +402,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
                   <tr key={teacher.id} className="hover:bg-brand-surface-2 transition-colors group">
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-3">
-                        <img src={teacher.avatar_url || `https://ui-avatars.com/api/?name=${teacher.full_name}`} className="w-8 h-8 rounded-lg shadow-sm border border-brand-border" />
+                        <img src={teacher.avatar_url || `https://ui-avatars.com/api/?name=${teacher.full_name}`} className="w-8 h-8 rounded-lg shadow-xs border border-brand-border" />
                         <span className="text-sm font-bold text-brand-text">{teacher.full_name}</span>
                       </div>
                     </td>
@@ -413,7 +413,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
                       R$ {teacher.totalOwed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase text-blue-600 shadow-sm">
+                      <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase text-blue-600 shadow-xs">
                         {teacher.status === 'ESTIMATE' ? 'Estimativa' : 'Indisponível'}
                       </span>
                     </td>

@@ -237,7 +237,7 @@ const TeacherProfile: React.FC = () => {
                 <div
                     role="status"
                     aria-live="polite"
-                    className="fixed inset-x-4 top-4 z-[120] flex items-center gap-4 rounded-2xl bg-emerald-500 px-5 py-4 text-white shadow-2xl animate-in slide-in-from-right duration-500 sm:left-auto sm:right-6 sm:w-auto"
+                    className="fixed inset-x-4 top-4 z-120 flex items-center gap-4 rounded-2xl bg-emerald-500 px-5 py-4 text-white shadow-2xl animate-in slide-in-from-right duration-500 sm:left-auto sm:right-6 sm:w-auto"
                 >
                     <div className="bg-brand-surface/20 p-2 rounded-full"><CheckCircle size={20} aria-hidden="true" /></div>
                     <div>
@@ -251,11 +251,11 @@ const TeacherProfile: React.FC = () => {
 
                 {/* Left Column - Avatar & Quick Info */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-[2rem] p-8 flex flex-col items-center text-center shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-b from-tenant-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-4xl p-8 flex flex-col items-center text-center shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-linear-to-b from-tenant-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                         <div className="relative mb-6 group/avatar">
-                            <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-br from-tenant-primary to-blue-400">
+                            <div className="w-32 h-32 rounded-full p-1 bg-linear-to-br from-tenant-primary to-blue-400">
                                 <img
                                     src={formData.avatar_url || `https://ui-avatars.com/api/?name=${formData.name}`}
                                     alt="Avatar"
@@ -274,7 +274,7 @@ const TeacherProfile: React.FC = () => {
                         </p>
                     </div>
 
-                    <div className="bg-brand-surface-2 dark:bg-brand-surface/50 border border-brand-border dark:border-brand-border rounded-[2rem] p-6">
+                    <div className="bg-brand-surface-2 dark:bg-brand-surface/50 border border-brand-border dark:border-brand-border rounded-4xl p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
                                 <Shield size={18} />
@@ -333,7 +333,7 @@ const TeacherProfile: React.FC = () => {
                 <div className="lg:col-span-2 space-y-8">
 
                     {/* Personal Info */}
-                    <section className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-[2.5rem] p-8 md:p-10 shadow-sm relative">
+                    <section className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-[2.5rem] p-8 md:p-10 shadow-xs relative">
                         <div className="absolute top-8 right-8 text-slate-300"><User size={24} /></div>
                         <h3 className="text-xl font-black text-brand-text mb-8 flex items-center gap-3">
                             <span className="w-2 h-8 bg-tenant-primary rounded-full" /> Informações Pessoais
@@ -345,7 +345,7 @@ const TeacherProfile: React.FC = () => {
                                 <input
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
+                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-hidden transition-all"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -355,7 +355,7 @@ const TeacherProfile: React.FC = () => {
                                     <input
                                         value={formData.phone}
                                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                        className="w-full pl-12 pr-4 py-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
+                                        className="w-full pl-12 pr-4 py-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-hidden transition-all"
                                     />
                                 </div>
                             </div>
@@ -377,7 +377,7 @@ const TeacherProfile: React.FC = () => {
                                 <textarea
                                     value={formData.bio}
                                     onChange={e => setFormData({ ...formData, bio: e.target.value })}
-                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-medium text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all h-32 resize-none"
+                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-medium text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-hidden transition-all h-32 resize-none"
                                     placeholder="Conte um pouco sobre você..."
                                 />
                             </div>
@@ -385,7 +385,7 @@ const TeacherProfile: React.FC = () => {
                     </section>
                     {/* Financial Info - ONLY FOR TEACHERS */}
                     {formData.role === 'TEACHER' && (
-                        <section className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-[2.5rem] p-8 md:p-10 shadow-sm relative">
+                        <section className="bg-brand-surface border border-brand-border dark:border-brand-border rounded-[2.5rem] p-8 md:p-10 shadow-xs relative">
                             <div className="absolute top-8 right-8 text-slate-300"><CreditCard size={24} /></div>
                             <h3 className="text-xl font-black text-brand-text mb-8 flex items-center gap-3">
                                 <span className="w-2 h-8 bg-emerald-500 rounded-full" /> Dados de Recebimento
@@ -399,7 +399,7 @@ const TeacherProfile: React.FC = () => {
                                         <input
                                             value={formData.pixKey}
                                             onChange={e => setFormData({ ...formData, pixKey: e.target.value })}
-                                            className="w-full pl-14 pr-4 py-4 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                                            className="w-full pl-14 pr-4 py-4 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden transition-all"
                                         />
                                     </div>
                                 </div>
@@ -410,7 +410,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.bankName}
                                         onChange={e => setFormData({ ...formData, bankName: e.target.value })}
                                         placeholder="Ex: Nubank, Itáu..."
-                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-hidden focus:border-emerald-500 transition-all"
                                     />
                                 </div>
 
@@ -420,7 +420,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.agency}
                                         onChange={e => setFormData({ ...formData, agency: e.target.value })}
                                         placeholder="0000"
-                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-hidden focus:border-emerald-500 transition-all"
                                     />
                                 </div>
 
@@ -430,7 +430,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.accountNumber}
                                         onChange={e => setFormData({ ...formData, accountNumber: e.target.value })}
                                         placeholder="00000-0"
-                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-hidden focus:border-emerald-500 transition-all"
                                     />
                                 </div>
                             </div>

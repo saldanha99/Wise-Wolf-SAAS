@@ -29,7 +29,7 @@ const ScreenTabs: React.FC<Props> = ({ group, activeTab, onChange, pendingCounts
       <div
         role="tablist"
         aria-label={group.label}
-        className="flex items-center gap-1 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-center gap-1 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none [&::-webkit-scrollbar]:hidden"
       >
         {group.tabs.map(t => {
           const ativa = t.id === activeTab;
@@ -42,7 +42,7 @@ const ScreenTabs: React.FC<Props> = ({ group, activeTab, onChange, pendingCounts
               onClick={() => onChange(t.id)}
               className={`flex items-center gap-1.5 whitespace-nowrap text-sm font-bold px-3.5 py-2 rounded-xl transition-colors ${
                 ativa
-                  ? 'bg-brand-surface text-brand-text border border-brand-border shadow-sm'
+                  ? 'bg-brand-surface text-brand-text border border-brand-border shadow-xs'
                   : 'text-brand-muted hover:text-brand-text hover:bg-brand-surface-2 border border-transparent'
               }`}
             >

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Link as LinkIcon, Copy, Check, Calendar, Clock, BookOpen, Users,
-    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2
+    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2, BadgePercent, X,
+    CalendarClock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
@@ -16,6 +17,14 @@ import {
     normalizeEnrollmentTime,
     weekdayIndex,
 } from '../lib/enrollmentOffer';
+import { formatCents, resolveAffiliateLookup, type AffiliateMatch } from '../lib/affiliateProgram';
+import {
+    formatHoldDay,
+    holdAllowedForStart,
+    parseHoldAmount,
+    parseHoldSlots,
+    type FutureStartHoldSlot,
+} from '../lib/scheduleHold';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
@@ -82,9 +91,79 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [busyRows, setBusyRows] = useState<Array<{
         teacher_id: string; day_of_week: string; time_slot: string;
     }>>([]);
+    // Horários que outro aluno com início futuro já segura (reserva paga).
+    const [heldRows, setHeldRows] = useState<FutureStartHoldSlot[]>([]);
+
+    // Reserva de agenda: o aluno começa numa data futura e a escola paga ao
+    // professor para segurar o horário até lá. Pagamento interno — entra na
+    // folha do professor; o aluno não paga e a taxa de matrícula não muda.
+    const [holdSchedule, setHoldSchedule] = useState(false);
+    const [holdAmount, setHoldAmount] = useState('');
+    const [holdStudent, setHoldStudent] = useState('');
+    const [holdResult, setHoldResult] = useState('');
 
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
+
+    // Indicação de afiliado: o cupom (ou o nome de quem indicou, dito na
+    // conversa) isenta a taxa de matrícula e vincula a comissão. Quem decide é o
+    // servidor (`create_enrollment_offer_with_affiliate`): ele confere o cupom
+    // e congela o valor da comissão na oferta, no mesmo commit do link.
+    const [affiliateQuery, setAffiliateQuery] = useState('');
+    const [affiliateOptions, setAffiliateOptions] = useState<AffiliateMatch[]>([]);
+    const [selectedAffiliate, setSelectedAffiliate] = useState<AffiliateMatch | null>(null);
+    const [affiliateLookup, setAffiliateLookup] = useState<'idle' | 'searching' | 'options' | 'none' | 'error'>('idle');
+    const affiliateApplies = Boolean(selectedAffiliate) && duration !== 0;
+
+    useEffect(() => {
+        if (selectedAffiliate) return;
+        const query = affiliateQuery.trim();
+        if (query.length < 2) {
+            setAffiliateOptions([]);
+            setAffiliateLookup('idle');
+            return;
+        }
+        let cancelled = false;
+        setAffiliateLookup('searching');
+        const timer = setTimeout(async () => {
+            const { data, error } = await supabase.rpc('find_affiliates', {
+                p_query: query,
+                p_tenant_id: tenantId || null,
+            });
+            if (cancelled) return;
+            if (error) {
+                setAffiliateOptions([]);
+                setAffiliateLookup('error');
+                return;
+            }
+            const matches = Array.isArray(data) ? data as AffiliateMatch[] : [];
+            const decision = resolveAffiliateLookup(matches);
+            // Cupom exato resolve sozinho. Nome pede um clique: "ga" também casa
+            // com "Olga", e com duas Gabrielas quem gera o link escolhe pelo cupom.
+            if (decision.kind === 'single' && decision.affiliate.match === 'CODE') {
+                setSelectedAffiliate(decision.affiliate);
+                setAffiliateOptions([]);
+                setAffiliateLookup('idle');
+            } else if (decision.kind === 'none') {
+                setAffiliateOptions([]);
+                setAffiliateLookup('none');
+            } else {
+                setAffiliateOptions(matches);
+                setAffiliateLookup('options');
+            }
+        }, 400);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [affiliateQuery, selectedAffiliate, tenantId]);
+
+    const clearAffiliate = () => {
+        setSelectedAffiliate(null);
+        setAffiliateQuery('');
+        setAffiliateOptions([]);
+        setAffiliateLookup('idle');
+    };
 
     // Pricing carregado do banco (com fallback hardcoded)
     const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
@@ -107,12 +186,16 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         setGeneratedLink('');
         setCopied(false);
         setFormError('');
+        setHoldResult('');
     }, [
         duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
         selectedProfessor, selectedProfessor2, isDependent, studentPhone,
         selectedGuardianId, scheduleSlots, startDate, enableProRata, billingStartMonth,
-        studentLevel,
+        studentLevel, selectedAffiliate, holdSchedule, holdAmount, holdStudent,
     ]);
+
+    const holdAllowed = duration !== 0 && holdAllowedForStart(startDate, dateInSaoPaulo());
+    const holdActive = holdSchedule && holdAllowed;
 
     // Update slots when frequency changes
     useEffect(() => {
@@ -133,12 +216,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         if (teacherIds.length === 0 || !tenantId) {
             setAvailabilityRows([]);
             setBusyRows([]);
+            setHeldRows([]);
             return;
         }
         let cancelled = false;
         setAvailabilityLoading(true);
         (async () => {
-            const [availability, bookings] = await Promise.all([
+            const [availability, bookings, holds] = await Promise.all([
                 supabase.from('teacher_availability')
                     .select('teacher_id,day_of_week,start_time,end_time')
                     .eq('tenant_id', tenantId)
@@ -148,15 +232,22 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                     .eq('tenant_id', tenantId)
                     .in('teacher_id', teacherIds)
                     .in('status', ['SCHEDULED', 'scheduled']),
+                supabase.rpc('list_future_start_holds', {
+                    p_tenant_id: tenantId,
+                    p_teacher_ids: teacherIds,
+                    p_include_inactive: false,
+                }),
             ]);
             if (cancelled) return;
-            if (availability.error || bookings.error) {
+            if (availability.error || bookings.error || holds.error) {
                 setFormError('Não foi possível confirmar a agenda dos professores. Recarregue e tente novamente.');
                 setAvailabilityRows([]);
                 setBusyRows([]);
+                setHeldRows([]);
             } else {
                 setAvailabilityRows((availability.data || []) as typeof availabilityRows);
                 setBusyRows((bookings.data || []) as typeof busyRows);
+                setHeldRows(parseHoldSlots(holds.data));
             }
             setAvailabilityLoading(false);
         })();
@@ -232,6 +323,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         row.teacher_id === teacherId
         && weekdayIndex(row.day_of_week) === weekdayIndex(day)
         && normalizeEnrollmentTime(row.time_slot) === normalizeEnrollmentTime(time)
+    ) || heldRows.some(row =>
+        row.teacher_id === teacherId
+        && row.day_of_week === weekdayIndex(day)
+        && normalizeEnrollmentTime(row.class_time) === normalizeEnrollmentTime(time)
     );
 
     const availableTimes = (teacherId: string, day: string) => {
@@ -289,6 +384,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         if (isDependent && !isValidBrazilianMobile(studentPhone)) {
             return setFormError('Informe um WhatsApp válido do aluno, com DDD. A cobrança continuará no responsável.');
         }
+        const holdAmountValue = holdActive ? parseHoldAmount(holdAmount) : null;
+        if (holdActive && holdAmountValue === null) {
+            return setFormError('Informe o valor da reserva para o professor (maior que zero, até R$ 1.000).');
+        }
+        const holdStudentLabel = holdStudent.trim();
+        if (holdActive && (holdStudentLabel.length < 1 || holdStudentLabel.length > 120)) {
+            return setFormError('Informe o nome do aluno da reserva: é o que aparece na agenda e na folha do professor.');
+        }
 
         const validSchedule = scheduleSlots.map(slot => ({
             day: slot.day,
@@ -308,7 +411,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             schedule: validSchedule.length > 0 ? validSchedule : null,
             startDate: startDate,
             requiresEnrollment: duration !== 0,
-            enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
+            enrollmentFee: affiliateApplies ? 0 : (chargeEnrollmentFee ? enrollmentFee : 0),
             // Módulo 3 - Pro-rata + billing start month
             enableProRata: proRataEnabled,
             billingStartMonth,
@@ -334,13 +437,53 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
             setGenerating(true);
-            const requestKey = JSON.stringify(data);
+            // A indicação e a reserva entram na chave: trocar qualquer uma gera outro link.
+            const affiliateCode = affiliateApplies ? selectedAffiliate?.affiliate_code || null : null;
+            const hold = holdActive && holdAmountValue !== null
+                ? { amount: holdAmountValue, student: holdStudentLabel }
+                : null;
+            const requestKey = JSON.stringify({ data, affiliateCode, hold });
             const requestId = offerRequestIds.current[requestKey] || crypto.randomUUID();
             offerRequestIds.current[requestKey] = requestId;
-            const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', {
-                p_payload: { ...data, requestId },
-            });
-            if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
+            let offerId: string | null = null;
+            if (hold) {
+                // Link + reserva + lançamento na folha no MESMO commit: se a
+                // reserva falhar, o link também não nasce.
+                const { data: holdData, error: holdErr } = await supabase.rpc(
+                    'create_enrollment_offer_with_future_hold',
+                    {
+                        p_payload: { ...data, requestId },
+                        p_hold_amount: hold.amount,
+                        p_student_label: hold.student,
+                        p_affiliate_code: affiliateCode,
+                    },
+                );
+                if (holdErr) throw holdErr;
+                const response = (holdData || {}) as {
+                    offer_id?: string;
+                    hold?: { hold_until?: string; holds?: Array<{ month?: string }> };
+                };
+                offerId = response.offer_id || null;
+                const month = response.hold?.holds?.[0]?.month || '';
+                setHoldResult(
+                    `Horários segurados na agenda do professor até ${formatHoldDay(response.hold?.hold_until || startDate)}. `
+                    + `R$ ${hold.amount.toFixed(2).replace('.', ',')} lançado na folha${month ? ` de ${month.split('-').reverse().join('/')}` : ''} do professor.`,
+                );
+            } else {
+                // Com indicação: porta própria, que cria pela porta pública e aplica
+                // o benefício no mesmo commit (cupom inválido desfaz o link inteiro).
+                const { data: createdId, error: offerErr } = affiliateCode
+                    ? await supabase.rpc('create_enrollment_offer_with_affiliate', {
+                        p_payload: { ...data, requestId },
+                        p_affiliate_code: affiliateCode,
+                    })
+                    : await supabase.rpc('create_enrollment_offer', {
+                        p_payload: { ...data, requestId },
+                    });
+                if (offerErr) throw offerErr;
+                offerId = typeof createdId === 'string' ? createdId : null;
+            }
+            if (!offerId) throw new Error('offer id vazio');
             delete offerRequestIds.current[requestKey];
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
         } catch (e) {
@@ -367,7 +510,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         <div className="bg-brand-surface rounded-[2.5rem] shadow-xl border border-brand-border overflow-hidden font-sans">
 
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#002366] to-blue-900 p-8 text-white relative overflow-hidden">
+            <div className="bg-linear-to-r from-[#002366] to-blue-900 p-8 text-white relative overflow-hidden">
                 <div className="relative z-10 flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -421,7 +564,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         }`}
                                 >
                                     {duration === plan.val && (
-                                        <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-sm">
+                                        <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-xs">
                                             <Check size={12} strokeWidth={4} />
                                         </div>
                                     )}
@@ -444,7 +587,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={frequency}
                                             onChange={(e) => setFrequency(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
                                         </select>
@@ -457,7 +600,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={dueDay}
                                             onChange={(e) => setDueDay(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                                                 <option key={d} value={d}>Dia {d}</option>
@@ -478,7 +621,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             value={startDate}
                                             min={dateInSaoPaulo()}
                                             onChange={(e) => setStartDate(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         />
                                         <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                     </div>
@@ -491,7 +634,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         <select
                                             value={studentLevel}
                                             onChange={(e) => setStudentLevel(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-hidden focus:ring-2 focus:ring-blue-500"
                                         >
                                             <option value="A1">A1 - Iniciante (A1-1)</option>
                                             <option value="A2">A2 - Elementar (A2-1)</option>
@@ -524,7 +667,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             type="number"
                                             value={monthlyFee}
                                             onChange={(e) => setMonthlyFee(Number(e.target.value))}
-                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl font-black text-blue-700 dark:text-blue-300 outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl font-black text-blue-700 dark:text-blue-300 outline-hidden focus:ring-2 focus:ring-blue-500"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -543,30 +686,102 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted cursor-pointer hover:text-blue-500 transition-colors">
                                         <input
                                             type="checkbox"
-                                            checked={chargeEnrollmentFee}
+                                            checked={chargeEnrollmentFee && !affiliateApplies}
+                                            disabled={affiliateApplies}
                                             onChange={(e) => setChargeEnrollmentFee(e.target.checked)}
                                             className="rounded text-blue-600 focus:ring-blue-500"
                                         />
                                         Cobrar Taxa de Matrícula
                                     </label>
-                                    {chargeEnrollmentFee && (
+                                    {chargeEnrollmentFee && !affiliateApplies && (
                                         <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/40 px-3 py-1 rounded-lg border border-blue-100 dark:border-blue-800">
                                             <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">R$</span>
                                             <input
                                                 type="number"
                                                 value={enrollmentFee}
                                                 onChange={(e) => setEnrollmentFee(Number(e.target.value))}
-                                                className="w-12 bg-transparent border-none p-0 text-sm font-black text-blue-700 dark:text-blue-300 outline-none focus:ring-0"
+                                                className="w-12 bg-transparent border-none p-0 text-sm font-black text-blue-700 dark:text-blue-300 outline-hidden focus:ring-0"
                                             />
                                         </div>
                                     )}
                                 </div>
                                 <p className="text-[9px] text-brand-muted font-medium">
-                                    {chargeEnrollmentFee 
-                                        ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
-                                        : 'A taxa de matrícula não será cobrada neste link.'}
+                                    {affiliateApplies
+                                        ? 'Taxa de matrícula isenta pelo cupom de afiliado.'
+                                        : chargeEnrollmentFee
+                                            ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
+                                            : 'A taxa de matrícula não será cobrada neste link.'}
                                 </p>
                             </div>
+
+                            {/* Indicação de afiliado: cupom ou nome de quem indicou */}
+                            {duration !== 0 && (
+                                <div className="pt-4 border-t border-brand-border" data-tour="affiliate-coupon-field">
+                                    <label htmlFor="enrollment-link-affiliate" className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted mb-2">
+                                        <BadgePercent size={12} aria-hidden="true" /> Indicação de afiliado (opcional)
+                                    </label>
+                                    {selectedAffiliate ? (
+                                        <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                            <div className="min-w-0 text-xs">
+                                                <p className="font-black">
+                                                    {selectedAffiliate.full_name || 'Afiliado'} · cupom {selectedAffiliate.affiliate_code}
+                                                </p>
+                                                <p className="mt-0.5">
+                                                    Taxa de matrícula isenta. Comissão de {formatCents(selectedAffiliate.commission_cents)} liberada quando a 1ª mensalidade for liquidada.
+                                                </p>
+                                            </div>
+                                            <button type="button" onClick={clearAffiliate} aria-label="Remover indicação" className="shrink-0 rounded-lg p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={14} aria-hidden="true" />
+                                                <input
+                                                    id="enrollment-link-affiliate"
+                                                    value={affiliateQuery}
+                                                    onChange={event => setAffiliateQuery(event.target.value)}
+                                                    placeholder="Cupom (ex.: AFILIADA10) ou nome de quem indicou"
+                                                    autoComplete="off"
+                                                    className="w-full rounded-xl border border-brand-border bg-brand-surface-2 py-2 pl-9 pr-3 text-sm text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500"
+                                                />
+                                                {affiliateLookup === 'searching' && (
+                                                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-brand-muted" size={14} aria-hidden="true" />
+                                                )}
+                                            </div>
+                                            {affiliateLookup === 'options' && affiliateOptions.length > 0 && (
+                                                <div className="mt-2 space-y-1" role="listbox" aria-label="Afiliados encontrados">
+                                                    <p className="text-[10px] font-bold text-brand-muted">
+                                                        {affiliateOptions.length > 1
+                                                            ? 'Mais de um afiliado com esse nome — confira o cupom com o aluno:'
+                                                            : 'Confirme quem indicou:'}
+                                                    </p>
+                                                    {affiliateOptions.map(option => (
+                                                        <button
+                                                            key={option.vendor_id}
+                                                            type="button"
+                                                            role="option"
+                                                            aria-selected={false}
+                                                            onClick={() => { setSelectedAffiliate(option); setAffiliateOptions([]); setAffiliateLookup('idle'); }}
+                                                            className="flex w-full items-center justify-between gap-2 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-left text-xs hover:border-emerald-400"
+                                                        >
+                                                            <span className="font-bold text-brand-text">{option.full_name || 'Afiliado'}</span>
+                                                            <span className="font-mono font-black text-emerald-600">{option.affiliate_code}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {affiliateLookup === 'none' && (
+                                                <p className="mt-2 text-[10px] font-bold text-amber-600">Nenhum afiliado ativo com esse cupom ou nome.</p>
+                                            )}
+                                            {affiliateLookup === 'error' && (
+                                                <p className="mt-2 text-[10px] font-bold text-red-600">Não foi possível buscar afiliados agora. Tente de novo.</p>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -584,7 +799,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                 value={billingStartMonth}
                                 min={dateInSaoPaulo().slice(0, 7)}
                                 onChange={(e) => setBillingStartMonth(e.target.value)}
-                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-amber-500"
                             />
                             <p className="text-[9px] text-slate-400 mt-1">Escolha um mês futuro para diferir o início da cobrança recorrente.</p>
                         </div>
@@ -623,7 +838,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                 {/* SECTION 2: ALOCAÇÃO ACADÊMICA */}
                 <div className="bg-brand-surface-2/50 rounded-2xl p-6 border border-brand-border/50">
                     <div className="flex items-center gap-2 mb-6">
-                        <div className="p-2 bg-brand-surface dark:bg-slate-700 rounded-lg shadow-sm">
+                        <div className="p-2 bg-brand-surface dark:bg-slate-700 rounded-lg shadow-xs">
                             <GraduationCap size={18} className="text-purple-600 dark:text-purple-400" />
                         </div>
                         <h3 className="text-sm font-black text-brand-text dark:text-slate-200 uppercase tracking-wide">
@@ -662,7 +877,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch('');
                                             setShowProfessorList(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-xs cursor-pointer"
                                     />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
@@ -736,7 +951,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch2('');
                                             setShowProfessorList2(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-dashed border-brand-border dark:border-slate-600 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-dashed border-brand-border dark:border-slate-600 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-xs cursor-pointer"
                                     />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
@@ -789,7 +1004,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {scheduleSlots.map((slot, index) => (
-                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-brand-surface p-3 rounded-xl border border-brand-border shadow-sm group hover:border-purple-300 transition-colors">
+                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-brand-surface p-3 rounded-xl border border-brand-border shadow-xs group hover:border-purple-300 transition-colors">
                                         <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-xs shrink-0">
                                             {index + 1}
                                         </div>
@@ -798,7 +1013,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                 aria-label={`Professor do horário ${index + 1}`}
                                                 value={slot.teacherId || selectedProfessor}
                                                 onChange={event => updateSlot(index, 'teacherId', event.target.value)}
-                                                className="min-w-36 flex-1 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
+                                                className="min-w-36 flex-1 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-hidden"
                                             >
                                                 <option value={selectedProfessor}>{professors.find(p => p.id === selectedProfessor)?.name || 'Professor principal'}</option>
                                                 <option value={selectedProfessor2}>{professors.find(p => p.id === selectedProfessor2)?.name || 'Professor secundário'}</option>
@@ -808,7 +1023,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             aria-label={`Dia do horário ${index + 1}`}
                                             value={slot.day}
                                             onChange={e => updateSlot(index, 'day', e.target.value)}
-                                            className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
+                                            className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-hidden"
                                         >
                                             <option value="">Dia</option>
                                             <option value="Monday">Segunda</option>
@@ -818,13 +1033,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             <option value="Friday">Sexta</option>
                                             <option value="Saturday">Sábado</option>
                                         </select>
-                                        <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700" />
+                                        <div className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
                                         <select
                                             aria-label={`Hora do horário ${index + 1}`}
                                             value={slot.time}
                                             onChange={e => updateSlot(index, 'time', e.target.value)}
                                             disabled={!slot.day || availabilityLoading}
-                                            className="min-w-24 flex-1 bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-none disabled:opacity-50"
+                                            className="min-w-24 flex-1 bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-hidden disabled:opacity-50"
                                         >
                                             <option value="">Horário livre</option>
                                             {availableTimes(slot.teacherId || selectedProfessor, slot.day).map(time => (
@@ -842,6 +1057,74 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                         </div>
                     </div>
                 </div>
+
+                {/* SECTION 2.4: RESERVA DE AGENDA (aluno com início futuro, pago ao professor) */}
+                {duration !== 0 && (
+                    <div
+                        data-tour="future-start-hold-field"
+                        className="bg-teal-50/60 dark:bg-teal-900/10 rounded-2xl p-6 border border-teal-200/70 dark:border-teal-900/30"
+                    >
+                        <label className={`flex items-start gap-3 ${holdAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                            <input
+                                type="checkbox"
+                                checked={holdActive}
+                                disabled={!holdAllowed}
+                                onChange={e => setHoldSchedule(e.target.checked)}
+                                className="mt-0.5 w-5 h-5 rounded accent-teal-600 shrink-0"
+                            />
+                            <span>
+                                <span className="flex items-center gap-2 text-sm font-black text-brand-text dark:text-slate-200">
+                                    <CalendarClock size={16} className="text-teal-600 dark:text-teal-400 shrink-0" aria-hidden="true" />
+                                    Reservar estes horários na agenda do professor até o início
+                                </span>
+                                <span className="block mt-1 text-[11px] text-brand-muted leading-relaxed">
+                                    {holdAllowed
+                                        ? `O aluno começa em ${formatHoldDay(startDate)}: até lá o professor segura o horário e a escola paga a ele o valor abaixo, na folha do mês. É pagamento interno — o aluno não paga e a taxa de matrícula não muda.`
+                                        : 'Disponível quando as aulas começam numa data futura (ajuste "Início das Aulas").'}
+                                </span>
+                            </span>
+                        </label>
+
+                        {holdActive && (
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="future-start-hold-amount" className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">
+                                        Valor da reserva para o professor
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted font-bold text-sm">R$</span>
+                                        <input
+                                            id="future-start-hold-amount"
+                                            inputMode="decimal"
+                                            autoComplete="off"
+                                            value={holdAmount}
+                                            onChange={e => setHoldAmount(e.target.value)}
+                                            placeholder="30,00"
+                                            className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-teal-300 dark:border-teal-900/50 rounded-xl text-base font-black text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500"
+                                        />
+                                    </div>
+                                    {selectedProfessor2 && (
+                                        <p className="text-[10px] text-brand-muted mt-1">Com dois professores na grade, cada um recebe este valor.</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label htmlFor="future-start-hold-student" className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">
+                                        Aluno (aparece na agenda e na folha)
+                                    </label>
+                                    <input
+                                        id="future-start-hold-student"
+                                        autoComplete="off"
+                                        maxLength={120}
+                                        value={holdStudent}
+                                        onChange={e => setHoldStudent(e.target.value)}
+                                        placeholder="Nome do aluno"
+                                        className="w-full px-4 py-3 bg-brand-surface border border-teal-300 dark:border-teal-900/50 rounded-xl text-base font-medium text-brand-text dark:text-slate-200 outline-hidden focus:ring-2 focus:ring-teal-500"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* SECTION 2.5: MATRÍCULA DE DEPENDENTE (cobrança no CPF de outro titular) */}
                 <div className="bg-indigo-50/60 dark:bg-indigo-900/10 rounded-2xl p-6 border border-indigo-200/70 dark:border-indigo-900/30">
@@ -871,7 +1154,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     value={studentPhone}
                                     onChange={e => setStudentPhone(e.target.value)}
                                     placeholder="DDD + número de quem assiste a aula"
-                                    className="w-full px-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm font-mono"
+                                    className="w-full px-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-xs font-mono"
                                 />
                                 <p className="text-[10px] text-brand-muted mt-1">A confirmação de presença vai para este número (o aluno que assiste). A cobrança continua no responsável.</p>
                             </div>
@@ -885,7 +1168,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     onChange={e => { setGuardianSearch(e.target.value); setSelectedGuardianId(''); setShowGuardianList(true); }}
                                     onFocus={() => { setGuardianSearch(''); setShowGuardianList(true); }}
                                     onClick={() => { setGuardianSearch(''); setShowGuardianList(true); }}
-                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm cursor-pointer"
+                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-hidden focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-xs cursor-pointer"
                                 />
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                             </div>
@@ -935,7 +1218,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                     <button
                         onClick={generateLink}
                         disabled={!isFormValid}
-                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
+                        className="w-full py-4 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
                     >
                         {generating
                             ? <Loader2 size={18} className="animate-spin" />
@@ -968,6 +1251,12 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     {copied ? 'Copiado!' : 'Copiar'}
                                 </button>
                             </div>
+                            {holdResult && (
+                                <p className="mt-3 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs font-semibold text-teal-800 dark:border-teal-900/50 dark:bg-teal-900/20 dark:text-teal-300">
+                                    <CalendarClock size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                    <span>{holdResult}</span>
+                                </p>
+                            )}
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
                                 * Este link expira automaticamente se as regras de negócio forem alteradas.
                             </p>

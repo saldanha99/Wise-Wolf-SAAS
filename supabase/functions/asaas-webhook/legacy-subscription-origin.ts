@@ -9,7 +9,7 @@ const cents = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
 };
-/** A missing externalReference is allowed only for a SETTLED legacy installment
+/** A missing externalReference is allowed only for an authoritative legacy installment
  * of an exact, already-bound subscription. The caller must resolve exactly one
  * local student by BOTH subscription and customer before fetching these objects
  * through that school's current integration. Customer/name/amount alone cannot
@@ -25,14 +25,22 @@ export function verifiedLegacySubscriptionPayment(input: {
   const e = record(input.eventPayment),
     p = record(input.authoritativePayment),
     s = record(input.authoritativeSubscription);
-  const expectedStatus = input.eventName === "PAYMENT_RECEIVED"
-    ? "RECEIVED"
-    : input.eventName === "PAYMENT_RECEIVED_IN_CASH"
-    ? "RECEIVED_IN_CASH"
-    : null;
+  const expectedStatuses: Record<string, string[]> = {
+    PAYMENT_CREATED: ["PENDING"],
+    PAYMENT_UPDATED: ["PENDING", "OVERDUE", "CONFIRMED"],
+    PAYMENT_OVERDUE: ["OVERDUE"],
+    PAYMENT_CONFIRMED: ["CONFIRMED"],
+    PAYMENT_RECEIVED: ["RECEIVED"],
+    PAYMENT_RECEIVED_IN_CASH: ["RECEIVED_IN_CASH"],
+  };
+  const expectedStatus = text(p?.status);
+  const supportedStatus = (expectedStatuses[input.eventName] || []).includes(
+    expectedStatus,
+  );
+  const settled = ["RECEIVED", "RECEIVED_IN_CASH"].includes(expectedStatus);
   const x = input.expected;
   if (
-    !e || !p || !s || !expectedStatus ||
+    !e || !p || !s || !supportedStatus ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       .test(x.studentId) ||
     !x.customerId || !x.subscriptionId
@@ -52,6 +60,6 @@ export function verifiedLegacySubscriptionPayment(input: {
     cents(e.value) !== null && cents(e.value) === cents(p.value) &&
     /^\d{4}-\d{2}-\d{2}$/.test(text(e.dueDate)) &&
     text(e.dueDate) === text(p.dueDate) &&
-    /^\d{4}-\d{2}-\d{2}$/.test(text(e.paymentDate)) &&
-    text(e.paymentDate) === text(p.paymentDate);
+    (!settled || (/^\d{4}-\d{2}-\d{2}$/.test(text(e.paymentDate)) &&
+      text(e.paymentDate) === text(p.paymentDate)));
 }

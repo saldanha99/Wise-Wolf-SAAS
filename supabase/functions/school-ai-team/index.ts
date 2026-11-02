@@ -616,7 +616,7 @@ async function buildAtendente(sb: any, tenantId: string): Promise<AgentReport> {
       await sb
         .from("opportunities")
         .select(
-          "id,tenant_id,student_name,student_phone,trial_appointment_id,winner_teacher_id,professor_id,feedback_required",
+          "id,tenant_id,student_name,student_phone,trial_appointment_id",
         )
         .eq("tenant_id", tenantId)
         .eq("kind", "TRIAL")
@@ -627,46 +627,20 @@ async function buildAtendente(sb: any, tenantId: string): Promise<AgentReport> {
     const appointmentIds = (trialOpportunities || []).map((opp: any) =>
       opp.trial_appointment_id
     ).filter(Boolean);
-    const opportunityIds = (trialOpportunities || []).map((opp: any) => opp.id);
-    const [
-      { data: completedLogs, error: completedLogsError },
-      { data: feedbackRows, error: feedbackRowsError },
-    ] = await Promise.all([
+    const { data: completedLogs, error: completedLogsError } =
       appointmentIds.length
-        ? sb.from("class_logs").select("appointment_id")
+        ? await sb.from("class_logs").select("appointment_id")
           .eq("tenant_id", tenantId)
           .eq("presence", "COMPLETED")
           .ilike("subtype", "%EXPERIMENTAL%")
           .in("appointment_id", appointmentIds)
-        : Promise.resolve({ data: [], error: null }),
-      opportunityIds.length
-        ? sb.from("trial_feedback").select(
-          "opportunity_id,booking_id,teacher_id",
-        ).eq("tenant_id", tenantId).in("opportunity_id", opportunityIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
+        : { data: [], error: null };
     if (completedLogsError) throw completedLogsError;
-    if (feedbackRowsError) throw feedbackRowsError;
     const completedAppointmentIds = new Set(
       (completedLogs || []).map((log: any) => log.appointment_id),
     );
-    const feedbackByOpportunity = new Map(
-      (feedbackRows || []).map((feedback: any) => [
-        feedback.opportunity_id,
-        feedback,
-      ]),
-    );
     const done = (trialOpportunities || []).filter((opp: any) => {
       if (!completedAppointmentIds.has(opp.trial_appointment_id)) return false;
-      if (opp.feedback_required === true) {
-        const feedback = feedbackByOpportunity.get(opp.id) as any;
-        const responsibleTeacherId = opp.winner_teacher_id || opp.professor_id;
-        if (
-          !feedback || !responsibleTeacherId ||
-          feedback.booking_id !== opp.trial_appointment_id ||
-          feedback.teacher_id !== responsibleTeacherId
-        ) return false;
-      }
       return !evaluateCommercialSuppression({
         tenantId,
         phone: opp.student_phone,

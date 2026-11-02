@@ -217,7 +217,7 @@ expected_api_url=${10}
 
 [[ "$(id -un)" = "$expected_user" ]]
 current_ip="$(hostname -I | awk '{print $1}')"
-[[ "$current_ip" = "$expected_host" || "$expected_host" = "187.127.46.251" ]]
+[[ "$current_ip" = "$expected_host" || "$expected_host" = "179.236.255.4" ]]
 for required_dir in "$app_dir" "$compose_dir" "$functions_dir" "$supabase_dir"; do
   [[ -d "$required_dir" ]]
 done
@@ -271,6 +271,9 @@ done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-edge-functions --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-auth --format '{{.State.Running}}' | grep -qx true
+# GAMMA_API_KEY é opcional (decisão de 26/09/2026): sem ela o gerador de livros
+# responde GAMMA_NOT_CONFIGURED e a tela avisa. A chave entra depois em
+# .env.functions, recriando o container das functions — sem novo release.
 docker exec supabase-edge-functions sh -lc \
   'test -n "${OPENAI_API_KEY:-}" &&
    test -n "${OPENROUTER_API_KEY:-}" &&
@@ -453,8 +456,35 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.ts \
   supabase/functions/google-meet/core.test.ts \
+  supabase/functions/google-meet/attendance.ts \
+  supabase/functions/google-meet/attendance.test.ts \
   supabase/functions/google-meet/provider.ts \
+  supabase/functions/google-meet/provider.test.ts \
+  supabase/functions/google-meet/summary.ts \
+  supabase/functions/google-meet/summary.test.ts \
+  supabase/functions/google-meet/originals.ts \
+  supabase/functions/google-meet/originals.test.ts \
+  supabase/functions/google-meet/trial-rooms.ts \
+  supabase/functions/google-meet/trial-rooms.test.ts \
   supabase/functions/google-meet/index.ts \
+  supabase/functions/lesson-recording-code/core.ts \
+  supabase/functions/lesson-recording-code/core.test.ts \
+  supabase/functions/lesson-recording-code/index.ts \
+  supabase/functions/lesson-planner/teacher-card.ts \
+  supabase/functions/lesson-planner/teacher-card.test.ts \
+  supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/accept-coverage/form-action.test.ts \
+  supabase/functions/lesson-planner/approved-lessons.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
+  supabase/functions/student-card-suggestions \
+  supabase/functions/coverage-admin/briefing.ts \
+  supabase/functions/coverage-admin/offered-rate.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
+  supabase/functions/coverage-admin/offered-rate.test.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -512,6 +542,19 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/confirm-vendor-trial/core.test.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/care-sweeper/index.ts \
+  supabase/functions/whatsapp-inbound/care-messages.ts \
+  supabase/functions/whatsapp-inbound/care-messages.test.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/care-turn.ts \
+  supabase/functions/whatsapp-inbound/care-turn.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.test.ts \
+  supabase/functions/_shared/reschedule-messages.ts \
+  supabase/functions/_shared/reschedule-messages.test.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -524,7 +567,10 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
+  supabase/functions/whatsapp-inbound/commercial-response-policy.ts \
   supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -537,6 +583,12 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/register-vendor/index.ts \
+  supabase/functions/register-vendor/index.test.ts \
+  supabase/functions/register-teacher/contract-terms.ts \
+  supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/register-teacher/provider-identity.ts \
+  supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
@@ -595,7 +647,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/notify-payment-due/daily.ts \
   supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/notify-payment-due/daily.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
@@ -603,7 +657,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/payment-split-notify/safety.test.ts \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/school-operations-notify/index.ts \
+  supabase/functions/school-operations-notify/core.ts \
+  supabase/functions/school-operations-notify/origin-description.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/school-operations-notify/core.test.ts \
   supabase/functions/cancel-prepaid-invoice/index.ts \
   supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/dre-report/index.ts \
@@ -615,6 +673,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/sync-plan-change-billing/claim-fencing.test.ts \
+  supabase/functions/sync-subscription-status/subscription-read.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/sync-subscription-status/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/delete-student-account/index.ts \
@@ -627,6 +687,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
+  supabase/functions/pedagogical-content/hub-material.ts \
+  supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/gamma-book-generator/book-spec.ts \
+  supabase/functions/gamma-book-generator/book-spec.test.ts \
+  supabase/functions/gamma-book-generator/index.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -654,7 +719,14 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
+  supabase/functions/whatsapp-inbound/trial-access.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.test.ts \
+  supabase/functions/whatsapp-inbound/trial-access.test.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.ts \
@@ -689,8 +761,23 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-renewal-billing/source.test.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
+  supabase/functions/google-meet/attendance.test.ts \
+  supabase/functions/google-meet/provider.test.ts \
+  supabase/functions/google-meet/summary.test.ts \
+  supabase/functions/google-meet/originals.test.ts \
+  supabase/functions/google-meet/trial-rooms.test.ts \
+  supabase/functions/lesson-recording-code/core.test.ts \
+  supabase/functions/lesson-planner/teacher-card.test.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
+  supabase/functions/student-card-suggestions/core.test.ts \
+  supabase/functions/student-card-suggestions/runner.test.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
+  supabase/functions/coverage-admin/offered-rate.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
   supabase/functions/_shared/enrollment-progress.test.ts \
   supabase/functions/_shared/automation-auth.test.ts \
@@ -721,17 +808,27 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/sdr-scheduling.test.ts \
   supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-inbound/trial-access.test.ts \
+  supabase/functions/whatsapp-inbound/lead-entry.test.ts \
+  supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/_shared/payroll-message.test.ts \
+  supabase/functions/_shared/reschedule-messages.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-reschedule-move.test.ts \
   supabase/functions/whatsapp-inbound/teacher-absence.test.ts \
   supabase/functions/whatsapp-crm-lead-notif/first-touch.test.ts \
   supabase/functions/whatsapp-inbound/trial-closing.test.ts \
   supabase/functions/whatsapp-inbound/typing-delay.test.ts \
   supabase/functions/whatsapp-inbound/whatsapp-labels.test.ts \
   supabase/functions/whatsapp-inbound/commercial-response-policy.test.ts \
+  supabase/functions/whatsapp-inbound/lead-pricing.test.ts \
+  supabase/functions/whatsapp-inbound/care-messages.test.ts \
+  supabase/functions/whatsapp-inbound/care-conversation.test.ts \
+  supabase/functions/whatsapp-inbound/care-turn.test.ts \
+  supabase/functions/whatsapp-inbound/teacher-schedule-change.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/_shared/financial-report-message-fence.test.ts \
@@ -743,9 +840,11 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/notify-payment-due/daily.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
+  supabase/functions/school-operations-notify/core.test.ts \
   supabase/functions/cancel-prepaid-invoice/core.test.ts \
   supabase/functions/payment-split-notify/management-outbound-fence.test.ts \
   supabase/functions/payment-split-notify/management-summary.test.ts \
@@ -753,6 +852,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/school-admin/core.test.ts \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/register-vendor/index.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
   supabase/functions/reconcile-whatsapp-webhooks/core.test.ts \
   supabase/functions/process-notification-queue/core.test.ts \
@@ -782,9 +882,16 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/asaas-adjudication/core.test.ts \
+  supabase/functions/lesson-planner/source.test.ts \
+  supabase/functions/accept-coverage/form-action.test.ts \
+  supabase/functions/student-card-suggestions/source.test.ts \
+  supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
+  supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/gamma-book-generator/book-spec.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -826,6 +933,10 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/student-renewal-billing/index.ts \
   scripts/asaas-adjudication/run.ts \
   supabase/functions/google-meet/index.ts \
+  supabase/functions/google-meet/summary.ts \
+  supabase/functions/google-meet/originals.ts \
+  supabase/functions/lesson-recording-code/index.ts \
+  supabase/functions/student-card-suggestions/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
@@ -856,6 +967,12 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/create-wolfie-topup/provider-safety.ts \
   supabase/functions/create-wolfie-topup/index.ts \
   supabase/functions/lesson-planner/index.ts \
+  supabase/functions/lesson-planner/approved-lessons.ts \
+  supabase/functions/lesson-planner/approved-lessons.test.ts \
+  supabase/functions/lesson-planner/access.ts \
+  supabase/functions/lesson-planner/access.test.ts \
+  supabase/functions/lesson-planner/planner-input.ts \
+  supabase/functions/lesson-planner/planner-input.test.ts \
   supabase/functions/student-context/core.ts \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/student-context/index.ts \
@@ -878,6 +995,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/notify-payment-due/daily.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
   supabase/functions/create-enrollment-pix/index.ts \
   supabase/functions/pedagogical-content/index.ts \
@@ -891,6 +1009,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/create-student-account/index.ts \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/create-teacher-account/index.ts \
+  supabase/functions/activate-teacher-tenant/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/create-asaas-subaccount/index.ts \
   supabase/functions/transfer-teacher-pay/index.ts \
@@ -904,6 +1023,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/referral-welcome/index.ts \
   supabase/functions/sdr-followups/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/care-sweeper/index.ts \
   supabase/functions/post-trial-pipeline/core.ts \
   supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
@@ -914,12 +1034,15 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/hr-ai-screening/index.ts \
   supabase/functions/wolfie-eval/index.ts \
   supabase/functions/wolfie-live-proxy/index.ts \
+  supabase/functions/sync-subscription-status/subscription-read.ts \
+  supabase/functions/sync-subscription-status/subscription-read.test.ts \
   supabase/functions/sync-subscription-status/index.ts \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/monthly-reserve-notify/index.ts \
+  supabase/functions/school-operations-notify/index.ts \
   supabase/functions/cancel-prepaid-invoice/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
@@ -956,6 +1079,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/confirm-attendance/index.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/coverage-admin/index.ts \
+  supabase/functions/coverage-admin/briefing.ts \
+  supabase/functions/coverage-admin/briefing.test.ts \
   supabase/functions/create-public-resume-upload/index.ts \
   supabase/functions/model-probe/index.ts \
   supabase/functions/oral-test-scan/index.ts \
@@ -1279,6 +1404,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260908235000_teacher_payroll_reconciliation.sql"
   "supabase/migrations/20260909185734_turbo_seventh_student_effective_september9.sql"
   "supabase/migrations/20260912192839_lesson_advances.sql"
+  "supabase/migrations/20260929151406_historical_lesson_advance_settlement.sql"
+  "supabase/migrations/20261006194950_lesson_advance_valid_origins.sql"
   "supabase/migrations/20260912203132_schedule_contact_quality.sql"
   "supabase/migrations/20260912203137_lesson_advance_integrity_and_explicit_logging.sql"
   "supabase/migrations/20260912203213_lesson_quality_sessions_and_feedback.sql"
@@ -1321,12 +1448,173 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260916240000_professor_avisa_ausencia_pela_instancia.sql"
   "supabase/migrations/20260916250000_folha_por_professor_no_grupo_da_gestao.sql"
   "supabase/migrations/20260916260000_cron_da_folha_no_grupo_da_gestao.sql"
+  "supabase/migrations/20260917000000_acoes_do_grupo_com_participante_lid.sql"
+  "supabase/migrations/20260917001000_alerta_pagamento_recebido_em_triagem.sql"
+  "supabase/migrations/20260917105957_renewal_due_date_roll_forward.sql"
+  "supabase/migrations/20260917120000_pos_experimental_conversa_e_briefing_do_professor.sql"
+  "supabase/migrations/20260917130000_pos_experimental_uma_abertura_por_telefone.sql"
+  "supabase/migrations/20260917140000_contatos_de_suporte_do_professor.sql"
+  "supabase/migrations/20260917150000_prova_da_assinatura_de_renovacao_no_guard_da_asaas.sql"
+  "supabase/migrations/20260917160000_cobranca_da_renovacao_e_referencia_canonica.sql"
+  "supabase/migrations/20260917170000_reativacao_pelo_painel_com_renovacao_sincronizada.sql"
+  "supabase/migrations/20260917180000_acompanhamento_de_aluno_e_professor.sql"
+  "supabase/migrations/20260917190000_professor_troca_horario_pelo_whatsapp.sql"
+  "supabase/migrations/20260917200000_cobertura_com_pacote_do_aluno.sql"
+  "supabase/migrations/20260918000000_teto_e_aquecimento_do_whatsapp.sql"
+  "supabase/migrations/20260918010000_lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
+  "supabase/migrations/20260918020000_gerador_de_material_do_hub.sql"
+  "supabase/migrations/20260918030000_essencial_ganha_3_geracoes_por_mes.sql"
+  "supabase/migrations/20260918040000_material_do_hub_com_objetivo_e_faixa_etaria.sql"
+  "supabase/migrations/20260918050000_jornada_de_90_dias_no_gerador.sql"
+  "supabase/migrations/20260918060000_assentos_de_aluno_no_hub.sql"
+  "supabase/migrations/20260918070000_aceite_do_convite_completa_o_perfil.sql"
+  "supabase/migrations/20260918080000_substituto_enxerga_o_aluno_que_cobre.sql"
+  "supabase/migrations/20260918090000_cobertura_cancelada_nao_bloqueia_a_proxima.sql"
+  "supabase/migrations/20260918100000_reposicao_com_trilha_e_canais_de_aviso.sql"
+  "supabase/migrations/20260918110000_reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
+  "supabase/migrations/20260919100000_canal_financeiro_e_folha_previa_do_mes.sql"
+  "supabase/migrations/20260921223501_defer_throttled_financial_messages.sql"
+  "supabase/migrations/20260922021857_direct_teacher_transfer.sql"
+  "supabase/migrations/20260922024045_teacher_change_group_notifications.sql"
+  "supabase/migrations/20260922030528_allow_versioned_schedule_change_with_past_coverage.sql"
+  "supabase/migrations/20260922032314_restrict_teacher_student_administration.sql"
+  "supabase/migrations/20260922040028_canonical_teacher_access_and_profile_sync.sql"
+  "supabase/migrations/20260922040818_exclude_inactive_students_from_teacher_access.sql"
+  "supabase/migrations/20260922041626_restrict_legacy_education_tables.sql"
+  "supabase/migrations/20260922042641_enforce_direction_only_student_teacher_assignment.sql"
+  "supabase/migrations/20260922043021_direction_only_student_administration.sql"
+  "supabase/migrations/20260922145342_harden_post_trial_answer_completeness.sql"
+  "supabase/migrations/20260922162000_hold_post_trial_capacity_and_reconcile_duplicates.sql"
+  "supabase/migrations/20260922201500_no_post_trial_sales_after_teacher_no_show.sql"
+  "supabase/migrations/20260922213500_hold_trial_after_student_denial.sql"
+  "supabase/migrations/20260923013220_fix_teacher_change_notice_null_role.sql"
+  "supabase/migrations/20260923030000_storage_write_guards_use_my_role.sql"
+  "supabase/migrations/20260923050000_open_reschedule_keeps_student_access.sql"
+  "supabase/migrations/20260923060000_null_trial_status_keeps_post_trial_question.sql"
+  "supabase/migrations/20260923130000_revert_open_reschedule_access.sql"
+  "supabase/migrations/20260923150000_encerrar_reposicao_e_reatribuir_falta_do_professor.sql"
+  "supabase/migrations/20260923170000_experimental_historico_status_e_link.sql"
+  "supabase/migrations/20260923190000_professor_avisa_no_show_da_experimental.sql"
+  "supabase/migrations/20260923194310_notify_enrollment_completion_and_persist_terms.sql"
+  "supabase/migrations/20260923200000_allow_enrollment_before_trial_feedback.sql"
+  "supabase/migrations/20260924194214_affiliate_coupon_commission_settlement.sql"
+  "supabase/migrations/20260925022856_gamma_school_book_generator.sql"
+  "supabase/migrations/20260926050000_travas_do_release_sobre_o_fechamento_da_experimental.sql"
+  "supabase/migrations/20260926120000_termo_de_registro_das_aulas.sql"
+  "supabase/migrations/20260926130000_isencao_da_taxa_gravada_na_oferta.sql"
+  "supabase/migrations/20260926140000_presenca_pelo_relatorio_do_meet.sql"
+  "supabase/migrations/20260926150000_termo_de_registro_v2.sql"
+  "supabase/migrations/20260926160000_link_da_aula_nao_some_sem_sala.sql"
+  "supabase/migrations/20260926170000_importacao_do_meet_nao_trava_e_termina.sql"
+  "supabase/migrations/20260926180000_meet_identidade_do_professor_e_revogacao.sql"
+  "supabase/migrations/20260926190000_lembrete_leva_a_sala_oficial.sql"
+  "supabase/migrations/20260926190100_modelo_de_lembrete_antigo_volta_ao_padrao.sql"
+  "supabase/migrations/20260926200000_termo_seguro_do_aluno.sql"
+  "supabase/migrations/20260926210000_termo_de_registro_envio_em_lote.sql"
+  "supabase/migrations/20260926220000_cartao_do_aluno_pelo_professor.sql"
+  "supabase/migrations/20260927100000_termo_v3_versao_e_retencao.sql"
+  "supabase/migrations/20260927110000_resumo_automatico_depois_da_aula.sql"
+  "supabase/migrations/20260927120000_originais_do_drive_para_a_lixeira.sql"
+  "supabase/migrations/20260927130000_planner_a_partir_das_aulas_aprovadas.sql"
+  "supabase/migrations/20260927140000_aluno_ve_o_proprio_registro.sql"
+  "supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql"
+  "supabase/migrations/20260927230905_teacher_invite_google_identity.sql"
+  "supabase/migrations/20260928100000_substituto_e_novo_titular_recebem_o_dossie.sql"
+  "supabase/migrations/20260928110000_sala_acompanha_a_troca_de_professor.sql"
+  "supabase/migrations/20260928120000_extrato_de_pontualidade_do_professor.sql"
+  "supabase/migrations/20260928130000_sugestoes_do_cartao_pela_ia.sql"
+  "supabase/migrations/20260929100000_registro_autorizado_pela_escola.sql"
+  "supabase/migrations/20260928010243_meet_class_log_suggestions.sql"
+  "supabase/migrations/20260928033600_renewal_month_end_legacy_issuer.sql"
+  "supabase/migrations/20260928114127_official_meet_link_for_teachers.sql"
+  "supabase/migrations/20260930140000_link_student_affiliate_identity.sql"
+  "supabase/migrations/20260930143000_linked_affiliate_invites.sql"
+  "supabase/migrations/20260930171439_overdue_thirty_day_email_outbox.sql"
+  "supabase/migrations/20260930203752_fix_care_handoff_and_completed_trial_binding.sql"
+  "supabase/migrations/20261001164903_rateio_liquido_afiliados_turbo_e_avisos_de_saque.sql"
+  "supabase/migrations/20261001202946_payout_confirmation_notifications.sql"
+  "supabase/migrations/20261002192214_daily_student_collections.sql"
+  "supabase/migrations/20261002195356_retry_daily_student_collections.sql"
+  "supabase/migrations/20261002195026_enrollment_completion_without_feedback.sql"
+  "supabase/migrations/20261002195728_enrollment_portal_access_in_completion_queue.sql"
+  "supabase/migrations/20261002193942_oral_test_scheduling_lifecycle.sql"
+  "supabase/migrations/20261007175907_enrollment_booking_versioned_schedule_change.sql"
+  "supabase/migrations/20261010232456_lesson_history_traceability.sql"
+  "supabase/migrations/20261012145740_suspended_students_notification_guard.sql"
+  "supabase/migrations/20261012152506_atomic_student_exit_and_teacher_transfer.sql"
+  "supabase/migrations/20261016165219_coverage_effective_schedule_director_rate.sql"
+  "supabase/migrations/20261020233000_reserva_de_agenda_inicio_futuro.sql"
+  "supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql"
+  "supabase/migrations/20261027114059_student_lifecycle_requires_financial_confirmation.sql"
+  "supabase/migrations/20261027135908_school_operations_evidence_and_lead_origins.sql"
+  "supabase/migrations/20261027152745_teacher_student_individual_terms.sql"
+  "supabase/migrations/20261027175500_termo_individual_nao_trava_falta_e_reposicao.sql"
+  "supabase/migrations/20261027190000_professor_autonomo_e_cobertura_pontual.sql"
+  "supabase/migrations/20261027200000_origem_dos_leads_clara.sql"
+  "supabase/migrations/20261027201000_reposicao_por_substituto_sem_termo.sql"
+  "supabase/migrations/20261026230135_confirmed_enrollment_access_without_cash.sql"
+  "supabase/migrations/20261028150000_feriados_nacionais_sem_aula.sql"
+  "supabase/migrations/20261028210000_visao_do_professor_sem_financeiro.sql"
+  "supabase/migrations/20261029190000_cancelar_experimental_e_leilao_da_ia.sql"
+  "supabase/migrations/20261029200000_matricula_ate_o_fim_antes_dos_termos.sql"
+  "supabase/migrations/20261101010000_termo_individual_por_link.sql"
+  "supabase/migrations/20261101020000_turbo_visivel_e_experimental_pelo_meet.sql"
+  "supabase/migrations/20261101030000_termo_por_link_espera_as_8h.sql"
+  "supabase/migrations/20261101040000_termo_so_executa_com_a_escola.sql"
+  "supabase/migrations/20261102140000_links_das_aulas_e_experimental_no_aceite.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
+  "supabase/tests/termo_individual_por_link.sql"
+  "supabase/tests/turbo_visivel_e_experimental_pelo_meet.sql"
+  "supabase/tests/matricula_ate_o_fim_antes_dos_termos.sql"
+  "supabase/tests/cancelar_experimental.sql"
+  "supabase/tests/oral_test_scheduling_lifecycle.sql"
+  "supabase/tests/affiliate_net_payment_split.sql"
+  "supabase/tests/payout_confirmation_notifications.sql"
+  "supabase/tests/daily_student_collections.sql"
+  "supabase/tests/retry_daily_student_collections.sql"
+  "supabase/tests/care_handoff_completed_trial.sql"
+  "supabase/tests/linked_affiliate_invites.sql"
+  "supabase/tests/affiliate_coupon_commission_settlement.sql"
+  "supabase/tests/termo_de_registro_das_aulas.sql"
+  "supabase/tests/presenca_pelo_relatorio_do_meet.sql"
+  "supabase/tests/importacao_do_meet_nao_trava_e_termina.sql"
+  "supabase/tests/identidade_do_professor_e_revogacao_no_meet.sql"
+  "supabase/tests/teacher_invite_google_identity.sql"
+  "supabase/tests/meet_class_log_suggestions.sql"
+  "supabase/tests/renewal_legacy_month_end.sql"
+  "supabase/tests/official_meet_link_for_teachers.sql"
+  "supabase/tests/lembrete_leva_a_sala_oficial.sql"
+  "supabase/tests/termo_seguro_do_aluno.sql"
+  "supabase/tests/termo_de_registro_envio_em_lote.sql"
+  "supabase/tests/cartao_do_aluno_pelo_professor.sql"
+  "supabase/tests/termo_v3_versao_e_retencao.sql"
+  "supabase/tests/resumo_automatico_depois_da_aula.sql"
+  "supabase/tests/originais_do_drive_para_a_lixeira.sql"
+  "supabase/tests/planner_a_partir_das_aulas_aprovadas.sql"
+  "supabase/tests/aluno_ve_o_proprio_registro.sql"
+  "supabase/tests/substituto_e_novo_titular_recebem_o_dossie.sql"
+  "supabase/tests/sala_acompanha_a_troca_de_professor.sql"
+  "supabase/tests/extrato_de_pontualidade_do_professor.sql"
+  "supabase/tests/sugestoes_do_cartao_pela_ia.sql"
+  "supabase/tests/troca_de_professor_sala_e_ponto_integrados.sql"
+  "supabase/tests/aula_de_uma_hora_e_cobertura_desfeita.sql"
+  "supabase/tests/versao_do_contrato_no_aceite.sql"
+  "supabase/tests/contrato_professor_pj_e_transicao.sql"
+  "supabase/tests/registro_autorizado_pela_escola.sql"
   "supabase/tests/sdr_confirmation_timeout.sql"
   "supabase/tests/sdr_conversation_work.sql"
   "supabase/tests/sdr_attention_quality.sql"
   "supabase/tests/student_status_and_level_management.sql"
+  "supabase/tests/school_operations_evidence_and_lead_origins.sql"
+  "supabase/tests/teacher_student_individual_terms.sql"
+  "supabase/tests/termo_individual_nao_trava_falta_e_reposicao.sql"
+  "supabase/tests/professor_autonomo_e_cobertura_pontual.sql"
+  "supabase/tests/origem_dos_leads_clara.sql"
+  "supabase/tests/reposicao_por_substituto_sem_termo.sql"
+  "supabase/tests/feriados_nacionais_sem_aula.sql"
+  "supabase/tests/visao_do_professor_sem_financeiro.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"
@@ -1424,6 +1712,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/interview_notification_delivery.sql"
   "supabase/tests/atomic_teacher_availability_replacement.sql"
   "supabase/tests/lesson_advances.sql"
+  "supabase/tests/historical_lesson_advance_settlement.sql"
+  "supabase/tests/lesson_history_traceability.sql"
+  "supabase/tests/suspended_students_notification_guard.sql"
+  "supabase/tests/atomic_student_exit_and_teacher_transfer.sql"
+  "supabase/tests/lesson_advance_valid_origins.sql"
   "supabase/tests/schedule_contact_quality.sql"
   "supabase/tests/lesson_advance_integrity_and_explicit_logging.sql"
   "supabase/tests/lesson_quality_sessions_and_feedback.sql"
@@ -1438,6 +1731,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/mesmo_destinatario_nono_digito.sql"
   "supabase/tests/renovacao_escolha_de_professor.sql"
   "supabase/tests/fechamento_automatico_da_experimental.sql"
+  "supabase/tests/pos_experimental_com_trial_status_nulo.sql"
+  "supabase/tests/encerrar_reposicao.sql"
+  "supabase/tests/experimental_historico_e_remarcacao.sql"
+  "supabase/tests/enrollment_without_trial_feedback.sql"
+  "supabase/tests/enrollment_portal_access_notifications.sql"
   # Global queue/clock and canonical-root observation tests run first in the
   # network-less finance QA runner; never claim real work or replace a real
   # integration with a test fixture in a production release savepoint.
@@ -1448,6 +1746,17 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/tour_de_novidades_por_usuario.sql"
   "supabase/tests/cobertura_de_aula_que_ja_aconteceu.sql"
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
+  "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
+  "supabase/tests/gerador_de_material_do_hub.sql"
+  "supabase/tests/gamma_school_book_generator.sql"
+  "supabase/tests/assentos_de_aluno_no_hub.sql"
+  "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
+  "supabase/tests/cobertura_cancelada_nao_bloqueia_a_proxima.sql"
+  "supabase/tests/coverage_effective_schedule_director_rate.sql"
+  "supabase/tests/reposicao_com_trilha_e_canais_de_aviso.sql"
+  "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
+  "supabase/tests/canal_financeiro_e_folha_previa_do_mes.sql"
+  "supabase/tests/reserva_de_agenda_inicio_futuro.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1493,6 +1802,7 @@ SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 SHARED_PAYROLL_MESSAGE_RELATIVE="supabase/functions/_shared/payroll-message.ts"
+SHARED_RESCHEDULE_MESSAGES_RELATIVE="supabase/functions/_shared/reschedule-messages.ts"
 SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
 SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/financial-report-message-fence.ts"
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
@@ -1519,6 +1829,7 @@ HARDENED_FUNCTIONS=(
   create-saas-checkout
   create-student-account
   create-teacher-account
+  activate-teacher-tenant
   admin-update-subscription
   create-asaas-subaccount
   send-whatsapp
@@ -1532,6 +1843,7 @@ HARDENED_FUNCTIONS=(
   referral-welcome
   sdr-followups
   funnel-sweeper
+  care-sweeper
   post-trial-pipeline
   whatsapp-inbound
   whatsapp-crm-lead-notif
@@ -1544,6 +1856,7 @@ HARDENED_FUNCTIONS=(
   dre-report
   payment-split-notify
   monthly-reserve-notify
+  school-operations-notify
   student-card-notify
   student-renewal-notify
   student-renewal-billing
@@ -1581,6 +1894,8 @@ HARDENED_FUNCTIONS=(
   teacher-training-invite
   send-attendance-confirmations
   google-meet
+  lesson-recording-code
+  student-card-suggestions
   send-class-notification
   send-rejection-email
   send-welcome-contract
@@ -1595,6 +1910,7 @@ HARDENED_FUNCTIONS=(
   whatsapp-notificacao-matricula
   whatsapp-notificacao-wise
   wolfie-healthcheck
+  gamma-book-generator
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -1657,6 +1973,7 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 [[ -s "$SHARED_PAYROLL_MESSAGE_RELATIVE" ]] || die "compositor da folha ausente"
+[[ -s "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" ]] || die "compositor das reposições ausente"
 [[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
 [[ -s "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" ]] || die "fence de relatórios financeiros ausente"
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
@@ -1781,6 +2098,7 @@ append_release_input_checksum() {
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
     "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
+    "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" \
     "$SHARED_EVOLUTION_SEND_RELATIVE" \
     "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
@@ -1961,6 +2279,8 @@ rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 rsync -a -- "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payroll-message.ts"
+rsync -a -- "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/reschedule-messages.ts"
 rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
 rsync -a -- "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
@@ -2157,6 +2477,7 @@ hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 lead_contact_shared_swapped=0
 payroll_message_shared_swapped=0
+reschedule_messages_shared_swapped=0
 evolution_send_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
@@ -2331,6 +2652,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 [[ -s "$release_dir/functions/_shared/payroll-message.ts" ]]
+[[ -s "$release_dir/functions/_shared/reschedule-messages.ts" ]]
 [[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
 [[ -s "$release_dir/functions/_shared/financial-report-message-fence.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
@@ -2621,6 +2943,14 @@ restore_previous_release() {
         "$functions_dir/_shared/payroll-message.ts"
     else
       rm -f -- "$functions_dir/_shared/payroll-message.ts"
+    fi
+  fi
+  if [[ "$reschedule_messages_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/reschedule-messages.ts" ]]; then
+      cp -a -- "$backup_dir/reschedule-messages.ts" \
+        "$functions_dir/_shared/reschedule-messages.ts"
+    else
+      rm -f -- "$functions_dir/_shared/reschedule-messages.ts"
     fi
   fi
   if [[ "$evolution_send_shared_swapped" = "1" ]]; then
@@ -3984,6 +4314,14 @@ payroll_message_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/payroll-message.ts" \
   "$functions_dir/_shared/payroll-message.ts"
 
+if [[ -f "$functions_dir/_shared/reschedule-messages.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/reschedule-messages.ts" \
+    "$backup_dir/reschedule-messages.ts"
+fi
+reschedule_messages_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/reschedule-messages.ts" \
+  "$functions_dir/_shared/reschedule-messages.ts"
+
 if [[ -f "$functions_dir/_shared/evolution-send.ts" ]]; then
   cp -a -- "$functions_dir/_shared/evolution-send.ts" \
     "$backup_dir/evolution-send.ts"
@@ -4280,6 +4618,12 @@ wait_for_http_status 401 "autenticação da IA do Hub" \
   -X POST "$api_url/functions/v1/pedagogical-content" \
   -H 'Content-Type: application/json' \
   --data '{"hubMode":true,"prompt":"teste de autenticação sem credenciais"}'
+wait_for_http_status 200 "preflight do gerador de livros" \
+  -X OPTIONS "$api_url/functions/v1/gamma-book-generator"
+wait_for_http_status 401 "autenticação do gerador de livros" \
+  -X POST "$api_url/functions/v1/gamma-book-generator" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"create"}'
 wait_for_http_status 200 "preflight do Wolfie do Hub" \
   -X OPTIONS "$api_url/functions/v1/wolf-tutor-api"
 wait_for_http_status 401 "autenticação do Wolfie do Hub" \
@@ -4298,6 +4642,7 @@ for protected_function in \
   accept-opportunity \
   cancel-prepaid-invoice \
   monthly-reserve-notify \
+  school-operations-notify \
   student-card-notify \
   student-renewal-notify \
   student-renewal-billing \
@@ -4449,7 +4794,7 @@ wait_for_http_status 400 "validação pública de indicação" \
   -X POST "$api_url/functions/v1/referral-welcome" \
   -H 'Content-Type: application/json' \
   --data '{}'
-for service_cron in sdr-followups funnel-sweeper post-trial-pipeline; do
+for service_cron in sdr-followups funnel-sweeper care-sweeper post-trial-pipeline; do
   wait_for_http_status 403 "service role de $service_cron" \
     -X POST "$api_url/functions/v1/$service_cron" \
     -H 'Content-Type: application/json' \

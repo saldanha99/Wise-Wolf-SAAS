@@ -52,7 +52,7 @@ interface Props {
 const Field: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
     <div className="rounded-2xl border border-brand-border bg-brand-surface-2/50 p-4">
         <p className="text-[10px] font-black uppercase tracking-widest text-brand-muted">{label}</p>
-        <p className="mt-1 break-words text-sm font-bold text-brand-text">{value?.trim() || '—'}</p>
+        <p className="mt-1 wrap-break-word text-sm font-bold text-brand-text">{value?.trim() || '—'}</p>
     </div>
 );
 
@@ -203,7 +203,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
     return (
         <div className="grid gap-6 lg:grid-cols-2">
             {/* Dados bancários */}
-            <section className="overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-sm">
+            <section className="overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-xs">
                 <header className="flex items-center justify-between gap-3 border-b border-brand-border p-5 sm:p-6">
                     <div className="flex min-w-0 items-center gap-3">
                         <div className="shrink-0 rounded-xl bg-tenant-primary/10 p-2.5 text-tenant-primary">
@@ -237,7 +237,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
                                         value={draft.bankName}
                                         onChange={(e) => setDraft({ ...draft, bankName: e.target.value })}
                                         placeholder="Ex: Nubank"
-                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                     />
                                 </label>
                                 <label className="block">
@@ -246,7 +246,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
                                         value={draft.agency}
                                         onChange={(e) => setDraft({ ...draft, agency: e.target.value })}
                                         placeholder="0001"
-                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                     />
                                 </label>
                                 <label className="block sm:col-span-2">
@@ -255,7 +255,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
                                         value={draft.accountNumber}
                                         onChange={(e) => setDraft({ ...draft, accountNumber: e.target.value })}
                                         placeholder="00000000-0"
-                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                     />
                                 </label>
                                 <label className="block">
@@ -263,7 +263,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
                                     <select
                                         value={draft.pixKeyType}
                                         onChange={(e) => setDraft({ ...draft, pixKeyType: e.target.value })}
-                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                     >
                                         {PIX_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                                     </select>
@@ -274,7 +274,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
                                         value={draft.pixKey}
                                         onChange={(e) => setDraft({ ...draft, pixKey: e.target.value })}
                                         placeholder="Sua chave"
-                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                        className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/30"
                                     />
                                 </label>
                             </div>
@@ -360,7 +360,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantI
             </section>
 
             {/* Nota fiscal do mês */}
-            <section className="overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-sm">
+            <section className="overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-xs">
                 <header className="flex items-center justify-between gap-3 border-b border-brand-border p-5 sm:p-6">
                     <div className="flex min-w-0 items-center gap-3">
                         <div className="shrink-0 rounded-xl bg-tenant-primary/10 p-2.5 text-tenant-primary">

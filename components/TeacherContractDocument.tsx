@@ -2,6 +2,57 @@ import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
+import { TEACHER_PJ_CONTRACT_SINCE, teacherPjClauses } from '../lib/teacherPjContract';
+import { parseTeacherProviderIdentity } from '../lib/teacherProviderIdentity';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLÁUSULA DO REGISTRO DAS AULAS (versão 2 em diante)
+// ─────────────────────────────────────────────────────────────────────────────
+// Resume o aviso do registro das aulas (aviso v4, kind NOTICE em
+// private.lesson_recording_terms, público TEACHER — migration 20260929100000) e
+// remete a ele: os dois dizem a MESMA coisa. O registro é decisão da escola
+// (27/09/2026) e integra a execução do contrato — "autorizado pela escola com
+// direito de recusa": quem assina fica ciente e pode pedir, a qualquer tempo,
+// no app ou pelo WhatsApp da escola, para não ser registrado, sem prejuízo das
+// aulas nem da remuneração. Não é termo de consentimento.
+// Entra no FIM (11ª), depois da 10ª, para não renumerar nada: a 3ª, a 7.3 e a
+// 9ª são citadas pelo número em outras cláusulas. Só aparece na escola que
+// oferece a versão com a cláusula (tenant_contract_terms). Prazos como o
+// sistema faz (e o termo v3 diz); ver o comentário da cláusula do aluno.
+// ⚠️ Texto de contrato assinado não muda: qualquer alteração aqui é versão
+// nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
+function TeacherLessonRecordingClause() {
+    return (
+        <div data-contract-clause="registro-das-aulas">
+            <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 11ª – REGISTRO DAS AULAS</h3>
+            <p className="text-justify">
+                11.1 As aulas ministradas pelo CONTRATADO em salas do Google Meet criadas pela conta da CONTRATANTE, nas quais o CONTRATADO atua como coanfitrião pela conta Google que confirmar na plataforma, são registradas por decisão da CONTRATANTE, <strong>sem gravação em vídeo</strong>: transcrição automática do que foi falado, anotações automáticas geradas pelo Google e relatório com os horários de entrada e saída de cada participante.
+            </p>
+            <p className="text-justify">
+                11.2 O registro é usado exclusivamente para: a) continuidade pedagógica do aluno; b) resumo de cada aula, preparado com auxílio de inteligência artificial, que só integra a ficha do aluno depois de lido, corrigido quando necessário e aprovado pelo CONTRATADO; c) planejamento das próximas aulas e das tarefas, com auxílio de inteligência artificial, a partir do resumo aprovado; d) entrega do histórico pedagógico (dossiê) ao professor que assumir o aluno ou o substituir, por link que só abre com login na plataforma da CONTRATANTE; e) sugestão, com auxílio de inteligência artificial, de itens para o cartão do aluno, que só entram no cartão depois de revisados pelo CONTRATADO; f) confirmação de que a aula aconteceu, pelos horários de entrada e saída.
+            </p>
+            <p className="text-justify">
+                11.3 <strong>EXTRATO DE PONTUALIDADE.</strong> Quando a CONTRATANTE ativar o recurso, o CONTRATADO terá acesso a um extrato com o horário em que entrou na sala em cada aula, para acompanhamento próprio, sem nota, sem ranking e sem comparação com outros professores. O extrato não altera a remuneração prevista na Cláusula 3ª. Divergências apuradas a partir do registro (por exemplo, aula lançada sem ninguém na sala) geram apenas um aviso para conversa com a coordenação: nenhum ajuste de pagamento é automático, e qualquer ajuste passa pela direção.
+            </p>
+            <p className="text-justify">
+                11.4 A transcrição completa das aulas só é acessível ao CONTRATADO (quanto às suas aulas), à coordenação e à direção da CONTRATANTE. Outros professores do aluno veem apenas o resumo aprovado, e o suporte técnico do fornecedor da plataforma pode ver o resumo aprovado e o cartão do aluno somente para resolver problema técnico.
+            </p>
+            <p className="text-justify">
+                11.5 Além da CONTRATANTE, tratam esses dados, em nome dela: o Google (Google Workspace), que fornece a sala, a transcrição, as anotações e o relatório de presença; o fornecedor da plataforma de ensino, que armazena os dados e presta suporte técnico; e o provedor de inteligência artificial contratado pela CONTRATANTE (OpenRouter), em serviço pago, com o uso dos dados para treinar modelos desligado. Esses fornecedores atuam como operadores, em nome e sob as instruções da CONTRATANTE. Para os fins da Cláusula 8ª, o tratamento descrito nesta cláusula integra a execução deste contrato, e o CONTRATADO, ao assinar, declara estar ciente dele, sem prejuízo do direito previsto no item 11.7.
+            </p>
+            <p className="text-justify">
+                11.6 A transcrição, as anotações e o relatório de presença ficam no sistema da CONTRATANTE por até 90 (noventa) dias, contados de quando chegam ao sistema (logo depois da aula); os trechos da aula copiados para o resumo são apagados 90 (noventa) dias depois da aula. A CONTRATANTE elimina os arquivos originais de sua conta Google em até 90 (noventa) dias depois da aula; eles passam pela lixeira do Google, que os elimina de vez em até 30 (trinta) dias. Quando o relatório de presença diverge do lançamento da aula, os horários de entrada e saída daquela aula ficam também no registro do caso aberto para a coordenação (item 11.3), mantido pelo tempo necessário para resolvê-lo e para o exercício regular de direitos das partes. O resumo aprovado e o cartão do aluno (objetivo, temas de interesse, temas a evitar, forma preferida de correção e observações pedagógicas anotados pelo professor, nunca com informação sobre saúde, religião, política, família ou dinheiro; para menores de 18 anos, somente objetivo e temas) são mantidos enquanto o aluno estudar na CONTRATANTE e eliminados 90 (noventa) dias após a sua saída.
+            </p>
+            <p className="text-justify">
+                11.7 O CONTRATADO pode, a qualquer tempo, sem prejuízo das suas aulas nem da remuneração prevista na Cláusula 3ª: a) ver no aplicativo o registro das suas aulas; b) pedir, no aplicativo da CONTRATANTE ou pelo WhatsApp dela, que as suas aulas deixem de ser registradas, caso em que, a partir do pedido, elas continuam normalmente, sem registro; c) pedir, pelo WhatsApp da CONTRATANTE, que o que já foi registrado seja excluído, ressalvado o registro de caso previsto no item 11.6; d) pedir informação, correção ou cópia dos seus dados pelo contato de privacidade da CONTRATANTE indicado no aviso completo, nos termos da Lei 13.709/2018 (LGPD).
+            </p>
+            <p className="text-justify">
+                11.8 O aviso completo sobre o registro das aulas, com o detalhamento de quem vê cada informação e dos prazos, fica disponível no aplicativo da CONTRATANTE.
+            </p>
+        </div>
+    );
+}
 
 interface TeacherContractProps {
     teacherName: string;
@@ -16,22 +67,35 @@ interface TeacherContractProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    /**
+     * Versão do texto (ver `lib/contractTerms.ts`): a gravada no aceite, ou,
+     * no contrato ainda não assinado, a que a escola oferece. Ausente, o
+     * documento mostra o texto de antes (versão 1) — nunca uma cláusula que o
+     * professor não assinou nem que a escola não decidiu. Tela que assina passa
+     * a versão oferecida explicitamente, e grava a mesma.
+     */
+    termsVersion?: number;
+    providerIdentity?: unknown;
     displayMode?: 'responsive' | 'a4';
     showPrintButton?: boolean;
     innerRef?: React.RefObject<HTMLDivElement>;
 }
 
-export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRate?: number | null) {
+export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRate?: number | null,
+    options?: { termsVersion: number; providerIdentity?: unknown }) {
     const schoolIdentity = getSchoolContractIdentity(school);
     const normalizedHourlyRate = Number(hourlyRate);
     const hasValidHourlyRate = Number.isFinite(normalizedHourlyRate) && normalizedHourlyRate > 0;
+    const providerReady = !options || options.termsVersion < TEACHER_PJ_CONTRACT_SINCE
+        || Boolean(parseTeacherProviderIdentity(options.providerIdentity));
     return {
         ...schoolIdentity,
         hourlyRate: hasValidHourlyRate ? normalizedHourlyRate : null,
-        isReady: schoolIdentity.isReady && hasValidHourlyRate,
-        missingFields: hasValidHourlyRate
+        isReady: schoolIdentity.isReady && hasValidHourlyRate && providerReady,
+        missingFields: [...(hasValidHourlyRate
             ? schoolIdentity.missingFields
-            : [...schoolIdentity.missingFields, 'valor por aula'],
+            : [...schoolIdentity.missingFields, 'valor por aula']),
+            ...(!providerReady ? ['razão social, CNPJ, endereço da empresa e CPF do representante válidos'] : [])],
     };
 }
 
@@ -48,6 +112,8 @@ export function TeacherContractDocument({
     acceptedAt,
     userIp,
     subscriptionId,
+    termsVersion,
+    providerIdentity,
     displayMode = 'a4',
     showPrintButton = true,
     innerRef,
@@ -55,7 +121,16 @@ export function TeacherContractDocument({
     const componentRef = useRef<HTMLDivElement>(null);
     const documentRef = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
     const isResponsive = displayMode === 'responsive';
-    const schoolIdentity = getTeacherContractReadiness(school, hourlyRate);
+    // Contrato assinado nunca muda de texto: sem versão gravada no aceite, é o
+    // texto de antes da cláusula do registro das aulas.
+    const contractVersion = resolveContractTermsVersion('TEACHER', {
+        signed: Boolean(acceptedAt),
+        recordedVersion: termsVersion,
+    });
+    const withLessonRecording = contractIncludesLessonRecording('TEACHER', contractVersion);
+    const isPjContract = contractVersion >= TEACHER_PJ_CONTRACT_SINCE;
+    const provider = parseTeacherProviderIdentity(providerIdentity);
+    const schoolIdentity = getTeacherContractReadiness(school, hourlyRate, { termsVersion: contractVersion, providerIdentity });
 
     const handlePrint = useReactToPrint({
         contentRef: documentRef,
@@ -103,7 +178,7 @@ export function TeacherContractDocument({
             <div
                 ref={documentRef}
                 className={isResponsive
-                    ? 'teacher-contract-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    ? 'teacher-contract-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-xs sm:p-8 lg:p-[18mm] lg:text-[11px]'
                     : 'w-[210mm] min-h-[297mm] bg-white p-[25mm] shadow-2xl text-[11px] leading-relaxed text-gray-800'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
@@ -152,24 +227,32 @@ export function TeacherContractDocument({
                         {schoolIdentity.name}
                     </div>
                     <div className="text-right text-[10px] text-gray-500 uppercase font-bold">
-                        Professor Autônomo
+                        {isPjContract ? 'Prestação de serviços por pessoa jurídica' : 'Professor Autônomo'}
                     </div>
                 </div>
 
-                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-gray-200 py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
+                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-gray-200 py-2">{isPjContract ? 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS – PESSOA JURÍDICA' : 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO'}</h1>
 
                 {/* Identificação das Partes */}
                 <div className="mb-4 space-y-2 text-justify">
                     <p>
                         <strong>CONTRATANTE:</strong> {schoolIdentity.name}, inscrita no CNPJ sob nº {schoolIdentity.cnpj}, com sede em {schoolIdentity.address}, neste ato representada por {schoolIdentity.directorName}, doravante denominada <strong>“CONTRATANTE”</strong>.
                     </p>
-                    <p>
+                    {isPjContract ? <p>
+                        <strong>CONTRATADA:</strong> {provider?.companyName || '[RAZÃO SOCIAL PENDENTE]'}, inscrita no CNPJ sob nº {provider?.cnpj || '[CNPJ PENDENTE]'}, com sede em {provider?.companyAddress || '[ENDEREÇO DA EMPRESA PENDENTE]'}, representada por {teacherName || '[REPRESENTANTE PENDENTE]'}, CPF {provider?.representativeCpf || '[CPF PENDENTE]'}, que declara poderes para esta contratação. Professor executor inicialmente indicado: {teacherName || '[PROFESSOR PENDENTE]'}. Doravante denominada <strong>“CONTRATADA”</strong>. Na Cláusula 11ª, “CONTRATADO” designa o professor executor quanto ao registro de suas aulas e aos seus direitos sobre dados pessoais.
+                    </p> : <p>
                         <strong>CONTRATADO:</strong> {teacherName || '---'}, brasileiro(a), nascido(a) em {teacherBirthDate || '---'}, portador(a) do RG nº {teacherRG || '---'}, CPF nº {teacherCPF || '---'}, domiciliado(a) em {teacherAddress || '---'}, doravante denominado <strong>“PROFESSOR”</strong>.
-                    </p>
+                    </p>}
                 </div>
 
                 {/* Cláusulas */}
                 <div className="space-y-3">
+                    {isPjContract ? teacherPjClauses(lessonRate).map(clause => (
+                        <div key={clause.title} data-contract-clause="pj-v3">
+                            <h3 className="font-bold uppercase text-[#002366] mb-1">{clause.title}</h3>
+                            {clause.paragraphs.map(paragraph => <p key={paragraph.slice(0, 8)} className="text-justify">{paragraph}</p>)}
+                        </div>
+                    )) : <>
                     <div>
                         <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 1ª – OBJETO</h3>
                         <p className="text-justify">
@@ -298,10 +381,13 @@ export function TeacherContractDocument({
                             10.2 O CONTRATADO compromete-se a utilizar referido material exclusivamente para a execução das aulas vinculadas à CONTRATANTE, sendo vedada sua reprodução, distribuição, compartilhamento, adaptação, comercialização ou utilização para fins próprios ou de terceiros.
                         </p>
                     </div>
+
+                    </>}
+                    {withLessonRecording && <TeacherLessonRecordingClause />}
                 </div>
 
                 <p className="mt-4 text-justify italic text-gray-500">
-                    E, por estarem justos e contratados, assinam o presente instrumento em duas vias de igual teor, juntamente com duas testemunhas.
+                    {isPjContract ? 'As partes firmam este instrumento por meio eletrônico, com acesso à versão integral e ao comprovante das manifestações. A assinatura do representante vincula a pessoa jurídica identificada, nos limites de seus poderes.' : 'E, por estarem justos e contratados, assinam o presente instrumento em duas vias de igual teor, juntamente com duas testemunhas.'}
                 </p>
 
                 {/* Assinaturas */}
@@ -354,8 +440,8 @@ export function TeacherContractDocument({
                                 )}
                             </div>
                             <div className="border-t border-black pt-1 w-full text-center">
-                                <p className="font-bold uppercase text-[10px]">{teacherName || 'Professor'}</p>
-                                <p className="text-[8px] text-gray-500 uppercase">CONTRATADO</p>
+                                <p className="font-bold uppercase text-[10px]">{isPjContract ? provider?.companyName || '[RAZÃO SOCIAL PENDENTE]' : teacherName || 'Professor'}</p>
+                                <p className="text-[8px] text-gray-500 uppercase">{isPjContract ? `CONTRATADA — representada por ${teacherName}` : 'CONTRATADO'}</p>
                             </div>
                         </div>
                     </div>
@@ -373,6 +459,8 @@ export function TeacherContractDocument({
                                 <p><strong>Data:</strong> {new Date(acceptedAt).toLocaleString('pt-BR')}</p>
                                 <p><strong>IP:</strong> {userIp || 'Não registrado'}</p>
                                 <p><strong>ID:</strong> {subscriptionId || 'PENDING'}</p>
+                                {/* Só a partir da versão 2: o selo dos contratos de antes fica como era. */}
+                                {contractVersion > 1 && <p><strong>Versão do texto:</strong> {contractVersion}</p>}
                             </div>
                         </div>
                     </div>

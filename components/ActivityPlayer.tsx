@@ -55,7 +55,7 @@ const celebrateLearningResult = (leveledUp: boolean, score: number) => {
     if (leveledUp) {
         confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
     } else if (score >= 80) {
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#2E3FA8'] });
     }
 };
 
@@ -232,7 +232,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && closePlayer()}>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-200 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && closePlayer()}>
             <div
                 ref={dialogRef}
                 role="dialog"
@@ -279,7 +279,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                         </div>
                     )}
                     {result ? (
-                        <div ref={resultRegionRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
+                        <div ref={resultRegionRef} tabIndex={-1} role="status" aria-live="polite" className="outline-hidden">
                             <VictoryScreen
                                 result={result}
                                 onContinue={() => onComplete(result.score)}
@@ -443,9 +443,9 @@ const VictoryScreen: React.FC<{
                     background: leveledUp
                         ? 'linear-gradient(135deg,#fbbf24,#f59e0b)'
                         : passed
-                            ? 'linear-gradient(135deg,#8b5cf6,#6366f1)'
+                            ? 'linear-gradient(135deg,#2E3FA8,#2E3FA8)'
                             : 'linear-gradient(135deg,#fb923c,#f97316)',
-                    boxShadow: leveledUp ? '0 8px 0 #d97706' : passed ? '0 8px 0 #4f46e5' : '0 8px 0 #c2410c',
+                    boxShadow: leveledUp ? '0 8px 0 #d97706' : passed ? '0 8px 0 #1A2690' : '0 8px 0 #c2410c',
                 }}
             >
                 <span className="text-5xl">{emoji}</span>
@@ -514,7 +514,7 @@ const VictoryScreen: React.FC<{
             <button
                 onClick={passed ? onContinue : onRetry}
                 className="mt-8 w-full max-w-xs mx-auto block px-6 py-3.5 rounded-2xl bg-violet-500 text-white font-black text-sm uppercase tracking-wider hover:bg-violet-600 transition-colors"
-                style={{ boxShadow: '0 5px 0 #6d28d9' }}
+                style={{ boxShadow: '0 5px 0 #10197A' }}
             >
                 {passed ? 'Continuar' : 'Tentar novamente'}
             </button>
@@ -598,7 +598,7 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; onFinish: (
                 onClick={() => setFlipped(f => !f)}
                 aria-pressed={flipped}
                 aria-label={flipped ? `Ocultar tradução de ${card.term}` : `Mostrar tradução de ${card.term}`}
-                className="relative flex min-h-[200px] w-full cursor-pointer items-center justify-center rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-50 p-6 text-inherit transition-all hover:shadow-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-300 motion-reduce:transition-none dark:border-violet-800/30 dark:from-violet-900/20 dark:to-indigo-900/20 sm:min-h-[260px] sm:p-8"
+                className="relative flex min-h-[200px] w-full cursor-pointer items-center justify-center rounded-2xl border border-violet-100 bg-linear-to-br from-violet-50 to-indigo-50 p-6 text-inherit transition-all hover:shadow-lg focus:outline-hidden focus-visible:ring-4 focus-visible:ring-violet-300 motion-reduce:transition-none dark:border-violet-800/30 dark:from-violet-900/20 dark:to-indigo-900/20 sm:min-h-[260px] sm:p-8"
             >
                 {!flipped ? (
                     <div className="text-center">
@@ -812,7 +812,7 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
         // a Wolfie ocupa a tela inteira corretamente em todos os browsers.
         return createPortal(
             <Suspense fallback={
-                <div className="fixed inset-0 z-[200] bg-slate-950 flex items-center justify-center">
+                <div className="fixed inset-0 z-200 bg-slate-950 flex items-center justify-center">
                     <Loader2 className="animate-spin text-violet-400" size={32} />
                 </div>
             }>
@@ -850,7 +850,7 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
                     {practiceNotice}
                 </p>
             )}
-            <div className="bg-gradient-to-br from-violet-50 to-pink-50 dark:from-violet-900/20 dark:to-pink-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-6 mb-4">
+            <div className="bg-linear-to-br from-violet-50 to-pink-50 dark:from-violet-900/20 dark:to-pink-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-6 mb-4">
                 <Mic size={24} className="text-violet-500 mb-3" />
                 <p className="text-[10px] uppercase tracking-widest text-violet-400 font-bold mb-2">Tarefa</p>
                 <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{activity.content?.instructions_pt}</p>

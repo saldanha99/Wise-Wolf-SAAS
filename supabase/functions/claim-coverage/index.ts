@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { sendWhatsText } from "../_shared/evolution-send.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -221,10 +222,15 @@ async function notifyAfterClaim(
     const cobre = String(result.cover_teacher_name || "Professor").trim();
     const ausente = String(result.original_teacher_name || "Professor").trim();
 
+    // Canal de coordenação (sem grupo configurado, cai na Gestão) — a
+    // cobertura é agenda, não dinheiro.
     const { data: conf } = await supabase.from("dre_report_settings")
-      .select("destino,is_active").eq("tenant_id", tenantId).maybeSingle();
-    const destino = conf?.is_active
-      ? resolveTenantConfiguredWhatsAppDestination(route, conf.destino)
+      .select("is_active").eq("tenant_id", tenantId).maybeSingle();
+    const canal = conf?.is_active
+      ? await loadTenantNoticeDestination(supabase, tenantId, "coordenacao")
+      : null;
+    const destino = canal
+      ? resolveTenantConfiguredWhatsAppDestination(route, canal)
       : null;
     if (destino) {
       await send(
@@ -259,9 +265,10 @@ async function notifyAfterClaim(
   }
 }
 
+// Sem `action` no formulário: posta para a própria URL do link. Ver a nota em
+// `accept-coverage` — o `url.pathname` aqui dentro não tem o `/functions/v1`.
 function claimPage(
   token: string,
-  actionPath: string,
   opp: JsonObject,
 ): Response {
   const date = formatDate(opp.class_date) ?? "data informada";
@@ -274,7 +281,7 @@ function claimPage(
   }</strong> em <strong>${escapeHtml(date)}</strong>, às <strong>${
     escapeHtml(time)
   }</strong>. Quem aceitar primeiro fica com a aula — e ela conta no seu pagamento.</p>
-    <form method="post" action="${escapeHtml(actionPath)}" autocomplete="off">
+    <form method="post" autocomplete="off">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button class="accept" type="submit" name="decision" value="accept">Eu cubro essa aula</button>
       <button class="decline" type="submit" name="decision" value="decline">Não posso</button>
@@ -360,7 +367,7 @@ async function handleGet(url: URL): Promise<Response> {
       String(opp.original_teacher_id || ""),
     ).maybeSingle(),
   ]);
-  return claimPage(token, url.pathname, {
+  return claimPage(token, {
     ...opp,
     student_name: student?.full_name,
     original_teacher_name: original?.full_name,
@@ -418,6 +425,14 @@ async function handlePost(req: Request): Promise<Response> {
     p_token: token,
     p_accept: accept,
   });
+  if (error?.code === "PT412") {
+    return respond(
+      "Termo individual pendente",
+      "Esta cobertura ainda não foi confirmada. Entre no portal da escola, abra Meu Contrato > Termos por aluno e confira o termo e a assinatura da escola antes de assinar. Depois volte a este convite. A assinatura é feita apenas pela sua conta autenticada.",
+      "neutral",
+      409,
+    );
+  }
   if (error) {
     console.error("claim_coverage_opportunity failed", { code: error.code });
     return safeError(503);
@@ -438,14 +453,29 @@ async function handlePost(req: Request): Promise<Response> {
       );
   }
   if (result.ok === true) {
-    if (result.already !== true) await notifyAfterClaim(supabase, result);
+    if (result.already !== true) {
+      await notifyAfterClaim(supabase, result);
+      // Contato do aluno + últimas aulas para quem cobre, e aviso à família
+      // (o grupo já foi avisado acima). Melhor esforço.
+      if (result.coverage_id) {
+        const { error: briefError } = await supabase.rpc(
+          "coverage_briefing_enqueue",
+          { p_coverage_id: String(result.coverage_id), p_notify_group: false },
+        );
+        if (briefError) {
+          console.warn("[claim-coverage] pacote do aluno não enfileirado", {
+            code: briefError.code,
+          });
+        }
+      }
+    }
     const date = formatDate(result.class_date) ?? "";
     const time = formatTime(result.class_time) ?? "";
     return respond(
       "Aula é sua! 🎉",
       `Você cobre a aula de ${
         String(result.student_name || "aluno")
-      } em ${date} às ${time}. Ela já aparece na sua lista para lançar e conta no seu pagamento.`,
+      } em ${date} às ${time}. Ela já aparece na sua lista para lançar e conta no seu pagamento. O contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login) chegam no seu WhatsApp.`,
       "success",
     );
   }

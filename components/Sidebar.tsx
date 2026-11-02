@@ -123,7 +123,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div className={`
-      fixed inset-y-0 left-0 z-[100] w-64 bg-brand-surface border-r dark:border-brand-border flex flex-col shadow-2xl lg:shadow-none
+      fixed inset-y-0 left-0 z-100 w-64 bg-brand-surface border-r dark:border-brand-border flex flex-col shadow-2xl lg:shadow-none
       transition-transform duration-300 ease-in-out
       ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       lg:translate-x-0
@@ -205,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
         <button
           onClick={onLogout}
-          className="w-full flex items-center justify-center gap-2 px-4 py-4 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all font-black uppercase tracking-widest border border-red-50 dark:border-red-900/20 shadow-sm"
+          className="w-full flex items-center justify-center gap-2 px-4 py-4 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all font-black uppercase tracking-widest border border-red-50 dark:border-red-900/20 shadow-xs"
         >
           <LogOut size={16} />
           <span>Encerrar Sessão</span>

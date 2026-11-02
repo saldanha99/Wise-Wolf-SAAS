@@ -517,7 +517,7 @@ const Field: React.FC<{
                 min={min}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={error ? `${id}-error` : undefined}
-                className={`w-full rounded-2xl border bg-white/5 py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:ring-2 ${error
+                className={`w-full rounded-2xl border bg-white/5 py-3 pl-11 pr-4 text-sm text-white outline-hidden transition placeholder:text-slate-500 focus:ring-2 ${error
                     ? 'border-rose-300/70 focus:border-rose-300 focus:ring-rose-300/15'
                     : 'border-white/10 focus:border-emerald-300 focus:ring-emerald-300/15'}`}
             />
@@ -543,7 +543,7 @@ const SelectField: React.FC<{
             required
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
-            className={`w-full rounded-2xl border bg-[#1d2430] px-4 py-3 text-sm text-white outline-none transition focus:ring-2 ${error
+            className={`w-full rounded-2xl border bg-[#1d2430] px-4 py-3 text-sm text-white outline-hidden transition focus:ring-2 ${error
                 ? 'border-rose-300/70 focus:border-rose-300 focus:ring-rose-300/15'
                 : 'border-white/10 focus:border-emerald-300 focus:ring-emerald-300/15'}`}
         >
@@ -575,7 +575,7 @@ const TextAreaField: React.FC<{
             placeholder={placeholder}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
-            className={`w-full resize-none rounded-2xl border bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:ring-2 ${error
+            className={`w-full resize-none rounded-2xl border bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-hidden transition placeholder:text-slate-500 focus:ring-2 ${error
                 ? 'border-rose-300/70 focus:border-rose-300 focus:ring-rose-300/15'
                 : 'border-white/10 focus:border-emerald-300 focus:ring-emerald-300/15'}`}
         />

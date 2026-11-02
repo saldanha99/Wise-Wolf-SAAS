@@ -342,7 +342,7 @@ function LoadingExperience({
       <div className="max-w-md text-center">
         <div className="relative mx-auto h-24 w-24">
           <div className="absolute inset-0 rounded-3xl bg-brand-surface-2" />
-          <div className="absolute inset-2 grid place-items-center rounded-2xl bg-brand-surface shadow-sm">
+          <div className="absolute inset-2 grid place-items-center rounded-2xl bg-brand-surface shadow-xs">
             <Loader2
               size={34}
               className="animate-spin text-brand-accent"
@@ -1098,7 +1098,7 @@ export function WolfiePracticeFlow({
 
   return (
     <>
-      <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-sm">
+      <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-xs">
         <WolfiePracticeHeader
           isSubjectView={view === "subject"}
           actionBadge={overview?.repertoireCount}
@@ -1167,7 +1167,7 @@ export function WolfiePracticeFlow({
                 <h1
                   ref={mainHeadingRef}
                   tabIndex={-1}
-                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-hidden sm:text-4xl"
                 >
                   Em qual nível a atividade deve conversar com você?
                 </h1>
@@ -1199,7 +1199,7 @@ export function WolfiePracticeFlow({
                     key={level.id}
                     type="button"
                     onClick={() => chooseLevel(level.id)}
-                    className={`group rounded-3xl border border-brand-border bg-brand-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
+                    className={`group rounded-3xl border border-brand-border bg-brand-surface p-5 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-3xl font-black text-brand-accent">
@@ -1245,7 +1245,7 @@ export function WolfiePracticeFlow({
                 <h1
                   ref={mainHeadingRef}
                   tabIndex={-1}
-                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-hidden sm:text-4xl"
                 >
                   Escolha o ambiente da sua reunião
                 </h1>
@@ -1269,7 +1269,7 @@ export function WolfiePracticeFlow({
                       aria-pressed={selected}
                       className={`rounded-2xl border p-4 text-left transition ${
                         selected
-                          ? "border-brand-accent bg-brand-surface-2 shadow-sm"
+                          ? "border-brand-accent bg-brand-surface-2 shadow-xs"
                           : "border-brand-border bg-brand-surface hover:border-brand-accent"
                       } ${focusRing}`}
                     >
@@ -1345,7 +1345,7 @@ export function WolfiePracticeFlow({
                 <h1
                   ref={mainHeadingRef}
                   tabIndex={-1}
-                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-hidden sm:text-4xl"
                 >
                   Como você quer praticar?
                 </h1>
@@ -1372,7 +1372,7 @@ export function WolfiePracticeFlow({
                 <button
                   type="button"
                   onClick={beginWrittenPractice}
-                  className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
+                  className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
                 >
                   <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent transition group-hover:bg-brand-accent group-hover:text-white">
                     <PenLine size={25} aria-hidden="true" />
@@ -1401,7 +1401,7 @@ export function WolfiePracticeFlow({
                 <button
                   type="button"
                   onClick={beginConversation}
-                  className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
+                  className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
                 >
                   <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent transition group-hover:bg-brand-accent group-hover:text-white">
                     <Mic size={25} aria-hidden="true" />
@@ -1453,7 +1453,7 @@ export function WolfiePracticeFlow({
                 <h1
                   ref={mainHeadingRef}
                   tabIndex={-1}
-                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+                  className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-hidden sm:text-4xl"
                 >
                   Transforme o tema em uma situação de verdade
                 </h1>
@@ -1484,7 +1484,7 @@ export function WolfiePracticeFlow({
                   setView("mode");
                 }}
               >
-                <section className="grid gap-4 rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm md:grid-cols-2 sm:p-6">
+                <section className="grid gap-4 rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-xs md:grid-cols-2 sm:p-6">
                   <label className="block md:col-span-2">
                     <span className="text-sm font-black text-brand-text">
                       Assunto da conversa
@@ -1591,7 +1591,7 @@ export function WolfiePracticeFlow({
                             )}
                           className={`min-h-32 rounded-2xl border p-4 text-left transition ${
                             selected
-                              ? "border-brand-accent bg-brand-surface-2 shadow-sm"
+                              ? "border-brand-accent bg-brand-surface-2 shadow-xs"
                               : "border-brand-border bg-brand-surface hover:border-brand-accent"
                           } ${focusRing}`}
                         >
@@ -1739,7 +1739,7 @@ export function WolfiePracticeFlow({
                 <h1
                   ref={mainHeadingRef}
                   tabIndex={-1}
-                  className="mt-5 text-2xl font-black text-brand-text outline-none"
+                  className="mt-5 text-2xl font-black text-brand-text outline-hidden"
                 >
                   A prática não ficou pronta
                 </h1>

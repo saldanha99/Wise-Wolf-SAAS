@@ -4,6 +4,7 @@ import { asaasService } from '../services/asaasService';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
+import { offeredContractTermsVersion, recordEnrollmentContractTerms } from '../services/contractTermsService';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
 import {
@@ -54,6 +55,7 @@ import {
     type PendingEnrollmentPaymentKind,
 } from '../lib/enrollmentPaymentOutcome';
 import { addCalendarMonthsClamped } from '../lib/contractDates';
+import { clearEnrollmentDraft, loadEnrollmentDraft, saveEnrollmentDraft } from '../lib/enrollmentDraft';
 
 type ProcessingStage =
     | 'IDLE'
@@ -256,12 +258,22 @@ const PublicRegistration: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [processingStage, setProcessingStage] = useState<ProcessingStage>('IDLE');
     const [correlationId, setCorrelationId] = useState<string>('');
+    // Pago e com contrato assinado, mas a escola e o professor ainda não assinaram o
+    // termo individual: a matrícula é liberada sozinha quando eles assinarem.
+    const [awaitingRelease, setAwaitingRelease] = useState(false);
+    const isAwaitingTeacherTerms = async (offerId: unknown): Promise<boolean> => {
+        if (typeof offerId !== 'string') return false;
+        const { data, error: awaitingError } = await supabase.rpc('enrollment_awaiting_teacher_terms', { p_offer_id: offerId });
+        return !awaitingError && data?.ok === true && data.payment_registered === true && data.terms_ready !== true;
+    };
     const [resumeAuthenticated, setResumeAuthenticated] = useState(false);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [contractData, setContractData] = useState<any>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
     // Signature Data for PDF
-    const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string } | null>(null);
+    const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string; termsVersion?: number } | null>(null);
+    // Versão do texto assinado nesta matrícula (gravada no servidor logo depois do aceite).
+    const [signedTermsVersion, setSignedTermsVersion] = useState<number | null>(null);
     const [signedPdfUrl, setSignedPdfUrl] = useState<string>('');
 
     // Form Fields
@@ -288,6 +300,17 @@ const PublicRegistration: React.FC = () => {
     const [ccCcv, setCcCcv] = useState('');
     const quote = calculateEnrollmentQuote(contractData);
 
+    // Rascunho no navegador (sem senha nem cartão); some quando a matrícula termina.
+    const draftOfferId = typeof contractData?._offerId === 'string' ? contractData._offerId : null;
+    useEffect(() => {
+        if (!draftOfferId) return;
+        if (step === 'SUCCESS') {
+            clearEnrollmentDraft(draftOfferId);
+            return;
+        }
+        saveEnrollmentDraft(draftOfferId, { name, email, phone, cpf, postalCode, address, addressNumber, billingType });
+    }, [draftOfferId, step, name, email, phone, cpf, postalCode, address, addressNumber, billingType]);
+
     // Matrícula de dependente: no contrato, o CONTRATANTE é o responsável financeiro
     // e o aluno (quem preenche o link) aparece como beneficiário.
     const isDependentLink = !!contractData?.isDependent;
@@ -299,6 +322,15 @@ const PublicRegistration: React.FC = () => {
     const contratanteAddress = isDependentLink
         ? `${contractData?.guardianAddress || address}, ${contractData?.guardianAddressNumber || addressNumber} - ${contractData?.guardianPostalCode || postalCode}`
         : `${address}, ${addressNumber} - ${postalCode}`;
+    // Versão do contrato que a escola desta oferta oferece (edge
+    // tenant-legal-assets): a página MOSTRA e GRAVA esta mesma versão. Só a
+    // escola que decidiu registrar as aulas oferece a cláusula.
+    const offeredTermsVersion = offeredContractTermsVersion('STUDENT', contractData);
+    // Via impressa: depois de assinar, a versão gravada (sem ela, o texto de
+    // antes); antes, a que a página está mostrando.
+    const printedTermsVersion = signatureData
+        ? (signatureData.termsVersion ?? signedTermsVersion ?? undefined)
+        : offeredTermsVersion;
 
     // Contract Printing Logic
     const contractRef = useRef<HTMLDivElement>(null);
@@ -371,6 +403,19 @@ const PublicRegistration: React.FC = () => {
                 }
                 hydrate(payload); // payload já traz _offerId → consume_offer roda no submit
 
+                // O que o aluno já tinha digitado neste link volta depois do F5.
+                const draft = loadEnrollmentDraft(offerId);
+                if (draft) {
+                    if (draft.name) setName(draft.name);
+                    if (draft.email) setEmail(draft.email);
+                    if (draft.phone) setPhone(draft.phone);
+                    if (draft.cpf) setCpf(draft.cpf);
+                    if (draft.postalCode) setPostalCode(draft.postalCode);
+                    if (draft.address) setAddress(draft.address);
+                    if (draft.addressNumber) setAddressNumber(draft.addressNumber);
+                    if (draft.billingType) setBillingType(draft.billingType);
+                }
+
                 // Se esta sessão já iniciou a oferta, restaura os dados e leva o
                 // aluno ao ponto correto sem persistir senha ou cartão.
                 const { data: { session } } = await supabase.auth.getSession();
@@ -401,6 +446,12 @@ const PublicRegistration: React.FC = () => {
                     return;
                 }
 
+
+                if (await isAwaitingTeacherTerms(offerId)) {
+                    setAwaitingRelease(true);
+                    setStep('SUCCESS');
+                    return;
+                }
                 if (progress.status === 'AWAITING_PAYMENT') {
                     try {
                         const pendingKind = getPendingEnrollmentPaymentKind(
@@ -726,6 +777,22 @@ const PublicRegistration: React.FC = () => {
             }
             setCorrelationId(String(claimResult.correlation_id || ''));
 
+            // A página mostrou a versão que a escola oferece (com a cláusula do
+            // registro das aulas, onde a escola decidiu): grava essa versão
+            // ANTES da cobrança. Sem ela, o contrato assinado seria lido depois
+            // como o texto de antes; versão que a escola não oferece mais é
+            // recusada ("recarregue") antes de qualquer cobrança.
+            const recordedTermsVersion = await recordEnrollmentContractTerms({
+                offerId: contractData._offerId,
+                userId,
+                alreadyCompleted: claimResult.already_completed === true,
+                termsVersion: offeredContractTermsVersion('STUDENT', contractData),
+            });
+            setSignedTermsVersion(recordedTermsVersion);
+            // O termo individual (escola + professor) não para mais o aluno aqui:
+            // ele paga até o fim e a liberação espera as assinaturas.
+
+
             enrollmentData = {
                 ...contractData,
                 ...claimResult.payload,
@@ -829,7 +896,8 @@ const PublicRegistration: React.FC = () => {
             setSignatureData({
                 acceptedAt: new Date().toISOString(),
                 ip: 'Registrado no servidor',
-                subId: confirmedSubId
+                subId: confirmedSubId,
+                termsVersion: recordedTermsVersion ?? undefined,
             });
 
             if (signatureDataObj?.url) {
@@ -998,7 +1066,7 @@ const PublicRegistration: React.FC = () => {
         setStep('CONTRACT');
     };
 
-    const handleFormSubmit = (e: React.FormEvent) => {
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!validateForm()) return;
         setError(null);
@@ -1042,6 +1110,12 @@ const PublicRegistration: React.FC = () => {
                 if (progressOutcome === 'UNAVAILABLE') {
                     throw new Error('enrollment_progress_unavailable');
                 }
+                if (await isAwaitingTeacherTerms(offerId)) {
+                    setError(null);
+                    setAwaitingRelease(true);
+                    setStep('SUCCESS');
+                    return;
+                }
 
                 setProcessingStage('BILLING');
                 setError(
@@ -1066,6 +1140,10 @@ const PublicRegistration: React.FC = () => {
                 if (session) await sendCompletionNotifications(session.user.id, contractData);
                 setProcessingStage('COMPLETE');
                 setError(null);
+                setStep('SUCCESS');
+            } else if (paymentOutcome === 'SETTLED_AWAITING_COMPLETION' && await isAwaitingTeacherTerms(contractData?._offerId)) {
+                setError(null);
+                setAwaitingRelease(true);
                 setStep('SUCCESS');
             } else if (paymentOutcome === 'SETTLED_AWAITING_COMPLETION') {
                 setProcessingStage('BILLING');
@@ -1336,7 +1414,7 @@ const PublicRegistration: React.FC = () => {
                                         navigator.clipboard.writeText(enrollmentPix.code);
                                         alert('Código copiado!');
                                     }}
-                                    className="enrollment-primary-button !min-h-[52px] !rounded-[13px]"
+                                    className="enrollment-primary-button min-h-[52px]! rounded-[13px]!"
                                     aria-label="Copiar código Pix"
                                 >
                                     <FileText size={19} aria-hidden="true" />
@@ -1456,8 +1534,12 @@ const PublicRegistration: React.FC = () => {
             <EnrollmentShell
                 currentStep={4}
                 isFinished
-                storyTitle={<>Agora é oficial. <em>Bem-vindo à sua jornada.</em></>}
-                storyDescription="Sua matrícula foi concluída e seu acesso já está pronto. O próximo passo acontece dentro do portal."
+                storyTitle={awaitingRelease
+                    ? <>Matrícula recebida. <em>Falta só a liberação.</em></>
+                    : <>Agora é oficial. <em>Bem-vindo à sua jornada.</em></>}
+                storyDescription={awaitingRelease
+                    ? 'Seu contrato e seu pagamento foram registrados. A escola e o professor confirmam o atendimento e a matrícula é liberada sozinha.'
+                    : 'Sua matrícula foi concluída e seu acesso já está pronto. O próximo passo acontece dentro do portal.'}
                 contractData={contractData}
                 quote={quote}
                 school={school}
@@ -1466,14 +1548,18 @@ const PublicRegistration: React.FC = () => {
                     <div className="enrollment-success-icon">
                         <CheckCircle size={36} strokeWidth={1.9} aria-hidden="true" />
                     </div>
-                    <p className="enrollment-panel__eyebrow">Matrícula concluída</p>
+                    <p className="enrollment-panel__eyebrow">{awaitingRelease ? 'Aguardando liberação' : 'Matrícula concluída'}</p>
                     <h2 className="enrollment-panel__title">Tudo certo, {name.split(' ')[0] || 'bem-vindo'}!</h2>
                     <p className="enrollment-panel__description mx-auto">
-                        Seu acesso ao portal foi criado, o contrato foi registrado e o fluxo financeiro foi confirmado.
+                        {awaitingRelease
+                            ? 'Você já fez tudo o que precisava. Agora a escola e o seu professor confirmam o atendimento; quando isso acontecer, sua agenda é liberada automaticamente e você recebe a confirmação no WhatsApp. Não precisa voltar a este link.'
+                            : 'Seu acesso ao portal foi criado, o contrato foi registrado e o fluxo financeiro foi confirmado.'}
                     </p>
 
                     <div className="mx-auto mt-7 grid max-w-md gap-3 text-left">
-                        {['Contrato assinado digitalmente', 'Acesso ao portal liberado', 'Matrícula confirmada pela escola'].map(item => (
+                        {(awaitingRelease
+                            ? ['Contrato assinado digitalmente', 'Pagamento registrado', 'Acesso ao portal criado']
+                            : ['Contrato assinado digitalmente', 'Acesso ao portal liberado', 'Matrícula confirmada pela escola']).map(item => (
                             <div key={item} className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm font-bold text-emerald-900">
                                 <CheckCircle size={17} className="shrink-0 text-emerald-600" aria-hidden="true" />
                                 {item}
@@ -1515,6 +1601,7 @@ const PublicRegistration: React.FC = () => {
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
                                 subscriptionId={signatureData?.subId}
+                                termsVersion={printedTermsVersion}
                                 school={school || undefined}
                             />
                         </div>
@@ -1560,6 +1647,9 @@ const PublicRegistration: React.FC = () => {
 
                 <form onSubmit={handleFormSubmit} className="enrollment-form" noValidate>
                         {renderFinancialSummary()}
+                        {/* Cupom de afiliado é interno: a escola o aplica ao gerar o
+                            link (RegistrationLinkGenerator). O aluno não vê campo de
+                            cupom — quem não tem um sentiria que está pagando a mais. */}
                         {/* 1. Payment Method Overview */}
                         <div className="enrollment-form-section">
                             <div className="enrollment-form-section__heading">
@@ -1588,7 +1678,7 @@ const PublicRegistration: React.FC = () => {
 
                             {billingType === 'BOLETO' ? (
                                 <div className="enrollment-selected-payment">
-                                    <span className="enrollment-selected-payment__icon !bg-amber-50 !text-amber-700"><Barcode size={21} aria-hidden="true" /></span>
+                                    <span className="enrollment-selected-payment__icon bg-amber-50! text-amber-700!"><Barcode size={21} aria-hidden="true" /></span>
                                     <div>
                                         <strong>Pagamento via boleto</strong>
                                         <p>O boleto será disponibilizado ao final da contratação.</p>
@@ -1599,7 +1689,7 @@ const PublicRegistration: React.FC = () => {
                             {billingType === 'CREDIT_CARD' ? (
                                 <div className="space-y-4 animate-in fade-in duration-300">
                                     <div className="enrollment-selected-payment">
-                                        <span className="enrollment-selected-payment__icon !bg-blue-50 !text-blue-700"><CreditCard size={21} aria-hidden="true" /></span>
+                                        <span className="enrollment-selected-payment__icon bg-blue-50! text-blue-700!"><CreditCard size={21} aria-hidden="true" /></span>
                                         <div>
                                             <strong>Pagamento via cartão</strong>
                                             <p>Os dados são enviados diretamente para o processamento seguro.</p>
@@ -1620,7 +1710,7 @@ const PublicRegistration: React.FC = () => {
                                                     setCcNumber(value.replace(/(\d{4})(?=\d)/g, '$1 '));
                                                 }}
                                                 aria-invalid={Boolean(fieldErrors.ccNumber)}
-                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                             <FieldError message={fieldErrors.ccNumber} />
                                         </div>
@@ -1633,7 +1723,7 @@ const PublicRegistration: React.FC = () => {
                                                 value={ccName}
                                                 onChange={e => setCcName(e.target.value)}
                                                 aria-invalid={Boolean(fieldErrors.ccName)}
-                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                             <FieldError message={fieldErrors.ccName} />
                                         </div>
@@ -1654,7 +1744,7 @@ const PublicRegistration: React.FC = () => {
                                                         setCcExpiry(v);
                                                     }}
                                                     aria-invalid={Boolean(fieldErrors.ccExpiry)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                                 />
                                                 <FieldError message={fieldErrors.ccExpiry} />
                                             </div>
@@ -1669,7 +1759,7 @@ const PublicRegistration: React.FC = () => {
                                                     onChange={e => setCcCcv(digitsOnly(e.target.value).slice(0, 4))}
                                                     maxLength={4}
                                                     aria-invalid={Boolean(fieldErrors.ccCcv)}
-                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                                 />
                                                 <FieldError message={fieldErrors.ccCcv} />
                                             </div>
@@ -1686,7 +1776,7 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 2. Personal Data */}
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><User size={16} aria-hidden="true" /></span>
                                     Dados pessoais
@@ -1701,7 +1791,7 @@ const PublicRegistration: React.FC = () => {
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.name)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                 />
                                 <FieldError message={fieldErrors.name} />
                             </div>
@@ -1725,7 +1815,7 @@ const PublicRegistration: React.FC = () => {
                                             value={cpf}
                                             onChange={e => setCpf(formatCpf(e.target.value))}
                                             aria-invalid={Boolean(fieldErrors.cpf)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.cpf} />
                                     </div>
@@ -1745,7 +1835,7 @@ const PublicRegistration: React.FC = () => {
                                                 setPhone(v);
                                             }}
                                             aria-invalid={Boolean(fieldErrors.phone)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.phone} />
                                     </div>
@@ -1756,7 +1846,7 @@ const PublicRegistration: React.FC = () => {
                         {/* 3. Address — oculto em matrícula vinculada (usa o endereço do responsável) */}
                         {!contractData?.isDependent && (
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><MapPin size={16} aria-hidden="true" /></span>
                                     Endereço
@@ -1776,7 +1866,7 @@ const PublicRegistration: React.FC = () => {
                                             setPostalCode(value.length > 5 ? `${value.slice(0, 5)}-${value.slice(5)}` : value);
                                         }}
                                         aria-invalid={Boolean(fieldErrors.postalCode)}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                     />
                                     <FieldError message={fieldErrors.postalCode} />
                                 </div>
@@ -1789,7 +1879,7 @@ const PublicRegistration: React.FC = () => {
                                         value={addressNumber}
                                         onChange={e => setAddressNumber(e.target.value)}
                                         aria-invalid={Boolean(fieldErrors.addressNumber)}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                     />
                                     <FieldError message={fieldErrors.addressNumber} />
                                 </div>
@@ -1803,7 +1893,7 @@ const PublicRegistration: React.FC = () => {
                                     value={address}
                                     onChange={e => setAddress(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.address)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                 />
                                 <FieldError message={fieldErrors.address} />
                             </div>
@@ -1812,7 +1902,7 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 4. Credentials */}
                         <div className="enrollment-form-section space-y-4">
-                            <div className="enrollment-form-section__heading !mb-1">
+                            <div className="enrollment-form-section__heading mb-1!">
                                 <h3 className="enrollment-form-section__title">
                                     <span className="enrollment-form-section__icon"><Lock size={16} aria-hidden="true" /></span>
                                     Acesso ao portal
@@ -1829,7 +1919,7 @@ const PublicRegistration: React.FC = () => {
                                     readOnly={resumeAuthenticated}
                                     onChange={e => setEmail(e.target.value)}
                                     aria-invalid={Boolean(fieldErrors.email)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted read-only:opacity-70"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted read-only:opacity-70"
                                 />
                                 <FieldError message={fieldErrors.email} />
                             </div>
@@ -1851,7 +1941,7 @@ const PublicRegistration: React.FC = () => {
                                                 value={password}
                                                 onChange={e => setPassword(e.target.value)}
                                                 aria-invalid={Boolean(fieldErrors.password)}
-                                                className="w-full px-5 py-4 pr-12 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                                className="w-full px-5 py-4 pr-12 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                             />
                                             <button
                                                 type="button"
@@ -1874,7 +1964,7 @@ const PublicRegistration: React.FC = () => {
                                             value={passwordConfirmation}
                                             onChange={e => setPasswordConfirmation(e.target.value)}
                                             aria-invalid={Boolean(fieldErrors.passwordConfirmation)}
-                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-hidden transition-all placeholder:text-brand-muted"
                                         />
                                         <FieldError message={fieldErrors.passwordConfirmation} />
                                     </div>
@@ -1892,7 +1982,7 @@ const PublicRegistration: React.FC = () => {
                                 : <>Revisar meus dados <ArrowRight size={18} aria-hidden="true" /></>}
                         </button>
 
-                        <p className="enrollment-trust-note !mt-0">
+                        <p className="enrollment-trust-note mt-0!">
                             <ShieldCheck size={14} aria-hidden="true" />
                             Na próxima etapa, você revisa os dados e lê o contrato antes de assinar.
                         </p>
@@ -1928,6 +2018,7 @@ const PublicRegistration: React.FC = () => {
                     processingStage={processingStage}
                     processingError={error}
                     correlationId={correlationId}
+                    termsVersion={offeredTermsVersion}
                 />
             )}
 
@@ -1954,6 +2045,7 @@ const PublicRegistration: React.FC = () => {
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}
                         subscriptionId={signatureData?.subId}
+                        termsVersion={printedTermsVersion}
                         school={school || undefined}
                     />
                 </div>

@@ -318,6 +318,26 @@ serve(async (req) => {
       });
     }
 
+    // Matrícula concluída tem intenção durável no servidor. A página não
+    // atravessa o provedor em paralelo, nem repete resultado incerto da fila.
+    const { data: queuedWelcome, error: queuedWelcomeError } = await supabase
+      .from("notification_queue")
+      .select("id,status")
+      .eq("tenant_id", student.tenant_id)
+      .eq("student_id", student.id)
+      .eq("notification_kind", "ENROLLMENT_STUDENT_CONFIRMED")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (queuedWelcomeError) throw new HttpError(503, "SERVICE_UNAVAILABLE");
+    if (queuedWelcome) {
+      return jsonResponse(200, {
+        success: true,
+        skipped: "server_queue",
+        delivery: queuedWelcome.status,
+      });
+    }
+
     const recipient = normalizeBrazilianPhone(student.phone);
     if (!recipient) throw new HttpError(422, "INVALID_STUDENT_PHONE");
 
@@ -371,7 +391,8 @@ serve(async (req) => {
 
     const fullName = safeMessageField(student.full_name, "Aluno(a)");
     const email = safeMessageField(student.email, "seu e-mail cadastrado");
-    const message = `*Bem-vindo(a) à ${communicationContext.identity.brandName}!*
+    const message =
+      `*Bem-vindo(a) à ${communicationContext.identity.brandName}!*
 
 Olá *${fullName}*, sua matrícula foi realizada com sucesso! 🚀
 
@@ -381,6 +402,8 @@ Aqui estão seus dados de acesso ao portal do aluno:
 🔑 *Senha:* use a senha que você criou na matrícula
 
 🔗 *Acesse agora:* ${portalUrl}
+
+Se não lembrar a senha, toque em *Esqueci minha senha* na tela de acesso.
 
 _Guarde essas informações com segurança!_`;
 

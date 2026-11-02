@@ -267,12 +267,12 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   pg_catalog.has_function_privilege(
     'authenticated',
-    'public.schedule_reschedule(uuid,date,time without time zone)',
+    'public.schedule_reschedule(uuid,date,time without time zone,text)',
     'EXECUTE'
   )
   and not pg_catalog.has_function_privilege(
     'anon',
-    'public.schedule_reschedule(uuid,date,time without time zone)',
+    'public.schedule_reschedule(uuid,date,time without time zone,text)',
     'EXECUTE'
   )
   and not pg_catalog.has_function_privilege(
@@ -285,12 +285,14 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   (
+    -- p_reason (18/09/2026) é motivo da remarcação — nem identidade, nem origem
+    -- financeira. Aluno, professor, tenant, booking e fault_type seguem no banco.
     select procedure.proargnames = array[
-      'p_reschedule_id', 'p_date', 'p_time'
+      'p_reschedule_id', 'p_date', 'p_time', 'p_reason'
     ]::text[]
       from pg_catalog.pg_proc as procedure
      where procedure.oid = pg_catalog.to_regprocedure(
-       'public.schedule_reschedule(uuid,date,time without time zone)'
+       'public.schedule_reschedule(uuid,date,time without time zone,text)'
      )
   ),
   'RPC de agenda aceita identidade ou origem financeira como parametro'

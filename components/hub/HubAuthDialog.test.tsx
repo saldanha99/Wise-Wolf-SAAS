@@ -54,3 +54,35 @@ describe('Hub email confirmation checkout intent', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('Cadastro pelo convite do professor', () => {
+  beforeEach(() => {
+    authMocks.signUp.mockReset().mockResolvedValue({ data: { session: { access_token: 'x' } }, error: null });
+  });
+
+  it('fala com o aluno, não com o educador, e cadastra a conta como LEARNER', async () => {
+    const onAuthenticated = vi.fn();
+    render(
+      <HubAuthDialog
+        initialMode="signup"
+        initialAudience="LEARNER"
+        invite={{ teacher_name: 'Teacher Lu', learner_name: 'Pedro' }}
+        onClose={vi.fn()}
+        onAuthenticated={onAuthenticated}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Entre na turma de Teacher Lu' })).toBeInTheDocument();
+    expect(screen.getByText('Conta de aluno de Teacher Lu')).toBeInTheDocument();
+    expect(screen.queryByText('Acesso profissional para educadores')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Pedro Alves' } });
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'pedro@example.com' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'senha-segura' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar conta e entrar na turma' }));
+
+    await waitFor(() => expect(authMocks.signUp).toHaveBeenCalledTimes(1));
+    expect(authMocks.signUp.mock.calls[0][0].options.data.hub_audience).toBe('LEARNER');
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith('LEARNER', 'Pedro Alves'));
+  });
+});

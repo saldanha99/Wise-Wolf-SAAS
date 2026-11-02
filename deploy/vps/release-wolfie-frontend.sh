@@ -78,7 +78,7 @@ DEPLOY_WOLFIE_APP_DIR="${DEPLOY_WOLFIE_APP_DIR:-/opt/wisewolf/wolfie-frontend}"
 DEPLOY_WOLFIE_PUBLIC_URL="${DEPLOY_WOLFIE_PUBLIC_URL:-https://wolfie.wisewolflanguage.com.br}"
 DEPLOY_WOLFIE_HOSTNAME="${DEPLOY_WOLFIE_HOSTNAME:-wolfie.wisewolflanguage.com.br}"
 
-[[ "$DEPLOY_HOST" = "187.127.46.251" ]] || die "VPS de destino inesperada"
+[[ "$DEPLOY_HOST" = "179.236.255.4" ]] || die "VPS de destino inesperada"
 [[ "$DEPLOY_SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
   die "DEPLOY_SSH_HOST inválido"
 [[ "$DEPLOY_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "DEPLOY_USER inválido"
@@ -112,7 +112,7 @@ expected_user=$2
 releases_dir=$3
 migration_version=$4
 migration_checksum=$5
-[[ "$expected_host" = "187.127.46.251" ]]
+[[ "$expected_host" = "179.236.255.4" ]]
 [[ "$(id -un)" = "$expected_user" ]]
 [[ "$releases_dir" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ &&
   "$releases_dir" != *".."* && "$releases_dir" != *"//"* ]]
@@ -313,7 +313,7 @@ set -Eeuo pipefail
 expected_host=$1
 base_dir=$2
 release_dir=$3
-[[ "$expected_host" = "187.127.46.251" ]]
+[[ "$expected_host" = "179.236.255.4" ]]
 case " $(hostname -I) " in
   *" $expected_host "*) ;;
   *) echo "IP público não pertence ao host remoto" >&2; exit 1 ;;

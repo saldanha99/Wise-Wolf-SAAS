@@ -917,8 +917,14 @@ begin
   ) into strict v_message
   from public.appointments as appointment
   where appointment.id = '00000000-0000-4000-8000-00000000ac13';
+  -- O horário muda 5 min SEM trocar o dia da aula em Brasília: entre 23:25 e
+  -- 23:30 (BRT) o +5 atravessava a meia-noite, a cerca respondia
+  -- appointment_class_date_changed e o teste abortava o release.
   update public.appointments
-  set start_time = start_time + interval '5 minutes',
+  set start_time = start_time + case
+        when ((start_time + interval '5 minutes') at time zone 'America/Sao_Paulo')::date
+          = (start_time at time zone 'America/Sao_Paulo')::date
+        then interval '5 minutes' else interval '-5 minutes' end,
       student_phone = '5511988880999'
   where id = '00000000-0000-4000-8000-00000000ac13';
   v_result := public.begin_notification_delivery_submission(

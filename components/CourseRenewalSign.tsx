@@ -8,6 +8,7 @@ type Renewal = {
   monthly_fee_cents: number; classes_per_week: number; contract_start: string;
   first_due_date: string; last_due_date: string; service_end_date: string;
   status: 'PENDING_SIGNATURE' | 'SIGNED'; billing_status: string; expired: boolean;
+  dates_adjusted?: boolean;
   // Horário que o aluno assina junto (renovação com novas condições). Ausente = mantém a agenda atual.
   schedule?: RenewalSchedule | null;
   // Marca da escola (tenants.branding). Valor inválido é ignorado: a página cai no visual padrão.
@@ -111,7 +112,12 @@ export default function CourseRenewalSign() {
   })(); }, [token]);
   const sign = async () => {
     setSigning(true); setError('');
-    const response = await supabase.rpc('sign_student_course_renewal', { p_token: token, p_typed_signature: signature });
+    if (!data) { setSigning(false); setError('Não foi possível confirmar as datas.'); return; }
+    const response = await supabase.rpc('sign_student_course_renewal', {
+      p_token: token,
+      p_typed_signature: signature,
+      p_expected_first_due_date: data.first_due_date,
+    });
     setSigning(false);
     if (response.error || !response.data?.ok) { setError(response.data?.error || 'Não foi possível assinar.'); return; }
     setData(current => current ? { ...current, status: 'SIGNED', billing_status: String(response.data.billing_status || current.billing_status) } : current);
@@ -191,6 +197,11 @@ export default function CourseRenewalSign() {
           <CalendarDays size={18} className="mt-0.5 shrink-0 text-slate-400" />
           <p>São 6 parcelas mensais, da competência de {date(data.first_due_date)} até {date(data.last_due_date)}. A última parcela mantém as aulas até {date(data.service_end_date)}.</p>
         </div>
+        {data.dates_adjusted && (
+          <div role="status" className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
+            Como as aulas já começaram, o primeiro vencimento foi atualizado para uma data válida. Confira as datas acima antes de assinar.
+          </div>
+        )}
         <p className="mt-3 text-xs leading-relaxed text-slate-400">Esta renovação prorroga o contrato anterior. As demais cláusulas continuam válidas; somente vigência, parcelas, valor{schedule ? ', frequência e horário ficam confirmados' : ' e frequência ficam confirmados'} conforme o resumo acima.</p>
 
         {data.expired ? (
@@ -205,7 +216,7 @@ export default function CourseRenewalSign() {
               <label htmlFor="renewal-signature" className={eyebrow}>Assine digitando seu nome completo</label>
               <input
                 id="renewal-signature"
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-lg text-slate-900 outline-none transition focus:border-transparent focus:bg-white focus:ring-2"
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-lg text-slate-900 outline-hidden transition focus:border-transparent focus:bg-white focus:ring-2"
                 style={{ fontFamily: DISPLAY, ['--tw-ring-color' as string]: primary }}
                 value={signature}
                 onChange={e => setSignature(e.target.value)}
@@ -218,7 +229,7 @@ export default function CourseRenewalSign() {
               type="button"
               onClick={sign}
               disabled={signing || !accepted || signature.trim().length < 3}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold uppercase tracking-[0.12em] text-white shadow-[0_16px_34px_-16px_rgba(6,20,45,0.8)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-extrabold uppercase tracking-[0.12em] text-white shadow-[0_16px_34px_-16px_rgba(6,20,45,0.8)] transition hover:brightness-110 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
               style={{ background: primary, outlineColor: primary, fontFamily: DISPLAY }}
             >
               {signing && <Loader2 size={16} className="animate-spin" />}Assinar renovação

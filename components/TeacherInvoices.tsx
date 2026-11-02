@@ -294,7 +294,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                                     <tr key={inv.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/30 transition-all group">
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-3">
-                                                <div className="p-2.5 bg-brand-surface dark:bg-slate-950 border border-brand-border rounded-xl text-brand-muted group-hover:text-tenant-primary group-hover:border-tenant-primary/30 transition-all shadow-sm">
+                                                <div className="p-2.5 bg-brand-surface dark:bg-slate-950 border border-brand-border rounded-xl text-brand-muted group-hover:text-tenant-primary group-hover:border-tenant-primary/30 transition-all shadow-xs">
                                                     <Calendar size={18} />
                                                 </div>
                                                 <div>

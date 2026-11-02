@@ -46,6 +46,7 @@ interface Linha {
   quando?: string;
   valor?: number;
   custo_professor?: number;
+  custo_afiliado?: number;
   professores?: Professor[];
   liquido?: number;
   dizimo?: number;
@@ -59,6 +60,7 @@ interface Totais {
   pagamentos?: number;
   recebido?: number;
   custo_professor?: number;
+  custo_afiliado?: number;
   liquido?: number;
   dizimo?: number;
   investimento?: number;
@@ -174,7 +176,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
   const linhas = rel?.pagamentos ?? [];
 
   return (
-    <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+    <div data-tour="net-payment-split" className="bg-brand-surface border border-brand-border rounded-2xl p-5">
       <div className="flex items-center gap-2 flex-wrap mb-1">
         <PiggyBank size={16} className="text-emerald-500" />
         <h3 className="text-sm font-bold text-brand-text">Dízimo e investimento</h3>
@@ -188,8 +190,8 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
       </div>
       <p className="text-[11px] text-brand-muted mb-4">
         Os percentuais incidem sobre o <strong>líquido</strong> (valor do pagamento menos o
-        custo do professor daquele aluno), nunca sobre o valor cheio. Com o aviso ligado,
-        cada pagamento confirmado na Asaas vira uma mensagem no grupo da direção.
+        custo do professor, incluindo Turbo, e a comissão do afiliado), nunca sobre o valor cheio.
+        Com o aviso ligado, cada pagamento liquidado na Asaas gera o rateio no canal Financeiro.
       </p>
 
       {/* ── Totais do mês: o número que o diretor usa para separar de fato ── */}
@@ -257,6 +259,11 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
       )}
 
       {/* ── Pagamento a pagamento ── */}
+      <p className="text-xs text-brand-muted mb-3">
+        Base operacional = pagamento − professor (incluindo Turbo) − comissão do afiliado.
+        Comissões neste período: <strong>{brl(t.custo_afiliado)}</strong>. Sem sobra positiva,
+        o dízimo é zero. Confira as demais despesas no DRE para apurar o lucro final.
+      </p>
       {linhas.length > 0 ? (
         <div className="rounded-xl border border-brand-border overflow-hidden mb-4">
           <div className="overflow-x-auto">
@@ -267,6 +274,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
                   <th className="text-left font-black uppercase text-[9px] px-3 py-2">Professor</th>
                   <th className="text-right font-black uppercase text-[9px] px-3 py-2">Pago</th>
                   <th className="text-right font-black uppercase text-[9px] px-3 py-2">Professor</th>
+                  <th className="text-right font-black uppercase text-[9px] px-3 py-2">Afiliado</th>
                   <th className="text-right font-black uppercase text-[9px] px-3 py-2">Dízimo</th>
                   <th className="text-right font-black uppercase text-[9px] px-3 py-2">Investim.</th>
                 </tr>
@@ -293,6 +301,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
                     <td className="px-3 py-2 text-right text-brand-muted">
                       {(l.custo_professor ?? 0) > 0 ? `− ${brl(l.custo_professor)}` : '—'}
                     </td>
+                    <td className="px-3 py-2 text-right text-brand-muted">{brl(l.custo_afiliado)}</td>
                     <td className="px-3 py-2 text-right text-amber-600">{brl(l.dizimo)}</td>
                     <td className="px-3 py-2 text-right text-emerald-600">{brl(l.investimento)}</td>
                   </tr>

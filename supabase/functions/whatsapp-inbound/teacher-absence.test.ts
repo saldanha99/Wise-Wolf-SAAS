@@ -3,6 +3,7 @@ import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   absenceConfirmationAnswer,
   absenceDateFromText,
+  coverageInviteAnswer,
   detectTeacherAbsenceIntent,
 } from "./teacher-absence.ts";
 
@@ -81,4 +82,42 @@ Deno.test("confirmação: sim/não/nada", () => {
   assertEquals(absenceConfirmationAnswer("pode sim, obrigado"), "yes");
   assertEquals(absenceConfirmationAnswer("Não, era só um aviso"), "no");
   assertEquals(absenceConfirmationAnswer("quem vai cobrir?"), null);
+});
+
+Deno.test("resposta a convite de cobertura: como o professor fala com a coordenação", () => {
+  for (
+    const yes of [
+      "Consigo sim",
+      "consigo",
+      "Aceito!",
+      "pode deixar",
+      "Fechado",
+      "sim",
+      "Posso sim, 10:30",
+    ]
+  ) {
+    assertEquals(coverageInviteAnswer(yes), "yes", yes);
+  }
+  for (
+    const no of [
+      "Não consigo",
+      "infelizmente não vou poder",
+      "nao",
+      "Dessa vez não dá",
+    ]
+  ) {
+    assertEquals(coverageInviteAnswer(no), "no", no);
+  }
+  for (
+    const other of [
+      "O material é o mesmo?",
+      "Às 10:00 tenho experimental",
+      "Bom dia!",
+      "Combinado!",
+      "Ok",
+      "Perfeito",
+    ]
+  ) {
+    assertEquals(coverageInviteAnswer(other), null, other);
+  }
 });

@@ -1,12 +1,14 @@
+import LessonHistoryPanel from './LessonHistoryPanel';
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   X, Loader2, Flame, Gem, Heart, CalendarCheck, AlertTriangle, TrendingUp,
   BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users, ArrowRightLeft
 } from 'lucide-react';
-import { User as UserType } from '../types';
+import { User as UserType, UserRole } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import StudentHandover from './StudentHandover';
+import StudentLessonRecordsErasure from './StudentLessonRecordsErasure';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
 import StudentManualPixManager from './StudentManualPixManager';
 import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
@@ -57,6 +59,8 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<'overview' | 'classes' | 'notes' | 'financial' | 'history' | 'handover'>('overview');
+  // Depois de apagar os registros das aulas, o dossiê é recarregado do zero.
+  const [handoverKey, setHandoverKey] = useState(0);
   const [newNote, setNewNote] = useState('');
   const [noteCat, setNoteCat] = useState('GERAL');
   const [savingNote, setSavingNote] = useState(false);
@@ -181,7 +185,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-brand-surface w-full max-w-3xl rounded-3xl border border-brand-border shadow-2xl my-6" onClick={e => e.stopPropagation()}>
         {loading ? (
           <div className="p-16 flex justify-center"><Loader2 className="animate-spin text-brand-accent" size={32} /></div>
@@ -264,7 +268,13 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
             </div>
 
             <div className="p-6 max-h-[60vh] overflow-y-auto">
-              {tab === 'handover' && <StudentHandover studentId={studentId} />}
+              {tab === 'handover' && <React.Fragment key={handoverKey}><StudentHandover studentId={studentId} /></React.Fragment>}
+              {/* Exclusão a pedido do aluno: só a direção (o servidor confere de novo). */}
+              {tab === 'handover' && user?.role === UserRole.SCHOOL_ADMIN && (
+                <div className="mt-6">
+                  <StudentLessonRecordsErasure studentId={studentId} onErased={() => setHandoverKey(key => key + 1)} />
+                </div>
+              )}
               {/* OVERVIEW */}
               {tab === 'overview' && (
                 <div className="space-y-5">
@@ -339,9 +349,10 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                 </div>
               )}
 
-              {/* CLASSES */}
+              {/* Histórico operacional e pedagógico do aluno */}
               {tab === 'classes' && (
                 <div className="space-y-2">
+                  <LessonHistoryPanel user={user} initialStudentId={studentId} />
                   {(data.classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (data.classes || []).map((c: any, i: number) => {
                       const pl = PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };

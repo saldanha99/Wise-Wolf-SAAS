@@ -1,3 +1,5 @@
+import TeacherHistoryAccess from './components/TeacherHistoryAccess';
+import LessonHistoryPanel from './components/LessonHistoryPanel';
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from './lib/supabase';
@@ -5,11 +7,13 @@ import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
 import { fetchPendingLessons } from './lib/pendingLessons';
 import { calculateDaysWithoutAbsence } from './lib/teacherManagement';
-import { resolveEnrollmentOfferVendorId } from './lib/enrollmentOffer';
 import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
 const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
+const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogleConnectionGate'));
+const TeacherStudentTermsGate = lazy(() => import('./components/TeacherStudentTermsGate'));
+const NationalHolidayNotice = lazy(() => import('./components/NationalHolidayNotice'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
@@ -26,6 +30,7 @@ import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
+import { useStudentDossierLink } from './lib/studentDossierLink';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -52,15 +57,19 @@ const LessonPlannerAI = lazy(() => import('./components/LessonPlannerAI'));
 const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
 const StudentPracticeHub = lazy(() => import('./components/StudentPracticeHub'));
 const StudentSchedule = lazy(() => import('./components/StudentSchedule'));
+const StudentLessonRecords = lazy(() => import('./components/StudentLessonRecords'));
 const EvolutionView = lazy(() => import('./components/EvolutionView'));
 const TeacherProfile = lazy(() => import('./components/TeacherProfile'));
 const TeacherReschedules = lazy(() => import('./components/TeacherReschedules'));
 const TeacherManagement = lazy(() => import('./components/TeacherManagement'));
 const OralTestsPanel = lazy(() => import('./components/OralTestsPanel'));
 const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
+const LiveLessonsBoard = lazy(() => import('./components/lessonLinks/LiveLessonsBoard'));
+const LessonStartingSoon = lazy(() => import('./components/lessonLinks/LessonStartingSoon'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
+const TeacherStudentTerms = lazy(() => import('./components/TeacherStudentTerms'));
 const ContractManagement = lazy(() => import('./components/ContractManagement'));
 const AdminPaymentsList = lazy(() => import('./components/AdminPaymentsList'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
@@ -94,8 +103,11 @@ const ScheduleChangeRequests = lazy(() => import('./components/ScheduleChangeReq
 const ContactQualityManager = lazy(() => import('./components/ContactQualityManager'));
 const GoogleMeetSettings = lazy(() => import('./components/GoogleMeetSettings'));
 const LessonSessionsPanel = lazy(() => import('./components/LessonSessionsPanel'));
+const LessonRecordingConsentsPanel = lazy(() => import('./components/LessonRecordingConsentsPanel'));
+const LessonRecordingConsentPage = lazy(() => import('./components/LessonRecordingConsentPage'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
+const StudentTermSign = lazy(() => import('./components/StudentTermSign'));
 const CourseRenewalSign = lazy(() => import('./components/CourseRenewalSign'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
@@ -105,6 +117,8 @@ const TeacherWorkflows = lazy(() => import('./components/TeacherWorkflows'));
 const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
+const TeacherSupportCenter = lazy(() => import('./components/TeacherSupportCenter'));
+const TeacherHandbook = lazy(() => import('./components/TeacherHandbook'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
 const PublicTrialConfirmation = lazy(() => import('./components/PublicTrialConfirmation'));
@@ -123,7 +137,7 @@ const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGene
 const VendorInviteGenerator = lazy(() => import('./components/VendorInviteGenerator'));
 const PublicContractView = lazy(() => import('./components/PublicContractView'));
 const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
-const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
+const AffiliateGuidePage = lazy(() => import('./components/affiliate/AffiliateGuidePage'));
 const RegistrationLinkGenerator = lazy(() => import('./components/RegistrationLinkGenerator'));
 const ReferralLanding = lazy(() => import('./components/ReferralLanding'));
 const VendedorLanding = lazy(() => import('./components/VendedorLanding'));
@@ -135,7 +149,14 @@ import { ShortcutRail } from './components/shell/ShortcutRail';
 import { useNavLayout } from './components/shell/useNavLayout';
 import { UserMenu } from './components/shell/UserMenu';
 import { flattenTour } from './lib/tours';
-import { flattenFeatureTour, latestFeatureTourFor, pendingFeatureTours, type FeatureTour } from './lib/featureTours';
+import {
+  asRecordingAuthorizationMode,
+  flattenFeatureTour,
+  latestFeatureTourFor,
+  pendingFeatureTours,
+  type FeatureTour,
+  type RecordingAuthorizationMode,
+} from './lib/featureTours';
 import { activeMenuIdFor, buildMenuItems } from './lib/navModel';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -157,10 +178,12 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'automation', label: 'Smart', group: 'Administração' },
   ],
   [UserRole.SCHOOL_ADMIN]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Aulas', keywords: 'auditoria atraso reclamações' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Aulas' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Aulas' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Aulas' },
+    { tab: 'recording-consents', label: 'Autorizações de registro', group: 'Aulas', keywords: 'termo transcrição meet lgpd consentimento' },
     { tab: 'google-meet', label: 'Conta central Google', group: 'Configurações' },
     { tab: 'dashboard', label: 'Início', group: 'Visão geral', keywords: 'dashboard painel' },
     { tab: 'wolfie-lab', label: 'Wolfie Lab', group: 'Visão geral' },
@@ -172,6 +195,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'recruiting', label: 'Recrutamento', group: 'Pessoas' },
     { tab: 'hr', label: 'Recursos Humanos', group: 'Pessoas', keywords: 'rh' },
     { tab: 'schedule_explorer', label: 'Mapa de Aulas', group: 'Aulas', keywords: 'agenda horários' },
+    { tab: 'live-lessons', label: 'Ao vivo', group: 'Aulas', keywords: 'link meet sala entrar agora' },
     { tab: 'lesson-advances', label: 'Antecipações', group: 'Aulas', keywords: 'adiantamento viagem competência' },
     { tab: 'attendance-disputes', label: 'Verificar Presença', group: 'Aulas' },
     { tab: 'trials', label: 'Agendar Experimental', group: 'Aulas' },
@@ -195,7 +219,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
     { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
     { tab: 'referral-admin', label: 'Indicações', group: 'Crescimento' },
-    { tab: 'vendors-mgmt', label: 'Vendedores', group: 'Crescimento' },
+    { tab: 'vendors-mgmt', label: 'Afiliados', group: 'Crescimento' },
     { tab: 'contracts', label: 'Contratos', group: 'Configurações' },
     { tab: 'settings_school', label: 'Central da Escola', group: 'Configurações' },
     { tab: 'whatsapp', label: 'Conversas do WhatsApp', group: 'Comunicação', keywords: 'mensagens atendimento inbox' },
@@ -205,13 +229,16 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.COORDINATOR]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Qualidade' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Qualidade' },
+    { tab: 'recording-consents', label: 'Autorizações de registro', group: 'Qualidade' },
     { tab: 'profile', label: 'Meu perfil', group: 'Conta' },
   ],
   [UserRole.TEACHER]: [
+    { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Professor' },
     { tab: 'dashboard', label: 'Dashboard', group: 'Professor' },
     { tab: 'lessons', label: 'Lançar Aula', group: 'Professor' },
@@ -228,6 +255,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'teacher-financials', label: 'Financeiro', group: 'Professor' },
     { tab: 'reschedules', label: 'Reposições', group: 'Professor' },
     { tab: 'pedagogical', label: 'Pedagógico', group: 'Professor' },
+    { tab: 'teacher-handbook', label: 'Manual do Professor', group: 'Professor', keywords: 'treinamento obrigatório regras reposição feriado teacher exchange' },
     { tab: 'training', label: 'Treinamentos', group: 'Professor' },
     { tab: 'oral-tests', label: 'Testes Orais', group: 'Professor' },
     { tab: 'automation', label: 'Smart', group: 'Professor' },
@@ -240,6 +268,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'ai-tutor', label: 'Praticar com o Wolfie', group: 'Aluno' },
     { tab: 'practice', label: 'Minhas Trilhas', group: 'Aluno' },
     { tab: 'schedule', label: 'Aulas', group: 'Aluno' },
+    { tab: 'lesson-records', label: 'Minhas aulas registradas', group: 'Aluno', keywords: 'resumo registro transcrição termo exclusão' },
     { tab: 'meeting_links', label: 'Links', group: 'Aluno' },
     { tab: 'materials', label: 'Materiais', group: 'Aluno' },
     { tab: 'financial', label: 'Financeiro', group: 'Aluno' },
@@ -249,11 +278,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.SALESPERSON]: [
-    { tab: 'vendor_dashboard', label: 'Dashboard', group: 'Vendas' },
-    { tab: 'vendor_schedule', label: 'Agenda de Professores', group: 'Vendas' },
-    { tab: 'vendor_trial', label: 'Link Experimental', group: 'Vendas' },
-    { tab: 'vendor_enrollment', label: 'Gerar Matrícula', group: 'Vendas' },
-    { tab: 'vendor_commissions', label: 'Minhas Comissões', group: 'Vendas' },
+    { tab: 'vendor_dashboard', label: 'Painel do afiliado', group: 'Afiliado', keywords: 'cupom indicações comissões saque pix' },
+    { tab: 'vendor_guide', label: 'Como funciona', group: 'Afiliado', keywords: 'regras liquidação comissão saque' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
   [UserRole.NON_STUDENT]: [
@@ -284,6 +310,12 @@ const App: React.FC = () => {
     const destination = studentBillingDestination(window.location, user);
     if (destination) setActiveTab(destination);
   }, [user?.id, user?.role]);
+  // Link com login do dossiê (substituto e novo titular, pelo WhatsApp): também
+  // só destino. Quem decide se a pessoa lê é o servidor (get_student_handover).
+  // A URL volta para "/" (o dossiê abre só nesta visita), mas o foco fica até a
+  // pessoa sair do dossiê — e os tours esperam por ela (holdsTours): o primeiro
+  // passo de um tour troca de aba e a tirava do dossiê que o link acabou de abrir.
+  const dossierLink = useStudentDossierLink(user, activeTab, setActiveTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
   // Menu lateral clássico x barra no topo + trilho de atalhos (preferência por usuário).
@@ -319,6 +351,17 @@ const App: React.FC = () => {
   // o de boas-vindas: quem está no primeiro acesso vê o produto inteiro como
   // novo, e dois balões ao mesmo tempo é o oposto de "levar pela mão".
   const [featureTour, setFeatureTour] = useState<FeatureTour | null>(null);
+  // Como a escola autoriza o registro das aulas (migration 20260929100000):
+  // decide entre os tours do termo e os do registro autorizado pela escola.
+  // Nulo = desconhecido (nenhum tour que dependa do modo abre).
+  const [recordingMode, setRecordingMode] = useState<RecordingAuthorizationMode | null>(null);
+  const [hasLinkedAffiliate, setHasLinkedAffiliate] = useState(false);
+  const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
+  // Termo por aluno pendente do próprio professor: pop-up obrigatório.
+  const [teacherTermsRequired, setTeacherTermsRequired] = useState(false);
+  // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
+  const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
+  const [lessonSoonActive, setLessonSoonActive] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -340,15 +383,27 @@ const App: React.FC = () => {
   useEffect(() => {
     const uid = user?.id;
     const role = String(user?.role);
-    if (!uid || !TOUR_ROLES.includes(role)) return;
+    if (!uid || (!TOUR_ROLES.includes(role) && role !== UserRole.SALESPERSON && role !== UserRole.COORDINATOR)) return;
     let vivo = true;
     void (async () => {
       const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
+      // Modo do registro das aulas da escola (também para "Novidades"). Falha
+      // na leitura não derruba as outras novidades: só os tours que dependem
+      // do modo ficam de fora.
+      const { data: mode, error: modeError } = await supabase.rpc('my_lesson_recording_authorization_mode');
+      let linkedAffiliate = false;
+      if (role === UserRole.STUDENT) {
+        const { data: affiliatePanel, error: affiliateError } = await supabase.rpc('get_my_affiliate_panel');
+        linkedAffiliate = !affiliateError && (affiliatePanel as { ok?: boolean } | null)?.ok === true;
+      }
       if (!vivo) return;
-      if (data?.onboarded === false) { setTourOpen(true); return; }
+      const recording = modeError ? null : asRecordingAuthorizationMode(mode);
+      setRecordingMode(recording);
+      setHasLinkedAffiliate(linkedAffiliate);
+      if (data?.onboarded === false && TOUR_ROLES.includes(role)) { setTourOpen(true); return; }
       const { data: seen, error } = await supabase.from('feature_tour_views').select('tour_id').eq('user_id', uid);
       if (!vivo || error) { if (error) console.warn('[tour] novidades indisponíveis', error.message); return; }
-      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id))[0];
+      const next = pendingFeatureTours(role, (seen ?? []).map(r => r.tour_id), { recordingMode: recording, linkedAffiliate })[0];
       if (next) setFeatureTour(next);
     })();
     return () => { vivo = false; };
@@ -500,6 +555,8 @@ const App: React.FC = () => {
 
   // Restaura a sessão persistida pelo Supabase depois de refresh/reabertura da aba.
   useEffect(() => {
+    // O extrato próprio tem login independente e não restaura acesso operacional.
+    if (window.location.pathname === '/historico-prestacao') { setIsRestoringSession(false); return; }
     let mounted = true;
 
     const restoreSession = async () => {
@@ -1040,9 +1097,23 @@ const App: React.FC = () => {
     </Suspense>;
   }
 
+  // Termo individual pelo link do WhatsApp (professor ou direção, sem login).
+  if (path === '/aceitar-termo' || path.startsWith('/aceitar-termo')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-100"><Loader2 className="animate-spin text-[#002366]" size={32} /></div>}>
+      <StudentTermSign />
+    </Suspense>;
+  }
+
   if (path === '/renovar-curso' || path.startsWith('/renovar-curso')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
       <CourseRenewalSign />
+    </Suspense>;
+  }
+
+  // Termo de registro das aulas: aluno ou responsável responde pelo link (público, sem login).
+  if (path === '/registro-das-aulas' || path.startsWith('/registro-das-aulas')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <LessonRecordingConsentPage />
     </Suspense>;
   }
 
@@ -1068,6 +1139,8 @@ const App: React.FC = () => {
       </Suspense>
     );
   }
+
+  if (path === '/historico-prestacao') return <TeacherHistoryAccess />;
 
   if (path === '/view-contract') {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
@@ -1177,7 +1250,8 @@ const App: React.FC = () => {
   const renderContent = () => {
     // SECURITY GUARD: Strict Vendor Access Check
     if (user.role === UserRole.SALESPERSON) {
-      const allowedVendorTabs = ['vendor_dashboard', 'vendor_schedule', 'vendor_trial', 'vendor_enrollment', 'vendor_commissions', 'profile'];
+      // Afiliado não gera link (a indicação é o cupom): só painel, guia e perfil.
+      const allowedVendorTabs = ['vendor_dashboard', 'vendor_guide', 'profile'];
       if (!allowedVendorTabs.includes(activeTab)) {
         setActiveTab('vendor_dashboard');
         return null;
@@ -1186,7 +1260,7 @@ const App: React.FC = () => {
 
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
-      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'practice', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
+      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'practice', 'schedule', 'lesson-records', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
       if (!allowedStudentTabs.includes(activeTab)) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-red-100 dark:border-red-900/30 shadow-xl overflow-hidden relative">
@@ -1256,7 +1330,7 @@ const App: React.FC = () => {
               setActiveTab('schedule_explorer');
             }}
           /> :
-          user.role === UserRole.STUDENT ? <StudentDashboard user={user} tenantId={currentTenant?.id} /> :
+          user.role === UserRole.STUDENT ? <><TeacherStudentTerms compact /><StudentDashboard user={user} tenantId={currentTenant?.id} /></> :
           user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} /> :
             <>
               {/* Funil pós-contratação: pop-up diário de responsabilidades do professor */}
@@ -1273,6 +1347,8 @@ const App: React.FC = () => {
       'msg_settings': <TeacherMessageSettings user={user} />,
       'contracts': <ContractManagement tenantId={currentTenant?.id} />,
       'student-payments': <AdminPaymentsList tenantId={currentTenant?.id} />,
+      'lesson-history': <LessonHistoryPanel user={user} />,
+      'teacher-handbook': <TeacherHandbook userId={user.id} onNavigate={setActiveTab} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,
       'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,
@@ -1329,34 +1405,53 @@ const App: React.FC = () => {
             return;
           }
 
-          // A RPC aceita somente id, data e hora. Aluno, professor, tenant,
+          // A RPC aceita id, data, hora e motivo. Aluno, professor, tenant,
           // booking original e fault_type nunca saem do controle do banco.
-          const { error } = await supabase.rpc('schedule_reschedule', {
+          // Remarcar (já tinha data) exige motivo — o servidor recusa sem ele.
+          const { data: saved, error } = await supabase.rpc('schedule_reschedule', {
             p_reschedule_id: String(data.id),
             p_date: data.date,
             p_time: data.time,
+            p_reason: data.reason || null,
           });
           if (error) {
             console.error('Save Reschedule Error:', error);
-            alert(`Erro ao salvar reposição: ${error.message}`);
+            alert(error.message === 'motivo_obrigatorio'
+              ? 'Remarcar exige um motivo — ele vai para a coordenação e para a família.'
+              : `Erro ao salvar reposição: ${error.message}`);
           } else {
-            // O aviso sai exclusivamente pelo botão persistente/idempotente da
-            // tela de reposições. O envio direto pelo navegador podia duplicar
-            // a mensagem e não deixava receipt auditável.
+            // Coordenação e família recebem o aviso pela fila do servidor
+            // (evento da reposição, idempotente) — nada sai do navegador.
+            const event = (saved as any)?.event;
+            if (event?.em_cima_da_hora) {
+              alert('Registrado. Como foi em cima da hora, a coordenação recebe o aviso destacado.');
+            }
             loadAppData();
           }
         }}
+        onUnschedule={async (id, reason) => {
+          const { error } = await supabase.rpc('unschedule_reschedule', { p_reschedule_id: id, p_reason: reason });
+          if (error) {
+            alert(error.message === 'motivo_obrigatorio' ? 'Desmarcar exige um motivo.' : `Erro ao desmarcar: ${error.message}`);
+            return;
+          }
+          loadAppData();
+        }}
       />,
       'evolution': <EvolutionView user={user} />,
+      // Só o aluno: a RPC recusa outros papéis (eles têm o dossiê e "Sala e resumo").
+      'lesson-records': user.role === UserRole.STUDENT ? <StudentLessonRecords /> : null,
       'profile': <TeacherProfile />,
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
+      'live-lessons': <LiveLessonsBoard />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'attendance-disputes': <AttendanceDisputes user={user} tenantId={currentTenant?.id} />,
       'lesson-quality': <LessonQualityCenter />,
       'schedule-requests': <ScheduleChangeRequests tenantId={currentTenant?.id} />,
       'quality-contacts': <ContactQualityManager manager />,
-      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} />,
+      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} canMarkDocumentation={user.role === UserRole.SCHOOL_ADMIN} focusStudentId={dossierLink.focusStudentId} onFocusClosed={dossierLink.release} />,
       'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
+      'recording-consents': <LessonRecordingConsentsPanel schoolName={currentTenant?.name} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,
       'student-insights': <StudentInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'teacher-insights': <TeacherInsightsBoard user={user} tenantId={currentTenant?.id} />,
@@ -1381,24 +1476,16 @@ const App: React.FC = () => {
       'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || (user as any).is_trainer
         ? <TrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TrainingView user={user} />,
-      'referral': <AffiliatePanel user={user} />,
+      'referral': <AffiliatePanel user={user} linkedAffiliate={hasLinkedAffiliate} />,
       'recruiting': <div className="max-w-2xl mx-auto py-6 space-y-4">
         <TeacherInviteGenerator tenantId={currentTenant?.id || ''} />
         <VendorInviteGenerator tenantId={currentTenant?.id || ''} />
       </div>,
-      'contract_teacher': <PublicContractView id={user.id} />,
+      'contract_teacher': <><TeacherStudentTerms /><PublicContractView id={user.id} /></>,
 
       // VENDEDOR tabs
-      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
-      'vendor_schedule': <TeacherScheduleExplorer
-        user={user}
-        teachers={activeTeachers}
-        reschedules={[]}
-        currentTenantId={currentTenant?.id}
-      />,
-      'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={activeTeachers} /></div>,
-      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={activeTeachers} tenantId={currentTenant?.id || ''} vendorId={resolveEnrollmentOfferVendorId(user)} /></div>,
-      'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
+      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
+      'vendor_guide': <AffiliateGuidePage />,
     };
 
     const node = contentMap[activeTab] || contentMap['dashboard'];
@@ -1454,7 +1541,7 @@ const App: React.FC = () => {
           }}
           pendingLessonsCount={pendingLessonsCount}
           pendingCounts={pendingCounts}
-          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
+          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
@@ -1481,7 +1568,7 @@ const App: React.FC = () => {
           tabIndex={-1}
           aria-label="Conteúdo principal"
           className={`
-          app-main-scroll flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-none transition-all duration-300 ease-in-out
+          app-main-scroll ww-watermark flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-hidden transition-all duration-300 ease-in-out
           ${isSidebarCollapsed ? 'lg:ml-0' : 'lg:ml-0'} 
         `}>
           {/* Top Header inside main */}
@@ -1538,9 +1625,11 @@ const App: React.FC = () => {
                       'automation': 'Conexão do WhatsApp',
                       'automations': 'Disparos do WhatsApp',
                       'evolution': 'Evolução',
+                      'lesson-records': 'Minhas aulas registradas',
                       'teachers': 'Professores',
                       'oral-tests': 'Testes Orais',
                       'schedule_explorer': 'Explorador de Agenda',
+                      'live-lessons': 'Ao vivo',
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'margin': 'Custo e Margem',
@@ -1554,7 +1643,10 @@ const App: React.FC = () => {
                       'settings': 'Configurações',
                       'profile': 'Meu Perfil',
                       'referral': 'Indicações & Afiliação',
-                      'recruiting': 'Recrutamento'
+                      'recruiting': 'Recrutamento',
+                      'vendors-mgmt': 'Afiliados',
+                      'vendor_dashboard': 'Painel do afiliado',
+                      'vendor_guide': 'Como funciona'
                     };
                     return titles[activeTab] || activeTab.replace('_', ' ');
                   })()}
@@ -1615,7 +1707,7 @@ const App: React.FC = () => {
                       id="app-header-search-results"
                       role="listbox"
                       aria-label="Telas disponíveis"
-                      className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-[60]"
+                      className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-60"
                     >
                       {filteredSearchItems.length === 0 ? (
                         <p role="status" className="px-3 py-5 text-center text-sm text-gray-500 dark:text-slate-400">
@@ -1682,7 +1774,7 @@ const App: React.FC = () => {
                   <>
                     <button
                       type="button"
-                      className="fixed inset-0 z-[110] cursor-default bg-black/10 sm:bg-transparent"
+                      className="fixed inset-0 z-110 cursor-default bg-black/10 sm:bg-transparent"
                       aria-label="Fechar notificações"
                       tabIndex={-1}
                       onClick={() => closeNotifications()}
@@ -1700,7 +1792,7 @@ const App: React.FC = () => {
                         width: notifPosition.width,
                         maxHeight: `calc(100dvh - ${notifPosition.top + 12}px)`,
                       }}
-                      className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-slate-900"
+                      className="fixed z-120 flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl outline-hidden dark:border-slate-800 dark:bg-slate-900"
                     >
                       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-slate-800">
                         <div className="min-w-0">
@@ -1785,7 +1877,7 @@ const App: React.FC = () => {
                     : <Sun className="w-5 h-5" aria-hidden="true" />}
                 </button>
 
-                <div className="hidden sm:block h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
+                <div className="hidden sm:block h-8 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
 
                 <UserMenu
                   name={user.name}
@@ -1793,8 +1885,8 @@ const App: React.FC = () => {
                   avatarUrl={user.avatar}
                   onProfile={() => setActiveTab('profile')}
                   onLogout={handleLogout}
-                  onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
-                  onOpenNews={latestFeatureTourFor(user.role) ? () => { const t = latestFeatureTourFor(user.role); if (t) setFeatureTour(t); } : undefined}
+                  onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => { dossierLink.release(); setTourOpen(true); } : undefined}
+                  onOpenNews={latestFeatureTourFor(user.role, { recordingMode, linkedAffiliate: hasLinkedAffiliate }) ? () => { const t = latestFeatureTourFor(user.role, { recordingMode, linkedAffiliate: hasLinkedAffiliate }); if (t) { dossierLink.release(); setFeatureTour(t); } } : undefined}
                 />
               </div>
             </div>
@@ -1820,7 +1912,23 @@ const App: React.FC = () => {
         </main>
       </div>
       {(user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) && <SmartFinder user={user} />}
-      {tourOpen && TOUR_ROLES.includes(user.role as string) && (
+      {/* Central de Ajuda do professor: sempre à mão, em qualquer tela. */}
+      {user.role === UserRole.TEACHER && (
+        <Suspense fallback={null}>
+          <TeacherSupportCenter onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
+        </Suspense>
+      )}
+      {user.role === UserRole.TEACHER && recordingMode === 'SCHOOL_DEFAULT' && (
+        <Suspense fallback={null}>
+          <TeacherGoogleConnectionGate key={user.id} onActiveChange={setTeacherGoogleRequired} onLogout={handleLogout} />
+        </Suspense>
+      )}
+      {user.role === UserRole.TEACHER && (
+        <Suspense fallback={null}>
+          <TeacherStudentTermsGate key={user.id} blocked={teacherGoogleRequired} onActiveChange={setTeacherTermsRequired} onLogout={handleLogout} />
+        </Suspense>
+      )}
+      {tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
             steps={flattenTour(user.role as TourRole)}
@@ -1830,13 +1938,24 @@ const App: React.FC = () => {
               // Quem acabou de conhecer o produto viu tudo como novo: as
               // novidades já lançadas não voltam como tour separado.
               await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
-              await markFeatureToursSeen(pendingFeatureTours(user.role, []));
+              await markFeatureToursSeen(pendingFeatureTours(user.role, [], { recordingMode, linkedAffiliate: hasLinkedAffiliate }));
             }}
             onClose={() => setTourOpen(false)}
           />
         </Suspense>
       )}
-      {featureTour && !tourOpen && (
+      {!tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && (
+        <Suspense fallback={null}>
+          <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
+        </Suspense>
+      )}
+      {/* Aula começando: aviso 10 min antes, com o link da aula (aluno e professor). */}
+      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && (
+        <Suspense fallback={null}>
+          <LessonStartingSoon key={user.id} userId={user.id} role={user.role === UserRole.STUDENT ? 'STUDENT' : 'TEACHER'} onActiveChange={setLessonSoonActive} />
+        </Suspense>
+      )}
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

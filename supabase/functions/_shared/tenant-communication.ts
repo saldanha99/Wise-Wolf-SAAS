@@ -100,6 +100,48 @@ export function resolveTenantConfiguredWhatsAppDestination(
   return allowed.has(normalized) ? normalized : null;
 }
 
+export type TenantNoticeChannel =
+  | "direcao"
+  | "financeiro"
+  | "coordenacao"
+  | "comercial"
+  | "professores";
+
+/**
+ * Grupo de um CANAL de aviso (18/09/2026): dinheiro em `financeiro` (rateio,
+ * DRE, folha, caixinha — desde 19/09; sem grupo próprio cai em `direcao`),
+ * decisões e assistente em `direcao`, agenda em `coordenacao`, funil em
+ * `comercial`, disparos em `professores`. Resolvido no banco
+ * (`notice_channel_destination` → `private.tenant_notice_destination`): canal
+ * configurado em `tenant_notice_channels`, senão o grupo que já cumpria esse
+ * papel (professores → `teachers_group_id`; comercial → `directors_group_id`;
+ * financeiro → direção), senão o grupo da Gestão. Devolve null só quando a
+ * escola não tem grupo nenhum — aí o chamador decide (normalmente, não manda).
+ *
+ * O valor vem da configuração da própria escola, chaveado por tenant no
+ * servidor: passe-o por `resolveTenantConfiguredWhatsAppDestination`, nunca
+ * pela trava estrita de corpo de requisição.
+ */
+export async function loadTenantNoticeDestination(
+  admin: any,
+  tenantId: string,
+  channel: TenantNoticeChannel,
+): Promise<string | null> {
+  const { data, error } = await admin.rpc("notice_channel_destination", {
+    p_tenant: tenantId,
+    p_channel: channel,
+  });
+  if (error) {
+    console.error("[notice-channel] destino indisponível", {
+      tenantId,
+      channel,
+      code: (error as { code?: string }).code,
+    });
+    return null;
+  }
+  return safeWhatsAppGroupId(data) || safePhone(data);
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -198,6 +240,16 @@ export function resolveTenantCommunicationIdentity(
   const fallbackPortal = tenantId === "school-wise-wolf"
     ? "https://system.wisewolflanguage.com.br"
     : null;
+  // A Wise Wolf mora em system.wisewolflanguage.com.br. `tenants.domain` é
+  // derivado do slug pela tela de configuração da escola
+  // (`<slug>.wisewolflanguage.com.br`) e "wisewolf.wisewolflanguage.com.br" não
+  // existe no DNS: em 17/09/2026 o link de renovação da Bianca saiu nesse host
+  // depois de alguém salvar as configurações, e ela respondeu "esse link não
+  // funciona". Para o tenant canônico, só um domínio próprio VERIFICADO passa
+  // na frente do portal oficial.
+  const canonicalWiseWolf = slug === "https://system.wisewolflanguage.com.br"
+    ? slug
+    : fallbackPortal;
 
   return {
     tenantId,
@@ -210,7 +262,8 @@ export function resolveTenantCommunicationIdentity(
     secondaryColor: safeColor(branding.secondaryColor, "#0F766E"),
     supportEmail: safeEmail(schoolInfo.email),
     supportPhone: safePhone(schoolInfo.phone),
-    portalUrl: customDomain || tenantDomain || slug || fallbackPortal,
+    portalUrl: customDomain ||
+      (canonicalWiseWolf ? canonicalWiseWolf : (tenantDomain || slug)),
     talentGroupUrl: safeHttpsUrl(tenant.talent_group_link),
   };
 }

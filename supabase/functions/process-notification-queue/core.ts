@@ -1,7 +1,7 @@
 import type { EvolutionSendResult } from "../_shared/evolution-send.ts";
 
 export type QueueDeliveryDecision = {
-  status: "sent" | "failed" | "uncertain";
+  status: "sent" | "failed" | "uncertain" | "pending";
   reason: string | null;
   releaseOccurrenceReceipt: boolean;
 };
@@ -103,6 +103,14 @@ export function queueDeliveryDecision(
       status: "uncertain",
       reason: "provider_accepted_without_message_id",
       releaseOccurrenceReceipt: false,
+    };
+  }
+  if (result.outcome === "rejected" && result.throttled === true) {
+    // Vetado pelo teto do WhatsApp: nada cruzou o provedor, tenta mais tarde.
+    return {
+      status: "pending",
+      reason: `throttled_${result.throttleKind || "outbound"}`,
+      releaseOccurrenceReceipt: true,
     };
   }
   if (result.outcome === "rejected") {
@@ -221,18 +229,119 @@ export function renderStudentLifecycleNotification(input: {
   return `Oi, ${studentFirstName}! Registramos o encerramento da sua matr\u00edcula na ${tenantName}, conforme alinhado com a equipe, a partir de ${effectiveDate}. Agradecemos por ter feito parte da nossa escola. Seus hor\u00e1rios fixos foram liberados e, se quiser voltar no futuro, ser\u00e1 um prazer receber voc\u00ea novamente. Conte com a gente.`;
 }
 
+/** Pedido do termo de registro das aulas (migration 20260926210000). */
+export const LESSON_RECORDING_CONSENT_KIND = "LESSON_RECORDING_CONSENT_REQUEST";
+
+export type LessonRecordingConsentDelivery =
+  | { ok: true; destination: string; message: string }
+  | {
+    ok: false;
+    retryable: boolean;
+    reason: string;
+    /**
+     * Adiar (janela seg–sáb 9h–20h ou ritmo de 5 a cada 15 min) sem gastar
+     * tentativa: o processador devolve a vaga por `defer_notification_delivery`.
+     */
+    deferSeconds?: number;
+  };
+
+/** Portal da escola que o banco devolve (`https://host`, sem caminho). */
+const PORTAL_PATTERN =
+  /^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
+/** O adiamento de uma vez só vai até 1 h (teto de `defer_notification_delivery`). */
+const MAX_DEFER_SECONDS = 3600;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** O link do termo, no portal da escola, com um token de 64 hex. */
+function hasConsentLink(message: string, portal: string): boolean {
+  return new RegExp(
+    `${
+      escapeRegExp(portal)
+    }/registro-das-aulas\\?token=[a-f0-9]{64}(?![a-f0-9])`,
+  ).test(message);
+}
+
+/**
+ * Lê a revalidação do banco (`get_lesson_recording_consent_request_snapshot`).
+ * Só autoriza o envio com destino de pessoa (nunca grupo), mensagem dentro do
+ * limite e o link do termo no portal da escola. Fora da janela ou do ritmo, o
+ * banco manda adiar (`defer_seconds`). Qualquer outra recusa cancela a
+ * mensagem: quem respondeu, revogou, trocou de contato ou teve o link
+ * substituído não recebe o pedido.
+ */
+export function lessonRecordingConsentDelivery(
+  snapshot: unknown,
+): LessonRecordingConsentDelivery {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return {
+      ok: false,
+      retryable: true,
+      reason: "lesson_recording_consent_snapshot_unavailable",
+    };
+  }
+  const record = snapshot as Record<string, unknown>;
+  if (record.ok !== true) {
+    const reason = typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim().slice(0, 120)
+      : "lesson_recording_consent_no_longer_valid";
+    const defer = Number(record.defer_seconds);
+    if (record.retryable === true && Number.isFinite(defer) && defer > 0) {
+      return {
+        ok: false,
+        retryable: true,
+        reason,
+        deferSeconds: Math.min(MAX_DEFER_SECONDS, Math.ceil(defer)),
+      };
+    }
+    return { ok: false, retryable: record.retryable === true, reason };
+  }
+  const destination = normalizeQueueDestination(record.destination);
+  const message = typeof record.message === "string" ? record.message : "";
+  const portal = typeof record.portal === "string" ? record.portal : "";
+  if (
+    !destination || destination.endsWith("@g.us") || !message.trim() ||
+    message !== message.trim() || message.length > 4096 ||
+    !PORTAL_PATTERN.test(portal) || !hasConsentLink(message, portal)
+  ) {
+    return {
+      ok: false,
+      retryable: false,
+      reason: "lesson_recording_consent_payload_invalid",
+    };
+  }
+  return { ok: true, destination, message };
+}
+
 export function queueAudience(kind: unknown): {
   audience: "student" | "teacher";
   centralOnly: boolean;
 } {
   const normalized = normalizeNotificationKind(kind);
-  if (normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+  if (
+    normalized === "ORAL_TEST_STUDENT" ||
+    normalized === "ORAL_TEST_REMINDER_STUDENT" ||
+    normalized === "LESSON_RECORDING_NOTICE_STUDENT" ||
+    normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE" ||
+    normalized === LESSON_RECORDING_CONSENT_KIND
+  ) {
     return { audience: "student", centralOnly: true };
   }
   if (
+    normalized === "ORAL_TEST_TEACHER" ||
+    normalized === "ORAL_TEST_REMINDER_TEACHER" ||
+    normalized === "LESSON_RECORDING_NOTICE_TEACHER" ||
+    normalized === "TEACHER_CHANGE_GROUP" ||
+    normalized === "AFFILIATE_WITHDRAWAL_REQUESTED" ||
+    normalized === "TEACHER_PAYOUT_CONFIRMED" ||
+    normalized === "AFFILIATE_PAYOUT_CONFIRMED" ||
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||
     normalized === "TEACHER_AGENDA" ||
+    normalized === "TEACHER_MEET_ROOM" ||
     normalized === "TEACHER_BIRTHDAY" ||
     normalized === "SCHOOL_AI_BRIEFING" ||
     normalized === "CRON_ALERT" ||
@@ -244,7 +353,9 @@ export function queueAudience(kind: unknown): {
     normalized === "TRIAL_TEACHER_REQUESTED" ||
     normalized === "TRIAL_MANAGEMENT_ACCEPTED" ||
     normalized === "TEACHER_STUDENT_SUSPENDED" ||
-    normalized === "TEACHER_STUDENT_OFFBOARDED"
+    normalized === "TEACHER_STUDENT_OFFBOARDED" ||
+    normalized === "ENROLLMENT_MANAGEMENT_CLOSED" ||
+    normalized === "ENROLLMENT_TEACHER_CLOSED"
   ) return { audience: "teacher", centralOnly: true };
   return { audience: "student", centralOnly: false };
 }

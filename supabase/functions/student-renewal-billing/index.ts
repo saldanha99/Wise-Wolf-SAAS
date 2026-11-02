@@ -208,18 +208,32 @@ serve(async (requestEvent) => {
           await finish("REVIEW", null, "source_subscription_missing");
           continue;
         }
-        const old = await read(
+        // A assinatura antiga é a PROVA de que não vamos cobrar em dobro: ela
+        // precisa estar encerrada (EXPIRED/INACTIVE) — ou já não existir no
+        // provedor. Valor e forma de pagamento NÃO precisam bater com a antiga:
+        // renovação pode mudar de plano (Bianca, 17/09/2026: 5x R$ 377 → 3x
+        // R$ 261, assinatura antiga apagada na suspensão; a comparação de
+        // valor com a antiga deixava a oferta assinada presa em REVIEW e a
+        // reativação do cadastro exigia justamente a assinatura que sumiu).
+        const oldResponse = await request(
           integration,
           `subscriptions/${encodeURIComponent(oldId)}`,
         );
+        let old: Row | null;
+        if (oldResponse.status === 404) {
+          old = null;
+        } else if (!oldResponse.ok) {
+          throw new Error(`provider_read_${oldResponse.status}`);
+        } else {
+          old = obj(await oldResponse.json());
+        }
         if (
-          old.customer !== s.customer_id ||
-          old.billingType !== s.billing_type ||
-          Number(old.value) !== Number(s.monthly_fee_cents) / 100 ||
-          old.cycle !== "MONTHLY" ||
-          !["EXPIRED", "INACTIVE"].includes(String(old.status))
+          old &&
+          (old.customer !== s.customer_id ||
+            (old.deleted !== true &&
+              !["EXPIRED", "INACTIVE"].includes(String(old.status))))
         ) {
-          await finish("REVIEW", null, "source_subscription_changed");
+          await finish("REVIEW", null, "source_subscription_still_active");
           continue;
         }
         const current = await resolveAsaasIntegration(
@@ -247,7 +261,7 @@ serve(async (requestEvent) => {
           description: `Renovação Wise Wolf - 6 meses`,
           externalReference: s.external_reference,
         };
-        if (Array.isArray(old.split) && old.split.length) {
+        if (old && Array.isArray(old.split) && old.split.length) {
           payload.split = old.split;
         }
         let response: Response;

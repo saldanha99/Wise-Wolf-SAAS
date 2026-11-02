@@ -8,6 +8,7 @@ import { authorizeRequest } from "../_shared/request-auth.ts";
 import {
   markEnrollmentFailure,
   markEnrollmentStage,
+  studentBillingTeacherTermsReady,
 } from "../_shared/enrollment-progress.ts";
 import {
   resolveAsaasIntegration,
@@ -112,6 +113,24 @@ serve(async (req) => {
       )
       : null;
     progressOfferId = offer?.id || "";
+    // Matrícula por link vai até o fim antes dos termos individuais: só a
+    // liberação (agenda e conclusão) espera escola e professor assinarem —
+    // `finish_enrollments_after_teacher_terms`. Fora da matrícula a trava fica.
+    if (
+      !offer &&
+      !await studentBillingTeacherTermsReady(
+        authorization.admin,
+        authorization.tenantId,
+        userId,
+      )
+    ) {
+      return json({
+        success: false,
+        error: "TEACHER_TERM_PENDING",
+        message:
+          "Aguarde a assinatura do termo individual pela escola e pelo professor antes de continuar a cobrança.",
+      }, 409);
+    }
 
     if (isSelfStudent && !offer) {
       return json({ success: false, error: "enrollment_offer_required" }, 403);
@@ -171,15 +190,18 @@ serve(async (req) => {
           `schedule_materialization_failed: ${materializationError.message}`,
         );
       }
+      const materializationReason = materialization &&
+          typeof materialization === "object"
+        ? text((materialization as Record<string, unknown>).error)
+        : "";
+      // Termo individual em conferência: o horário continua segurado e a agenda
+      // nasce quando escola e professor assinarem. A cobrança segue.
       if (
-        !materialization ||
-        typeof materialization !== "object" ||
-        (materialization as Record<string, unknown>).success !== true
+        materializationReason !== "TEACHER_TERM_PENDING" &&
+        (!materialization ||
+          typeof materialization !== "object" ||
+          (materialization as Record<string, unknown>).success !== true)
       ) {
-        const materializationReason = materialization &&
-            typeof materialization === "object"
-          ? text((materialization as Record<string, unknown>).error)
-          : "";
         throw new Error(
           `schedule_materialization_failed: ${
             materializationReason || "invalid_result"
@@ -658,6 +680,14 @@ serve(async (req) => {
       profileUpdate.class_frequency = `${
         numberValue(offerPayload.classesPerWeek) || 1
       }x`;
+      const durationMonths = numberValue(offerPayload.planDuration);
+      profileUpdate.fidelity_plan = durationMonths === 12
+        ? "ANNUAL"
+        : durationMonths === 6
+        ? "SEMESTER"
+        : durationMonths === 0
+        ? "ONE_TIME"
+        : "RECURRENT";
       profileUpdate.professor_id = text(offerPayload.professorId) || null;
       profileUpdate.professor_id2 = text(offerPayload.professorId2) || null;
       profileUpdate.enrollment_fee = Number(offer.enrollment_fee || 0);

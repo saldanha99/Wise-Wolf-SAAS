@@ -52,6 +52,20 @@ do Asaas. Resultado de rede ambíguo vai para revisão, sem uma segunda criaçã
 Somente uma confirmação do provedor atualiza o vínculo no perfil. Assinar ou
 receber a proposta não reativa uma conta suspensa.
 
+### Assinatura depois do primeiro vencimento previsto
+
+Se as aulas já começaram e a oferta ainda não foi assinada, o início do
+serviço permanece registrado, mas o primeiro vencimento nunca é enviado ao
+Asaas no passado. A página mostra, antes do aceite, o próximo dia civil como
+primeiro vencimento e recalcula as seis parcelas e o fim do serviço. O fim
+continua sendo um mês civil depois da sexta parcela.
+
+A assinatura envia de volta a primeira data exibida. Se a página atravessar a
+meia-noite, a operação falha fechada e exige recarregamento; ela nunca altera
+as datas silenciosamente. O ajuste fica registrado no evento imutável
+`DUE_DATES_ROLLED_FORWARD`. Clientes antigos com JavaScript em cache também
+falham fechados até recarregarem a página.
+
 Os testes SQL rodam exclusivamente no ambiente de QA vazio e sem rede,
 com rollback, pelo `deploy/vps/finance-qa-test.mjs`. Nunca inserir fixtures
 deste teste em produção.

@@ -9,12 +9,18 @@ const MESSAGES: Record<string,string> = {
   google_document_permission_required: 'A conta conectada não tem acesso a este documento do Meet.',
   documentation_consent_required: 'Registre a autorização de documentação desta aula antes de criar a sala ou importar conteúdo.',
   google_room_not_ready: 'A sala oficial ainda não foi criada e configurada.',
-  google_room_reconciliation_required: 'Uma criação anterior ficou sem confirmação. A administração precisa reconciliar a sala antes de tentar novamente.',
+  google_room_reconciliation_required: 'Esta aula ficou com dois links de sala. A direção precisa escolher qual vale; enquanto isso, a aula usa o link de sempre.',
+  google_room_creation_in_progress: 'A sala está sendo criada agora. Aguarde um minuto e atualize.',
+  google_room_retry_scheduled: 'O Google recusou criar a sala. Uma nova tentativa automática já está agendada.',
+  google_room_claim_lost: 'Outra tentativa de criar esta sala está em andamento. Atualize em instantes.',
+  google_request_uncertain: 'O Google não confirmou a operação. Uma nova tentativa acontece sozinha.',
+  google_oauth_unavailable: 'O Google não respondeu agora. A conexão continua ativa; tente de novo em alguns minutos.',
+  google_oauth_rejected: 'O Google recusou as credenciais do aplicativo da escola. A administração precisa conferir a configuração OAuth.',
   google_organizer_changed: 'Esta sala pertence à conta organizadora anterior. Reconecte a mesma conta para acessar seus documentos.',
   google_identity_email_required: 'O professor precisa ter um e-mail Google válido no cadastro para receber o papel de coanfitrião.',
-  google_summary_ai_not_configured: 'A estruturação adicional por IA está desativada. Você pode revisar as notas nativas manualmente.',
+  google_summary_ai_not_configured: 'O resumo por IA está desligado nesta instalação. Você pode revisar as notas nativas manualmente.',
   google_summary_pricing_required: 'Cadastre o preço do modelo antes de gerar um resumo pela API.',
-  google_summary_generation_rate_limited: 'Um resumo foi solicitado recentemente. Aguarde dois minutos antes de gerar novamente.',
+  google_summary_generation_rate_limited: 'Um rascunho desta aula está sendo gerado ou foi pedido há menos de um minuto. Aguarde e atualize a tela.',
   google_artifacts_required: 'Ainda não há documentos importados para produzir o resumo.',
   summary_objective_and_next_step_required: 'Preencha objetivo da aula e próximo passo antes de aprovar.',
   invalid_summary_evidence: 'Há uma citação que não corresponde à fonte importada. Revise as evidências.',
@@ -22,7 +28,59 @@ const MESSAGES: Record<string,string> = {
   google_meet_admin_required: 'Somente a direção pode conectar ou desconectar a conta organizadora.',
   google_resource_unavailable: 'O recurso não está disponível nesta conta Google. Confira a configuração com a administração.',
   google_cohost_setup_failed: 'A sala foi criada, mas o papel de coanfitrião ainda precisa ser configurado. Tente concluir a configuração.',
+  // Parte 2 (migration 20260926180000): identidade do professor, troca de conta,
+  // transcrição bruta e marcação manual.
+  google_teacher_identity_required: 'O professor desta aula ainda não confirmou a conta Google dele (em "Salas e continuidade"). Sem isso a sala da escola não é criada e a aula usa o link de sempre.',
+  teacher_google_identity_required: 'Confirme sua conta Google antes de autorizar: é ela que entra como coanfitriã da sala.',
+  google_meet_teacher_required: 'Só o próprio professor confirma a conta Google dele.',
+  google_identity_in_use: 'Esta conta Google já está confirmada para outro professor da escola.',
+  google_identity_unverified: 'O Google não confirmou o e-mail desta conta. Use uma conta com e-mail verificado.',
+  google_organizer_change_requires_confirmation: 'Esta não é a conta que criou as salas da escola. Para trocar de conta mesmo assim, use "Trocar para outra conta".',
+  google_meet_raw_access_required: 'A transcrição e os rascunhos desta aula ficam só com o professor da aula, a coordenação e a direção.',
+  google_room_update_unconfirmed: 'O Google não confirmou a mudança na sala. Uma nova tentativa acontece sozinha.',
+  somente_a_direcao: 'Só a direção registra ou retira a autorização de documentação de uma aula.',
+  registre_a_base_e_o_comprovante_da_autorizacao: 'Informe o motivo e onde está o comprovante (pelo menos 10 caracteres).',
+  termo_recusado_ou_revogado_pelo_aluno: 'O aluno (ou o responsável) recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
+  termo_recusado_ou_revogado_pelo_professor: 'O professor recusou ou revogou o registro das aulas. A escola não liga a documentação por cima dessa decisão.',
+  // Integração da onda 2 (20260927100000): aceite de versão anterior do termo.
+  termo_mudou_aceite_do_aluno_pendente: 'O termo mudou e o aluno (ou o responsável) ainda não aceitou a versão vigente. Mande o link do termo de novo; até a resposta, as aulas não são transcritas.',
+  termo_mudou_aceite_do_professor_pendente: 'O termo mudou e o professor ainda não aceitou a versão vigente (em "Salas e continuidade"). Até lá, as aulas dele não são transcritas.',
+  sem_permissao: 'Você não tem permissão para esta ação.',
+  // Resumo por IA automático (migration 20260927110000, OpenRouter).
+  google_summary_api_usage_ack_required: 'Confirme que está ciente do custo antes de gerar o rascunho pela IA.',
+  google_summary_already_generated: 'Estas mesmas fontes já têm um rascunho da IA. Um novo só sai quando chegar transcrição ou anotação nova.',
+  google_summary_ai_consent_required: 'Esta aula foi registrada sem o aceite de um termo que fala do resumo por IA (termo anterior, ou autorização registrada à mão). O rascunho por IA não sai; revise as notas do Google à mão.',
+  google_summary_evidence_required: 'A IA não citou nenhum trecho da aula; o rascunho foi descartado. Revise as notas à mão ou tente mais tarde.',
+  google_summary_response_invalid: 'A IA devolveu uma resposta ilegível. Tente de novo em alguns minutos.',
+  google_summary_response_truncated: 'A resposta da IA veio cortada. Tente de novo em alguns minutos.',
+  google_summary_generation_failed: 'A IA não conseguiu gerar o rascunho agora. Tente de novo em alguns minutos.',
+  google_summary_provider_unavailable: 'O provedor da IA não respondeu. Tente de novo em alguns minutos.',
+  google_summary_provider_rejected: 'O provedor da IA recusou a chave ou o modelo configurado. Avise a administração técnica.',
+  google_summary_provider_credits: 'A conta do provedor da IA está sem créditos. Avise a administração.',
+  google_summary_rate_limited: 'O provedor da IA pediu para esperar. Tente de novo em instantes.',
+  google_summary_refused: 'O modelo se recusou a resumir esta aula. Revise as notas à mão.',
+  google_summary_estimate_too_high: 'A estimativa desta geração passou do limite de segurança. Avise a administração.',
+  google_summary_no_time_left: 'Não houve tempo para gerar agora. Tente de novo.',
+  summary_artifact_scope_mismatch: 'As fontes desta aula mudaram ou venceram. Atualize a tela.',
+  summary_cap_invalid: 'O teto mensal precisa estar entre US$ 0 e US$ 500.',
+  // Originais no Drive e exclusão a pedido (migration 20260927120000).
+  lesson_records_erased: 'Os registros desta aula foram apagados a pedido do aluno. Ela não é importada nem resumida de novo.',
+  aluno_nao_encontrado: 'Aluno não encontrado nesta escola.',
+  google_drive_delete_disabled: 'A lixeira dos originais no Drive está desligada nesta instalação.',
+  google_drive_scope_missing: 'A conta central ainda não autorizou mover arquivos para a lixeira do Drive. Reconecte a conta central.',
+  google_required_scopes_missing: 'O Google não concedeu todas as permissões pedidas. Reconecte e permita o acesso ao Meet e ao Drive.',
 };
+
+/**
+ * Texto para um erro do servidor (edge google-meet ou RPC do banco). A RPC
+ * devolve o código dentro da mensagem; código desconhecido vira texto genérico.
+ */
+export function googleMeetErrorMessage(raw: string | null | undefined, fallback = 'Não foi possível concluir a operação com o Google Meet. Tente novamente ou consulte a administração.'): string {
+  const textValue = String(raw || '');
+  if (MESSAGES[textValue]) return MESSAGES[textValue];
+  const code = Object.keys(MESSAGES).sort((a, b) => b.length - a.length).find(key => textValue.includes(key));
+  return code ? MESSAGES[code] : fallback;
+}
 export async function googleMeetAction<T = any>(action: string, body: Record<string,unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('google-meet', { body: { ...body, action } });
   let payload = data;
@@ -31,7 +89,7 @@ export async function googleMeetAction<T = any>(action: string, body: Record<str
   }
   if (error || payload?.error) {
     const code = typeof payload?.error === 'string' ? payload.error : '';
-    throw new Error(MESSAGES[code] || 'Não foi possível concluir a operação com o Google Meet. Tente novamente ou consulte a administração.');
+    throw new Error(googleMeetErrorMessage(code));
   }
   return payload as T;
 }

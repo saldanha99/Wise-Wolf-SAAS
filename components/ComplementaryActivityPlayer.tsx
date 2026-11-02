@@ -494,7 +494,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
     ? Number(activity.estimated_minutes)
     : DEFAULT_ESTIMATED_MINUTES[activity.type];
   const content = (
-    <div className="fixed inset-0 z-[240] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-5">
+    <div className="fixed inset-0 z-240 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-xs sm:items-center sm:p-5">
       <div className="absolute inset-0" aria-hidden="true" />
       <section
         ref={dialogRef}
@@ -503,9 +503,9 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         aria-busy={submitting}
-        className="relative flex max-h-dvh w-full flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-white shadow-[0_-24px_80px_rgba(2,6,23,.35)] dark:bg-slate-950 sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-[2rem]"
+        className="relative flex max-h-dvh w-full flex-col overflow-hidden rounded-t-4xl border border-white/10 bg-white shadow-[0_-24px_80px_rgba(2,6,23,.35)] dark:bg-slate-950 sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-4xl"
       >
-        <header className="shrink-0 border-b border-slate-200 bg-white/95 px-4 pb-4 pt-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:px-6 sm:pt-5">
+        <header className="shrink-0 border-b border-slate-200 bg-white/95 px-4 pb-4 pt-3 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95 sm:px-6 sm:pt-5">
           <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 dark:bg-slate-700 sm:hidden" aria-hidden="true" />
           <div className="flex items-start gap-3">
             <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${typeCopy.soft} ${typeCopy.accent}`}>
@@ -519,7 +519,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
                 ref={titleRef}
                 id={titleId}
                 tabIndex={-1}
-                className="mt-0.5 text-lg font-black tracking-tight text-slate-900 outline-none dark:text-white sm:text-xl"
+                className="mt-0.5 text-lg font-black tracking-tight text-slate-900 outline-hidden dark:text-white sm:text-xl"
               >
                 {activity.title}
               </h2>
@@ -548,7 +548,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
               aria-valuenow={progress}
             >
               <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-[width] duration-300"
+                className="h-full rounded-full bg-linear-to-r from-violet-500 to-indigo-500 transition-[width] duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -571,7 +571,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
               <h3
                 ref={successTitleRef}
                 tabIndex={-1}
-                className="mt-5 text-2xl font-black text-slate-900 outline-none dark:text-white"
+                className="mt-5 text-2xl font-black text-slate-900 outline-hidden dark:text-white"
               >
                 Atividade concluída
               </h3>
@@ -779,7 +779,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
                     setSubmitError('');
                   }}
                   aria-describedby={`${reflectionId}-counter`}
-                  className="mt-3 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="mt-3 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 text-slate-900 outline-hidden transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                   placeholder="Escreva com suas palavras..."
                 />
                 <p
@@ -794,7 +794,7 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
         </main>
 
         {!submitted && (
-          <footer className="safe-bottom shrink-0 border-t border-slate-200 bg-white/95 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:px-6">
+          <footer className="safe-bottom shrink-0 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95 sm:px-6">
             {submitError && (
               <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200" role="alert">
                 {submitError}

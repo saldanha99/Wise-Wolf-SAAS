@@ -5,8 +5,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   applyCommercialReplyPolicy,
+  applyPostTrialAnswerPolicy,
   type CommercialPolicy,
 } from "./commercial-response-policy.ts";
+import { formatPriceList } from "./lead-pricing.ts";
 
 const politica: CommercialPolicy = {
   classDurationMinutes: 30,
@@ -56,6 +58,19 @@ Deno.test("sem pergunta de preço, a resposta do modelo passa intacta", () => {
   assertEquals(policy, null);
 });
 
+Deno.test("Raoni: preço de 30 minutos não responde pedido de 1 hora", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...base,
+    currentMessage: "Qual valor para 1H 3X na semana sem fidelidade?",
+    modelReply:
+      "Para aulas de 1 hora, 3 vezes por semana, o valor é R$290/mês.",
+    consultativeLead: { goal: "kids", level: "beginner" },
+  });
+  assertEquals(policy, "custom_duration_quote_required");
+  assert(!reply.includes("R$290"), reply);
+  assert(reply.includes("coordenação"), reply);
+});
+
 Deno.test("sem política configurada, não inventa valor", () => {
   const { reply, policy } = applyCommercialReplyPolicy({
     ...base,
@@ -67,4 +82,288 @@ Deno.test("sem política configurada, não inventa valor", () => {
   assert(!reply.includes("R$ 100"), reply);
   assert(reply.includes("coordenação"), reply);
   assertEquals(policy, "price_unavailable");
+});
+
+// ── Com o catálogo da escola (regressão da Diná, 17/09/2026) ──────────────────
+import { CATALOGO } from "./lead-pricing.test.ts";
+
+const dina = {
+  ...base,
+  catalog: CATALOGO,
+  consultativeLead: { goal: "inglês para trabalho", level: "B1" },
+};
+
+Deno.test("Diná 07:12 — 'estimativa de valores' recebe a tabela inteira", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    currentMessage: "Vc pode me passar estimativa de valores ?",
+    modelReply: "Os planos começam em R$ 169 por mês.",
+    trialRequested: true,
+  });
+  assertEquals(policy, "price_list");
+  assert(reply.includes("🔹 Planos de 6 meses"), reply);
+  assert(reply.includes("✅ 4x por semana – R$355/mês"), reply);
+  assert(reply.includes("✅ 2x por semana – R$169/mês"), reply);
+  // O pedido de experimental veio junto: a promessa de verificar não some.
+  assert(reply.includes("vou verificar o professor"), reply);
+});
+
+Deno.test("Diná 07:15 — '4 vezes na semana qual valor?' responde 4x e manda a tabela", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    history: [
+      { role: "user", content: "Vc pode me passar estimativa de valores ?" },
+      {
+        role: "assistant",
+        content:
+          "As aulas são de 30 minutos, e isso é proposital: … Os planos começam em R$ 169 por mês.",
+      },
+    ],
+    currentMessage: "4 vezes na semana qual valor ?",
+    modelReply: "Vou verificar com a coordenação e te retorno.",
+  });
+  assertEquals(policy, "frequency_price_answer");
+  assert(
+    reply.startsWith(
+      "4x por semana fica R$355/mês no plano de 6 meses ou R$299/mês no de 12 meses.",
+    ),
+    reply,
+  );
+  assert(reply.includes("🔹 Planos de 12 meses (com desconto)"), reply);
+  assert(!reply.includes("aguardando o aceite"), reply);
+});
+
+Deno.test("frequência dita e modelo respondeu com o número certo: a frase dele fica", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    currentMessage: "e 3x por semana?",
+    modelReply:
+      "3x por semana fica R$261/mês no plano de 6 meses ou R$229/mês no de 12 😊 Quer que eu já veja o horário?",
+  });
+  assertEquals(policy, "frequency_price_answer_model");
+  assert(reply.startsWith("3x por semana fica R$261/mês"), reply);
+  assert(
+    reply.includes("🔹 Planos de 6 meses"),
+    "a tabela vai junto na primeira vez",
+  );
+});
+
+Deno.test("modelo inventou valor: barrado, entra a resposta com o catálogo", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    currentMessage: "quanto fica 4x por semana?",
+    modelReply: "4x por semana fica R$ 350 por mês.",
+  });
+  assertEquals(policy, "frequency_price_answer");
+  assert(!reply.includes("350"), reply);
+  assert(reply.includes("R$355/mês"), reply);
+});
+
+Deno.test("Diná 07:17 — '??' depois de preço sem resposta é cobrança: a tabela sai", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    history: [
+      { role: "user", content: "4 vezes na semana qual valor ?" },
+      {
+        role: "assistant",
+        content:
+          "Esse horário já está aguardando o aceite de um professor. O prazo de 60 minutos continua contando.",
+      },
+    ],
+    currentMessage: "??",
+    modelReply: "Desculpe, pode repetir?",
+  });
+  assertEquals(policy, "price_list");
+  assert(reply.includes("Desculpa a demora com o valor"), reply);
+  assert(reply.includes("✅ 4x por semana – R$355/mês"), reply);
+});
+
+Deno.test("tabela já enviada: não repete; aponta para cima e pergunta a frequência", () => {
+  const lista = formatPriceList(CATALOGO);
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    history: [
+      { role: "user", content: "me passa os valores" },
+      { role: "assistant", content: lista },
+    ],
+    currentMessage: "e os valores?",
+    modelReply: "Os valores variam conforme a frequência.",
+  });
+  assertEquals(policy, "price_list_repeat");
+  assert(!reply.includes("🔹"), reply);
+  assert(reply.includes("tabela que te mandei acima"), reply);
+});
+
+Deno.test("preço perguntado e modelo respondeu com valor do catálogo: passa como está", () => {
+  const original =
+    "Eu te passo sim 😊 Os planos começam em R$169/mês e mudam conforme a quantidade de aulas por semana. Quantas vezes por semana você pensa em fazer?";
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    currentMessage: "quanto custa?",
+    modelReply: original,
+  });
+  assertEquals(policy, "price_answer_model");
+  assertEquals(reply, original);
+});
+
+Deno.test("o 'isso é proposital' não é repetido na segunda explicação", () => {
+  const { reply } = applyCommercialReplyPolicy({
+    ...dina,
+    history: [
+      { role: "user", content: "quanto custa?" },
+      {
+        role: "assistant",
+        content: "As aulas são de 30 minutos, e isso é proposital: …",
+      },
+    ],
+    currentMessage: "mas qual o preço?",
+    modelReply: "Os valores variam.",
+  });
+  assert(!reply.includes("proposital"), reply);
+  assert(reply.includes("R$ 169"), reply);
+});
+
+Deno.test("modelo escreveu a tabela inteira com números certos: não anexa outra", () => {
+  const { reply, policy } = applyCommercialReplyPolicy({
+    ...dina,
+    currentMessage: "4x por semana quanto fica?",
+    modelReply:
+      "4x fica R$355/mês em 6 meses ou R$299/mês em 12. Para comparar: 2x R$198/R$169, 3x R$261/R$229 😊",
+  });
+  assertEquals(policy, "frequency_price_answer_model");
+  assert(!reply.includes("🔹"), reply);
+});
+
+// ── Pós-experimental: pergunta respondida antes de empurrar preço ───────────
+
+const feedbackMarcelo = {
+  recommendedLevel: "B1",
+  recommendedPlan: "intensivo",
+  interestScore: 4,
+  notes: "Registrado pela professora no WhatsApp.",
+};
+
+Deno.test("nível da experimental vem do feedback estruturado, não da tabela", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual nível fui encaixado?",
+    modelReply: "Segue novamente a tabela completa de preços.",
+    feedback: feedbackMarcelo,
+  });
+  assertEquals(result.policy, "post_trial_feedback_answer");
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(result.reply.includes("plano *intensivo*"), result.reply);
+  assert(!result.reply.includes("tabela"), result.reply);
+});
+
+Deno.test("cobrança recupera pergunta de nível que recebeu resposta errada", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [
+      { role: "user", content: "Qual nível fui encaixado?" },
+      { role: "assistant", content: "Segue a tabela dos planos." },
+    ],
+    currentMessage: "Conseguiu esta informação?",
+    modelReply: "Qual informação?",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.startsWith("Você foi classificado no nível *B1*"));
+});
+
+Deno.test("feedback genérico não inventa elogio da professora", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual foi o feedback da teacher?",
+    modelReply: "Ela adorou e disse que você tem muito potencial.",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(!result.reply.includes("adorou"), result.reply);
+  assert(!result.reply.includes("Registrado pela professora"), result.reply);
+});
+
+Deno.test("pergunta de nível e preço preserva as duas respostas", () => {
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Qual meu nível e quanto fica 5x por semana?",
+    modelReply: "5x fica R$377/mês em 6 meses ou R$339/mês em 12 meses.",
+    feedback: feedbackMarcelo,
+  });
+  assert(result.reply.includes("nível *B1*"), result.reply);
+  assert(result.reply.includes("R$377"), result.reply);
+});
+
+Deno.test("mensagem sem pergunta de feedback passa intacta", () => {
+  const original = "Que bom! Quantas vezes por semana você quer fazer?";
+  const result = applyPostTrialAnswerPolicy({
+    history: [],
+    currentMessage: "Gostei muito da aula.",
+    modelReply: original,
+    feedback: feedbackMarcelo,
+  });
+  assertEquals(result.reply, original);
+  assertEquals(result.policy, null);
+});
+import {
+  completedTrialReply,
+  schoolOperatingHoursAnswer,
+} from "./commercial-response-policy.ts";
+
+Deno.test("período da escola não se confunde com os dois slots da experimental", () => {
+  for (
+    const text of [
+      "As aulas são de que horário até qual horário?",
+      "Quais os primeiros horários e os últimos?",
+      "E as aulas normais qual o período?",
+      "Até que hora?",
+    ]
+  ) {
+    const answer = schoolOperatingHoursAnswer("school-wise-wolf", text);
+    assertEquals(answer?.includes("das 7h às 22h30"), true);
+    assertEquals(answer?.includes("confirmada com o professor"), true);
+  }
+  assertEquals(
+    schoolOperatingHoursAnswer("outra-escola", "Até que hora?"),
+    null,
+  );
+  assertEquals(
+    schoolOperatingHoursAnswer("school-wise-wolf", "Qual horário na segunda?"),
+    null,
+  );
+  assertEquals(
+    schoolOperatingHoursAnswer(
+      "school-wise-wolf",
+      "Qual horário da experimental?",
+    ),
+    null,
+  );
+});
+
+Deno.test("aula concluída impede convite gerado pelo modelo para uma nova experimental", () => {
+  assertEquals(
+    completedTrialReply(
+      "Para a aula experimental, temos horários disponíveis pela manhã, como às 08:00 ou 08:30. Qual desses horários funcionaria melhor para você?",
+      true,
+    ).includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply("Vamos agendar sua experimental amanhã?", true)
+      .includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply(
+      "Para a aula experimental, qual dia e horário você prefere agendar?",
+      true,
+    ).includes("já foi realizada"),
+    true,
+  );
+  assertEquals(
+    completedTrialReply("Você foi classificado em B1.", true),
+    "Você foi classificado em B1.",
+  );
+  assertEquals(
+    completedTrialReply("Vamos agendar sua experimental?", false),
+    "Vamos agendar sua experimental?",
+  );
 });

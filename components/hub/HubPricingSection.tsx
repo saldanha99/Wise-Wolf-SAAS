@@ -24,8 +24,8 @@ const CORE_PRICING_ORDER = ['LIBRARY_SOLO', 'EDUCATOR_PRO', 'HUB_COMPLETE'];
 
 const PLAN_SCOPE: Record<string, { eyebrow: string; outcome: string }> = {
   LIBRARY_SOLO: {
-    eyebrow: 'Micro solução · Biblioteca',
-    outcome: 'Para encontrar, avaliar e levar materiais para a aula.',
+    eyebrow: 'Biblioteca · 3 materiais com IA/mês',
+    outcome: 'Para encontrar, avaliar e levar materiais para a aula — e gerar 3 por mês no seu nicho.',
   },
   EDUCATOR_PRO: {
     eyebrow: 'Biblioteca + Educador IA',

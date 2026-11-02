@@ -13,8 +13,11 @@ import {
     Check,
     CheckCheck,
     Clock3,
+    Download,
+    Image as ImageIcon,
     Loader2,
     MessageCircle,
+    Play,
     RefreshCw,
     Search,
     Send,
@@ -32,6 +35,7 @@ import {
     type WhatsappConversation,
     type WhatsappInboxService,
     type WhatsappInstance,
+    type WhatsappMediaFile,
     type WhatsappMessage,
 } from '../services/whatsappInboxService';
 
@@ -123,7 +127,7 @@ function messageText(message: WhatsappMessage): string {
 }
 
 function handoffIsActive(conversation: WhatsappConversation | null): boolean {
-    return Boolean(conversation?.human_handoff_until)
+    return conversation?.handoff_requires_release === true || Boolean(conversation?.human_handoff_until)
         && dateValue(conversation?.human_handoff_until) > Date.now();
 }
 
@@ -167,12 +171,93 @@ function MessageStatus({ message }: { message: WhatsappMessage }) {
     return <Check size={13} aria-label="Enviada" className="text-white/80" />;
 }
 
+const MEDIA_TYPES = new Set(['audio', 'image', 'video', 'document', 'sticker']);
+
+/**
+ * Áudio, foto e documento abrem AQUI, sob demanda. A plataforma guarda só o
+ * texto e o tipo; o arquivo fica no provedor e é buscado pelo proxy quando a
+ * pessoa clica (17/09/2026: a direção lia "[Áudio]" e "[Imagem]" e tinha de ir
+ * ao celular). O resultado fica em memória enquanto a conversa está aberta.
+ */
+function MediaAttachment({
+    message,
+    fetchMedia,
+}: {
+    message: WhatsappMessage;
+    fetchMedia?: (message: WhatsappMessage) => Promise<WhatsappMediaFile>;
+}) {
+    const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+    const [file, setFile] = useState<WhatsappMediaFile | null>(null);
+    const [error, setError] = useState('');
+    const outgoing = message.direction === 'out';
+    if (!fetchMedia || !MEDIA_TYPES.has(message.message_type)) return null;
+
+    const load = async () => {
+        if (state === 'loading' || state === 'ready') return;
+        setState('loading');
+        setError('');
+        try {
+            const media = await fetchMedia(message);
+            setFile(media);
+            setState('ready');
+        } catch (loadError) {
+            setError(loadError instanceof Error ? loadError.message : 'Não foi possível abrir o arquivo.');
+            setState('error');
+        }
+    };
+    const dataUrl = file ? `data:${file.mimetype};base64,${file.base64}` : '';
+    const label = message.message_type === 'audio'
+        ? 'Ouvir áudio'
+        : message.message_type === 'image' || message.message_type === 'sticker'
+            ? 'Ver foto'
+            : message.message_type === 'video' ? 'Ver vídeo' : 'Abrir documento';
+    const buttonClass = `mt-2 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${outgoing
+        ? 'bg-white/15 text-white hover:bg-white/25'
+        : 'bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20'}`;
+
+    if (state === 'ready' && file) {
+        if (message.message_type === 'audio') {
+            return <audio controls autoPlay preload="auto" src={dataUrl} className="mt-2 w-full max-w-[280px]" aria-label="Áudio da mensagem" />;
+        }
+        if (message.message_type === 'image' || message.message_type === 'sticker') {
+            return (
+                <a href={dataUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block" title="Abrir em tamanho real">
+                    <img src={dataUrl} alt={message.body || 'Imagem recebida'} className="max-h-72 max-w-full rounded-xl border border-black/10 object-contain" />
+                </a>
+            );
+        }
+        if (message.message_type === 'video') {
+            return <video controls src={dataUrl} className="mt-2 max-h-72 w-full max-w-[320px] rounded-xl" />;
+        }
+        return (
+            <a href={dataUrl} download={file.fileName || 'documento'} className={buttonClass}>
+                <Download size={12} aria-hidden="true" /> Baixar {file.fileName || 'documento'}
+            </a>
+        );
+    }
+    return (
+        <div>
+            <button type="button" onClick={() => void load()} disabled={state === 'loading'} className={buttonClass}>
+                {state === 'loading'
+                    ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                    : message.message_type === 'audio'
+                        ? <Play size={12} aria-hidden="true" />
+                        : <ImageIcon size={12} aria-hidden="true" />}
+                {state === 'loading' ? 'Carregando…' : state === 'error' ? 'Tentar de novo' : label}
+            </button>
+            {state === 'error' && <p className={`mt-1 text-[10px] ${outgoing ? 'text-white/80' : 'text-red-500'}`}>{error}</p>}
+        </div>
+    );
+}
+
 function MessageBubble({
     message,
     onRetry,
+    fetchMedia,
 }: {
     message: WhatsappMessage;
     onRetry?: (message: WhatsappMessage) => void;
+    fetchMedia?: (message: WhatsappMessage) => Promise<WhatsappMediaFile>;
 }) {
     const outgoing = message.direction === 'out';
     const senderLabel = outgoing
@@ -183,7 +268,7 @@ function MessageBubble({
         <div className={`flex w-full ${outgoing ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[86%] sm:max-w-[75%] ${outgoing ? 'items-end' : 'items-start'} flex flex-col`}>
                 <div
-                    className={`rounded-2xl px-3.5 py-2.5 shadow-sm ${outgoing
+                    className={`rounded-2xl px-3.5 py-2.5 shadow-xs ${outgoing
                         ? 'rounded-br-md bg-emerald-600 text-white'
                         : 'rounded-bl-md border border-brand-border bg-brand-surface text-brand-text'
                     } ${message.status === 'failed' || message.status === 'error' ? 'ring-2 ring-red-400/50' : ''}`}
@@ -191,7 +276,8 @@ function MessageBubble({
                     <p className={`mb-1 text-[9px] font-black uppercase tracking-wider ${outgoing ? 'text-white/70' : 'text-brand-muted'}`}>
                         {senderLabel}
                     </p>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{messageText(message)}</p>
+                    <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed">{messageText(message)}</p>
+                    <MediaAttachment message={message} fetchMedia={fetchMedia} />
                     <span className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] ${outgoing ? 'text-white/70' : 'text-brand-muted'}`}>
                         {formatMessageTime(message.occurred_at)}
                         <MessageStatus message={message} />
@@ -597,7 +683,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                 : null;
             setConversations((current) => current.map((conversation) =>
                 conversation.id === selectedConversation.id
-                    ? { ...conversation, human_handoff_until: handoffUntil, assigned_to: active ? user.id : null }
+                    ? { ...conversation, human_handoff_until: handoffUntil, handoff_requires_release: active ? conversation.handoff_requires_release : false, assigned_to: active ? user.id : null }
                     : conversation
             ));
         } catch (handoffError) {
@@ -708,7 +794,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
 
     if (!tenantId) {
         return (
-            <div className="grid min-h-[28rem] place-content-center rounded-[2rem] border border-brand-border bg-brand-surface p-8 text-center">
+            <div className="grid min-h-112 place-content-center rounded-4xl border border-brand-border bg-brand-surface p-8 text-center">
                 <AlertCircle className="mx-auto mb-3 text-amber-500" size={34} />
                 <h2 className="text-lg font-black text-brand-text">Escola não identificada</h2>
                 <p className="mt-2 max-w-md text-sm text-brand-muted">Atualize a página ou selecione novamente a instituição.</p>
@@ -718,7 +804,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
 
     if (instancesLoading) {
         return (
-            <div className="grid min-h-[28rem] place-content-center gap-3 rounded-[2rem] border border-brand-border bg-brand-surface text-center text-brand-muted">
+            <div className="grid min-h-112 place-content-center gap-3 rounded-4xl border border-brand-border bg-brand-surface text-center text-brand-muted">
                 <Loader2 className="mx-auto animate-spin" size={34} />
                 <p className="text-sm font-bold">Carregando caixa de entrada...</p>
             </div>
@@ -727,7 +813,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
 
     if (instances.length === 0) {
         return (
-            <div className="grid min-h-[28rem] place-content-center rounded-[2rem] border border-brand-border bg-brand-surface p-8 text-center">
+            <div className="grid min-h-112 place-content-center rounded-4xl border border-brand-border bg-brand-surface p-8 text-center">
                 <Smartphone className="mx-auto mb-4 text-brand-muted" size={42} />
                 <h2 className="text-xl font-black text-brand-text">Conecte o WhatsApp da escola</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-brand-muted">
@@ -758,7 +844,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
 
     return (
         <div className="space-y-4">
-            <header className="flex flex-col gap-3 rounded-[1.75rem] border border-brand-border bg-brand-surface p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+            <header className="flex flex-col gap-3 rounded-[1.75rem] border border-brand-border bg-brand-surface p-4 shadow-xs lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                     <div className="grid size-11 shrink-0 place-content-center rounded-2xl bg-emerald-500/15 text-emerald-600">
                         <MessageCircle size={22} aria-hidden="true" />
@@ -774,7 +860,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                         id="whatsapp-instance"
                         value={selectedInstanceName}
                         onChange={(event) => setSelectedInstanceName(event.target.value)}
-                        className="min-h-10 max-w-full rounded-xl border border-brand-border bg-brand-surface-2 px-3 text-xs font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/40"
+                        className="min-h-10 max-w-full rounded-xl border border-brand-border bg-brand-surface-2 px-3 text-xs font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary/40"
                     >
                         {instances.map((instance) => (
                             <option key={instance.id} value={instance.instance_name}>{instance.instance_name}</option>
@@ -813,7 +899,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
             )}
 
             {!selectedInstance?.inbox_enabled ? (
-                <section className="grid min-h-[30rem] place-content-center rounded-[2rem] border border-brand-border bg-brand-surface p-6 text-center shadow-sm">
+                <section className="grid min-h-120 place-content-center rounded-4xl border border-brand-border bg-brand-surface p-6 text-center shadow-xs">
                     <div className="mx-auto grid size-16 place-content-center rounded-3xl bg-amber-500/15 text-amber-600">
                         <ShieldCheck size={32} aria-hidden="true" />
                     </div>
@@ -845,7 +931,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                     <p className="mt-3 text-xs text-brand-muted">A ativação não inicia a sincronização automaticamente.</p>
                 </section>
             ) : (
-                <section className="grid h-[calc(100dvh-15.5rem)] min-h-[34rem] grid-cols-1 overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-sm md:grid-cols-[22rem_minmax(0,1fr)]">
+                <section className="grid h-[calc(100dvh-15.5rem)] min-h-136 grid-cols-1 overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-xs md:grid-cols-[22rem_minmax(0,1fr)]">
                     <aside className={`${selectedConversation ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-brand-border`} aria-label="Conversas do WhatsApp">
                         <div className="shrink-0 space-y-3 border-b border-brand-border p-3">
                             <div className="relative">
@@ -857,7 +943,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     placeholder="Buscar nome, número ou mensagem"
-                                    className="min-h-11 w-full rounded-xl border border-brand-border bg-brand-surface-2 pl-10 pr-3 text-sm text-brand-text outline-none placeholder:text-brand-muted focus:ring-2 focus:ring-tenant-primary/30"
+                                    className="min-h-11 w-full rounded-xl border border-brand-border bg-brand-surface-2 pl-10 pr-3 text-sm text-brand-text outline-hidden placeholder:text-brand-muted focus:ring-2 focus:ring-tenant-primary/30"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-1 rounded-xl bg-brand-surface-2 p-1" role="group" aria-label="Filtrar conversas">
@@ -865,7 +951,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                     type="button"
                                     onClick={() => setFilter('all')}
                                     aria-pressed={filter === 'all'}
-                                    className={`rounded-lg px-3 py-2 text-xs font-black ${filter === 'all' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-muted'}`}
+                                    className={`rounded-lg px-3 py-2 text-xs font-black ${filter === 'all' ? 'bg-brand-surface text-brand-text shadow-xs' : 'text-brand-muted'}`}
                                 >
                                     Todas
                                 </button>
@@ -873,7 +959,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                     type="button"
                                     onClick={() => setFilter('unread')}
                                     aria-pressed={filter === 'unread'}
-                                    className={`rounded-lg px-3 py-2 text-xs font-black ${filter === 'unread' ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-muted'}`}
+                                    className={`rounded-lg px-3 py-2 text-xs font-black ${filter === 'unread' ? 'bg-brand-surface text-brand-text shadow-xs' : 'text-brand-muted'}`}
                                 >
                                     Não lidas
                                 </button>
@@ -885,7 +971,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                         type="button"
                                         onClick={() => setFilter(filter === item.value ? 'all' : item.value)}
                                         aria-pressed={filter === item.value}
-                                        className={`rounded-lg px-2 py-2 text-[11px] font-black ${filter === item.value ? 'bg-brand-surface text-brand-text shadow-sm' : 'text-brand-muted'}`}
+                                        className={`rounded-lg px-2 py-2 text-[11px] font-black ${filter === item.value ? 'bg-brand-surface text-brand-text shadow-xs' : 'text-brand-muted'}`}
                                     >
                                         {item.label}
                                     </button>
@@ -940,7 +1026,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                             </div>
                         ) : (
                             <>
-                                <header className="flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-brand-border px-3 py-2 sm:px-4">
+                                <header className="flex min-h-18 shrink-0 items-center gap-3 border-b border-brand-border px-3 py-2 sm:px-4">
                                     <button
                                         type="button"
                                         onClick={() => setSelectedConversationId(null)}
@@ -961,6 +1047,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                         </p>
                                     </div>
                                     <button
+                                        data-tour="whatsapp-human-handoff"
                                         type="button"
                                         onClick={() => void handleHandoff(!humanHandoffActive)}
                                         disabled={changingHandoff}
@@ -1007,6 +1094,9 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                                     onRetry={message.status === 'uncertain' && !retryingRequestId
                                                         ? (retryMessage) => void handleSafeRetry(retryMessage)
                                                         : undefined}
+                                                    fetchMedia={tenantId && selectedInstanceName && selectedConversation
+                                                        ? (mediaMessage) => service.fetchMedia(tenantId, selectedInstanceName, selectedConversation.id, mediaMessage.id)
+                                                        : undefined}
                                                 />
                                             </React.Fragment>
                                         ))
@@ -1037,7 +1127,7 @@ const WhatsappInbox: React.FC<WhatsappInboxProps> = ({
                                             disabled={!humanHandoffActive || sending}
                                             rows={1}
                                             placeholder={humanHandoffActive ? 'Digite uma mensagem...' : 'Assuma o atendimento para responder'}
-                                            className="max-h-32 min-h-11 flex-1 resize-y rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-none placeholder:text-brand-muted focus:ring-2 focus:ring-tenant-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                            className="max-h-32 min-h-11 flex-1 resize-y rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text outline-hidden placeholder:text-brand-muted focus:ring-2 focus:ring-tenant-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
                                         />
                                         <button
                                             type="submit"

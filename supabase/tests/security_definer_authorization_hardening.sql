@@ -328,10 +328,27 @@ select pg_temp.assert_true(
           'public.get_referrer_name(uuid)',
           'public.get_transfer_public(text)',
           'public.hub_get_public_settings()',
+          -- Prévia do convite de aluno do Hub: token de 64 hex com validade de
+          -- 14 dias, devolve só o nome do professor e do aluno (migration
+          -- 20260918060000, suíte assentos_de_aluno_no_hub.sql).
+          'public.hub_learner_invite_preview(text)',
+          -- Termo de registro das aulas: token de 64 hex com validade de 30
+          -- dias; a leitura devolve só o primeiro nome do aluno, o texto do
+          -- termo e telefones mascarados (migration 20260926120000). A decisão
+          -- exige o código de 6 dígitos do WhatsApp, com 5 tentativas
+          -- (20260926200000, suíte termo_seguro_do_aluno.sql) e a versão do termo
+          -- que a página mostrou (20260927100000, termo_v3_versao_e_retencao.sql).
+          'public.get_lesson_recording_consent_public(text)',
+          'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)',
+          -- Termo individual por link no WhatsApp: token de 64 hex, uso único, 7
+          -- dias, só o hash no banco; age apenas como quem recebeu o link pela
+          -- RPC do portal (migration 20261101010000, termo_individual_por_link.sql).
+          'public.student_term_link_view(text)',
+          'public.student_term_link_act(text,text,jsonb)',
           'public.rate_attendance(text,integer)',
           'public.resolve_public_tenant(text)',
           'public.respond_teacher_transfer(text,boolean,text)',
-          'public.sign_student_course_renewal(text,text)',
+          'public.sign_student_course_renewal(text,text,date)',
           'public.sign_student_plan_change(text,text)'
         ]::text[]) as reviewed(signature)
         where to_regprocedure(reviewed.signature) = procedure.oid
@@ -353,9 +370,14 @@ begin
     'public.respond_schedule_change_public(text,boolean)',
     'public.submit_lesson_quality_feedback(text,jsonb)',
     'public.get_student_course_renewal_public(text)',
-    'public.sign_student_course_renewal(text,text)',
+    'public.sign_student_course_renewal(text,text,date)',
     'public.resolve_public_tenant(text)',
-    'public.hub_get_public_settings()'
+    'public.hub_get_public_settings()',
+    'public.hub_learner_invite_preview(text)',
+    'public.get_lesson_recording_consent_public(text)',
+    'public.decide_lesson_recording_consent_public(text,text,text,boolean,text,text)',
+    'public.student_term_link_view(text)',
+    'public.student_term_link_act(text,text,jsonb)'
   ]
   loop
     perform pg_temp.assert_true(

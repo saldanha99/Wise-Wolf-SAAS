@@ -13,7 +13,7 @@ const EDGE_GAP_PX = 8;
  * do diretor caberem sem invadir o bloco da direita do header.
  */
 export const NAV_TRIGGER_CLASS =
-  'relative h-16 shrink-0 whitespace-nowrap px-2 xl:px-3 inline-flex items-center text-[13px] xl:text-sm font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-inset';
+  'relative h-16 shrink-0 whitespace-nowrap px-2 xl:px-3 inline-flex items-center text-[13px] xl:text-sm font-bold transition-colors motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-inset';
 
 /** Selo de contagem usado no gatilho, no item do painel e no trilho. */
 export const NavBadge: React.FC<{ value: number | string | undefined; className?: string }> = ({ value, className = '' }) => {
@@ -175,7 +175,7 @@ export const NavDropdown: React.FC<NavDropdownProps> = ({
               onKeyDown={e => handleItemKey(e, idx)}
               onClick={() => onSelect(item.id)}
               title="Arraste para o trilho de atalhos"
-              className={`group flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-inset ${
+              className={`group flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-inset ${
                 active ? 'bg-brand-accent text-white' : 'text-brand-text hover:bg-brand-surface-2'
               }`}
             >

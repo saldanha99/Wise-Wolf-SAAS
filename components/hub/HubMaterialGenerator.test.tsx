@@ -1,0 +1,204 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HubBootstrap } from './types';
+
+const supabaseMocks = vi.hoisted(() => ({
+  from: vi.fn(),
+  invoke: vi.fn(),
+}));
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: supabaseMocks.from,
+    functions: { invoke: supabaseMocks.invoke },
+  },
+}));
+
+import HubMaterialGenerator, { type HubMaterialRecord, materialAsText } from './HubMaterialGenerator';
+
+const accountId = '11111111-1111-4111-8111-111111111111';
+
+const bootstrap = (limit: number | null = 40, used = 3): HubBootstrap => ({
+  account: { id: accountId, name: 'Teacher Lu', account_type: 'PERSONAL', audience: 'EDUCATOR', status: 'ACTIVE', metadata: {} },
+  membership: { membership_role: 'OWNER', status: 'ACTIVE' },
+  subscription: { id: 'subscription-1', status: 'ACTIVE', trial_ends_at: null, current_period_ends_at: null },
+  plan: null,
+  entitlements: { 'educator_ai.generate': { limit, resetPeriod: 'MONTH', used } },
+  settings: { settings_key: 'default', brand_name: 'Wise Wolf', headline: 'Hub', subheadline: null, saas_video_url: null, saas_cta_url: '/hub', support_url: null, metadata: {} },
+});
+
+const quizMaterial = {
+  title: 'Daily stand-up quiz',
+  instructions_pt: 'Escolha a alternativa correta.',
+  grammar_focus: {
+    point: 'Present simple for routines',
+    why_pt: 'É o que você usa para contar o seu dia no stand-up.',
+    patterns: [{ en: 'I test the app every morning.', pt: 'Eu testo o app toda manhã.' }],
+    watch_out_pt: ['Esquecer o -s na 3ª pessoa.'],
+  },
+  opportunity_pt: 'Com isso você reporta seu dia no stand-up sem travar.',
+  ai_homework: [
+    { task_pt: 'Simule um stand-up com a IA.', prompt_en: 'Act as my scrum master and ask me about yesterday, today and blockers.', tip_pt: 'Peça uma versão mais natural.' },
+  ],
+  questions: [
+    { prompt: 'We ___ a stand-up every morning.', options: ['have', 'has', 'having', 'haves'], correct: 0, explanation_pt: "Sujeito 'we' pede 'have'." },
+    { prompt: 'She ___ the blocker yesterday.', options: ['fix', 'fixed', 'fixes', 'fixing'], correct: 1, explanation_pt: 'Passado simples.' },
+    { prompt: 'Any ___?', options: ['blockers', 'blocker', 'blocking', 'blocked'], correct: 0, explanation_pt: 'Plural.' },
+  ],
+};
+
+// Cadeia `from(...).select().eq().order().limit()` do histórico e o `delete().eq()`.
+const historyChain = (rows: unknown[]) => {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(async () => ({ data: rows, error: null })),
+    delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+  };
+  return chain;
+};
+
+describe('Gerador de material do Hub', () => {
+  beforeEach(() => {
+    supabaseMocks.from.mockReset();
+    supabaseMocks.invoke.mockReset();
+  });
+
+  it('gera pelo gateway do Hub com tipo, nicho, nível e tema, e mostra o gabarito na versão do professor', async () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([]));
+    supabaseMocks.invoke.mockResolvedValue({
+      data: { material_id: 'mat-1', title: quizMaterial.title, kind: 'quiz', niche: 'TECH', level: 'B1', topic: 'Daily stand-up', material: quizMaterial, dropped: 1, created_at: '2026-09-18T12:00:00.000Z' },
+      error: null,
+    });
+    const onRefresh = vi.fn(async () => {});
+
+    render(<HubMaterialGenerator bootstrap={bootstrap()} onRefresh={onRefresh} onUpgrade={vi.fn()} />);
+
+    expect(screen.getByTestId('hub-material-quota').textContent).toContain('37 de 40');
+    fireEvent.click(screen.getByRole('button', { name: /^Quiz/ }));
+    fireEvent.change(screen.getByLabelText('Nicho'), { target: { value: 'TECH' } });
+    fireEvent.change(screen.getByLabelText('Nível CEFR'), { target: { value: 'B1' } });
+    fireEvent.change(screen.getByLabelText('Tema / situação do aluno'), { target: { value: 'Daily stand-up' } });
+    fireEvent.change(screen.getByLabelText('Objetivo do aluno'), { target: { value: 'Trabalhar numa multinacional' } });
+    fireEvent.change(screen.getByLabelText('Faixa etária'), { target: { value: 'teens' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar material' }));
+
+    await waitFor(() => expect(supabaseMocks.invoke).toHaveBeenCalledTimes(1));
+    const [functionName, options] = supabaseMocks.invoke.mock.calls[0];
+    expect(functionName).toBe('pedagogical-content');
+    expect(options.body).toMatchObject({ hubMode: true, action: 'material', accountId, kind: 'quiz', niche: 'TECH', level: 'B1', topic: 'Daily stand-up', goal: 'Trabalhar numa multinacional', audience: 'teens', count: 8, bilingual: true });
+    expect(typeof options.body.requestKey).toBe('string');
+
+    expect(await screen.findByText('Daily stand-up quiz')).toBeTruthy();
+    // Blocos comuns da v2: porta que abre, foco gramatical e homework com IA.
+    expect(screen.getByText(/Com isso você reporta seu dia/)).toBeTruthy();
+    expect(screen.getByText('Present simple for routines')).toBeTruthy();
+    expect(screen.getByText(/Act as my scrum master/)).toBeTruthy();
+    expect(screen.getByText(/Atenção: Esquecer o -s/)).toBeTruthy();
+    // Versão do professor: a alternativa correta é marcada e a explicação aparece.
+    expect(screen.getAllByLabelText('resposta correta')).toHaveLength(3);
+    expect(screen.getByText("Sujeito 'we' pede 'have'.")).toBeTruthy();
+    expect(screen.getByText(/1 questão foi descartada/)).toBeTruthy();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+
+    // Versão do aluno: sem gabarito.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver versão do aluno' }));
+    expect(screen.queryAllByLabelText('resposta correta')).toHaveLength(0);
+    expect(screen.queryByText("Sujeito 'we' pede 'have'.")).toBeNull();
+    // O aluno continua vendo o prompt de IA, mas não os "cuidados" do professor nem a dica.
+    expect(screen.getByText(/Act as my scrum master/)).toBeTruthy();
+    expect(screen.queryByText(/Atenção: Esquecer o -s/)).toBeNull();
+  });
+
+  it('traduz o limite atingido e não deixa o erro de cota virar mensagem genérica', async () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([]));
+    supabaseMocks.invoke.mockResolvedValue({ data: { error: 'USAGE_LIMIT_REACHED', code: 'USAGE_LIMIT_REACHED' }, error: null });
+
+    render(<HubMaterialGenerator bootstrap={bootstrap(40, 39)} onRefresh={vi.fn(async () => {})} onUpgrade={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Tema / situação do aluno'), { target: { value: 'Airport check-in' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar material' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('todas as gerações do seu plano');
+  });
+
+  it('plano sem gerações (Essencial) vê o bloqueio com o caminho para o Pro, não o formulário', () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([]));
+    const onUpgrade = vi.fn();
+    render(<HubMaterialGenerator bootstrap={bootstrap(0, 0)} onRefresh={vi.fn(async () => {})} onUpgrade={onUpgrade} />);
+
+    expect(screen.getByText('Gerador de material não incluído neste plano')).toBeTruthy();
+    expect(screen.queryByLabelText('Tema / situação do aluno')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver planos com Educador IA' }));
+    expect(onUpgrade).toHaveBeenCalled();
+  });
+
+  it('reabre um material do histórico da conta', async () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([
+      { id: 'mat-9', kind: 'quiz', niche: 'TRAVEL', level_tag: 'A2', topic: 'Hotel check-in', title: 'Hotel check-in quiz', created_at: '2026-09-17T10:00:00.000Z', dropped_items: 0, material: quizMaterial },
+    ]));
+    render(<HubMaterialGenerator bootstrap={bootstrap()} onRefresh={vi.fn(async () => {})} onUpgrade={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Hotel check-in quiz/ }));
+    expect(screen.getByRole('heading', { level: 2, name: 'Hotel check-in quiz' })).toBeTruthy();
+    expect(screen.getByText(/Tema: Hotel check-in/)).toBeTruthy();
+  });
+
+  it('texto copiável carrega as questões e o gabarito', () => {
+    const record: HubMaterialRecord = { id: 'mat-1', kind: 'quiz', niche: 'TECH', level_tag: 'B1', topic: 'Daily stand-up', title: 'Daily stand-up quiz', created_at: '2026-09-18T12:00:00.000Z', dropped_items: 0, material: quizMaterial };
+    const text = materialAsText(record);
+    expect(text).toContain('1. We ___ a stand-up every morning.');
+    expect(text).toContain('A) have');
+    expect(text).toContain('Gabarito: 1-A · 2-B · 3-A');
+    expect(text).toContain('Foco gramatical (B1): Present simple for routines');
+    expect(text).toContain('Prompt: Act as my scrum master');
+    expect(text).toContain('Wise Wolf Hub');
+  });
+});
+
+describe('Jornada de 90 dias', () => {
+  const journey = {
+    title: '90 days to the warehouse floor',
+    objective_pt: 'Reportar embarques em inglês',
+    promise_pt: 'No dia 90 você conduz o status semanal em inglês.',
+    weeks: Array.from({ length: 12 }, (_, index) => ({
+      week: index + 1,
+      theme: `Week ${index + 1}: shipment ${index + 1}`,
+      grammar_point: 'Present simple',
+      material_kind: index === 0 ? 'reading' : 'worksheet',
+      outcome_pt: 'Consegue descrever a rotina.',
+      class_plan_pt: ['Warm-up', 'Prática', 'Produção'],
+      homework_pt: 'Grave um áudio.',
+    })),
+    milestones: [{ week: 4, checkpoint_pt: 'Teste oral curto' }],
+    retention_moves_pt: [{ week: 1, move_pt: 'Mande o plano pelo WhatsApp.' }],
+  };
+
+  it('gera a jornada com 12 semanas fixas e prefill de "gerar material desta semana"', async () => {
+    supabaseMocks.from.mockImplementation(() => historyChain([]));
+    supabaseMocks.invoke.mockResolvedValue({
+      data: { material_id: 'mat-j', title: journey.title, kind: 'journey', niche: 'BUSINESS', level: 'A1', topic: 'Galpão', goal: 'logística', audience: 'adults', material: journey, dropped: 0, created_at: '2026-09-18T12:00:00.000Z' },
+      error: null,
+    });
+    render(<HubMaterialGenerator bootstrap={bootstrap()} onRefresh={vi.fn(async () => {})} onUpgrade={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Jornada de 90 dias/ }));
+    expect(screen.getByDisplayValue('12 (90 dias)')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Ponto de partida / contexto da jornada'), { target: { value: 'Galpão' } });
+    fireEvent.change(screen.getByLabelText('Objetivo do aluno'), { target: { value: 'logística' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar material' }));
+
+    await waitFor(() => expect(supabaseMocks.invoke).toHaveBeenCalledTimes(1));
+    expect(supabaseMocks.invoke.mock.calls[0][1].body).toMatchObject({ kind: 'journey', count: 12, goal: 'logística' });
+    expect(await screen.findByText(/Promessa do dia 90/)).toBeTruthy();
+    expect(screen.getByText('Week 1: shipment 1')).toBeTruthy();
+    expect(screen.getByText(/Ações de retenção/)).toBeTruthy();
+
+    // Clicar em "gerar leitura desta semana" preenche tipo e tema para a próxima geração.
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar leitura desta semana' }));
+    expect(screen.getByRole('button', { name: /^Leitura/ }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Tema / situação do aluno') as HTMLInputElement).value).toBe('Week 1: shipment 1');
+    expect(screen.getByText(/Semana 1 da jornada/)).toBeTruthy();
+  });
+});

@@ -151,7 +151,7 @@ const AutomacaoSmart: React.FC = () => {
                     </div>
                 </div>
                 <div className={`w-12 h-6 rounded-full p-1 transition-all ${automationEnabled ? 'bg-brand-surface/30' : 'bg-slate-300'}`}>
-                    <div className={`w-4 h-4 rounded-full bg-brand-surface shadow-sm transition-all transform ${automationEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                    <div className={`w-4 h-4 rounded-full bg-brand-surface shadow-xs transition-all transform ${automationEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                 </div>
             </div>
 

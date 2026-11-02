@@ -18,16 +18,17 @@ import {
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
+  canonicalLessonReminder,
   dateInSaoPaulo,
-  DEFAULT_CLASS_REMINDER_TEMPLATE,
   normalizeStudentPhone,
   recurringBookingMatchesDate,
-  renderReminderTemplate,
   timeInSaoPaulo,
 } from "../send-class-notification/core.ts";
 import {
   isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
+  LESSON_RECORDING_CONSENT_KIND,
+  lessonRecordingConsentDelivery,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -123,7 +124,6 @@ type ActiveMember = {
   full_name: string | null;
   phone: string | null;
   attendance_phone: string | null;
-  meeting_link: string | null;
   lifecycle_status: string | null;
   is_test_account: boolean | null;
   date_automation_enabled: boolean | null;
@@ -135,6 +135,8 @@ class QueueRevalidationError extends Error {
   constructor(
     readonly queueStatus: "pending" | "failed" | "skipped",
     readonly reason: string,
+    // Adiar sem gastar tentativa (defer_notification_delivery), em segundos.
+    readonly deferSeconds: number | null = null,
   ) {
     super(reason);
   }
@@ -146,6 +148,29 @@ function invalid(reason: string): never {
 
 function unavailable(reason: string): never {
   throw new QueueRevalidationError("pending", reason);
+}
+
+function deferred(reason: string, seconds: number): never {
+  throw new QueueRevalidationError("pending", reason, seconds);
+}
+
+/** Devolve a vaga do claim para depois, sem contar como tentativa. */
+async function deferClaim(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  delaySeconds: number,
+  reason: string,
+): Promise<boolean> {
+  const { data } = await supabase.rpc("defer_notification_delivery", {
+    p_notification_id: item.id,
+    p_claim_token: item.claim_token,
+    p_delay_seconds: delaySeconds,
+    p_reason: reason.slice(0, 120),
+  });
+  return Boolean(
+    data && typeof data === "object" &&
+      (data as Record<string, unknown>).ok === true,
+  );
 }
 
 function relationOne<T>(value: QueueRelation<T>): T | null {
@@ -160,7 +185,7 @@ async function loadActiveMember(
 ): Promise<ActiveMember> {
   const [profileResult, membershipResult] = await Promise.all([
     supabase.from("profiles").select(
-      "id,tenant_id,role,full_name,phone,attendance_phone,meeting_link,lifecycle_status,is_test_account,date_automation_enabled,birth_date,lesson_reminder_template",
+      "id,tenant_id,role,full_name,phone,attendance_phone,lifecycle_status,is_test_account,date_automation_enabled,birth_date,lesson_reminder_template",
     ).eq("id", userId).maybeSingle(),
     supabase.from("tenant_memberships").select("user_id")
       .eq("tenant_id", tenantId).eq("user_id", userId)
@@ -176,6 +201,15 @@ async function loadActiveMember(
     String(profile.lifecycle_status || "").trim().toLowerCase() !== "active" ||
     String(membershipResult.data?.user_id || "") !== userId
   ) invalid(`${role.toLowerCase()}_not_active_in_tenant`);
+  if (role === "STUDENT") {
+    const eligibility = await supabase.rpc("is_student_notifiable", {
+      p_id: userId,
+    });
+    if (eligibility.error) {
+      unavailable("student_notification_revalidation_unavailable");
+    }
+    if (eligibility.data !== true) invalid("student_notifications_suppressed");
+  }
   return profile;
 }
 
@@ -435,7 +469,6 @@ async function prepareLessonReminder(
 
   let studentName = appointmentName;
   let destination = appointmentPhone;
-  let classLink = safeCommunicationText(teacher.meeting_link, 300);
   if (studentId) {
     const student = await loadActiveMember(
       supabase,
@@ -447,7 +480,6 @@ async function prepareLessonReminder(
     studentName = safeCommunicationText(student.full_name, 180);
     destination = normalizeStudentPhone(student.attendance_phone) ||
       normalizeStudentPhone(student.phone) || "";
-    classLink = safeCommunicationText(student.meeting_link, 300) || classLink;
   }
   if (!studentName || !destination) {
     invalid("lesson_canonical_recipient_unavailable");
@@ -458,17 +490,33 @@ async function prepareLessonReminder(
   if (tenantError) unavailable("tenant_revalidation_unavailable");
   if (!tenant) invalid("tenant_no_longer_available");
 
-  const message = renderReminderTemplate(
-    safeCommunicationText(teacher.lesson_reminder_template, 4096) ||
-      DEFAULT_CLASS_REMINDER_TEMPLATE,
+  // O texto sai do MESMO renderizador que a cerca do envio usa para conferir
+  // (public.render_lesson_reminder_message). Antes o worker achatava o modelo
+  // do professor e punha o link pessoal no {class_link}; a cerca, que não faz
+  // nenhum dos dois, recusou todo lembrete da Débora de 16/09 a 25/09/2026.
+  // Aula com sala oficial da escola pronta leva o link dela; sem sala, a
+  // mensagem de sempre, sem link (decisão de 16/09).
+  const reminder = await canonicalLessonReminder(
+    (fn, args) => supabase.rpc(fn, args),
     {
-      student_name: studentName.split(/\s+/)[0] || studentName,
-      class_time: canonicalClassTime,
-      teacher_name: safeCommunicationText(teacher.full_name, 180),
-      tenant_name: safeCommunicationText(tenant.name, 180),
-      class_link: classLink,
+      tenantId,
+      sourceType,
+      sourceId,
+      classDate: canonicalClassDate,
+      classTime: canonicalClassTime,
+      studentId: studentId || null,
+      // O mesmo professor que a cerca confere (booking/reposição/experimental):
+      // a sala só vale se a sessão for de quem dá a aula.
+      teacherId,
+      template: teacher.lesson_reminder_template,
+      studentName: studentName.split(/\s+/)[0] || studentName,
+      teacherName: safeCommunicationText(teacher.full_name, 180),
+      tenantName: safeCommunicationText(tenant.name, 180),
+      personalLink: null,
     },
   );
+  if (reminder.ok === false) unavailable(reminder.reason);
+  const message = reminder.message;
   if (!message) invalid("lesson_canonical_message_empty");
   return {
     teacherId,
@@ -801,6 +849,39 @@ async function resolveDeliveryIntegration(
     // Uma indisponibilidade não deve ficar memorizada entre futuras execuções.
     cache.delete(tenantId);
     throw error;
+  }
+}
+
+/** Espia o teto sem reservar vaga (a reserva acontece no envio). */
+async function peekOutboundPermit(
+  instanceId: string,
+  destination: string,
+): Promise<
+  { allowed: boolean; wait_ms?: number; kind?: string; reason?: string } | null
+> {
+  const url = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!url || !key) return null;
+  try {
+    const resp = await fetch(`${url}/rest/v1/rpc/whatsapp_outbound_permit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        p_instance: instanceId,
+        p_destination: destination,
+        p_reserve: false,
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data && typeof data === "object" ? data : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1139,7 +1220,105 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (notificationKind === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+        if (notificationKind === "ENROLLMENT_STUDENT_CONFIRMED") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_enrollment_access_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) {
+            unavailable("enrollment_access_revalidation_unavailable");
+          }
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "enrollment_access_invalid"));
+          }
+          prepared = {
+            teacherId: null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
+          [
+            "ORAL_TEST_STUDENT",
+            "ORAL_TEST_TEACHER",
+            "ORAL_TEST_REMINDER_STUDENT",
+            "ORAL_TEST_REMINDER_TEACHER",
+          ].includes(notificationKind)
+        ) {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_oral_test_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) unavailable("oral_test_revalidation_unavailable");
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "oral_test_notice_invalid"));
+          }
+          prepared = {
+            teacherId: typeof snapshot.teacherId === "string"
+              ? snapshot.teacherId
+              : null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
+          notificationKind === "TEACHER_PAYOUT_CONFIRMED" ||
+          notificationKind === "AFFILIATE_PAYOUT_CONFIRMED"
+        ) {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_payout_confirmation_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) unavailable("payout_revalidation_unavailable");
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "payout_notice_invalid"));
+          }
+          prepared = {
+            teacherId: typeof snapshot.teacherId === "string"
+              ? snapshot.teacherId
+              : null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (notificationKind === "AFFILIATE_WITHDRAWAL_REQUESTED") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_affiliate_withdrawal_notice_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) unavailable("withdrawal_revalidation_unavailable");
+          if (snapshot?.ok !== true) {
+            invalid(String(snapshot?.reason || "withdrawal_notice_invalid"));
+          }
+          prepared = {
+            teacherId: null,
+            destination: String(snapshot.destination),
+            message: String(snapshot.message),
+          };
+        } else if (
+          notificationKind === "LESSON_RECORDING_NOTICE_STUDENT" ||
+          notificationKind === "LESSON_RECORDING_NOTICE_TEACHER"
+        ) {
+          // School-authorized notice, never an individual-consent request.
+          const role = notificationKind === "LESSON_RECORDING_NOTICE_TEACHER"
+            ? "TEACHER"
+            : "STUDENT";
+          const memberId = role === "TEACHER"
+            ? relationOne(item.teacher)?.id
+            : item.student_id;
+          if (!memberId) invalid("recording_notice_binding_missing");
+          const member = await loadActiveMember(
+            supabaseClient,
+            String(tenant_id),
+            String(memberId),
+            role,
+          );
+          if (member.is_test_account !== false) {
+            invalid("test_fixture_suppressed");
+          }
+          const destination = normalizeQueueDestination(student_phone);
+          if (!destination || !message_body || message_body.length > 4096) {
+            invalid("recording_notice_invalid_payload");
+          }
+          prepared = { teacherId: null, destination, message: message_body };
+        } else if (notificationKind === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
           const { data: snapshot, error: snapshotError } = await supabaseClient
             .rpc(
               "get_schedule_change_delivery_snapshot",
@@ -1159,6 +1338,30 @@ serve(async (req) => {
             invalid("invalid_schedule_acceptance_payload");
           }
           prepared = { teacherId: null, destination, message };
+        } else if (notificationKind === LESSON_RECORDING_CONSENT_KIND) {
+          // Termo de registro das aulas: o banco revalida aluno, decisão,
+          // contato, link e texto na hora de mandar — e a janela (seg–sáb,
+          // 9h–20h) e o ritmo (5 a cada 15 min), que só adiam.
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc("get_lesson_recording_consent_request_snapshot", {
+              p_notification_id: item.id,
+            });
+          if (snapshotError) {
+            unavailable("lesson_recording_consent_revalidation_unavailable");
+          }
+          const delivery = lessonRecordingConsentDelivery(snapshot);
+          if (delivery.ok === false) {
+            if (delivery.deferSeconds) {
+              deferred(delivery.reason, delivery.deferSeconds);
+            }
+            if (delivery.retryable) unavailable(delivery.reason);
+            invalid(delivery.reason);
+          }
+          prepared = {
+            teacherId: null,
+            destination: delivery.destination,
+            message: delivery.message,
+          };
         } else if (notificationKind.startsWith("TEACHER_TRAINING_")) {
           if (
             item.source_type !== "teacher_training" || !item.source_id ||
@@ -1199,6 +1402,31 @@ serve(async (req) => {
             destination !== normalizeQueueDestination(student_phone)
           ) invalid("training_phone_changed");
           prepared = { teacherId: null, destination, message: message_body };
+        } else if (notificationKind === "TEACHER_MEET_ROOM") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc(
+              "get_teacher_meet_room_notice_snapshot",
+              { p_notification_id: item.id },
+            );
+          if (snapshotError) {
+            unavailable("teacher_room_revalidation_unavailable");
+          }
+          if (snapshot?.ok !== true) {
+            if (snapshot?.defer_seconds) {
+              deferred(String(snapshot.reason), Number(snapshot.defer_seconds));
+            }
+            invalid(String(snapshot?.reason || "teacher_room_not_available"));
+          }
+          const destination = normalizeQueueDestination(snapshot.destination);
+          const message = String(snapshot.message || "");
+          if (!destination || !message || message.length > 4096) {
+            invalid("teacher_room_payload_invalid");
+          }
+          prepared = {
+            teacherId: String(snapshot.teacher_id),
+            destination,
+            message,
+          };
         } else if (
           notificationKind === "LESSON_REMINDER"
         ) {
@@ -1251,6 +1479,21 @@ serve(async (req) => {
         }
       } catch (error) {
         if (!(error instanceof QueueRevalidationError)) throw error;
+        if (error.deferSeconds !== null) {
+          const ok = await deferClaim(
+            supabaseClient,
+            item,
+            error.deferSeconds,
+            error.reason,
+          );
+          persistenceFailed ||= !ok;
+          results.push({
+            id,
+            status: ok ? "deferred" : "marker_failed",
+            error: error.reason,
+          });
+          continue;
+        }
         const marked = await markClaim(
           supabaseClient,
           item,
@@ -1347,6 +1590,34 @@ serve(async (req) => {
         instance: instanceId,
         to: destination,
       });
+
+      // Teto do WhatsApp (17/09/2026): espia a régua ANTES do fence. Adiado não
+      // é tentativa — o claim devolve a vaga sem gastar `attempts`.
+      const throttlePeek = await peekOutboundPermit(
+        instanceId,
+        providerDestination,
+      );
+      if (throttlePeek && throttlePeek.allowed === false) {
+        const delaySeconds = Math.max(
+          30,
+          Math.ceil(Number(throttlePeek.wait_ms || 60_000) / 1000),
+        );
+        const ok = await deferClaim(
+          supabaseClient,
+          item,
+          delaySeconds,
+          `throttled_${throttlePeek.kind || "outbound"}_${
+            throttlePeek.reason || ""
+          }`,
+        );
+        persistenceFailed ||= !ok;
+        results.push({
+          id,
+          status: ok ? "deferred" : "marker_failed",
+          error: throttlePeek.reason || "throttled",
+        });
+        continue;
+      }
 
       let paymentOutboundClaim:
         | Awaited<ReturnType<typeof claimOutboundMessage>>

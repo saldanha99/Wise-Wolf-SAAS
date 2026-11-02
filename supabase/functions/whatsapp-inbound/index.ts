@@ -1,3 +1,4 @@
+import { teacherMayReceiveOpportunity } from "../_shared/opportunity-dispatch.ts";
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -12,10 +13,28 @@ import {
   resolveTenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import {
+  type WhatsappEntry,
+  whatsappEntryEvidence,
+  whatsappEntryNotes,
+} from "./lead-entry.ts";
+import {
+  adjacentFourDayAlternative,
+  asksToReadContract,
+  type CatalogPrice,
+  classifyTeacherSlotsReply,
+  contractReadingAnswer,
+  mergeTeacherCounterproposal,
+  parseCounterproposalDecision,
+  parseEnrollmentDueDay,
   parseEnrollmentDuration,
   parseEnrollmentSlots,
+  parseEnrollmentSlotsFromMessages,
+  parseEnrollmentStartDate,
+  parseTeacherOptionChoice,
   parseTrialDenial,
   parseTrialOutcomeReply,
+  slotsText,
+  studentCounterproposalBlocks,
   studentDenialAck,
   studentNeedMessage,
   studentNoShowMessage,
@@ -23,9 +42,11 @@ import {
   studentPlanQuestion,
   studentSlotsUnavailableMessage,
   studentWaitingFeedbackMessage,
+  teacherAlternativeQuestion,
   teacherDoneConfirmation,
   teacherFeedbackAsk,
   teacherNoShowConfirmation,
+  trialClosingMayResumeAfterHandoff,
 } from "./trial-closing.ts";
 import {
   parseRenewalFrequency,
@@ -39,30 +60,76 @@ import {
   reconcileSuppressedLead,
 } from "../_shared/commercial-contact-policy.ts";
 import {
+  avancarTriagem,
   ETAPAS,
   etapasRespondidas,
-  mergeRespostas,
   promptTriagem,
   triagemCompleta,
 } from "./triagem.ts";
 import {
   applyCommercialReplyPolicy,
+  applyPostTrialAnswerPolicy,
+  completedTrialReply,
   resolveAtendenteTraining,
   resolveCommercialPolicy,
+  schoolOperatingHoursAnswer,
 } from "./commercial-response-policy.ts";
 import { wiseWolfLeadTraining } from "./wise-wolf-lead-training.ts";
+import { catalogFactsForPrompt, mentionsSchedule } from "./lead-pricing.ts";
+import {
+  buildCareSystemPrompt,
+  type CareContext,
+  careReplySpeaksAsStudent,
+  isMoneyOrContractTopic,
+  moneyHandoffReply,
+  parseCareModelReply,
+  parseRequestedSlot,
+  pickOfferedSlot,
+} from "./care-conversation.ts";
+import type { CareSlot } from "./care-messages.ts";
+import { loadCareTurn } from "./care-turn.ts";
+import {
+  annotateConflicts,
+  type BusySlot,
+  type CandidateStudent,
+  parseTeacherScheduleChange,
+  proposeChanges,
+  type ProposedStudent,
+  scheduleChangeAppliedMessage,
+  scheduleChangeConfirmationMessage,
+} from "./teacher-schedule-change.ts";
 import {
   isStudentBillingMethodChangeIntent,
   studentBillingMethodChangeReply,
 } from "./billing-method-intent.ts";
 import {
   absenceConfirmationAnswer,
+  coverageInviteAnswer,
   detectTeacherAbsenceIntent,
 } from "./teacher-absence.ts";
+import {
+  mentionsTrialNoShow,
+  trialNoShowChannelMessage,
+  trialNoShowLeadMessage,
+} from "./trial-no-show.ts";
 import {
   montarMensagemFolha,
   type PayrollSummary,
 } from "../_shared/payroll-message.ts";
+import {
+  rescheduleBacklogMessage,
+  type RescheduleBacklogRow,
+} from "../_shared/reschedule-messages.ts";
+import {
+  parseConfirmationWithReason,
+  parseTeacherRescheduleMessage,
+  proposeRescheduleMove,
+  type RescheduleCandidateStudent,
+  rescheduleMoveAppliedMessage,
+  rescheduleMoveConfirmationMessage,
+  type RescheduleProposalItem,
+} from "./teacher-reschedule-move.ts";
+import { loadTenantNoticeDestination } from "../_shared/tenant-communication.ts";
 import {
   handleRenewalManagementCommand,
   handleRenewalStudentMessage,
@@ -100,18 +167,37 @@ import {
   decideTrialAction,
   isTrialAppointmentActive,
   isTrialOutcomeOpen,
+  mentionsRescheduleWithoutSlot,
+  rescheduleRequestHasSlot,
   selectTeacherRescheduleRequest,
   type Slot,
   trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 import { getHolidayBR, isHolidayBR } from "./holidays.ts";
+import {
+  asksLessonAccess,
+  loadTrialAccess,
+  schoolModalityFacts,
+  trialAccessReply,
+  vetoInventedPresential,
+} from "./trial-access.ts";
 import { enqueueSdrInput, runSdrWork } from "./sdr-work.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
   alternativeQuestion,
+  availabilityFacts,
   availableMenu,
+  filterSlotsByWindows,
+  formatSlotBr,
+  humanizeIsoDates,
   loadAvailableTrialSlots,
+  parseAvailabilityWindows,
   rankTrialAlternatives,
+  replyDeniesAvailability,
+  replyOffersUnknownSlot,
+  replyPromisesTrialCheck,
+  requestedTrialSlot,
+  unavailablePreferenceNote,
 } from "../_shared/sdr-scheduling.ts";
 import {
   canUseManagementTool,
@@ -262,6 +348,12 @@ const inboundEvolutionTransportCache = new Map<
   InboundEvolutionTransport
 >();
 let inboundServiceClient: any = null;
+
+/** Base pública das edge functions para links enviados a gente (não a rede interna). */
+function publicFunctionsBase(): string {
+  return (Deno.env.get("SUPABASE_PUBLIC_URL") || Deno.env.get("SUPABASE_URL") ||
+    "").trim().replace(/\/$/, "");
+}
 
 function getInboundServiceClient(): any {
   if (!inboundServiceClient) {
@@ -519,6 +611,66 @@ async function sendWhats(
     text,
     delayMs: opts?.simulateTyping ? typingDelayMs(text) : undefined,
   });
+}
+
+/**
+ * A professora e a coordenação precisam saber, na hora, que uma aula
+ * experimental não vai acontecer no horário marcado.
+ *
+ * Sem isso o pedido do lead ficava só na conversa: em 23/09/2026 a Ana Carolina
+ * avisou às 11:52 e a aula seguiu na agenda da Teacher Bruna para as 18:30.
+ *
+ * Falha no envio NÃO desfaz o registro — o estado já mudou no banco, e é ele que
+ * manda. Mesmo princípio do resto do projeto ("falha no aviso nunca derruba o
+ * lançamento").
+ */
+async function avisarRemarcacaoPedida(
+  sb: any,
+  tenantId: string,
+  instance: string,
+  aberto: {
+    teacher_id?: string | null;
+    teacher_name?: string | null;
+    lead_name?: string | null;
+    lead_phone?: string | null;
+    start_time?: string | null;
+  },
+): Promise<void> {
+  const quando = aberto.start_time
+    ? new Date(aberto.start_time).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : "horário não identificado";
+  const lead = String(aberto.lead_name || "o lead").trim();
+
+  if (aberto.teacher_id) {
+    const { data: teacher } = await sb.from("profiles")
+      .select("phone").eq("id", aberto.teacher_id).maybeSingle();
+    if (teacher?.phone) {
+      await sendWhats(
+        instance,
+        String(teacher.phone),
+        `📅 *Experimental em remarcação*\n\n${lead} avisou que não vai conseguir na aula de ${quando}.\n\nNão precisa entrar na sala nesse horário. Assim que ele disser o novo dia, a plataforma te pergunta antes de mexer na sua agenda.`,
+      );
+    }
+  }
+
+  const canal = await loadTenantNoticeDestination(sb, tenantId, "coordenacao");
+  if (canal) {
+    await sendWhats(
+      instance,
+      canal,
+      `📅 *Experimental em remarcação*\n\n👤 ${lead}${
+        aberto.lead_phone ? ` — wa.me/${String(aberto.lead_phone)}` : ""
+      }\n👩‍🏫 ${
+        aberto.teacher_name || "professor(a)"
+      }\n🕐 era ${quando}\n\nO lead pediu para remarcar e ainda não disse quando. A aula está sinalizada na plataforma.`,
+    );
+  }
 }
 
 async function sendWhatsDetailed(
@@ -1379,7 +1531,10 @@ async function openCoverageDayDirect(
     };
   }
 
-  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  // Link que o PROFESSOR abre: host público. `SUPABASE_URL` dentro do
+  // container é `http://kong:8000` — todo convite saía com link inalcançável
+  // (medido em 17/09/2026: 0 coberturas jamais despachadas).
+  const supabaseUrl = publicFunctionsBase();
   const teacherFirst =
     String(result.teacher_name || "o professor").trim().split(/\s+/)[0];
   const [y, m, d] = classDate.split("-");
@@ -1440,6 +1595,519 @@ ${link}`,
     );
   }
   return { ok: true, teacher_name: result.teacher_name, lines };
+}
+
+/**
+ * PROFESSOR TROCA HORÁRIO DO ALUNO PELO WHATSAPP DA ESCOLA (17/09/2026).
+ *
+ * "O aluno Felipe trocou pra 14:30 e a Isabella para as 14" → o bot resolve os
+ * alunos na agenda do professor, mostra dia a dia o que muda, pergunta
+ * "confirma?" e, no SIM, aplica pela mesma RPC da tela (vigência amanhã,
+ * choque checado, Gestão avisada) agindo como o professor. Devolve true quando
+ * a mensagem foi tratada aqui (proposta, confirmação ou cancelamento).
+ */
+async function handleTeacherScheduleChangeMessage(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: pending } = await sb.rpc(
+    "teacher_schedule_change_prompt_pending",
+    { p_tenant: tenantId, p_teacher: profile.id },
+  );
+  const answer = absenceConfirmationAnswer(text);
+  if (pending && typeof pending === "object" && answer) {
+    await logMsg(sb, tenantId, phone, "schedule_change", "in", text, {
+      teacher_id: profile.id,
+      prompt_id: pending.id,
+      msg_id: msgId,
+    });
+    let reply: string;
+    if (answer === "no") {
+      await sb.rpc("teacher_schedule_change_prompt_cancel", {
+        p_id: pending.id,
+      });
+      reply = "Ok, não mexi em nada. Se quiser, me manda de novo como ficou.";
+    } else {
+      const { data: applied, error } = await sb.rpc(
+        "teacher_schedule_change_prompt_apply",
+        { p_id: pending.id },
+      );
+      if (error || !applied || typeof applied !== "object") {
+        console.error("[schedule-change] apply falhou", {
+          promptId: pending.id,
+          code: error?.code,
+        });
+        reply =
+          "Não consegui aplicar a troca agora. A coordenação vai fazer por aqui e te aviso.";
+      } else if (applied.error === "proposta_expirada") {
+        reply =
+          "Essa proposta venceu (passaram 2 horas). Me manda de novo como ficou que eu refaço.";
+      } else {
+        reply = scheduleChangeAppliedMessage({
+          applied: Array.isArray(applied.applied) ? applied.applied : [],
+          errors: Array.isArray(applied.errors) ? applied.errors : [],
+          effectiveFrom: String(applied.effective_from || ""),
+        });
+      }
+    }
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "schedule_change", "out", reply, {
+      prompt_id: pending.id,
+      entregue,
+    });
+    return true;
+  }
+
+  const entries = parseTeacherScheduleChange(text);
+  if (!entries) return false;
+  const { data: candidates, error: candError } = await sb.rpc(
+    "teacher_schedule_change_candidates",
+    {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_names: entries.map((e) => e.name),
+    },
+  );
+  if (candError || !Array.isArray(candidates)) {
+    console.error("[schedule-change] candidatos indisponíveis", {
+      code: candError?.code,
+    });
+    return false;
+  }
+  const proposed: ProposedStudent[] = [];
+  const unknownNames: string[] = [];
+  const ambiguous: Array<{ name: string; options: string[] }> = [];
+  entries.forEach((entry, index) => {
+    const row = (candidates as Array<Record<string, unknown>>).find((c) =>
+      Number(c.idx) === index + 1
+    );
+    const matches = Array.isArray(row?.matches)
+      ? row!.matches as CandidateStudent[]
+      : [];
+    if (!matches.length) {
+      unknownNames.push(entry.name);
+      return;
+    }
+    if (matches.length > 1) {
+      ambiguous.push({
+        name: entry.name,
+        options: matches.map((m) => m.student_name),
+      });
+      return;
+    }
+    proposed.push(proposeChanges(entry, matches[0]));
+  });
+  if (!proposed.length && !unknownNames.length && !ambiguous.length) {
+    return false;
+  }
+  // Choque com outra aula fixa é dito antes do "confirma?", e fica fora da
+  // proposta — o SIM só aplica o que pode mudar.
+  const { data: busyRaw } = await sb.rpc("teacher_schedule_change_busy", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const students = annotateConflicts(
+    proposed,
+    Array.isArray(busyRaw) ? busyRaw as BusySlot[] : [],
+  );
+  await logMsg(sb, tenantId, phone, "schedule_change", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    entries,
+  });
+  const tomorrow = new Date(nowBRT().getTime() + 86400000).toISOString().slice(
+    0,
+    10,
+  );
+  const changeable = students.filter((st) => st.changes.length > 0);
+  let promptId: string | null = null;
+  if (changeable.length) {
+    const { data } = await sb.rpc("teacher_schedule_change_prompt_open", {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_phone: phone,
+      p_proposal: { students: changeable, source_text: text.slice(0, 500) },
+    });
+    promptId = data ? String(data) : null;
+  }
+  const reply = scheduleChangeConfirmationMessage({
+    students,
+    unknownNames,
+    ambiguous,
+    effectiveFrom: tomorrow,
+  });
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "schedule_change", "out", reply, {
+    prompt_id: promptId,
+    entregue,
+  });
+  return true;
+}
+
+/**
+ * PROFESSOR MARCA / REMARCA / DESMARCA REPOSIÇÃO PELO WHATSAPP (18/09/2026).
+ *
+ * "A reposição do Theo passou para terça 15h" → o bot acha o aluno nas
+ * reposições abertas do professor, mostra o que entendeu, pergunta "confirma?"
+ * (o motivo pode vir junto: "sim, aluno pediu") e aplica no SIM pela MESMA RPC
+ * da tela, agindo como o professor — origem `whatsapp_professor` na trilha,
+ * coordenação e família avisadas pelo servidor. Devolve true quando tratou.
+ */
+async function handleTeacherRescheduleMessage(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: pending } = await sb.rpc("teacher_reschedule_prompt_pending", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const answer = parseConfirmationWithReason(text);
+  if (pending && typeof pending === "object" && answer) {
+    await logMsg(sb, tenantId, phone, "reschedule_move", "in", text, {
+      teacher_id: profile.id,
+      prompt_id: pending.id,
+      msg_id: msgId,
+    });
+    let reply: string;
+    if (!answer.yes) {
+      await sb.rpc("teacher_reschedule_prompt_cancel", { p_id: pending.id });
+      reply =
+        "Ok, não mexi na reposição. Se quiser, me manda de novo como ficou.";
+    } else {
+      const { data: applied, error } = await sb.rpc(
+        "teacher_reschedule_prompt_apply",
+        { p_id: pending.id, p_reason: answer.reason },
+      );
+      if (error || !applied || typeof applied !== "object") {
+        console.error("[reschedule-move] apply falhou", {
+          promptId: pending.id,
+          code: error?.code,
+        });
+        reply =
+          "Não consegui aplicar agora. A coordenação vai marcar por aqui e te aviso.";
+      } else if (applied.error === "proposta_expirada") {
+        reply =
+          "Essa proposta venceu (passaram 2 horas). Me manda de novo como ficou que eu refaço.";
+      } else {
+        reply = rescheduleMoveAppliedMessage({
+          applied: Array.isArray(applied.applied) ? applied.applied : [],
+          errors: Array.isArray(applied.errors) ? applied.errors : [],
+        });
+      }
+    }
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "reschedule_move", "out", reply, {
+      prompt_id: pending.id,
+      entregue,
+    });
+    return true;
+  }
+
+  const entry = parseTeacherRescheduleMessage(text, nowBRT());
+  if (!entry) return false;
+  const { data: candidates, error: candError } = await sb.rpc(
+    "teacher_reschedule_candidates",
+    {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_names: [entry.name || ""],
+    },
+  );
+  if (candError || !Array.isArray(candidates)) {
+    console.error("[reschedule-move] candidatos indisponíveis", {
+      code: candError?.code,
+    });
+    return false;
+  }
+  const matches = Array.isArray(candidates[0]?.matches)
+    ? candidates[0].matches as RescheduleCandidateStudent[]
+    : [];
+  await logMsg(sb, tenantId, phone, "reschedule_move", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    entry,
+  });
+  let item: RescheduleProposalItem | null = null;
+  let ask: string | null = null;
+  let ambiguous: string[] | null = null;
+  let unknownName: string | null = null;
+  if (!matches.length) {
+    unknownName = entry.name || "esse aluno";
+  } else if (matches.length > 1) {
+    // Sem nome ("minha reposição de hoje") com vários alunos: pergunta qual.
+    ambiguous = matches.map((m) => m.student_name);
+  } else {
+    const proposed = proposeRescheduleMove(entry, matches[0]);
+    item = proposed.item;
+    ask = proposed.ask;
+  }
+  let promptId: string | null = null;
+  if (item) {
+    const { data } = await sb.rpc("teacher_reschedule_prompt_open", {
+      p_tenant: tenantId,
+      p_teacher: profile.id,
+      p_phone: phone,
+      p_proposal: {
+        items: [item],
+        reason: entry.reason,
+        source_text: text.slice(0, 500),
+      },
+    });
+    promptId = data ? String(data) : null;
+  }
+  const reply = rescheduleMoveConfirmationMessage({
+    item,
+    ask,
+    ambiguous,
+    unknownName,
+    reason: entry.reason,
+  });
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "reschedule_move", "out", reply, {
+    prompt_id: promptId,
+    entregue,
+  });
+  return true;
+}
+
+/**
+ * COBERTURA ACEITA POR TEXTO (17/09/2026). A coordenação negociava a cobertura
+ * com a Bruna na mão ("10:30 você consegue?" / "Consigo sim") e depois
+ * mandava contato e conteúdo. Com convite pendente para o professor, o
+ * "sim"/"não" dele no número da escola resolve o convite pela MESMA RPC do
+ * link, e o pacote do aluno sai pela fila. Vários convites pendentes: ele
+ * escolhe pelo horário ou responde "todas". Devolve true quando tratou.
+ */
+/**
+ * "O aluno não compareceu" dito pela professora ao número da escola vira falta
+ * registrada + convite de remarcação para o lead.
+ *
+ * Antes isso morria na conversa: alguém tinha de abrir a plataforma, marcar a
+ * falta e chamar o lead de volta — e normalmente ninguém chamava.
+ *
+ * Quem registra a falta continua sendo a direção: a RPC age como ela
+ * (trial_closing_act_as) e chama `update_trial_outcome_secure`, a mesma porta da
+ * tela. A professora AVISA; a plataforma não inventou uma segunda via para o
+ * mesmo fato.
+ */
+async function handleTeacherTrialNoShow(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  teacher: { id?: string | null; full_name?: string | null },
+  phone: string,
+  text: string,
+): Promise<boolean> {
+  if (!teacher?.id || !mentionsTrialNoShow(text)) return false;
+
+  const { data: candidatas, error: buscaErro } = await sb.rpc(
+    "teacher_open_trial_for_no_show",
+    { p_tenant: tenantId, p_teacher: teacher.id },
+  );
+  if (buscaErro) {
+    console.error("[trial] falha ao procurar experimental para no-show", {
+      teacherId: teacher.id,
+      error: buscaErro.message,
+    });
+    return false;
+  }
+  const lista = (candidatas || []) as Array<Record<string, unknown>>;
+  // Nenhuma aula elegível: a professora está falando de outra coisa. Sair em
+  // silêncio é melhor que responder sobre uma aula que não existe.
+  if (lista.length === 0) return false;
+  // Mais de uma experimental na janela: registrar a errada custa o pagamento
+  // dela. Escala para gente em vez de adivinhar.
+  if (lista.length > 1) {
+    await sendWhats(
+      instance,
+      phone,
+      "Você tem mais de uma experimental nas últimas horas. Me diz o nome do aluno que não compareceu que eu registro.",
+    );
+    return true;
+  }
+
+  const alvo = lista[0];
+  const { data: registro, error: registroErro } = await sb.rpc(
+    "teacher_report_trial_no_show",
+    {
+      p_tenant: tenantId,
+      p_teacher: teacher.id,
+      p_opportunity_id: alvo.opportunity_id,
+      p_note: text.slice(0, 300),
+    },
+  );
+  if (registroErro || !registro?.ok) {
+    console.error("[trial] falha ao registrar no-show", {
+      teacherId: teacher.id,
+      error: registroErro?.message || registro?.error,
+    });
+    return false;
+  }
+
+  const quando = registro.start_time
+    ? new Date(String(registro.start_time)).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : null;
+
+  await sendWhats(
+    instance,
+    phone,
+    `Registrado: ${
+      String(registro.lead_name || "o lead").trim()
+    } não compareceu na experimental${
+      quando ? ` de ${quando}` : ""
+    }. Essa aula não conta como realizada, e já chamei a pessoa para remarcar. Obrigado por avisar!`,
+  );
+
+  // O convite ao lead é o ponto do pedido: quem some por uma hora costuma
+  // voltar se a porta ficar aberta. Falha no envio não desfaz o registro.
+  const leadPhone = String(registro.lead_phone || "").replace(/\D/g, "");
+  if (leadPhone) {
+    try {
+      await sendWhats(
+        instance,
+        leadPhone,
+        trialNoShowLeadMessage({
+          leadName: registro.lead_name,
+          teacherName: teacher.full_name,
+          whenText: quando,
+        }),
+      );
+    } catch (erro) {
+      console.error("[trial] convite de remarcação ao lead falhou", {
+        error: (erro as Error).message,
+      });
+    }
+  }
+
+  const canal = await loadTenantNoticeDestination(sb, tenantId, "comercial");
+  if (canal) {
+    await sendWhats(
+      instance,
+      canal,
+      trialNoShowChannelMessage({
+        leadName: registro.lead_name,
+        leadPhone: registro.lead_phone,
+        teacherName: teacher.full_name,
+        whenText: quando,
+      }),
+    );
+  }
+  return true;
+}
+
+async function handleTeacherCoverageReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const answer = coverageInviteAnswer(text);
+  const wantsAll = /\btodas?\b|\bambas\b|\bas duas\b/i.test(text);
+  const times = [...text.matchAll(/\b(\d{1,2})[:h](\d{2})\b/g)].map((m) =>
+    `${m[1].padStart(2, "0")}:${m[2]}`
+  );
+  if (!answer && !wantsAll && !times.length) return false;
+  const { data: raw } = await sb.rpc("teacher_pending_coverage_invites", {
+    p_tenant: tenantId,
+    p_teacher: profile.id,
+  });
+  const invites = (Array.isArray(raw) ? raw : []) as Array<
+    Record<string, unknown>
+  >;
+  if (!invites.length) return false;
+
+  let chosen: Array<Record<string, unknown>> = [];
+  if (invites.length === 1) {
+    if (!answer) return false;
+    chosen = invites;
+  } else if (wantsAll) {
+    chosen = invites;
+  } else if (times.length) {
+    chosen = invites.filter((inv) =>
+      times.includes(String(inv.class_time || ""))
+    );
+    if (!chosen.length) return false;
+  } else {
+    // "sim" solto com mais de um convite: pergunta qual, sem chutar.
+    const list = invites.map((inv) =>
+      `• ${String(inv.when)} — ${String(inv.student_name)} (de ${
+        String(inv.original_teacher_name).split(/\s+/)[0]
+      })`
+    ).join("\n");
+    const reply =
+      `Você tem ${invites.length} convites de cobertura abertos:\n${list}\n\nQual você aceita? Responda o horário (ex.: *${
+        String(invites[0].class_time)
+      }*) ou *todas*.`;
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "coverage", "out", reply, {
+      teacher_id: profile.id,
+      entregue,
+      msg_id: msgId,
+    });
+    return true;
+  }
+
+  const accept = answer !== "no";
+  await logMsg(sb, tenantId, phone, "coverage", "in", text, {
+    teacher_id: profile.id,
+    msg_id: msgId,
+    coverage_ids: chosen.map((c) => String(c.coverage_id)),
+    accept,
+  });
+  const lines: string[] = [];
+  for (const inv of chosen) {
+    const { data: result, error } = await sb.rpc(
+      "resolve_coverage_invite_and_brief",
+      { p_token: String(inv.token), p_accept: accept },
+    );
+    const label = `${String(inv.when)} — ${String(inv.student_name)}`;
+    if (error || !result || result.ok !== true) {
+      const code = String(result?.error || error?.code || "");
+      console.error("[coverage] aceite por texto falhou", {
+        coverageId: inv.coverage_id,
+        code,
+      });
+      lines.push(
+        code === "substituto_nao_esta_mais_disponivel"
+          ? `⚠️ ${label}: sua grade não tem esse horário livre — a coordenação vai ajustar por aqui.`
+          : code === "conflito_criado_apos_o_convite"
+          ? `⚠️ ${label}: apareceu outra aula sua nesse horário; não registrei.`
+          : `⚠️ ${label}: não consegui registrar agora, a coordenação vai ver.`,
+      );
+      continue;
+    }
+    lines.push(
+      accept
+        ? `✅ ${label}: cobertura registrada. Já te mando o contato do aluno, o que ficou da última aula e o link do dossiê (entre com o seu login).`
+        : `❌ ${label}: recusa registrada, a coordenação vai procurar outro professor.`,
+    );
+  }
+  const reply = lines.join("\n");
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "coverage", "out", reply, {
+    teacher_id: profile.id,
+    entregue,
+  });
+  return true;
 }
 
 /**
@@ -1541,12 +2209,12 @@ async function handleTeacherAbsenceMessage(
         }. Você não precisa fazer mais nada. Melhoras! 💜`,
       );
     }
-    // Grupo da Gestão fica sabendo na hora, com o mesmo resumo do comando do grupo.
-    const { data: conf } = await sb.from("dre_report_settings").select(
-      "destino,is_active",
-    ).eq("tenant_id", tenantId).maybeSingle();
-    const destino = String(conf?.destino || "").trim();
-    if (conf?.is_active && /@g\.us$/.test(destino)) {
+    // O canal de coordenação fica sabendo na hora, com o mesmo resumo do
+    // comando do grupo (sem grupo configurado, cai na Gestão).
+    const destino = String(
+      await loadTenantNoticeDestination(sb, tenantId, "coordenacao") || "",
+    ).trim();
+    if (/@g\.us$/.test(destino)) {
       const corpo = opened.ok === true
         ? `Cobertura aberta:\n${lines.join("\n") || "• (sem aulas a cobrir)"}`
         : `⚠️ Não consegui abrir a cobertura automaticamente (${
@@ -2068,6 +2736,13 @@ async function createCoverageInviteDirect(
     p_request_id: requestId,
   });
   if (error) {
+    // O motivo real fica no log: em 16/09/2026 o grupo só viu
+    // "falha_ao_criar_cobertura" e a causa (trigger recusando confirmed_by
+    // nulo) levou uma reprodução no banco para aparecer.
+    console.error("[gestao] gestao_create_coverage_invite falhou", {
+      message: String(error.message || error),
+      requestId,
+    });
     return { ok: false, error: "falha_ao_criar_cobertura" };
   }
   const result = data as Record<string, unknown> | null;
@@ -2151,7 +2826,10 @@ async function createCoverageInviteDirect(
 
   const token = String(result.token || "");
   const phone = normalizePhone(String(result.cover_teacher_phone || ""));
-  const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+  // Link que o PROFESSOR abre: host público. `SUPABASE_URL` dentro do
+  // container é `http://kong:8000` — todo convite saía com link inalcançável
+  // (medido em 17/09/2026: 0 coberturas jamais despachadas).
+  const supabaseUrl = publicFunctionsBase();
   if (!/^[a-f0-9]{32}$/i.test(token) || !phone || !supabaseUrl) {
     return {
       ok: true,
@@ -2179,7 +2857,7 @@ async function createCoverageInviteDirect(
   const message =
     `Olá ${coverFirstName}! 🐺\n\nA coordenação precisa de uma *cobertura pontual*:\n\n📅 ${formattedDate} às *${
       String(result.class_time || action.class_time || "").slice(0, 5)
-    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar:\n${link}`;
+    }*\n👤 Aluno: *${studentName}*\n\nAbra o link para aceitar ou recusar — ou responda *sim* / *não* por aqui:\n${link}\n\nAo aceitar, te mando o contato do aluno, o que ficou da última aula e o link do dossiê.`;
   const notified = await sendWhats(instance, phone, message);
   if (notified && result.coverage_id) {
     await sb.from("class_coverages").update({
@@ -2623,6 +3301,8 @@ async function savePendingManagementAction(
     actor: ManagementActor;
     action: Record<string, unknown>;
     summary: string;
+    /** Ações seguintes da mesma mensagem — propostas uma a uma depois desta. */
+    queue?: Record<string, unknown>[];
   },
 ): Promise<
   | { ok: true; actionId: string; code: string }
@@ -2670,7 +3350,11 @@ async function savePendingManagementAction(
     risk_level: policy.risk,
     schema_version: MANAGEMENT_ACTION_SCHEMA_VERSION,
     status: "pending",
-    acao: values.action,
+    // `fila` vai dentro da ação: a autorização compara por contenção
+    // (`acao @> expected`), então a chave extra não invalida nada.
+    acao: values.queue?.length
+      ? { ...values.action, fila: values.queue }
+      : values.action,
     resumo: values.summary,
     pedido_por: values.actor.displayName,
     requested_by_jid: values.actor.jid,
@@ -2735,12 +3419,91 @@ function renewalBotDeps(
         temperature: 0.3,
       }),
     managementGroup: async () => {
-      const { data } = await sb.from("dre_report_settings")
-        .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
-      const destino = String(data?.destino || "").trim();
-      return data?.is_active && /@g\.us$/.test(destino) ? destino : null;
+      // Renovação e plano são dinheiro: canal de direção (cai na Gestão).
+      const destino = String(
+        await loadTenantNoticeDestination(sb, tenantId, "direcao") || "",
+      ).trim();
+      return /@g\.us$/.test(destino) ? destino : null;
     },
   };
+}
+
+type ManagementChannel =
+  | "direcao"
+  | "financeiro"
+  | "coordenacao"
+  | "comercial";
+
+/** Comandos que o grupo de COORDENAÇÃO pode pedir — agenda, não dinheiro. */
+const COORDENACAO_TIPOS = new Set([
+  "cobertura_aula",
+  "cobertura_dia",
+  "transferencia_professor",
+  "repasse_aula",
+  "alterar_horario_aluno",
+  "agendar_treinamento",
+  "reposicoes",
+]);
+
+/** Comandos do grupo FINANCEIRO — dinheiro e plano; agenda é na Coordenação. */
+const FINANCEIRO_TIPOS = new Set([
+  "conta_pagar",
+  "ajuste_repasse",
+  "folha_professores",
+  "mudanca_plano",
+]);
+
+/**
+ * Qual canal é este grupo. O da Gestão (dre_report_settings.destino) vale como
+ * direção. Grupo fora dos canais configurados: silêncio, como sempre foi —
+ * responder "sem permissão" confirmaria que existe um assistente ali.
+ */
+async function managementChannelForGroup(
+  sb: any,
+  tenantId: string,
+  groupJid: string,
+): Promise<ManagementChannel | null> {
+  const { data } = await sb.rpc("notice_channel_jids", { p_tenant: tenantId });
+  const jids = (data && typeof data === "object" ? data : {}) as Record<
+    string,
+    unknown
+  >;
+  const same = (value: unknown) => String(value || "").trim() === groupJid;
+  if (same(jids.gestao) || same(jids.direcao)) return "direcao";
+  // Financeiro sem grupo próprio herda o JID da direção — já tratado acima.
+  if (same(jids.financeiro)) return "financeiro";
+  if (same(jids.coordenacao)) return "coordenacao";
+  if (same(jids.comercial)) return "comercial";
+  return null;
+}
+
+/**
+ * O que responder quando o pedido não cabe neste grupo. Null = segue o fluxo.
+ * Comercial não executa nada; Coordenação não mexe em dinheiro nem responde
+ * pergunta financeira (o retrato da escola tem faturamento e margem);
+ * Financeiro responde pergunta de gestão e executa despesa, ajuste de repasse,
+ * folha e mudança de plano — agenda vai para a Coordenação.
+ */
+function managementChannelScopeReply(
+  channel: ManagementChannel,
+  acao: Record<string, unknown> | null,
+): string | null {
+  if (channel === "direcao") return null;
+  const tipo = String(acao?.tipo || "").trim();
+  if (channel === "comercial") {
+    return "Este grupo é só de avisos comerciais (leads, experimentais, pós-experimental). Comandos de agenda ficam no grupo da Coordenação; despesa, folha e planos no Financeiro; o resto na Direção.";
+  }
+  if (channel === "financeiro") {
+    if (!tipo || FINANCEIRO_TIPOS.has(tipo)) return null;
+    return "Isso é agenda — peça no grupo da Coordenação (cobertura, cobertura do dia, transferência, troca de horário, treinamento, reposições). Aqui eu cuido de despesa, ajuste de repasse, folha, mudança de plano e das perguntas de gestão.";
+  }
+  if (!tipo) {
+    return 'Aqui eu cuido de agenda: cobertura ("a Bruna cobriu a aula do Theo hoje 10:30"), cobertura do dia ("cobertura do dia hoje do Flávio"), transferência de aluno, troca de horário, treinamento e "reposições". Despesa, folha e planos são no grupo Financeiro; perguntas de gestão, no da Direção.';
+  }
+  if (!COORDENACAO_TIPOS.has(tipo)) {
+    return "Isso é dinheiro/plano — peça no grupo Financeiro (ou na Direção). Aqui eu cuido de cobertura, cobertura do dia, transferência, troca de horário, treinamento e reposições.";
+  }
+  return null;
 }
 
 async function handleGestao(
@@ -2763,7 +3526,11 @@ async function handleGestao(
       "tenant_id",
       tenantId,
     ).maybeSingle();
-  if (!conf?.is_active || String(conf.destino || "") !== groupJid) return;
+  if (!conf?.is_active) return;
+  // Qual grupo é este? Gestão/Direção ouvem tudo; Financeiro só dinheiro;
+  // Coordenação só agenda; Comercial só recebe avisos (um grupo por assunto).
+  const channel = await managementChannelForGroup(sb, tenantId, groupJid);
+  if (!channel) return;
 
   const participant = managementGroupParticipant(item, groupJid);
   let actor = await resolveManagementActor(sb, tenantId, item);
@@ -2822,8 +3589,10 @@ async function handleGestao(
   // "sim" tem 3 letras e cairia no filtro de curto — mas confirmação É curta por
   // natureza. Ela passa aqui e é resolvida logo abaixo, contra a ação pendente;
   // se não houver ação pendente, aí sim vira ruído e para.
+  // "#A3B1A427" sozinho também é confirmação: em 16/09/2026 a direção respondeu
+  // só com o código, a mensagem caiu no modelo e a ação expirou sem resposta.
   const CONFIRMACAO =
-    /^\s*(sim|s|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato|n[ãa]o|nao|cancela|deixa|esquece|errado)\b(?:\s+#?[a-f0-9]{8})?[\s!.,]*$/i;
+    /^\s*(sim|s|confirm[ao](do|r)?|aprov(o|ar|ado)|isso|pode|pode ser|ok|manda|fecha|correto|exato|bora|n[ãa]o|nao|cancela|deixa|esquece|errado)\b(?:\s+#?[a-f0-9]{8})?[\s!.,]*$|^\s*#?[a-f0-9]{8}[\s!.,]*$/i;
   const ehConfirmacao = CONFIRMACAO.test(pergunta);
   if (!ehConfirmacao && (pergunta.length < 6 || RUIDO.test(pergunta))) return;
 
@@ -2865,7 +3634,7 @@ async function handleGestao(
   // custar uma chamada de modelo, nem correr o risco de o modelo reinterpretar
   // a intenção que já foi lida em voz alta e aprovada.
   const SIM =
-    /^\s*(sim|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato)\b/i;
+    /^\s*(sim|confirm[ao](do|r)?|aprov(o|ar|ado)|isso|pode|pode ser|ok|manda|fecha|correto|exato|bora)\b/i;
   const NAO = /^\s*(n[ãa]o|cancela|deixa|esquece|errado)\b/i;
   const { data: pend } = await sb.from("gestao_acao_pendente")
     .select(
@@ -2991,12 +3760,29 @@ async function handleGestao(
         .eq("tenant_id", tenantId).eq("action_id", actionId)
         .eq("status", "cancelled");
       await sendWhats(instance, groupJid, "Ok, cancelado. Nada foi lançado.");
+      // Cancelar uma não cancela a lista: a próxima ainda é proposta, e quem
+      // não quiser nenhuma responde "não" de novo.
+      await proposeNextQueuedManagementAction(
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        actor,
+        pendingAction,
+        requestId,
+      );
       return;
     }
-    if (SIM.test(pergunta)) {
-      const expectedCode = shortManagementActionCode(actionId);
-      const suppliedCode = pergunta.match(/#?([a-f0-9]{8})\b/i)?.[1]
-        ?.toUpperCase() || "";
+    const expectedCode = shortManagementActionCode(actionId);
+    // Só o código vale como "sim": quem responde "#A3B1A427" leu o resumo e
+    // copiou o código — exigir a palavra na frente é atrito sem segurança extra.
+    const soCodigo = new RegExp(`^\\s*#?${expectedCode}[\\s!.,]*$`, "i").test(
+      pergunta,
+    );
+    if (SIM.test(pergunta) || soCodigo) {
+      const suppliedCode = soCodigo ? expectedCode : (pergunta.match(
+        /#?([a-f0-9]{8})\b/i,
+      )?.[1]?.toUpperCase() || "");
       if (!suppliedCode || suppliedCode !== expectedCode) {
         await sendWhats(
           instance,
@@ -3370,6 +4156,15 @@ async function handleGestao(
       }
       await sendWhats(instance, groupJid, txt);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", txt);
+      await proposeNextQueuedManagementAction(
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        actor,
+        pendingAction,
+        requestId,
+      );
       return;
     }
   }
@@ -3416,6 +4211,21 @@ async function handleGestao(
     .eq("ledger_allowed", true)
     .in("kind", ["CUSTO", "DESPESA", "DEDUCAO"])
     .order("sort_order");
+  const { data: affiliateTurboContext, error: affiliateTurboError } = await sb
+    .rpc(
+      "gestao_affiliate_turbo_context",
+      { p_tenant: tenantId },
+    );
+  if (
+    affiliateTurboError || !affiliateTurboContext || affiliateTurboContext.error
+  ) {
+    await sendWhats(
+      instance,
+      groupJid,
+      "Não consegui conferir saques, comissões e Turbo agora. Tente novamente em alguns minutos.",
+    );
+    return;
+  }
   const dadosGestao = {
     ...(snap as Record<string, unknown>),
     inadimplencia: financialContext.inadimplencia,
@@ -3423,6 +4233,7 @@ async function handleGestao(
     fechamento_financeiro_mensal: financialContext.fechamento_mensal,
     hoje: todayBRT(),
     contas_lancaveis: contasLancaveis || [],
+    afiliados_e_turbo: affiliateTurboContext,
   };
 
   const system =
@@ -3436,6 +4247,8 @@ REGRAS ABSOLUTAS:
 - Para dizer que "todos os alunos pagaram", consulte fechamento_financeiro_mensal. Só afirme isso quando o bloco do mês estiver com status READY ou SENT e alunos.blocked_students for 0. OPEN, BLOCKED, REVIEW e NOT_CALCULATED nunca significam que todos pagaram.
 - Em fechamento_financeiro_mensal, WAITING_CREDIT é cartão confirmado mas ainda não recebido em caixa. Não trate como dinheiro recebido. Use alunos.pendentes para dizer quem ainda bloqueia o fechamento.
 - Não misture competência e caixa: competencia mostra cobranças do mês; caixa mostra o dinheiro efetivamente recebido e os totais prontos de rateio (dízimo, investimento e sobra). Repita esses campos sem recalcular.
+- Para dízimo e rateio atualizado, use afiliados_e_turbo.rateio_mes_corrente ou rateio_mes_anterior, que já descontam professor e comissão do afiliado. Não use valor bruto nem repita comissão nas mensalidades seguintes. Sem base positiva, dízimo é zero. Essa base é prévia operacional; lucro final é o resultado do DRE com as demais despesas.
+- Saques e Turbo estão em afiliados_e_turbo. Explique que aprovar saque não transfere dinheiro; o repasse é feito pela direção antes de marcar pago. Para Turbo, cite o estado, a ofensiva e as faixas recebidas: tarifa superior vale pelas posições da carteira, não para todos os alunos do professor. Não confunda rolling_30_days com mês fechado.
 - Se a resposta não estiver nos dados, diga que não tem esse dado e sugira onde ver no sistema. NUNCA invente número, nome ou data.
 - Valores em reais no formato R$ 1.234,56.
 - Negrito do WhatsApp é *asterisco simples*, não **duplo**.
@@ -3454,6 +4267,8 @@ REGRAS ABSOLUTAS:
 - Não paga contas, não envia dinheiro e não executa ações fora da escola.
 
 QUANDO NÃO RESPONDER: você está num grupo onde pessoas também conversam entre si. Se a mensagem claramente não é dirigida a você nem pede informação da escola (combinar horário entre eles, comentário solto, recado pessoal), devolva {"responder": false} e nada mais. Na dúvida, responda — pergunta sobre a escola é sempre para você, mesmo sem citar seu nome.
+
+VÁRIAS AÇÕES NA MESMA MENSAGEM: se a pessoa pedir mais de uma ação de uma vez (ex.: "a Bruna cobriu três aulas do Flávio: Victor Hugo 16:30, Victor Hugo 17:00 e Vinícius 17:30"; duas contas; dois ajustes), devolva "acoes": [ {...}, {...} ] — um item por ação, cada um no formato da ação correspondente — em vez de "acao". NUNCA junte duas aulas ou dois lançamentos numa ação só, e NUNCA descarte as demais: o sistema propõe uma por vez e pede confirmação de cada uma. Na "resposta", diga quantas entendeu.
 
 AGENDAR TREINAMENTO: se pedirem treinamento entre professores (ex.: "Matheus vai treinar a teacher Maria amanhã às 16h30"), use a ação própria de agendamento, nunca um ajuste avulso de repasse:
 {"responder":true,"resposta":"<resumo>","acao":{"tipo":"agendar_treinamento","treinador":"<nome de quem ministra>","teacher":"<nome de quem recebe o treinamento>","data":"<AAAA-MM-DD>","horario":"<HH:MM>"}}
@@ -3492,6 +4307,9 @@ TRANSFERÊNCIA RECORRENTE DE PROFESSOR: somente quando pedirem explicitamente pa
 FOLHA DO MÊS POR PROFESSOR: se perguntarem quanto cada professor ganhou/recebe, o fechamento por professor ou a folha de um mês, devolva TAMBÉM o campo acao (é só leitura, sem confirmação):
 {"responder": true, "resposta": "<uma frase curta>", "acao": {"tipo": "folha_professores", "mes": "<AAAA-MM>"}}
 - "agosto" vira o AAAA-MM daquele agosto; sem mês, use o mes_fechado dos dados.
+
+REPOSIÇÕES EM ABERTO: se perguntarem das reposições (quais estão sem data, vencidas, marcadas, "reposições", "passivo de reposição", "quem está devendo reposição"), devolva TAMBÉM o campo acao (é só leitura, sem confirmação):
+{"responder": true, "resposta": "<uma frase curta>", "acao": {"tipo": "reposicoes"}}
 
 COBERTURA DO DIA (professor não vai dar NENHUMA aula num dia — doente, imprevisto): devolva TAMBÉM o campo acao:
 {"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "cobertura_dia", "professor": "<nome do professor ausente>", "data": "<AAAA-MM-DD>", "motivo": "<motivo curto>"}}
@@ -3566,7 +4384,72 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
   // entendeu e espera confirmação. Transcrição de áudio erra ordem de grandeza
   // ("trinta" x "trezentos"), e ler o valor de volta mata o erro antes de virar
   // pagamento.
-  const acao = (out?.acao ?? null) as Record<string, unknown> | null;
+  // Uma ação por vez, mas nenhuma perdida: se a mensagem trouxe várias
+  // (`acoes`), a primeira é proposta agora e as outras seguem na fila.
+  const acoesLidas = Array.isArray(out?.acoes)
+    ? (out.acoes as unknown[]).filter((a) => a && typeof a === "object")
+    : [];
+  const acao = (acoesLidas[0] ?? out?.acao ?? null) as
+    | Record<string, unknown>
+    | null;
+  const fila = acoesLidas.slice(1) as Record<string, unknown>[];
+  const escopo = managementChannelScopeReply(channel, acao);
+  if (escopo) {
+    await sendWhats(instance, groupJid, escopo);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", escopo, {
+      channel,
+      scope_blocked: true,
+    });
+    return;
+  }
+  if (
+    await proposeManagementAction(
+      {
+        sb,
+        instance,
+        tenantId,
+        groupJid,
+        msgId,
+        actor,
+        contasLancaveis: contasLancaveis || [],
+      },
+      acao,
+      fila,
+    )
+  ) return;
+
+  // Log sempre, entrega como campo — mesma regra do caminho da atendente.
+  const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, {
+    entregue: ok,
+  });
+}
+
+/**
+ * Propõe UMA ação do grupo (repete em texto o que entendeu e guarda como
+ * pendente até o "sim"). Devolve true quando a mensagem foi tratada aqui.
+ *
+ * `fila` são as ações seguintes da MESMA mensagem: a direção costuma mandar
+ * "três coberturas" de uma vez (17/09/2026: só a primeira foi registrada e as
+ * outras duas morreram em silêncio). O modelo de pendência é um por grupo, então
+ * a fila viaja dentro da ação pendente (`acao.fila`) e, ao terminar uma, a
+ * próxima é proposta com código novo — ver `proposeNextQueuedManagementAction`.
+ */
+async function proposeManagementAction(
+  ctx: {
+    sb: any;
+    instance: string;
+    tenantId: string;
+    groupJid: string;
+    msgId: string;
+    actor: ManagementActor;
+    contasLancaveis: Array<{ code: string; label: string; kind: string }>;
+  },
+  acao: Record<string, unknown> | null,
+  fila: Record<string, unknown>[],
+): Promise<boolean> {
+  const { sb, instance, tenantId, groupJid, msgId, actor, contasLancaveis } =
+    ctx;
   if (acao && acao.tipo === "agendar_treinamento") {
     const trainerName = String(acao.treinador || "").trim();
     const traineeName = String(acao.teacher || "").trim();
@@ -3585,7 +4468,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Para agendar, preciso de quem ministra, do nome do teacher cadastrado, da data e de um horário futuro (ex.: amanhã às 16h30). O treinamento dura 30 minutos.",
       );
-      return;
+      return true;
     }
     const resolve = async (name: string) => {
       let result = await sb.rpc("gestao_resolve_professor", {
@@ -3616,7 +4499,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Não consegui identificar dois teachers diferentes com esses nomes. Informe os nomes completos como estão cadastrados na plataforma.",
       );
-      return;
+      return true;
     }
     const { data: trainerProfile } = await sb.from("profiles").select(
       "is_trainer",
@@ -3627,13 +4510,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         groupJid,
         "Esse professor ainda não está habilitado como treinador. Habilite-o no cadastro antes de agendar.",
       );
-      return;
+      return true;
     }
     const summary =
       `treinamento de ${trainee.data.nome} com ${trainer.data.nome} em ${
         date.split("-").reverse().join("/")
       } às ${time} (Brasília), 30 minutos, R$ 16 ao treinador após realização`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3653,7 +4537,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         ? `Entendi: *${summary}*.\nPara agendar e enviar o convite, responda *sim #${pending.code}*. Para cancelar, responda *não*.`
         : "Não consegui preparar o treinamento. Confira se já existe outra ação em andamento e tente novamente.",
     );
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "conta_pagar") {
@@ -3684,7 +4568,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Para lançar, preciso da descrição, valor e tipo da conta. Pode completar? Se quiser, eu deixo o vencimento para hoje.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
@@ -3698,6 +4582,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }, vencimento ${diaTexto}/${mes}/${ano} — ${descricao} (${conta.label})`;
 
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3721,7 +4606,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a conta com segurança agora. Tente novamente em alguns minutos.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const vencimentoInfo = devidoDefaultHoje
@@ -3733,7 +4618,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       `Entendi: *${resumo}*.${vencimentoInfo}\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "ajuste_repasse") {
@@ -3750,7 +4635,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const valor = Number(acao.valor || 0);
@@ -3764,7 +4649,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para ajustar o repasse, preciso de valor (até R$ 500), mês e motivo válidos.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const money = (v: number) =>
       `R$ ${Math.abs(v).toFixed(2).replace(".", ",")}`;
@@ -3773,6 +4658,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     } para ${p.nome} em ${mes} — ${motivo}`;
 
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3788,14 +4674,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar o ajuste com segurança agora. Tente novamente.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const pergunta_conf =
       `Entendi: *${resumo}*.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, pergunta_conf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", pergunta_conf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "cobertura_aula") {
@@ -3813,7 +4699,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para preparar a cobertura pontual, preciso de aluno, professor ausente, substituto, data, horário e motivo.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const preview = await previewCoverageAction(sb, tenantId, {
@@ -3868,7 +4754,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const [year, month, day] = String(preview.classDate || "").split("-");
@@ -3884,6 +4770,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const summary =
       `cobertura pontual da aula de ${preview.studentName}, de ${preview.originalTeacherName} para ${preview.coverTeacherName}, em ${formattedDate} às ${preview.classTime} — ${reasonFinal}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -3908,7 +4795,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a cobertura com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const confirmation = preview.retroactive
@@ -3916,7 +4803,23 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : `Entendi: *${summary}*. Isso não altera a agenda recorrente. Depois desta confirmação, ${preview.coverTeacherName} ainda precisará aceitar o convite.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, confirmation);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", confirmation);
-    return;
+    return true;
+  }
+
+  if (acao && acao.tipo === "reposicoes") {
+    // Só leitura: passivo por professor (sem data, vencidas, marcadas na semana).
+    const { data: rows, error: rowsError } = await sb.rpc(
+      "reschedule_backlog_summary",
+      { p_tenant: tenantId },
+    );
+    const msg = rowsError
+      ? "Não consegui montar o resumo das reposições agora. Tente de novo em instantes."
+      : rescheduleBacklogMessage(
+        (Array.isArray(rows) ? rows : []) as RescheduleBacklogRow[],
+      );
+    await sendWhats(instance, groupJid, msg);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+    return true;
   }
 
   if (acao && acao.tipo === "folha_professores") {
@@ -3926,7 +4829,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "De qual mês você quer a folha por professor? (ex.: agosto)";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const [{ data: folha, error: folhaError }, { data: tenantRow }] =
       await Promise.all([
@@ -3939,7 +4842,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       : montarMensagemFolha(String(tenantRow?.name || "Escola"), summary);
     await sendWhats(instance, groupJid, msg);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "cobertura_dia") {
@@ -3951,7 +4854,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para abrir a cobertura do dia, preciso do nome do professor que não vai dar aula.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(data) || data < todayBRT() ||
@@ -3961,14 +4864,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para abrir a cobertura do dia, preciso da data (hoje, amanhã ou até 14 dias à frente).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!motivo || motivo.length < 3 || motivo.length > 200) {
       const msg =
         "Qual é o motivo curto da ausência? (ex.: doente, compromisso pessoal)";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const { data: prof } = await sb.rpc("gestao_resolve_professor", {
       p_tenant: tenantId,
@@ -3983,7 +4886,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const aulas = await teacherClassesOnDate(
       sb,
@@ -4004,13 +4907,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         } não tem aula na agenda em ${dataFmt}. Nada a cobrir.`;
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const lista = abertas.map((a) => `${a.time} ${a.studentName}`).join(", ");
     const resumo = `cobertura do dia ${dataFmt} de ${
       String(p.nome)
     } (${motivo}): ${abertas.length} aula(s) — ${lista}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4031,13 +4935,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a cobertura do dia com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const perguntaConf =
       `Entendi: *${resumo}*. Ao confirmar, cada aula vira uma oportunidade enviada a todos os professores livres naquele horário — o primeiro que aceitar fica com ela, e a aula passa a contar para quem cobrir. A agenda fixa não muda.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "mudanca_plano") {
@@ -4048,14 +4952,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "Para mudar o plano, preciso do nome completo do aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!freq || !Number.isFinite(valor) || valor <= 0) {
       const msg =
         "Para mudar o plano, preciso da nova frequência (ex.: 3x por semana) e do novo valor da mensalidade (ex.: R$ 219).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
     if (!aluno.ok) {
@@ -4066,7 +4970,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const atualizarFaturas = acao.atualizar_faturas !== false;
     const resumo = `troca de plano de ${aluno.nome}: ${freq} por semana, R$ ${
@@ -4075,6 +4979,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       atualizarFaturas ? "" : " (sem mexer na fatura já gerada deste mês)"
     }`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4096,13 +5001,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a troca de plano com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const perguntaConf =
       `Entendi: *${resumo}*. Ao confirmar, o aluno recebe no WhatsApp o link para assinar a mudança — o valor só muda quando ele assinar, e a cobrança na Asaas é atualizada em seguida, sozinha.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (
@@ -4120,21 +5025,21 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para transferir o aluno, preciso do nome completo dele. Pode completar?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!profNome) {
       const msg =
         "Para a transferência recorrente, preciso do professor que vai receber o aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!slots.length) {
       const msg =
         "Para a transferência recorrente, preciso de pelo menos um dia e horário (ex.: Segunda 18:00).";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const cutoverMs = Date.parse(`${dataInicio}T12:00:00Z`);
     const maxCutoverMs = Date.now() + 366 * 24 * 60 * 60 * 1000;
@@ -4147,7 +5052,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para transferir, preciso de uma data de início válida, entre hoje e os próximos 12 meses.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
@@ -4159,7 +5064,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const { data: prof } = await sb.rpc("gestao_resolve_professor", {
@@ -4175,7 +5080,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse professor destino. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const motivo = String(acao.motivo || "").trim();
@@ -4183,7 +5088,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       const msg = "Qual é o motivo curto da transferência recorrente?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const slotsTexto = slots.map((s) => `${s.day_of_week} ${s.time_slot}`).join(
       ", ",
@@ -4199,7 +5104,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Entendi que o plano também muda. Preciso da nova frequência (ex.: 3x) E do novo valor da mensalidade (ex.: R$ 219) para preparar a assinatura do aluno.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     const planoTexto = temPlano
       ? ` + plano novo ${planoFreq}/semana a R$ ${
@@ -4209,6 +5114,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const resumo =
       `transferência recorrente de ${aluno.nome} para ${p.nome} em ${slotsTexto} a partir de ${dataInicio}${planoTexto} — ${motivo}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4238,7 +5144,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a transferência com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const perguntaConf =
@@ -4249,7 +5155,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       }\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
   if (acao && acao.tipo === "alterar_horario_aluno") {
@@ -4262,7 +5168,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para alterar horário, preciso do nome do aluno. Pode completar?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (
       !normalizeGestaoTime(novoHorario) ||
@@ -4272,13 +5178,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         "Para alterar horário, preciso do novo horário no formato HH:MM.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
     if (!normalizeGestaoDay(novoDia)) {
       const msg = "Para alterar horário, preciso do novo dia da semana.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const aluno = await resolveGestaoStudent(sb, tenantId, alunoNome);
@@ -4290,7 +5196,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não encontrei esse aluno. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     let finalBookingId = bookingId;
@@ -4307,7 +5213,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
           "Esse agendamento não pertence ao aluno informado ou não está ativo. Confira o aluno e o horário atual.";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
     } else {
       const atualDia = String(acao.dia_atual || "").trim();
@@ -4331,14 +5237,14 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
           "Não encontrei aula ativa desse aluno com os horários informados. Pode mandar o `booking_id` ou o horário atual da aula?";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
       if (list.length > 1) {
         const msg =
           "Encontrei mais de uma aula ativa para esse aluno com esses dados. Me diga o `booking_id` ou confirme dia e horário atual exato para identificar uma única aula.";
         await sendWhats(instance, groupJid, msg);
         await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-        return;
+        return true;
       }
       finalBookingId = String((list[0] as Record<string, unknown>).id || "");
     }
@@ -4347,6 +5253,7 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
       normalizeGestaoDay(novoDia)
     } às ${normalizeGestaoTime(novoHorario)}`;
     const pending = await savePendingManagementAction(sb, {
+      queue: fila,
       tenantId,
       groupJid,
       messageId: msgId,
@@ -4368,21 +5275,72 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
         : "Não consegui preparar a alteração com segurança agora.";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
-      return;
+      return true;
     }
 
     const perguntaConf =
       `Entendi: *${resumo}*.\n\nPara confirmar, responda *sim #${pending.code}*. Para cancelar, responda *não*.`;
     await sendWhats(instance, groupJid, perguntaConf);
     await logMsg(sb, tenantId, groupJid, "gestao", "out", perguntaConf);
-    return;
+    return true;
   }
 
-  // Log sempre, entrega como campo — mesma regra do caminho da atendente.
-  const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
-  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, {
-    entregue: ok,
-  });
+  return false;
+}
+
+/**
+ * Terminou (ou cancelou) uma ação que veio com fila: propõe a próxima no mesmo
+ * grupo, com código novo. O `request_id` deriva do id da mensagem original
+ * mais a posição na fila — continua idempotente e rastreável.
+ */
+async function proposeNextQueuedManagementAction(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  groupJid: string,
+  actor: ManagementActor,
+  pendingAction: Record<string, unknown> | null,
+  requestId: string | null,
+): Promise<void> {
+  const fila = Array.isArray(pendingAction?.fila)
+    ? (pendingAction!.fila as Record<string, unknown>[]).filter((a) =>
+      a && typeof a === "object"
+    )
+    : [];
+  if (!fila.length) return;
+  const [proxima, ...restante] = fila;
+  const { data: contasLancaveis } = await sb.from("dre_accounts")
+    .select("code, label, kind")
+    .eq("is_active", true)
+    .eq("ledger_allowed", true)
+    .in("kind", ["CUSTO", "DESPESA", "DEDUCAO"])
+    .order("sort_order");
+  const base = String(requestId || crypto.randomUUID()).replace(/:q\d+$/, "");
+  const posicao = Number(pendingAction?.fila_posicao || 0) + 1;
+  const aviso = `Próxima da lista (${posicao + 1}/${
+    posicao + 1 + restante.length
+  }):`;
+  await sendWhats(instance, groupJid, aviso);
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", aviso);
+  const handled = await proposeManagementAction(
+    {
+      sb,
+      instance,
+      tenantId,
+      groupJid,
+      msgId: `${base}:q${posicao}`,
+      actor,
+      contasLancaveis: contasLancaveis || [],
+    },
+    { ...proxima, fila_posicao: posicao },
+    restante,
+  );
+  if (!handled) {
+    const msg =
+      "Não consegui preparar a próxima ação da lista. Mande-a de novo, numa mensagem só dela.";
+    await sendWhats(instance, groupJid, msg);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+  }
 }
 
 function phonesMatch(a: string, b: string): boolean {
@@ -4479,6 +5437,43 @@ async function logMsg(
 // 28 dos 47 leads CONTACTED fora do follow-up para sempre. A regra mora em
 // `_shared/lead-contact.ts` justamente para os dois caminhos não divergirem.
 
+/**
+ * Humano assumiu o lead → o leilão de experimental que a ATENDENTE abriu e
+ * ninguém aceitou ainda morre aqui.
+ *
+ * Caso de 29/10/2026: a IA abriu leilão para 05/11 às 11:38, a equipe
+ * assumiu às 11:39 e marcou outra experimental para o mesmo dia; o leilão da IA
+ * seguiu vivo e uma professora o aceitou às 11:57. Quem conduz agora é gente —
+ * o que a IA prometeu sozinha não pode virar aula na agenda de ninguém.
+ *
+ * Só `origin = 'AI_SDR'` e só `OPEN`: o leilão que o próprio humano abriu pela
+ * plataforma fica, e o já aceito precisa de decisão (cancelar pela tela de
+ * Experimentais). O `lost_reason` impede o `funnel-sweeper` de avisar o lead
+ * que "não achou professor".
+ */
+async function expireAiTrialAuctions(
+  sb: any,
+  tenantId: string,
+  phone: string,
+): Promise<void> {
+  try {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const { data: abertas } = await sb.from("opportunities")
+      .select("id, student_phone").eq("tenant_id", tenantId)
+      .eq("kind", "TRIAL").eq("status", "OPEN").eq("origin", "AI_SDR")
+      .gte("created_at", since);
+    for (const o of (abertas || [])) {
+      if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
+      await sb.from("opportunities").update({
+        status: "EXPIRED",
+        lost_reason: "humano assumiu o atendimento — leilão da IA encerrado",
+      }).eq("id", o.id).eq("status", "OPEN");
+    }
+  } catch (e) {
+    console.error("[handoff] falha ao encerrar leilão da IA", e);
+  }
+}
+
 // HANDOFF HUMANO: quando o humano responde manualmente pela instância (fromMe) para um
 // lead OU candidato, a IA correspondente (SDR/RH) se cala nesse contato (ai_handoff=true).
 // Diferencia o ECO da própria IA (mesmo texto enviado nos últimos ~20min) de um humano.
@@ -4520,6 +5515,7 @@ async function maybeHumanTakeover(
       hasMedia ? "[humano assumiu o contato — mídia]" : text,
       { lead_id: lead.id, kind: "human_takeover" },
     );
+    await expireAiTrialAuctions(sb, tenantId, phone);
   }
   // 3) CANDIDATO (RH/Michelle) → cala a triagem nesse contato.
   const { data: apps } = await sb.from("job_applications")
@@ -4994,6 +5990,357 @@ async function handleTrialClosingTeacherReply(
   return true;
 }
 
+async function handleTrialClosingTeacherSlotsReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  if (tenantId !== "school-wise-wolf") return false;
+  const teachers = await activeMemberProfiles(sb, tenantId, ["TEACHER"]);
+  const teacher = (teachers || []).find((profile: any) =>
+    phonesMatch(profile.phone, phone)
+  );
+  if (!teacher) return false;
+  // Only the latest school question can own a bare "sim". A different
+  // outgoing message (including a human question about another student)
+  // makes the answer ambiguous, so never confirm a slot from it.
+  const { data: loggedQuestions, error: questionError } = await sb.from(
+    "ai_wa_messages",
+  )
+    .select("phone,content,meta,created_at")
+    .eq("tenant_id", tenantId)
+    .contains("meta", { kind: "trial_closing_teacher_slots_question" })
+    .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+    .order("created_at", { ascending: false }).limit(100);
+  if (questionError) {
+    throw new Error("trial_closing_teacher_question_lookup_failed");
+  }
+  // O provedor às vezes registra o mesmo celular com ou sem o nono dígito.
+  const question = (loggedQuestions || []).find((row: any) =>
+    phonesMatch(row.phone, phone)
+  );
+  if (!question?.meta?.flow_id || question.meta.entregue !== true) return false;
+  const { data: conversations, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  )
+    .select("id,remote_jid,phone")
+    .eq("tenant_id", tenantId).eq("instance_name", instance);
+  if (conversationError) {
+    throw new Error("trial_closing_teacher_conversation_lookup_failed");
+  }
+  const ids = (conversations || []).filter((conversation: any) =>
+    phonesMatch(conversation.phone || conversation.remote_jid, phone)
+  ).map((conversation: any) => conversation.id);
+  if (ids.length === 0) return false;
+  const { data: outbounds, error: outboundError } = await sb.from(
+    "whatsapp_messages",
+  )
+    .select("body,occurred_at")
+    .eq("tenant_id", tenantId).in("conversation_id", ids).eq("direction", "out")
+    .order("occurred_at", { ascending: false }).limit(1);
+  if (outboundError) {
+    throw new Error("trial_closing_teacher_latest_outbound_lookup_failed");
+  }
+  const { data: alternativeQuestions, error: alternativeQuestionError } =
+    await sb.from("ai_wa_messages")
+      .select("phone,content,meta,created_at").eq("tenant_id", tenantId)
+      .contains("meta", { kind: "trial_closing_teacher_alternative_question" })
+      .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .order("created_at", { ascending: false }).limit(100);
+  if (alternativeQuestionError) {
+    throw new Error("trial_closing_teacher_alternative_lookup_failed");
+  }
+  const alternativeQuestion = (alternativeQuestions || []).find((row: any) =>
+    phonesMatch(row.phone, phone) && row.meta?.entregue === true
+  );
+  if (
+    alternativeQuestion && outbounds?.[0]?.body === alternativeQuestion.content
+  ) {
+    const alternativeDecision = classifyTeacherSlotsReply(
+      text,
+      (alternativeQuestion.meta?.slots || []) as RenewalSlot[],
+    );
+    if (
+      alternativeDecision !== "confirmed" && alternativeDecision !== "declined"
+    ) return false;
+    const { data: resolved, error: resolvedError } = await sb.rpc(
+      "trial_closing_teacher_alternative_reply",
+      {
+        p_tenant: tenantId,
+        p_teacher: teacher.id,
+        p_flow: alternativeQuestion.meta.flow_id,
+        p_confirmed: alternativeDecision === "confirmed",
+      },
+    );
+    if (resolvedError) {
+      throw new Error("trial_closing_teacher_alternative_reply_failed");
+    }
+    if (!resolved?.handled) return false;
+    await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+      msg_id: msgId,
+      kind: "trial_closing_teacher_alternative_reply",
+      flow_id: resolved.flow_id,
+    });
+    const ack =
+      "Obrigado! Vou apresentar ao aluno somente os horários que você confirmou.";
+    const ackSent = await sendWhats(instance, phone, ack);
+    await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
+      kind: "trial_closing_teacher_alternative_ack",
+      flow_id: resolved.flow_id,
+      entregue: ackSent,
+    });
+    // O sweeper entrega uma única mensagem dentro da janela, respeitando handoff.
+    return true;
+  }
+  if (outbounds?.[0]?.body !== question.content) return false;
+  const expected = parseEnrollmentSlots(question.content);
+  const decision = classifyTeacherSlotsReply(text, expected);
+  if (decision === "unknown") return false;
+  if (decision === "counterproposal") {
+    const proposed = mergeTeacherCounterproposal(expected, text);
+    if (proposed.length !== expected.length) return false;
+    const { data: proposal, error: proposalError } = await sb.rpc(
+      "trial_closing_teacher_counterproposal_for_flow",
+      {
+        p_tenant: tenantId,
+        p_teacher: teacher.id,
+        p_flow: question.meta.flow_id,
+        p_slots: proposed,
+      },
+    );
+    if (proposalError) {
+      throw new Error("trial_closing_teacher_counterproposal_unavailable");
+    }
+    if (!proposal?.handled) return false;
+    await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+      msg_id: msgId,
+      kind: "trial_closing_teacher_counterproposal",
+      flow_id: proposal.flow_id,
+    });
+    const ack =
+      "Obrigado! Vou confirmar esses novos horários com o aluno antes de preparar a matrícula.";
+    const ackSent = await sendWhats(instance, phone, ack);
+    await logMsg(sb, tenantId, phone, "trial_closing", "out", ack, {
+      kind: "trial_closing_teacher_counterproposal_ack",
+      flow_id: proposal.flow_id,
+      entregue: ackSent,
+    });
+    const leadPhone = String(proposal.lead_phone || "");
+    if (!leadPhone) return true;
+    const alternative = adjacentFourDayAlternative(proposed);
+    const hour = nowBRT().getUTCHours();
+    if (
+      alternative.length && hour >= 9 && hour < 20 &&
+      !await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        instance,
+        `${phone}@s.whatsapp.net`,
+      )
+    ) {
+      const { data: prepared, error: prepareError } = await sb.rpc(
+        "trial_closing_prepare_teacher_alternative",
+        {
+          p_flow: proposal.flow_id,
+          p_slots: alternative,
+        },
+      );
+      if (prepareError) {
+        throw new Error("trial_closing_teacher_alternative_prepare_failed");
+      }
+      if (prepared?.handled) {
+        const questionText = teacherAlternativeQuestion({
+          teacherName: teacher.full_name || null,
+          leadName: proposal.lead_name || null,
+          slots: alternative,
+        });
+        const delivered = await sendWhats(instance, phone, questionText);
+        await logMsg(
+          sb,
+          tenantId,
+          phone,
+          "trial_closing",
+          "out",
+          questionText,
+          {
+            kind: "trial_closing_teacher_alternative_question",
+            flow_id: proposal.flow_id,
+            slots: alternative,
+            entregue: delivered,
+          },
+        );
+        if (delivered) return true;
+        await sb.rpc("trial_closing_teacher_alternative_reply", {
+          p_tenant: tenantId,
+          p_teacher: teacher.id,
+          p_flow: proposal.flow_id,
+          p_confirmed: false,
+        });
+      }
+    }
+    const studentInstance = await trialClosingStudentInstance(
+      sb,
+      tenantId,
+      instance,
+    );
+    if (
+      await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        studentInstance,
+        `${leadPhone}@s.whatsapp.net`,
+      )
+    ) return true;
+    if (hour < 9 || hour >= 20) return true;
+    const { data: claimed, error: claimError } = await sb.rpc(
+      "trial_closing_claim_teacher_counterproposal_student",
+      {
+        p_flow: proposal.flow_id,
+      },
+    );
+    if (claimError) {
+      throw new Error("trial_closing_teacher_counterproposal_claim_failed");
+    }
+    if (!claimed?.claimed) return true;
+    const blocks = studentCounterproposalBlocks({
+      leadName: proposal.lead_name || null,
+      teacherName: teacher.full_name || null,
+      requested: expected,
+      proposed,
+      hourBRT: hour,
+    });
+    for (const [blockIndex, reply] of blocks.entries()) {
+      const delivered = await sendWhats(studentInstance, leadPhone, reply);
+      await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
+        kind: "trial_closing_teacher_counterproposal_to_student",
+        flow_id: proposal.flow_id,
+        block_index: blockIndex,
+        entregue: delivered,
+      });
+      if (!delivered) break;
+    }
+    return true;
+  }
+  const yes = decision === "confirmed";
+  const { data, error } = await sb.rpc(
+    "trial_closing_teacher_slots_reply_for_flow",
+    {
+      p_tenant: tenantId,
+      p_teacher: teacher.id,
+      p_flow: question.meta.flow_id,
+      p_confirmed: yes,
+      p_origin: null,
+    },
+  );
+  if (error) throw new Error("trial_closing_teacher_slots_unavailable");
+  if (!data?.handled) return false;
+  await logMsg(sb, tenantId, phone, "trial_closing", "in", text, {
+    msg_id: msgId,
+    kind: "trial_closing_teacher_slots_reply",
+    flow_id: data.flow_id,
+  });
+  const teacherAck = yes
+    ? "Obrigado! Registrei sua confirmação desses horários. A grade definitiva só será feita após a matrícula."
+    : "Entendi. Não vou oferecer esses horários como confirmados; vou pedir outras opções ao aluno.";
+  const ackSent = await sendWhats(instance, phone, teacherAck);
+  await logMsg(sb, tenantId, phone, "trial_closing", "out", teacherAck, {
+    kind: "trial_closing_teacher_slots_ack",
+    flow_id: data.flow_id,
+    entregue: ackSent,
+  });
+  const leadPhone = String(data.lead_phone || "");
+  if (!leadPhone) return true;
+  const studentInstance = await trialClosingStudentInstance(
+    sb,
+    tenantId,
+    instance,
+  );
+  let reply = "";
+  if (!yes) {
+    reply = `A teacher ${
+      String(teacher.full_name || "professora").split(" ")[0]
+    } não consegue manter os horários que você sugeriu. Pode me mandar outras opções de dias e horários? Eu confirmo com ela antes da matrícula.`;
+  } else if (data.offer?.ok) {
+    reply = studentOfferMessage({
+      leadName: data.lead_name,
+      teacherName: teacher.full_name,
+      url: String(data.offer.url),
+      value: Number(data.offer.value),
+      frequency: Number(data.offer.frequency),
+      duration: Number(data.offer.duration),
+      slots: (data.offer.slots || []) as RenewalSlot[],
+      startDate: String(data.offer.start_date || ""),
+      dueDay: Number(data.offer.due_day || 10),
+      enrollmentFee: Number(data.offer.enrollment_fee || 0),
+    });
+  } else if (data.offer?.error) {
+    reply = studentSlotsUnavailableMessage(
+      (data.offer.free_slots || []) as RenewalSlot[],
+    );
+  }
+  if (reply) {
+    if (
+      await inboxConversationHasActiveHandoff(
+        sb,
+        tenantId,
+        studentInstance,
+        `${leadPhone}@s.whatsapp.net`,
+      )
+    ) return true;
+    const delivered = await sendWhats(studentInstance, leadPhone, reply);
+    await logMsg(sb, tenantId, leadPhone, "sdr", "out", reply, {
+      kind: "trial_closing_teacher_slots_result",
+      flow_id: data.flow_id,
+      offer_id: data.offer?.ok ? data.offer.offer_id : null,
+      entregue: delivered,
+    });
+  }
+  return true;
+}
+
+async function recentStudentScheduleMessages(
+  sb: any,
+  tenantId: string,
+  instance: string,
+  phone: string,
+  current: string,
+): Promise<string[]> {
+  const { data: conversations, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  )
+    .select("id,phone,remote_jid").eq("tenant_id", tenantId)
+    .eq("instance_name", instance);
+  if (conversationError) {
+    throw new Error("trial_closing_schedule_conversation_lookup_failed");
+  }
+  const ids = (conversations || []).filter((row: any) =>
+    phonesMatch(row.phone || row.remote_jid, phone)
+  ).map((row: any) => row.id);
+  if (!ids.length) return [current];
+  const { data: history, error: historyError } = await sb.from(
+    "whatsapp_messages",
+  )
+    .select("direction,sender_kind,message_type,body,occurred_at")
+    .eq("tenant_id", tenantId).in("conversation_id", ids)
+    .gte("occurred_at", new Date(Date.now() - 20 * 60_000).toISOString())
+    .order("occurred_at", { ascending: false }).limit(30);
+  if (historyError) {
+    throw new Error("trial_closing_schedule_history_lookup_failed");
+  }
+  const ordered = (history || []).reverse();
+  const lastHuman = ordered.findLastIndex((row: any) =>
+    row.direction === "out" && row.sender_kind === "human"
+  );
+  const texts = ordered.slice(lastHuman + 1).filter((row: any) =>
+    row.direction === "in" && row.message_type === "text" && row.body
+  ).map((row: any) => String(row.body));
+  if (texts.at(-1) !== current) texts.push(current);
+  return texts.slice(-8);
+}
+
 /**
  * A escolha do aluno depois da experimental: frequência, dias e horários e o
  * plano. Com tudo respondido, o banco gera a oferta com o preço da tabela e o
@@ -5040,21 +6387,180 @@ async function handleTrialClosingStudent(
     }
   }
 
-  const slots = parseEnrollmentSlots(text);
+  const closingContext = tenantId === "school-wise-wolf"
+    ? await loadTrialClosingContext(sb, tenantId, phone)
+    : null;
+  const recentMessages = closingContext
+    ? await recentStudentScheduleMessages(sb, tenantId, instance, phone, text)
+    : [text];
   const duration = parseEnrollmentDuration(text);
   const frequency = parseRenewalFrequency(text);
-  if (slots.length === 0 && duration === null && frequency === null) {
-    return false;
+  const expectedFrequency = frequency ||
+    Number(closingContext?.plan?.frequency || 0) || null;
+  const parsedSchedule = parseEnrollmentSlotsFromMessages(
+    recentMessages,
+    expectedFrequency,
+  );
+  const slots = closingContext
+    ? parsedSchedule.complete
+    : parseEnrollmentSlots(text);
+  const startDate = parseEnrollmentStartDate(text);
+  const dueDay = parseEnrollmentDueDay(text);
+  const contractQuestion = asksToReadContract(text);
+  const proposalDecision = parseCounterproposalDecision(text);
+  const optionChoice = parseTeacherOptionChoice(text);
+  if (
+    (proposalDecision !== null || optionChoice !== null) &&
+    tenantId === "school-wise-wolf"
+  ) {
+    const closing = await loadTrialClosingContext(sb, tenantId, phone);
+    if (closing?.plan?.teacher_counterproposal_slots?.length) {
+      const twoOptions = Array.isArray(
+        closing.plan.teacher_alternative_confirmed_slots,
+      );
+      if (twoOptions && optionChoice === null) return false;
+      if (!twoOptions && proposalDecision === null) return false;
+      const { data: sentQuestions, error: sentError } = await sb.from(
+        "ai_wa_messages",
+      )
+        .select("content,meta,created_at,phone")
+        .eq("tenant_id", tenantId)
+        .contains("meta", {
+          kind: "trial_closing_teacher_counterproposal_to_student",
+          flow_id: closing.flow_id,
+        })
+        .order("created_at", { ascending: false }).limit(10);
+      if (sentError) {
+        throw new Error("trial_closing_student_counterproposal_lookup_failed");
+      }
+      const sentQuestion = (sentQuestions || []).find((row: any) =>
+        phonesMatch(row.phone, phone) && row.meta?.entregue === true
+      );
+      if (sentQuestion) {
+        const { data: conversations } = await sb.from("whatsapp_conversations")
+          .select("id,remote_jid,phone").eq("tenant_id", tenantId)
+          .eq("instance_name", instance);
+        const ids = (conversations || []).filter((row: any) =>
+          phonesMatch(row.phone || row.remote_jid, phone)
+        ).map((row: any) => row.id);
+        if (ids.length) {
+          const { data: outbounds, error: outboundError } = await sb.from(
+            "whatsapp_messages",
+          )
+            .select("body").eq("tenant_id", tenantId).in("conversation_id", ids)
+            .eq("direction", "out").order("occurred_at", { ascending: false })
+            .limit(1);
+          if (outboundError) {
+            throw new Error(
+              "trial_closing_student_latest_outbound_lookup_failed",
+            );
+          }
+          if (outbounds?.[0]?.body === sentQuestion.content) {
+            const { data, error } = twoOptions
+              ? await sb.rpc("trial_closing_student_select_teacher_option", {
+                p_tenant: tenantId,
+                p_phone: phone,
+                p_flow: closing.flow_id,
+                p_choice: optionChoice,
+              })
+              : await sb.rpc("trial_closing_student_counterproposal_decision", {
+                p_tenant: tenantId,
+                p_phone: phone,
+                p_flow: closing.flow_id,
+                p_accept: proposalDecision,
+              });
+            if (error) {
+              throw new Error(
+                "trial_closing_student_counterproposal_unavailable",
+              );
+            }
+            if (data?.handled) {
+              await logMsg(sb, tenantId, phone, "sdr", "in", text, {
+                msg_id: msgId,
+                kind: "trial_closing_student_counterproposal_decision",
+                flow_id: closing.flow_id,
+              });
+              const reply = (twoOptions || proposalDecision)
+                ? data.offer?.ok
+                  ? studentOfferMessage({
+                    leadName: data.lead_name,
+                    teacherName: null,
+                    url: String(data.offer.url),
+                    value: Number(data.offer.value),
+                    frequency: Number(data.offer.frequency),
+                    duration: Number(data.offer.duration),
+                    slots: (data.offer.slots || []) as RenewalSlot[],
+                    startDate: String(data.offer.start_date || ""),
+                    dueDay: Number(data.offer.due_day || 10),
+                    enrollmentFee: Number(data.offer.enrollment_fee || 0),
+                  })
+                  : data.offer?.error
+                  ? "Anotei sua escolha, mas ainda não consegui liberar o link. Vou conferir os dados da matrícula com a escola."
+                  : studentNeedMessage({
+                    need: (data.need || []) as string[],
+                    frequency: data.frequency ?? null,
+                    prices: (data.prices || []) as CatalogPrice[],
+                  })
+                : "Sem problema. Quais outros dias e horários ficam melhores para você? Confirmo com a Bruna antes da matrícula.";
+              const delivered = await sendWhats(instance, phone, reply, {
+                simulateTyping: true,
+              });
+              await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+                kind: "trial_closing_student_counterproposal_result",
+                flow_id: closing.flow_id,
+                entregue: delivered,
+                offer_id: data.offer?.ok ? data.offer.offer_id : null,
+              });
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (
+    slots.length === 0 && duration === null && frequency === null &&
+    startDate === null && dueDay === null
+  ) {
+    if (!contractQuestion || tenantId !== "school-wise-wolf") return false;
+    const closing = await loadTrialClosingContext(sb, tenantId, phone);
+    if (!closing || closing.offer_sent) return false;
+    const reply = contractReadingAnswer();
+    const delivered = await sendWhats(instance, phone, reply, {
+      simulateTyping: true,
+    });
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      kind: "trial_closing_contract_reading",
+      flow_id: closing.flow_id,
+      msg_id: msgId,
+      entregue: delivered,
+    });
+    return true;
   }
 
-  const { data, error } = await sb.rpc("trial_closing_student_plan", {
-    p_tenant: tenantId,
-    p_phone: phone,
-    p_frequency: frequency,
-    p_duration: duration,
-    p_slots: slots.length > 0 ? slots : null,
-    p_origin: null,
-  });
+  const autonomousClosing = tenantId === "school-wise-wolf";
+  if (
+    !autonomousClosing && slots.length === 0 && duration === null &&
+    frequency === null
+  ) {
+    return false;
+  }
+  const { data, error } = await sb.rpc(
+    autonomousClosing
+      ? "trial_closing_student_terms"
+      : "trial_closing_student_plan",
+    {
+      p_tenant: tenantId,
+      p_phone: phone,
+      p_frequency: frequency,
+      p_duration: duration,
+      p_slots: slots.length > 0 ? slots : null,
+      ...(autonomousClosing
+        ? { p_start_date: startDate, p_due_day: dueDay }
+        : {}),
+      p_origin: null,
+    },
+  );
   if (error) throw new Error("trial_closing_student_state_unavailable");
   if (!data?.handled) return false;
 
@@ -5073,6 +6579,16 @@ async function handleTrialClosingStudent(
         { frequency: number; duration: number; value: number }
       >,
     });
+    if (
+      data.need.includes("horarios") && parsedSchedule.partial.length > 0 &&
+      expectedFrequency && parsedSchedule.partial.length < expectedFrequency
+    ) {
+      reply = `Anotei ${
+        slotsText(parsedSchedule.partial)
+      }. Quais são os outros ${
+        expectedFrequency - parsedSchedule.partial.length
+      } dias e horários?`;
+    }
   } else if (data.waiting === "feedback") {
     reply = studentWaitingFeedbackMessage();
   } else if (data.offer?.ok) {
@@ -5085,6 +6601,8 @@ async function handleTrialClosingStudent(
       duration: Number(data.offer.duration),
       slots: (data.offer.slots || []) as RenewalSlot[],
       startDate: String(data.offer.start_date || ""),
+      dueDay: Number(data.offer.due_day || 10),
+      enrollmentFee: Number(data.offer.enrollment_fee || 0),
     });
   } else if (data.offer?.error) {
     const slotProblem = [
@@ -5107,12 +6625,15 @@ async function handleTrialClosingStudent(
     return false;
   }
 
+  if (contractQuestion) reply = `${contractReadingAnswer()}\n\n${reply}`;
+
   const delivered = await sendWhats(instance, phone, reply, {
     simulateTyping: true,
   });
   await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
     kind: "trial_closing",
     flow_id: data.flow_id || null,
+    offer_id: data.offer?.ok ? data.offer.offer_id : null,
     msg_id: msgId,
     entregue: delivered,
   });
@@ -5481,6 +7002,9 @@ async function dispatchTrial(
       interests: goal || lead.goal || null,
       user_id: adm.id,
       kind: "TRIAL",
+      // Marca o leilão como da atendente: se um humano assumir o lead, é este
+      // (e só este) que morre — ver `expireAiTrialAuctions`.
+      origin: "AI_SDR",
     }).select("id,claim_generation").single();
     if (!opp) return { dispatched: 0, teachers: [], noTeacher: true };
     oppId = opp.id;
@@ -5515,6 +7039,7 @@ async function dispatchTrial(
   let dispatched = 0;
   const names: string[] = [];
   for (const t of eligible) {
+    if (!await teacherMayReceiveOpportunity(sb, tenantId, t.id)) continue;
     const msg =
       `⚡ *Experimental disponível — ${formatted} às ${time}*\n\nOlá, Teacher ${
         t.name.split(" ")[0]
@@ -5531,6 +7056,553 @@ async function dispatchTrial(
   return { dispatched, teachers: names, superseded };
 }
 
+type TrialClosingContext = {
+  flow_id: string;
+  stage: string;
+  outcome: string | null;
+  teacher_name: string | null;
+  when_text: string;
+  class_logged: boolean;
+  student_asked_at: string | null;
+  teacher_answered_at: string | null;
+  offer_sent: boolean;
+  plan: {
+    frequency?: number;
+    duration?: number;
+    slots?: RenewalSlot[];
+    start_date?: string;
+    due_day?: number;
+    teacher_counterproposal_slots?: RenewalSlot[];
+    teacher_alternative_confirmed_slots?: RenewalSlot[];
+    ai_resumption_authorized_at?: string;
+  };
+  feedback: {
+    recommended_level?: string | null;
+    recommended_plan?: string | null;
+    interest_score?: number | null;
+    notes?: string | null;
+  };
+  free_slots: RenewalSlot[];
+};
+
+/**
+ * O pós-experimental deste telefone (`trial_closing_student_context`), ou null
+ * quando não há aula recente, quando a professora marcou falta ou quando a
+ * conversa ainda não começou (o bot ainda não perguntou "como foi?" e a aula
+ * não foi lançada). Falha de leitura vira null: a atendente segue no fluxo
+ * normal em vez de derrubar a conversa.
+ */
+async function loadTrialClosingContext(
+  sb: any,
+  tenantId: string,
+  phone: string,
+): Promise<TrialClosingContext | null> {
+  const { data, error } = await sb.rpc("trial_closing_student_context", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error) {
+    console.warn("[sdr] pós-experimental indisponível", error.message);
+    throw new Error("post_trial_context_unavailable");
+  }
+  if (!data || typeof data !== "object") return null;
+  const ctx = data as TrialClosingContext;
+  if (ctx.outcome === "NO_SHOW" || ctx.stage === "NO_SHOW") return null;
+  if (!ctx.student_asked_at && !ctx.class_logged) return null;
+  return {
+    ...ctx,
+    plan: ctx.plan && typeof ctx.plan === "object" ? ctx.plan : {},
+    feedback: ctx.feedback && typeof ctx.feedback === "object"
+      ? ctx.feedback
+      : {},
+    free_slots: Array.isArray(ctx.free_slots) ? ctx.free_slots : [],
+  };
+}
+
+// Retomada após handoff exige autorização explícita posterior à última fala
+// humana da inbox, não apenas posterior ao carimbo do CRM (que pode estar velho).
+async function mayResumePostTrialConversation(
+  sb: any,
+  tenantId: string,
+  instanceName: string,
+  phone: string,
+): Promise<boolean> {
+  const closing = await loadTrialClosingContext(sb, tenantId, phone);
+  if (!closing || closing.offer_sent || closing.stage === "NO_SHOW") {
+    return false;
+  }
+  const authorizedAt =
+    typeof closing.plan?.ai_resumption_authorized_at === "string"
+      ? closing.plan.ai_resumption_authorized_at
+      : null;
+  if (!authorizedAt) return false;
+  const { data: conversation, error: conversationError } = await sb.from(
+    "whatsapp_conversations",
+  ).select("id").eq("tenant_id", tenantId).eq(
+    "instance_name",
+    instanceName,
+  ).eq("remote_jid", `${phone}@s.whatsapp.net`).maybeSingle();
+  if (conversationError || !conversation?.id) return false;
+  const { data: lastHuman, error: lastHumanError } = await sb.from(
+    "whatsapp_messages",
+  ).select("occurred_at").eq("tenant_id", tenantId).eq(
+    "conversation_id",
+    conversation.id,
+  ).eq("direction", "out").eq("sender_kind", "human").order(
+    "occurred_at",
+    { ascending: false },
+  ).limit(1);
+  if (lastHumanError) return false;
+  const { data: leads, error } = await sb.from("crm_leads")
+    .select("phone,ai_handoff_at")
+    .eq("tenant_id", tenantId)
+    .not("phone", "is", null);
+  if (error) throw new Error("post_trial_handoff_lookup_failed");
+  const lead = (leads || []).find((row: any) => phonesMatch(row.phone, phone));
+  const lastHumanAt = String(lastHuman?.[0]?.occurred_at || "");
+  const latestHandoff = Math.max(
+    Date.parse(String(lead?.ai_handoff_at || "")) || 0,
+    Date.parse(lastHumanAt) || 0,
+  );
+  return trialClosingMayResumeAfterHandoff(
+    latestHandoff > 0 ? new Date(latestHandoff).toISOString() : null,
+    authorizedAt,
+  );
+}
+
+/**
+ * O que a atendente precisa para fechar como gente, uma coisa por vez. O
+ * sistema é quem gera o link (`handleTrialClosingStudent` lê frequência, plano
+ * e horários da resposta do aluno) — daqui ela só conduz e nunca inventa.
+ */
+function trialClosingStageInstructions(
+  closing: TrialClosingContext,
+  catalogFacts: string,
+): string {
+  const teacher = closing.teacher_name
+    ? `Teacher ${closing.teacher_name.split(/\s+/)[0]}`
+    : "a professora";
+  const plan = closing.plan || {};
+  const slots = Array.isArray(plan.slots) && plan.slots.length
+    ? plan.slots.map((slot) => `${slot.day} ${slot.time}`).join(", ")
+    : "?";
+  const free = closing.free_slots.slice(0, 14)
+    .map((slot) => `${slot.day} ${slot.time}`).join(", ");
+  const feedback = closing.feedback || {};
+  const feedbackFacts = [
+    feedback.recommended_level
+      ? `nível=${String(feedback.recommended_level).toUpperCase()}`
+      : "nível=?",
+    feedback.recommended_plan
+      ? `plano recomendado=${feedback.recommended_plan}`
+      : "plano recomendado=?",
+    feedback.interest_score != null &&
+      Number.isFinite(Number(feedback.interest_score))
+      ? `interesse=${Number(feedback.interest_score)}/5`
+      : "",
+  ].filter(Boolean).join(", ");
+  return [
+    `ETAPA ATUAL: PÓS-EXPERIMENTAL — FECHAMENTO. A aula experimental com ${teacher} foi ${closing.when_text}.`,
+    closing.class_logged
+      ? `A professora já confirmou que a aula aconteceu.`
+      : `A professora ainda não confirmou a aula; não prometa link ou matrícula antes da confirmação da realização.`,
+    closing.student_asked_at
+      ? `Você já perguntou como foi a aula — não repita a pergunta; reaja ao que ele disser.`
+      : `Comece perguntando como foi a aula e o que ele achou da professora.`,
+    closing.offer_sent
+      ? `O link de matrícula JÁ foi enviado: ajude com dúvidas e não gere outro.`
+      : "",
+    `Já definido pelo aluno: frequência=${plan.frequency || "?"}, plano=${
+      plan.duration ? plan.duration + " meses" : "?"
+    }, horários=${slots}, início=${
+      plan.start_date || "?"
+    }, vencimento mensal=dia ${plan.due_day || "?"}.`,
+    `Horários livres de ${teacher}: ${
+      free || "nenhum livre agora — diga que a coordenação encaixa"
+    }.`,
+    `FEEDBACK ESTRUTURADO DA EXPERIMENTAL: ${feedbackFacts}. Use somente estes dados; nunca invente elogio, opinião ou fala da professora. Se perguntarem o nível ou o feedback, responda isso primeiro, antes de qualquer pergunta comercial.`,
+    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte frequência e apresente os valores daquela frequência nos planos mensal, 6 e 12 meses da tabela; (3) pergunte dias e horários; (4) pergunte data de início explícita (DD/MM/AAAA) e dia de vencimento mensal (1 a 31). A professora confirma os horários; só depois o sistema pode gerar o link. A taxa única é R$ 49,90 quando a assinatura ocorre mais de 7 dias antes do início, e é dispensada quando faltam até 7 dias. Nunca invente valor, desconto, horário confirmado ou link.`,
+    `PERGUNTAS PENDENTES: responda todas as perguntas diretas da mensagem antes de conduzir para a próxima etapa. Se a pessoa cobrar "conseguiu a informação?", releia a última pergunta dela e responda objetivamente. Nunca substitua uma resposta sobre nível, feedback, contrato ou horário por uma tabela de preços.`,
+    `HORÁRIO FORA DA LISTA: a lista acima é a disponibilidade cadastrada, não uma prova de que a professora recusou. Nunca diga que "nenhum professor atende" ou que o horário é impossível sem consulta. Para grade recorrente fora da lista, diga que vai confirmar diretamente com a professora. Não marque handoff só por essa razão; a confirmação de horário é tratada pelo fluxo automático.`,
+    `NEGOCIAÇÃO DA GRADE: se a professora confirmar apenas uma mudança de horário, explique ao aluno exatamente qual pedido não atende. Quando couber trocar um dia por outro mantendo a frequência, consulte a professora sobre os dias e horários exatos antes de oferecer a alternativa. Disponibilidade da professora não é escolha do aluno. Fale em blocos curtos, com saudação pelo nome e "tudo bem?" uma única vez; nunca repita opções já enviadas nem envie em paralelo a um humano. Se o aluno disser "dia 05/10 para começar e vencimento", ambos se referem ao dia 5; não pergunte de novo o vencimento.`,
+    `Não ofereça outra experimental; schedule_trial=null sempre. Se ele disser que a aula não aconteceu, o sistema registra — só acolha. Se quiser pensar, combine quando você pode retornar e não insista.`,
+    catalogFacts
+      ? `TABELA DE PLANOS (mensalidade; aulas de 30 minutos):\n${catalogFacts}`
+      : "",
+  ].filter(Boolean).join("\n");
+}
+
+/**
+ * ACOMPANHAMENTO DO ALUNO — a resposta ao toque do `care-sweeper`.
+ *
+ * É a única conversa em que aluno matriculado fala com IA (decisão da direção,
+ * 17/09/2026). Ordem: dinheiro/contrato → gente, sem IA; horário escolhido da
+ * lista → marca a reposição na hora; depois a IA conduz (curto, uma pergunta),
+ * e o que ela devolve — sentimento, resumo, pedido de horário, handoff — vai
+ * para o toque e, quando negativo, para a direção.
+ * Devolve true quando a mensagem foi tratada aqui.
+ */
+async function handleCareStudent(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  cfg: any,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  isMedia: boolean,
+  msgId: string,
+): Promise<boolean> {
+  const { data: raw, error } = await sb.rpc("care_open_conversation", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error) throw new Error("care_context_unavailable");
+  if (!raw || typeof raw !== "object") return false;
+  const ctx = raw as CareContext;
+  if (ctx.subject_role !== "STUDENT" || ctx.subject_id !== profile.id) {
+    return false;
+  }
+  // Once escalated, later acknowledgements must not fall into generic support.
+  if (ctx.status === "HANDOFF") return true;
+  if (isMedia) return false;
+
+  // Give fragmented replies a quiet window, then discard superseded workers.
+  await new Promise((resolve) => setTimeout(resolve, 8_000));
+  const merged = await loadCareTurn(sb, tenantId, instance, phone, msgId, text);
+  if (merged === null) return true;
+  text = merged;
+  const mayReply = async () =>
+    await loadCareTurn(sb, tenantId, instance, phone, msgId, text) === text;
+  const handoff = async (summary: string, sentiment: string | null = null) => {
+    const { data, error: claimError } = await sb.rpc("care_begin_handoff", {
+      p_id: ctx.id,
+      p_sentiment: sentiment,
+      p_summary: summary,
+    });
+    if (claimError) throw new Error("care_handoff_claim_failed");
+    return data === true;
+  };
+
+  await logMsg(sb, tenantId, phone, "care", "in", text, {
+    student_id: profile.id,
+    touchpoint_id: ctx.id,
+    msg_id: msgId,
+  });
+  const adm = await adminProfile(sb, tenantId);
+  const studentName = String(profile.full_name || ctx.subject_name || "");
+  const notifyDirector = async (headline: string, body: string) => {
+    if (!adm.ownerPhone) return;
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `${headline}\n\n👤 *${
+        studentName || phone
+      }*\n${body}\n\nWhatsApp: ${phone}`,
+    );
+  };
+
+  // 1) Dinheiro e contrato: nunca pela IA.
+  if (isMoneyOrContractTopic(text)) {
+    if (
+      !await mayReply() || !await handoff(
+        `Trouxe assunto financeiro/contrato: "${text.slice(0, 160)}"`,
+      )
+    ) return true;
+    const reply = moneyHandoffReply(studentName);
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "care", "out", reply, {
+      touchpoint_id: ctx.id,
+      kind: "money_handoff",
+      entregue,
+    });
+    await notifyDirector(
+      "💬 *Acompanhamento:* aluno trouxe assunto financeiro/contrato",
+      `“${
+        text.slice(0, 300)
+      }”\n_(A IA não respondeu o mérito; só avisou que a coordenação retorna.)_`,
+    );
+    return true;
+  }
+
+  const offered = Array.isArray(ctx.context?.free_slots)
+    ? (ctx.context!.free_slots as CareSlot[])
+    : [];
+  const teacherId = ctx.teacher_id ? String(ctx.teacher_id) : null;
+  const quotaRemaining = ctx.quota
+    ? Number(ctx.quota.limit) - Number(ctx.quota.used || 0)
+    : 0;
+
+  // Marca a reposição e avisa a professora; devolve o texto para o aluno.
+  const bookSlot = async (
+    slot: { date: string; time: string; day?: string },
+  ): Promise<string | null> => {
+    if (!ctx.reschedule_id || quotaRemaining <= 0) return null;
+    if (!await mayReply()) return null;
+    const { data, error: bookError } = await sb.rpc(
+      "care_set_reschedule_slot",
+      {
+        p_tenant: tenantId,
+        p_student: profile.id,
+        p_reschedule: ctx.reschedule_id,
+        p_date: slot.date,
+        p_time: slot.time,
+      },
+    );
+    if (bookError || !data || data.ok !== true) {
+      if (data?.error === "professor_ocupado") {
+        const free = Array.isArray(data.free_slots)
+          ? (data.free_slots as CareSlot[]).slice(0, 3)
+          : [];
+        return free.length
+          ? `Nesse horário a teacher já tem aula. Ela tem livre:\n${
+            free.map((f) => `• ${f.day} ${f.label}`).join("\n")
+          }\n\nAlgum desses serve?`
+          : "Nesse horário a teacher já tem aula. Me diz outra opção que eu confiro na hora 😊";
+      }
+      return null;
+    }
+    const [y, m, d] = String(data.date).split("-");
+    const teacherFirst = String(data.teacher_name || "").split(/\s+/)[0];
+    if (data.teacher_phone) {
+      await sendWhats(
+        instance,
+        String(data.teacher_phone),
+        `🗓️ Reposição marcada pelo aluno: *${
+          studentName || "aluno"
+        }* em ${data.day} ${d}/${m} às ${data.time}. Ela já aparece em Lançar Aula no dia.`,
+      );
+    }
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: "CLOSED",
+      p_sentiment: "POSITIVE",
+      p_summary: `Reposição marcada: ${data.day} ${d}/${m} às ${data.time}`,
+    });
+    return `Fechado: ${data.day} ${d}/${m} às ${data.time}${
+      teacherFirst ? ` com a Teacher ${teacherFirst}` : ""
+    } — ela já ficou sabendo 😊 Até lá!`;
+  };
+
+  // 2) Escolheu um horário da lista, ou pediu um específico: marca sem IA.
+  const chosen = pickOfferedSlot(text, offered) ||
+    parseRequestedSlot(text, todayBRT());
+  if (chosen && ctx.reschedule_id && quotaRemaining > 0) {
+    const reply = await bookSlot(chosen);
+    if (reply) {
+      const entregue = await sendWhats(instance, phone, reply, {
+        simulateTyping: true,
+      });
+      await logMsg(sb, tenantId, phone, "care", "out", reply, {
+        touchpoint_id: ctx.id,
+        kind: "reschedule_slot",
+        entregue,
+      });
+      return true;
+    }
+    if (!await mayReply()) return true;
+  }
+
+  // Número sem uma escolha aplicável não é opinião sobre a semana. Não deixe
+  // o modelo completar essa resposta como se fosse o aluno.
+  if (/^[123]$/.test(text.trim())) {
+    if (!await mayReply()) return true;
+    const reply = "Você pode me contar um pouco mais sobre o que quis dizer?";
+    const entregue = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "care", "out", reply, {
+      touchpoint_id: ctx.id,
+      kind: "ambiguous_numeric_reply",
+      entregue,
+    });
+    return true;
+  }
+
+  // 3) A IA conduz. Histórico preservado no banco; fala com papel invertido
+  // não volta como exemplo de comportamento para a próxima geração.
+  const hist = await history(sb, tenantId, phone, "care", 16, msgId);
+  const agentName = cfg?.agents?.atendente?.name || "Bia";
+  const safeHist = hist.filter((message) =>
+    message.role !== "assistant" ||
+    !careReplySpeaksAsStudent(message.content, agentName)
+  );
+  const system = buildCareSystemPrompt({
+    agentName,
+    schoolName: safeIdentityPart(cfg?.tenantIdentity?.name, "escola"),
+    ctx,
+    offeredSlots: quotaRemaining > 0 ? offered : [],
+    todayIso: todayBRT(),
+  });
+  const diag: string[] = [];
+  const ai = parseCareModelReply(
+    await callAI(system, [...safeHist, { role: "user", content: text }], diag, {
+      temperature: 0.4,
+    }),
+  );
+  const invalidCareRole = ai && careReplySpeaksAsStudent(
+    ai.reply,
+    agentName,
+  );
+  if (!await mayReply()) return true;
+  if (!ai || invalidCareRole) {
+    console.error(
+      invalidCareRole
+        ? "[care] resposta recusada: papel invertido"
+        : "[care] IA indisponível",
+      JSON.stringify(diag).slice(0, 300),
+    );
+    if (
+      !await handoff(
+        `${
+          invalidCareRole
+            ? "Resposta da IA recusada por inversão de papéis"
+            : "IA indisponível"
+        }; resposta do aluno: "${text.slice(0, 160)}"`,
+      )
+    ) return true;
+    await notifyDirector(
+      "💬 *Acompanhamento:* resposta do aluno exige atendimento humano",
+      `“${text.slice(0, 300)}”`,
+    );
+    return true;
+  }
+
+  let reply = ai.reply;
+  let status: "REPLIED" | "HANDOFF" | "CLOSED" = ai.handoff
+    ? "HANDOFF"
+    : ai.close
+    ? "CLOSED"
+    : "REPLIED";
+  if (ai.wants_slot && ctx.reschedule_id && quotaRemaining > 0) {
+    const booked = await bookSlot(ai.wants_slot);
+    if (booked) {
+      reply = booked;
+      status = "CLOSED";
+    }
+  }
+  if (ai.sentiment === "NEGATIVE" && status !== "HANDOFF") status = "HANDOFF";
+  if (!await mayReply()) return true;
+  if (
+    status === "HANDOFF" && !await handoff(
+      ai.summary || text.slice(0, 200),
+      ai.sentiment,
+    )
+  ) return true;
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "care", "out", reply, {
+    touchpoint_id: ctx.id,
+    sentiment: ai.sentiment,
+    handoff: status === "HANDOFF",
+    entregue,
+  });
+  if (
+    status !== "HANDOFF" &&
+    (status !== "CLOSED" || !reply.startsWith("Fechado:"))
+  ) {
+    await sb.rpc("care_touchpoint_reply", {
+      p_id: ctx.id,
+      p_status: status,
+      p_sentiment: ai.sentiment,
+      p_summary: ai.summary || text.slice(0, 200),
+    });
+  }
+  if (status === "HANDOFF") {
+    await notifyDirector(
+      ai.sentiment === "NEGATIVE"
+        ? "🔴 *Acompanhamento:* aluno insatisfeito — precisa de você"
+        : "💬 *Acompanhamento:* aluno pediu algo que só a coordenação decide",
+      `Resumo: ${ai.summary || text.slice(0, 200)}\n\nÚltima mensagem: “${
+        text.slice(0, 300)
+      }”\n_(A IA já disse que a coordenação retorna.)_`,
+    );
+  }
+  return true;
+}
+
+/**
+ * Professor respondendo a um toque (check-in do mês, política de remarcação,
+ * cobrança de comparecimento): sem IA — registra e encaminha à coordenação.
+ */
+async function handleCareTeacherReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  profile: { id: string; full_name: string | null },
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const { data: raw, error } = await sb.rpc("care_open_conversation", {
+    p_tenant: tenantId,
+    p_phone: phone,
+  });
+  if (error || !raw || typeof raw !== "object") return false;
+  const ctx = raw as CareContext;
+  if (ctx.subject_role !== "TEACHER" || ctx.subject_id !== profile.id) {
+    return false;
+  }
+  if (ctx.status !== "SENT") return false;
+  await logMsg(sb, tenantId, phone, "care", "in", text, {
+    teacher_id: profile.id,
+    touchpoint_id: ctx.id,
+    msg_id: msgId,
+  });
+  await sb.rpc("care_touchpoint_reply", {
+    p_id: ctx.id,
+    p_status: "REPLIED",
+    p_sentiment: null,
+    p_summary: text.slice(0, 400),
+  });
+  const first = greetName(profile.full_name);
+  const ack = `Obrigada${
+    first ? ", " + first : ""
+  }! Anotei e passei para a coordenação 🐺`;
+  const entregue = await sendWhats(instance, phone, ack);
+  await logMsg(sb, tenantId, phone, "care", "out", ack, {
+    touchpoint_id: ctx.id,
+    kind: "teacher_ack",
+    entregue,
+  });
+  const adm = await adminProfile(sb, tenantId);
+  if (adm.ownerPhone) {
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `🧑‍🏫 *Acompanhamento de professor* (${
+        String(ctx.kind).toLowerCase().replace(/_/g, " ")
+      })\n\n*${profile.full_name || phone}* respondeu:\n“${
+        text.slice(0, 500)
+      }”`,
+    );
+  }
+  return true;
+}
+
+/**
+ * `student_pricing_plans` da escola no formato que `trial-closing.ts` já usa.
+ * Mesmo recorte de `private.trial_closing_prices`: ativo, 1–6 aulas/semana,
+ * fidelidade 1/6/12, valor > 0. Falha de leitura vira catálogo vazio — a
+ * atendente cai no mínimo configurado em vez de derrubar a conversa.
+ */
+async function loadLeadPriceCatalog(
+  sb: any,
+  tenantId: string,
+): Promise<CatalogPrice[]> {
+  const { data, error } = await sb.from("student_pricing_plans")
+    .select("classes_per_week, fidelity_months, monthly_price")
+    .eq("tenant_id", tenantId).eq("active", true)
+    .gte("classes_per_week", 1).lte("classes_per_week", 6)
+    .in("fidelity_months", [1, 6, 12]).gt("monthly_price", 0);
+  if (error) {
+    console.warn("[sdr] catálogo de preços indisponível", error.message);
+    return [];
+  }
+  return (data || []).map((row: any) => ({
+    frequency: Number(row.classes_per_week),
+    duration: Number(row.fidelity_months),
+    value: Number(row.monthly_price),
+  }));
+}
+
 async function handleSDR(
   sb: any,
   instance: string,
@@ -5542,6 +7614,8 @@ async function handleSDR(
   isMedia: boolean,
   msgId: string,
   beginEffects: () => Promise<boolean>,
+  postTrialHandoffOverride = false,
+  entry: WhatsappEntry | null = null,
 ) {
   const { data: allLeads } = await sb.from("crm_leads").select(
     "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count",
@@ -5554,6 +7628,8 @@ async function handleSDR(
       phone,
       status: "NEW",
       source: "WhatsApp (IA)",
+      // Lida por private.lead_origin_evidence: anúncio, link ou busca direta.
+      notes: whatsappEntryNotes(entry),
       ai_handled: true,
     }).select("id, name, phone, status, goal, level, notes, ai_handoff")
       .single();
@@ -5629,10 +7705,10 @@ async function handleSDR(
     last_inbound_at: new Date().toISOString(),
     ai_handled: true,
   }).eq("id", lead.id);
-  if (handoffAtivo(lead)) return;
+  if (handoffAtivo(lead) && !postTrialHandoffOverride) return;
   // Handoff vencido: a IA reassume e o registro fica limpo, senão a linha
   // continuaria marcada como "humano atendendo" e confundiria a leitura no CRM.
-  if (lead.ai_handoff === true) {
+  if (lead.ai_handoff === true && !postTrialHandoffOverride) {
     await sb.from("crm_leads").update({
       ai_handoff: false,
       ai_handoff_at: null,
@@ -5652,6 +7728,90 @@ async function handleSDR(
   // again below, before any scheduling mutation or external side effect.
   if (!(await isLatestSdrTurn(sb, tenantId, phone, msgId))) return;
   const hist = await history(sb, tenantId, phone, "sdr", 22, msgId);
+  const { data: completedTrial, error: completedTrialError } = await sb.rpc(
+    "reconcile_completed_trial_lead",
+    { p_tenant: tenantId, p_lead: lead.id },
+  );
+  if (completedTrialError) throw new Error("sdr_completed_trial_unavailable");
+  if (completedTrial?.changed === true) lead.status = "TRIAL_DONE";
+  // A request for the current room is support, not an SDR/model scheduling turn.
+  // Run after burst coalescing and human handoff checks, before any AI call.
+  if (!isMedia && asksLessonAccess(text)) {
+    let access = { link: null as string | null, reason: "lookup_unavailable" };
+    try {
+      access = await loadTrialAccess(
+        sb,
+        tenantId,
+        phone,
+        await findActiveTrial(sb, tenantId, phone),
+        phonesMatch,
+      );
+    } catch {
+      console.warn("[sdr] acesso da experimental indisponível", {
+        leadId: lead.id,
+      });
+    }
+    if (!await isLatestSdrTurn(sb, tenantId, phone, msgId)) return;
+    const { data: current, error: currentError } = await sb.from("crm_leads")
+      .select("ai_handoff,ai_handoff_at").eq("tenant_id", tenantId).eq(
+        "id",
+        lead.id,
+      ).maybeSingle();
+    if (
+      currentError || !current ||
+      (handoffAtivo(current) && (!postTrialHandoffOverride ||
+        !await mayResumePostTrialConversation(sb, tenantId, instance, phone)))
+    ) return;
+    if (!await beginEffects()) return;
+    if (!access.link) {
+      const { error: handoffError } = await sb.from("crm_leads").update({
+        ai_handoff: true,
+        ai_handoff_at: new Date().toISOString(),
+      }).eq("tenant_id", tenantId).eq("id", lead.id);
+      if (handoffError) throw new Error("trial_access_handoff_failed");
+    }
+    const reply = trialAccessReply(tenantId, access);
+    const delivery = await sendWhatsDetailed(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      lead_id: lead.id,
+      kind: "trial_access",
+      reason: access.reason,
+      handoff: !access.link,
+      delivery_outcome: delivery.outcome,
+      entregue: delivery.outcome === "accepted",
+    });
+    if (!access.link) {
+      const management = await adminProfile(sb, tenantId);
+      if (management.ownerPhone) {
+        await sendWhats(
+          instance,
+          management.ownerPhone,
+          `⚠️ *Acesso da experimental:* ${
+            lead.name || phone
+          } pediu o link da aula, mas não há acesso confirmado disponível (${access.reason}). Confira com o professor e responda no atendimento central. Nenhuma sala nem novo agendamento foi criado; a IA parou neste contato.`,
+        );
+      }
+    }
+    if (delivery.outcome === "accepted") {
+      await sb.from("crm_leads").update({
+        last_outbound_at: new Date().toISOString(),
+      })
+        .eq("tenant_id", tenantId).eq("id", lead.id);
+    } else if (delivery.outcome === "ambiguous") {
+      throw new Error("trial_access_delivery_uncertain");
+    }
+    return;
+  }
+  const hoursAnswer = schoolOperatingHoursAnswer(tenantId, text, hist);
+  if (hoursAnswer) {
+    if (!await beginEffects()) return;
+    await sendWhats(instance, phone, hoursAnswer);
+    await logMsg(sb, tenantId, phone, "sdr", "out", hoursAnswer, {
+      lead_id: lead.id,
+      kind: "school_operating_hours",
+    });
+    return;
+  }
   // Keep earlier burst messages in history; the current turn is appended once.
   const { data: waitingRequest, error: waitingError } = await sb.from(
     "trial_reschedule_requests",
@@ -5665,6 +7825,39 @@ async function handleSDR(
     waitingRequest && ["PENDING", "EXPIRED"].includes(waitingRequest.status)
       ? waitingRequest
       : null;
+  // Um aceite que chegou entre a pergunta e o "ok/sim" do lead muda o estado
+  // da conversa. Não peça novamente autorização para consultar professor.
+  if (!waiting && !isMedia && isWaitingAcknowledgement(text)) {
+    const acceptedTrial = await findActiveTrial(sb, tenantId, phone);
+    if (acceptedTrial) {
+      const slot = brtSlotFromIso(acceptedTrial.startIso);
+      const reply =
+        `Sua experimental está confirmada com a Teacher ${acceptedTrial.teacherName} em ${
+          formatSlot(slot)
+        }. Até lá!`;
+      const alreadyConfirmed = hist.some((message) =>
+        message.role === "assistant" &&
+        /experimental.{0,30}confirmad|aula experimental j[aá] est[aá] marcada/i
+          .test(message.content) &&
+        message.content.includes(acceptedTrial.teacherName)
+      );
+      if (!alreadyConfirmed && await beginEffects()) {
+        const delivered = await sendWhats(instance, phone, reply);
+        await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+          lead_id: lead.id,
+          opportunity_id: acceptedTrial.opportunityId,
+          kind: "trial_accepted_acknowledgement",
+          entregue: delivered,
+        });
+        if (delivered) {
+          await sb.from("crm_leads").update({
+            last_outbound_at: new Date().toISOString(),
+          }).eq("id", lead.id);
+        }
+      }
+      return;
+    }
+  }
   if (!waiting && !isMedia && isWaitingAcknowledgement(text)) {
     const { data: pendingTrial, error } = await sb.from("opportunities")
       .select("id,opened_at").eq("tenant_id", tenantId).eq(
@@ -5775,22 +7968,37 @@ async function handleSDR(
     tenantIdentity?.name,
     "Escola de idiomas",
   );
-  const schoolDescription = tenantIdentity?.location
-    ? `${schoolName}, escola de inglês em ${
-      safeIdentityPart(tenantIdentity.location)
-    }`
-    : `${schoolName}, escola de inglês`;
+  const schoolDescription = `${schoolName}, escola de inglês`;
   const training = resolveAtendenteTraining(cfg);
   const commercialConfig = resolveCommercialPolicy(cfg);
   const leadTraining = wiseWolfLeadTraining(tenantId);
+  // O cardápio real da escola (`student_pricing_plans`). O modelo escreve a
+  // frase; a política (`commercial-response-policy.ts`) veta número que não
+  // esteja aqui. Sem catálogo, vale só o mínimo configurado.
+  // Pós-experimental: o bot já perguntou "como foi?" (ou a aula foi lançada).
+  // A conversa vira fechamento — frequência, valores, horários — e não pode
+  // voltar a vender experimental.
+  const closing = await loadTrialClosingContext(sb, tenantId, phone);
+  const catalog = leadTraining || closing
+    ? await loadLeadPriceCatalog(sb, tenantId)
+    : [];
+  const catalogFacts = catalogFactsForPrompt(catalog);
   const commercialRules = leadTraining
     ? `- A experimental Wise Wolf é gratuita e dura 30 minutos.
 - Entenda e personalize antes de convidar para a experiência. Na primeira pergunta de preço sem contexto, faça uma pergunta relevante; não conduza diretamente ao agendamento.
-- Com objetivo e nível conhecidos, ou se o lead insistir ou pedir somente preço, informe o valor configurado sem exigir experimental: ${
-      commercialConfig
-        ? `planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês`
-        : "valor indisponível; encaminhe à coordenação sem inventar"
-    }. Não invente tabela, descontos ou condições.
+- PREÇO: preço perguntado é preço respondido. Use SOMENTE a TABELA DE PLANOS abaixo — nunca invente valor, desconto, taxa ou condição que não esteja nela.${
+      catalogFacts
+        ? `\n  • Primeira pergunta de preço: diga que começa em R$ ${
+          Math.min(...catalog.map((p) => Number(p.value)))
+        }/mês e varia pela quantidade de aulas por semana, e pergunte quantas vezes por semana a pessoa pensa em fazer (se ainda não souber).\n  • Quando o lead disser a frequência (ex.: "4x por semana"), responda com os valores DAQUELA frequência nos planos de 6 e 12 meses, com naturalidade, como uma pessoa faria. O sistema anexa a tabela completa em seguida — não a repita.\n  • Se ele pedir a tabela, a lista, "estimativa de valores" ou "todos os planos", o sistema manda a tabela completa; você só apresenta em uma frase curta.\n  • O mensal (sem fidelidade) só entra se perguntarem por opção sem fidelidade.\nTABELA DE PLANOS (mensalidade; aulas de 30 minutos):\n${catalogFacts}`
+        : commercialConfig
+        ? ` Valor configurado: planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês.`
+        : " Valor indisponível: encaminhe à coordenação sem inventar."
+    }
+- NUNCA repita uma frase que você já mandou nesta conversa (o histórico mostra o que foi dito). Se o lead responder "??" ou reclamar de repetição, responda de outro jeito e vá direto ao ponto que ficou sem resposta.
+- Se perguntarem a política de cancelamento: nos planos de 6 e 12 meses há aviso prévio de 15 dias e multa de 30% sobre o saldo restante; o mensal é a opção sem fidelidade. Responda isso antes de oferecer outro plano.
+- Se perguntarem em quanto tempo mudam de nível, explique que depende da frequência, prática e cumprimento das orientações. Pode dar uma referência pedagógica, mas nunca garantir prazo de fluência ou promoção de nível.
+- schedule_trial só é preenchido quando o lead escolhe ou muda um horário NESTA mensagem. Se o horário já foi pedido antes e a mensagem atual é sobre outra coisa (preço, dúvida, frequência), deixe schedule_trial=null.
 - Siga a BASE OBRIGATÓRIA DE ATENDIMENTO WISE WOLF abaixo.`
     : commercialConfig
     ? `- TODAS as aulas duram ${commercialConfig.classDurationMinutes} minutos, inclusive a experimental. NUNCA diga outra duração.\n- Na PRIMEIRA pergunta sobre preço, NÃO informe nenhum valor: explique que os planos variam e conduza para a aula experimental gratuita.\n- Somente se o lead INSISTIR em preço numa mensagem posterior, informe apenas: \"planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês\". NUNCA liste a tabela completa e NUNCA informe outro valor.\n- Se perguntarem sobre troca de forma de pagamento (ex.: de Pix para Cartão de Crédito), explique que o aluno pode alterar com total segurança diretamente pelo Portal do Aluno (no menu Financeiro > Forma de Pagamento > Cartão de crédito), sem passar dados de cartão no WhatsApp.`
@@ -5804,18 +8012,42 @@ async function handleSDR(
       .eq("tenant_id", tenantId).eq("id", lead.opportunity_id).maybeSingle()
     : { data: null, error: null };
   if (stageResult.error) throw new Error("sdr_stage_unavailable");
-  const afterTrial = lead.status === "TRIAL_DONE" &&
-    ["DONE", "COMPLETED"].includes(
-      String(stageResult.data?.trial_status).toUpperCase(),
-    );
+  const afterTrial = completedTrial?.completed === true ||
+    (lead.status === "TRIAL_DONE" &&
+      ["DONE", "COMPLETED"].includes(
+        String(stageResult.data?.trial_status).toUpperCase(),
+      )) ||
+    closing !== null;
   const availableSlots = afterTrial ? [] : await loadAvailableTrialSlots(
     sb,
     tenantId,
     undefined,
     activeTrial?.teacherId || null,
   );
-  const menu = availableMenu(availableSlots);
-  const stageInstructions = afterTrial
+  // Janela dita pelo lead ("sábados ou semana depois das 18h") filtra o que o
+  // modelo enxerga; o que não tem professor (sábado) vira fato explícito em
+  // vez de horário inventado. A mensagem atual entra junto: a preferência
+  // costuma chegar nela e só é gravada em weekly_availability depois.
+  // As últimas mensagens do lead entram também: o pedido "sexta às 16h" não é
+  // gravado em weekly_availability, e no "Ok" seguinte a sexta sumia da lista
+  // (lead Thiago, 28/10/2026) — a atendente concluiu que não havia sexta.
+  const recentLeadMessages = hist
+    .filter((m: { role: string }) => m.role === "user")
+    .slice(-3)
+    .map((m: { content: string }) => m.content);
+  const availabilityWindows = afterTrial ? [] : parseAvailabilityWindows(
+    `${lead.weekly_availability || ""}\n${
+      recentLeadMessages.join("\n")
+    }\n${text}`,
+  );
+  const menuSlots = filterSlotsByWindows(availableSlots, availabilityWindows);
+  const menu = availableMenu(menuSlots.length ? menuSlots : availableSlots);
+  const availabilityLine = availabilityWindows.length
+    ? `\n${availabilityFacts(availabilityWindows, availableSlots)}`
+    : "";
+  const stageInstructions = closing
+    ? trialClosingStageInstructions(closing, leadTraining ? "" : catalogFacts)
+    : afterTrial
     ? "ETAPA ATUAL: experimental já realizada e registrada. Pergunte como foi, responda dúvidas com as regras comerciais da escola e ofereça ajuda para continuar a matrícula. Não venda outra experimental e mantenha schedule_trial=null. Se o aluno quiser matrícula, encaminhe à coordenação, sem inventar oferta, desconto ou link."
     : "ETAPA ATUAL: qualificação ou agendamento. Respeite qualquer experimental já confirmada e pedidos pendentes.";
   const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
@@ -5838,18 +8070,22 @@ async function handleSDR(
       ).join("\n")
     }`
     : "";
-  const trialContext = activeTrial && trialSlot
+  // No fechamento a aula já passou: falar em remarcação aqui reabriria a
+  // experimental que o aluno acabou de fazer.
+  const trialContext = !closing && activeTrial && trialSlot
     ? `\nEXPERIMENTAL COM PROFESSOR: o horário registrado é com a Teacher ${activeTrial.teacherName} em ${
       formatSlot(trialSlot)
     }. Se esse horário já passou, não fale dele como compromisso futuro nem confirme que a aula aconteceu.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`
     : "";
 
   const system =
-    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription} (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
+    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription}.\nMODALIDADE CONFIRMADA (prevalece sobre treinamento e histórico): ${
+      schoolModalityFacts(tenantId)
+    }\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
-    }\n${leadTraining}${styleBlock}${trialContext}${
+    }\n${afterTrial ? "" : leadTraining}${styleBlock}${trialContext}${
       waiting
         ? `\nPEDIDO DE REMARCAÇÃO EXISTENTE: ${waiting.requested_start_time}; estado=${waiting.status}; limite de espera de 60 minutos desde ${waiting.created_at}. Não abra novamente o mesmo pedido ao receber agradecimento ou cobrança de retorno. Se o prazo passou, negocie outro horário, sem repetir promessas passadas.`
         : ""
@@ -5876,7 +8112,15 @@ async function handleSDR(
       "id",
       lead.id,
     ).maybeSingle();
-  if (currentLeadError || !currentLead || handoffAtivo(currentLead)) return;
+  if (currentLeadError || !currentLead) return;
+  if (handoffAtivo(currentLead)) {
+    if (!postTrialHandoffOverride) return;
+    // O modelo pode levar alguns segundos. Se uma pessoa assumiu nesse meio
+    // tempo, a nova intervenção vence e nenhuma resposta da IA é enviada.
+    if (
+      !(await mayResumePostTrialConversation(sb, tenantId, instance, phone))
+    ) return;
+  }
   if (!(await beginEffects())) return;
   if (!ai || !ai.reply) {
     console.error("SDR AI falhou:", JSON.stringify(diag));
@@ -5930,13 +8174,53 @@ async function handleSDR(
   let reply = String(ai.reply).slice(0, 1500);
   let dispatchMeta: any = null;
 
-  const st = afterTrial ? null : ai.schedule_trial;
+  const inventedPresential = vetoInventedPresential(tenantId, reply);
+  const modalityVeto = inventedPresential !== reply;
+  reply = inventedPresential;
+  let st = afterTrial || modalityVeto ? null : ai.schedule_trial;
+  // "IA propõe, o código veta" para o pedido explícito: o lead escolheu um
+  // horário que ESTÁ livre e o modelo não preencheu schedule_trial — prometeu
+  // "vou verificar" sem pedir a ninguém, ou disse que não havia horário. O
+  // pedido vai aos professores mesmo assim (lead Thiago, 28/10/2026).
+  if (
+    !st && !afterTrial && !modalityVeto && !activeTrial && !closing &&
+    !isMedia && availableSlots.length
+  ) {
+    const fromCurrent = requestedTrialSlot([text], availableSlots);
+    const requested = fromCurrent ||
+      requestedTrialSlot(
+        [text, ...[...recentLeadMessages].reverse()],
+        availableSlots,
+      );
+    const denies = replyDeniesAvailability(reply);
+    if (
+      requested &&
+      (fromCurrent || denies || replyPromisesTrialCheck(reply))
+    ) {
+      st = { date: requested.date, time: requested.time };
+      if (denies) {
+        reply = `Tenho professor livre na ${
+          formatSlotBr(requested)
+        }! Vou confirmar com ele e te retorno em até 60 minutos — se não der certo, te aviso para combinarmos outro horário 😊`;
+      }
+      console.warn(
+        "[sdr] pedido explícito de horário livre sem schedule_trial; assumido",
+        {
+          leadId: lead.id,
+          date: requested.date,
+          time: requested.time,
+          denies,
+        },
+      );
+    }
+  }
   const commercialReply = applyCommercialReplyPolicy({
     history: hist,
     currentMessage: text,
     modelReply: reply,
     trialRequested: Boolean(st?.date && st?.time),
     commercialPolicy: commercialConfig,
+    catalog,
     consultativeLead: leadTraining
       ? {
         goal: freshLead.goal,
@@ -5946,7 +8230,88 @@ async function handleSDR(
       : undefined,
   });
   reply = commercialReply.reply;
-  if (commercialReply.policy === "price_unavailable") ai.handoff = true;
+  const postTrialAnswer = closing
+    ? applyPostTrialAnswerPolicy({
+      history: hist,
+      currentMessage: text,
+      modelReply: reply,
+      feedback: {
+        recommendedLevel: closing.feedback?.recommended_level,
+        recommendedPlan: closing.feedback?.recommended_plan,
+        interestScore: closing.feedback?.interest_score,
+        notes: closing.feedback?.notes,
+      },
+    })
+    : { reply, policy: null };
+  reply = postTrialAnswer.reply;
+  reply = completedTrialReply(reply, afterTrial);
+  reply = vetoInventedPresential(tenantId, reply);
+  if (
+    commercialReply.policy === "price_unavailable" ||
+    commercialReply.policy === "custom_duration_quote_required"
+  ) ai.handoff = true;
+  // "IA propõe, o código veta" também para horário: a Ana Carolina ouviu
+  // "2026-09-19 às 09:00" (sábado sem professor, data crua). Oferta de
+  // data+horário fora da lista livre vira as alternativas reais, dentro da
+  // janela que o lead disse. Com experimental já marcada o modelo cita o
+  // horário dela (que não está na lista livre) — aí não se veta.
+  if (!afterTrial && !activeTrial && availableSlots.length) {
+    reply = humanizeIsoDates(reply);
+    if (replyOffersUnknownSlot(reply, availableSlots)) {
+      const alternatives = rankTrialAlternatives(
+        availableSlots,
+        null,
+        freshLead.weekly_availability || "",
+      );
+      reply = unavailablePreferenceNote(availabilityWindows, availableSlots) +
+        alternativeQuestion(alternatives);
+      console.warn("[sdr] resposta ofereceu horário fora da lista; vetada", {
+        leadId: lead.id,
+      });
+    }
+  }
+  // ── PEDIDO DE REMARCAÇÃO SEM HORÁRIO ──
+  // Medido em 23/09/2026: a remarcação só era avaliada dentro do portão de
+  // data+hora abaixo. "Preciso remarcar" sozinho não chegava lá — o bot pedia o
+  // horário novo (certo) e o sistema não registrava nada, então a aula seguia de
+  // pé na agenda da professora. Aqui o pedido vira ESTADO: a experimental fica
+  // marcada como em remarcação e o histórico começa. O horário novo continua
+  // entrando pelo caminho de sempre, que é quem move a agenda.
+  if (
+    activeTrial && !isMedia && !rescheduleRequestHasSlot(st) &&
+    mentionsRescheduleWithoutSlot(text)
+  ) {
+    const { data: aberto, error: aberturaErro } = await sb.rpc(
+      "open_trial_reschedule_request",
+      {
+        p_opportunity_id: activeTrial.opportunityId,
+        p_reason: text.slice(0, 300),
+        p_source: "whatsapp_lead",
+      },
+    );
+    if (aberturaErro) {
+      console.error("[sdr] falha ao abrir remarcação", {
+        opportunityId: activeTrial.opportunityId,
+        error: aberturaErro.message,
+      });
+    } else if (aberto?.ok && !aberto?.already) {
+      dispatchMeta = {
+        action: "reschedule_requested",
+        opportunity_id: activeTrial.opportunityId,
+      };
+      // A professora precisa saber HOJE que a aula dela não vai acontecer —
+      // é o que evita ela entrar na sala e esperar. Falha no aviso não desfaz
+      // o registro, como no resto do projeto.
+      try {
+        await avisarRemarcacaoPedida(sb, tenantId, instance, aberto);
+      } catch (erro) {
+        console.error("[sdr] aviso de remarcação falhou", {
+          opportunityId: activeTrial.opportunityId,
+          error: (erro as Error).message,
+        });
+      }
+    }
+  }
   if (
     st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) &&
     /^\d{2}:\d{2}$/.test(st.time)
@@ -5991,10 +8356,15 @@ async function handleSDR(
             opportunity_id: decision.trial.opportunityId,
             superseded: fechadas,
           };
-          reply =
-            `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${
-              formatSlot(decision.slot)
-            } 😊 Qualquer coisa é só me avisar por aqui!`;
+          // Mesmo eco do `schedule_trial` da cobertura de `alreadyPending`:
+          // só quem falou de horário ouve a confirmação; pergunta de preço
+          // fica com a resposta de preço.
+          if (mentionsSchedule(text)) {
+            reply =
+              `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${
+                formatSlot(decision.slot)
+              } 😊 Qualquer coisa é só me avisar por aqui!`;
+          }
         } else if (decision.action === "confirm") {
           // A aula já tem dono; qualquer leilão antigo do mesmo lead precisa
           // morrer antes de alguém aceitar uma duplicata enquanto aguardamos.
@@ -6119,8 +8489,14 @@ async function handleSDR(
               );
             }
           } else if (res.alreadyPending) {
-            reply =
-              "Esse horário já está aguardando o aceite de um professor. O prazo de 60 minutos continua contando desde o primeiro pedido; eu retorno por aqui se precisarmos de outra opção.";
+            // O modelo repete `schedule_trial` do pedido anterior mesmo quando a
+            // mensagem é sobre outra coisa. A Diná perguntou "4 vezes na semana
+            // qual valor?" e ouviu isto duas vezes (17/09/2026). Só quem está
+            // falando de horário recebe o aviso; o resto fica com a resposta.
+            if (mentionsSchedule(text)) {
+              reply =
+                "Esse horário já está aguardando o aceite de um professor. O prazo de 60 minutos continua contando desde o primeiro pedido; eu retorno por aqui se precisarmos de outra opção.";
+            }
           } else if (res.directed) {
             reply =
               "Já existe uma solicitação anterior aguardando confirmação. Este novo horário não foi registrado e nenhuma aula foi agendada; a coordenação vai falar com você para ajustar com segurança.";
@@ -6220,6 +8596,7 @@ async function handleSDR(
     lead_id: lead.id,
     dispatch: dispatchMeta,
     commercial_policy: commercialReply.policy,
+    post_trial_answer_policy: postTrialAnswer.policy,
     entregue,
   });
   // `last_outbound_at` alimenta a prospecção ativa (`sdr-followups`) e significa
@@ -6306,8 +8683,18 @@ async function handleRita(
 
   // `mergeRespostas` descarta chave inventada pelo modelo e não sobrescreve o
   // que a pessoa já respondeu.
-  const merged = mergeRespostas(answers, ai.answers);
+  const progress = collecting && !primeiraInteracao && !ai.notify_director
+    ? avancarTriagem(
+      answers,
+      ai.answers || {},
+      text,
+      [...hist].reverse().find((m: any) => m.role === "assistant")?.content ||
+        "",
+    )
+    : null;
+  const merged = progress?.answers || answers;
   const upd: Record<string, unknown> = { preinterview_answers: merged };
+  let completionNotice: string | null = null;
   if (app.preinterview_status === "SENT") {
     upd.preinterview_status = "IN_PROGRESS";
   }
@@ -6322,11 +8709,8 @@ async function handleRita(
       const digest = Object.entries(merged)
         .map(([k, v]) => `• ${rotulo.get(k) || k}: ${String(v).slice(0, 160)}`)
         .join("\n");
-      await sendWhats(
-        instance,
-        adm.ownerPhone,
-        `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`,
-      );
+      completionNotice =
+        `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`;
     }
   } else if (collecting) {
     // Progresso visível no log: sem isto não dá para saber em que etapa as
@@ -6334,6 +8718,33 @@ async function handleRita(
     console.log(
       `[rita] ${app.id}: ${etapasRespondidas(merged)}/${ETAPAS.length} etapas`,
     );
+  }
+
+  // Outra resposta ou intervenção humana invalida esta rodada, sem sobrescrever.
+  if (
+    await inboxConversationHasActiveHandoff(
+      sb,
+      tenantId,
+      instance,
+      `${phone}@s.whatsapp.net`,
+    )
+  ) return;
+  let progressUpdate = sb.from("job_applications").update(upd)
+    .eq("tenant_id", tenantId).eq("id", app.id)
+    .eq("preinterview_status", app.preinterview_status)
+    .or("ai_handoff.is.null,ai_handoff.eq.false");
+  progressUpdate = app.preinterview_answers == null
+    ? progressUpdate.is("preinterview_answers", null)
+    : progressUpdate.eq(
+      "preinterview_answers",
+      JSON.stringify(app.preinterview_answers),
+    );
+  const { data: savedProgress, error: progressError } = await progressUpdate
+    .select("id").maybeSingle();
+  if (progressError) throw new Error("rh_progress_persistence_failed");
+  if (!savedProgress) return;
+  if (completionNotice && adm.ownerPhone) {
+    await sendWhats(instance, adm.ownerPhone, completionNotice);
   }
 
   if (ai.notify_director && adm.ownerPhone) {
@@ -6346,8 +8757,17 @@ async function handleRita(
     );
   }
 
-  await sb.from("job_applications").update(upd).eq("id", app.id);
-  const reply = String(ai.reply).slice(0, 1500);
+  // Não manda a próxima pergunta se a resposta não foi persistida, nem passa
+  // por cima de uma intervenção humana que ocorreu durante a chamada ao modelo.
+  if (
+    await inboxConversationHasActiveHandoff(
+      sb,
+      tenantId,
+      instance,
+      `${phone}@s.whatsapp.net`,
+    )
+  ) return;
+  const reply = String(progress?.reply || ai.reply).slice(0, 1500);
   const entregueRh = await sendWhats(instance, phone, reply);
   await logMsg(sb, tenantId, phone, "rita", "out", reply, {
     application_id: app.id,
@@ -6446,14 +8866,38 @@ async function persistEventMessagesForInbox(
   const hasGroupMessage = items.some((item) =>
     parseEvolutionMessage(item)?.remoteJid.endsWith("@g.us")
   );
-  let managementGroupJid = "";
+  // Grupos que entram na inbox e falam com o bot: o da Gestão e os canais de
+  // aviso configurados (direção, financeiro, coordenação, comercial).
+  let managementGroupJid: string[] = [];
   if (hasGroupMessage) {
     const { data: groupConfig } = await sb.from("dre_report_settings")
       .select("destino,is_active")
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (groupConfig?.is_active === true) {
-      managementGroupJid = String(groupConfig.destino || "").trim();
+      const { data: jids } = await sb.rpc("notice_channel_jids", {
+        p_tenant: tenantId,
+      });
+      const set = new Set<string>();
+      for (
+        const value of Object.values(
+          (jids && typeof jids === "object" ? jids : {}) as Record<
+            string,
+            unknown
+          >,
+        )
+      ) {
+        const jid = String(value || "").trim();
+        if (/@g\.us$/.test(jid)) set.add(jid);
+      }
+      const destino = String(groupConfig.destino || "").trim();
+      if (/@g\.us$/.test(destino)) set.add(destino);
+      // O grupo dos professores é só disparo: não entra na inbox nem fala com o bot.
+      const profs = String(
+        (jids as Record<string, unknown> | null)?.professores || "",
+      ).trim();
+      if (profs) set.delete(profs);
+      managementGroupJid = Array.from(set);
     }
   }
 
@@ -6519,7 +8963,7 @@ async function inboxConversationHasActiveHandoff(
   const canonicalJid = remoteJid.trim().toLowerCase();
   if (!canonicalJid) return false;
   const { data, error } = await sb.from("whatsapp_conversations")
-    .select("id,handoff_active,human_handoff_until")
+    .select("id,handoff_active,human_handoff_until,handoff_requires_release")
     .eq("tenant_id", tenantId)
     .eq("instance_name", instanceName)
     .eq("remote_jid", canonicalJid)
@@ -6532,6 +8976,8 @@ async function inboxConversationHasActiveHandoff(
     throw new InboxPersistenceError("HANDOFF_LOOKUP_FAILED");
   }
   if (data?.handoff_active !== true) return false;
+  // Automated escalation has no expiry; only explicit release resumes it.
+  if (data.handoff_requires_release === true) return true;
   const handoffUntil = Date.parse(String(data.human_handoff_until || ""));
   if (Number.isFinite(handoffUntil) && handoffUntil > Date.now()) return true;
 
@@ -6593,15 +9039,21 @@ async function drainSdrConversation(
         if (!tenant || (tenant.aiTeamConfig as any)?.sdr?.enabled === false) {
           return;
         }
-        if (
-          tenant.inboxEnabled &&
+        const hasHandoff = tenant.inboxEnabled &&
           await inboxConversationHasActiveHandoff(
             sb,
             tenantId,
             input.instance,
             `${phone}@s.whatsapp.net`,
-          )
-        ) return;
+          );
+        const postTrialHandoffOverride = hasHandoff &&
+          await mayResumePostTrialConversation(
+            sb,
+            tenantId,
+            input.instance,
+            phone,
+          );
+        if (hasHandoff && !postTrialHandoffOverride) return;
         // Aluno que acabou de fazer a experimental e está escolhendo plano e
         // horário: resposta determinística, com o preço da tabela. Quem não
         // está nesse ponto passa direto para a atendente.
@@ -6627,6 +9079,8 @@ async function drainSdrConversation(
           input.isMedia,
           input.msgId,
           beginEffects,
+          postTrialHandoffOverride,
+          input.entry ?? null,
         );
       },
     );
@@ -7065,15 +9519,22 @@ serve(async (req) => {
         }
         continue;
       }
-      if (
-        inboundTenant.inboxEnabled &&
+      const inboxHasHandoff = inboundTenant.inboxEnabled &&
         await inboxConversationHasActiveHandoff(
           sb,
           tenantId,
           instance,
           canonicalInboxJid,
-        )
-      ) {
+        );
+      const postTrialHandoffOverride = inboxHasHandoff &&
+        remoteJid.endsWith("@s.whatsapp.net") &&
+        await mayResumePostTrialConversation(
+          sb,
+          tenantId,
+          instance,
+          remoteJid.split("@")[0].replace(/\D/g, ""),
+        );
+      if (inboxHasHandoff && !postTrialHandoffOverride) {
         // A mensagem já está na inbox canônica. O atendimento humano ativo só
         // impede que os agentes respondam ou executem ações em paralelo.
         continue;
@@ -7264,6 +9725,19 @@ serve(async (req) => {
       // prazo) e só entra quando existe pergunta aberta para esta professora.
       if (
         !isMedia && !rateLimited &&
+        await handleTrialClosingTeacherSlotsReply(
+          sb,
+          instance,
+          tenantId,
+          phone,
+          text,
+          msgId,
+        )
+      ) {
+        continue;
+      }
+      if (
+        !isMedia && !rateLimited &&
         await handleTrialClosingTeacherReply(
           sb,
           instance,
@@ -7277,6 +9751,17 @@ serve(async (req) => {
       }
 
       // ===== TRAVA DE ROTEAMENTO =====
+      const knownProfiles = await activeMemberProfiles(sb, tenantId, [
+        "STUDENT",
+        "TEACHER",
+        "SCHOOL_ADMIN",
+        "COORDINATOR",
+        "COMMERCIAL",
+        "SALESPERSON",
+      ]);
+      const knownProfile = knownProfiles.find((profile: any) =>
+        phonesMatch(profile.phone, phone)
+      );
       const { data: apps } = await sb.from("job_applications").select("*").eq(
         "tenant_id",
         tenantId,
@@ -7284,7 +9769,9 @@ serve(async (req) => {
       const candidate = (apps || []).find((a: any) =>
         phonesMatch(a.whatsapp, phone)
       );
-      if (candidate) {
+      // Um professor contratado pode manter a candidatura histórica. Ela não
+      // deve roubar a conversa de quem já é professor nem inventar dados de lead.
+      if (candidate && !knownProfile) {
         // Humano assumiu a triagem deste candidato → Michelle se cala, mas só
         // enquanto o atendimento humano está vivo (72h).
         if (handoffAtivo(candidate)) {
@@ -7369,17 +9856,6 @@ serve(async (req) => {
         continue;
       }
 
-      const knownProfiles = await activeMemberProfiles(sb, tenantId, [
-        "STUDENT",
-        "TEACHER",
-        "SCHOOL_ADMIN",
-        "COORDINATOR",
-        "COMMERCIAL",
-        "SALESPERSON",
-      ]);
-      const knownProfile = (knownProfiles || []).find((profile: any) =>
-        phonesMatch(profile.phone, phone)
-      );
       if (knownProfile) {
         // Professor avisando que não dá aula: rota própria (antes caía num
         // `continue` mudo — ninguém respondia nem abria cobertura).
@@ -7398,10 +9874,113 @@ serve(async (req) => {
         ) {
           continue;
         }
+        // Reposição marcada/remarcada/desmarcada pelo professor: vem ANTES da
+        // troca de horário fixo, porque "passou para 15h" casaria nos dois — a
+        // palavra "reposição" decide.
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherRescheduleMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        // Troca de horário de aluno dita pelo professor: proposta + "confirma?"
+        // + aplicação. Vem ANTES do acompanhamento, senão a resposta ao
+        // check-in do mês engoliria o pedido (foi o que aconteceu com o Mateus).
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherScheduleChangeMessage(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        // Convite de cobertura pendente: "consigo sim" / "não consigo" pelo
+        // número da escola vale como o clique no link — e o pacote do aluno
+        // (contato + últimas aulas) sai em seguida.
+        // Falta do lead na experimental: antes da cobertura, porque "não
+        // compareceu" não é resposta a convite nenhum.
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherTrialNoShow(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+          )
+        ) {
+          continue;
+        }
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleTeacherCoverageReply(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
+        if (
+          String(knownProfile.role || "").toUpperCase() === "TEACHER" &&
+          !rateLimited && !isMedia && String(text || "").trim() &&
+          await handleCareTeacherReply(
+            sb,
+            instance,
+            tenantId,
+            knownProfile,
+            phone,
+            text,
+            msgId,
+          )
+        ) {
+          continue;
+        }
         const isContractedStudent =
           String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
           knownProfile.contract_accepted === true;
         if (isContractedStudent) {
+          // Acompanhamento aberto (faltou ontem / semana / mês): a única
+          // conversa em que aluno matriculado fala com a IA.
+          if (
+            !rateLimited && !isMedia && String(text || "").trim() &&
+            await handleCareStudent(
+              sb,
+              instance,
+              tenantId,
+              cfg,
+              knownProfile,
+              phone,
+              text,
+              isMedia,
+              msgId,
+            )
+          ) {
+            continue;
+          }
           await logMsg(
             sb,
             tenantId,
@@ -7521,6 +10100,7 @@ serve(async (req) => {
           text,
           isMedia,
           msgId,
+          entry: whatsappEntryEvidence(item),
         });
       } catch (error) {
         // The queue wasn't committed. Allow the provider/inbox recovery to retry.

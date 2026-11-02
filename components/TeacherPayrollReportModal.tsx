@@ -140,7 +140,7 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 print:p-0 print:bg-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 print:p-0 print:bg-white">
             {/* Só o conteúdo do relatório sai na impressão */}
             <style>{`
                 @media print {
@@ -151,7 +151,7 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
                 }
             `}</style>
 
-            <div id="payroll-report-print" className="bg-brand-surface dark:bg-brand-surface-2 w-full max-w-3xl max-h-[90dvh] rounded-[2rem] shadow-2xl border border-brand-border flex flex-col overflow-hidden">
+            <div id="payroll-report-print" className="bg-brand-surface dark:bg-brand-surface-2 w-full max-w-3xl max-h-[90dvh] rounded-4xl shadow-2xl border border-brand-border flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4 p-6 md:p-8 border-b border-brand-border shrink-0">
                     <div className="flex items-center gap-4 min-w-0">
@@ -258,7 +258,7 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
                                                                                             value={draftValue}
                                                                                             onChange={e => setDraftValue(e.target.value)}
                                                                                             onKeyDown={e => { if (e.key === 'Enter') saveOverride(d.id, draftValue); if (e.key === 'Escape') setEditingId(null); }}
-                                                                                            className="w-20 px-2 py-1 rounded-md border border-brand-border bg-brand-surface text-brand-text text-right outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                                                            className="w-20 px-2 py-1 rounded-md border border-brand-border bg-brand-surface text-brand-text text-right outline-hidden focus:ring-2 focus:ring-tenant-primary"
                                                                                             placeholder="0,00"
                                                                                         />
                                                                                         <button onClick={() => saveOverride(d.id, draftValue)} disabled={isSaving} title="Salvar valor" className="p-1 rounded-md text-emerald-600 hover:bg-emerald-100 disabled:opacity-50">

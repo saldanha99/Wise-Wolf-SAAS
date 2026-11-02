@@ -26,9 +26,9 @@ export function WolfiePracticeHeader({
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm ${
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-xs ${
               isSubjectView
-                ? 'bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 shadow-blue-500/25'
+                ? 'bg-linear-to-br from-cyan-400 via-blue-500 to-violet-600 shadow-blue-500/25'
                 : 'bg-brand-accent'
             }`}
           >

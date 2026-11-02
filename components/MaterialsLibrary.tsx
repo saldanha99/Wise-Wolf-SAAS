@@ -142,7 +142,7 @@ const MaterialsLibrary: React.FC<Props> = ({
                     disabled={(!onOpenMaterial && !m.file_url) || openingMaterialId === (m.id || m.assignment_id || m.file_url)}
                     className="flex items-center gap-3 min-w-0 flex-1 text-left disabled:opacity-60"
                 >
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 ${color}`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0 ${color}`}>
                         <Icon size={16} />
                     </div>
                     <div className="min-w-0">
@@ -270,22 +270,22 @@ const MaterialsLibrary: React.FC<Props> = ({
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Buscar material pelo título..."
-                        className="w-full pl-9 pr-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                        className="w-full pl-9 pr-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-medium text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
                     />
                 </div>
                 <div className="flex bg-brand-surface-2 dark:bg-slate-800 p-1 rounded-xl shrink-0">
                     {hasFolders && (
                         <button onClick={() => setGroupBy('folder')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'folder' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary' : 'text-brand-muted'}`}>
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'folder' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary' : 'text-brand-muted'}`}>
                             <FolderTree size={12} /> Pastas
                         </button>
                     )}
                     <button onClick={() => setGroupBy('level')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'level' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary' : 'text-brand-muted'}`}>
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'level' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary' : 'text-brand-muted'}`}>
                         <Layers size={12} /> Nível
                     </button>
                     <button onClick={() => setGroupBy('niche')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'niche' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary' : 'text-brand-muted'}`}>
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${groupBy === 'niche' ? 'bg-brand-surface dark:bg-slate-700 shadow-xs text-tenant-primary' : 'text-brand-muted'}`}>
                         <Globe size={12} /> Nicho
                     </button>
                 </div>

@@ -99,6 +99,13 @@ async function loadCurrentDeliveryRecipient(
   if (!row.student_id || !row.teacher_id || !row.tenant_id) {
     return { allowed: false, phone: null };
   }
+  const eligibility = await admin.rpc("is_student_notifiable", {
+    p_id: row.student_id,
+  });
+  if (eligibility.error) {
+    throw new Error("student_notification_revalidation_failed");
+  }
+  if (eligibility.data !== true) return { allowed: false, phone: null };
   const { data, error } = await admin
     .from("profiles")
     .select(

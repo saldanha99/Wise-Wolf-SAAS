@@ -534,8 +534,13 @@ values (
     now() at time zone 'America/Sao_Paulo' - interval '1 hour',
     'YYYY-MM-DD'
   ),
+  -- Minuto :15 de propósito: os bookings do fixture ficam em :00/:30, e a
+  -- ocorrência aqui vira booking (linha ~708) no MESMO dia da semana. Com
+  -- `now() - 1 hour` cru, um release às 13:00 gerava "12:00" e batia no
+  -- uq_bookings_no_dup_active (aconteceu em 17/09/2026).
   to_char(
-    now() at time zone 'America/Sao_Paulo' - interval '1 hour',
+    date_trunc('hour', now() at time zone 'America/Sao_Paulo' - interval '1 hour')
+      + interval '15 minutes',
     'HH24:MI'
   ),
   'STUDENT',
@@ -1194,6 +1199,14 @@ select
 from public.bookings booking
 where booking.id = '20000000-0000-4000-8000-00000000000f';
 set local session_replication_role = origin;
+
+-- Em feriado nacional a aula fixa não gera confirmação (20261028150000). A
+-- ocorrência deste teste vem do relógio: num release rodado em feriado ela
+-- cairia no dia sem aula. Tira o feriado do dia só nesta transação.
+delete from public.national_holidays holiday
+ using public.bookings booking
+ where booking.id = '20000000-0000-4000-8000-00000000000f'
+   and holiday.holiday_date = booking.start_date;
 
 select pg_temp.assert_true(
   public.enqueue_attendance_confirmations() >= 1,

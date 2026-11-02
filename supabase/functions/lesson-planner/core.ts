@@ -177,19 +177,43 @@ export function selectPlannerModel(
     : economyModel;
 }
 
+/**
+ * Orçamento de tempo de uma geração inteira (primeira tentativa + retry de
+ * qualidade). O worker do edge-runtime e o Kong dão 150 s; sobra margem para
+ * ler o contexto e gravar o resultado.
+ *
+ * Até 17/09/2026 cada chamada tinha 25 s — e um plano de 30 minutos em JSON
+ * estrito, com até 7.000 tokens de saída, não sai em 25 s de gpt-4o-mini. Medido
+ * na VPS: 504 "demorou mais que o esperado" em toda tentativa; zero planos
+ * salvos na história da tabela. O Planner estava morto no ar.
+ */
+export const PLANNER_TOTAL_BUDGET_MS = 135_000;
+export const PLANNER_FIRST_ATTEMPT_TIMEOUT_MS = 100_000;
+export const PLANNER_RETRY_MIN_TIMEOUT_MS = 20_000;
+
 export function plannerModelProfile(
   model: string,
   isQualityRetry = false,
+  remainingBudgetMs = PLANNER_TOTAL_BUDGET_MS,
 ): PlannerModelProfile {
   const normalized = boundedText(model, 200).toLowerCase();
   const isGpt4oMini = normalized === "openai/gpt-4o-mini" ||
     normalized.startsWith("openai/gpt-4o-mini-");
   const isGpt5Mini = normalized === "openai/gpt-5-mini" ||
     normalized.startsWith("openai/gpt-5-mini-");
+  // Cada chamada (primeira ou retry) quer o teto; o retry só recebe o que
+  // sobrou do orçamento, nunca menos que o mínimo útil (o 504 sairia de
+  // qualquer jeito, só que mais tarde).
+  const timeoutMs = Math.max(
+    isQualityRetry
+      ? PLANNER_RETRY_MIN_TIMEOUT_MS
+      : PLANNER_FIRST_ATTEMPT_TIMEOUT_MS,
+    Math.min(PLANNER_FIRST_ATTEMPT_TIMEOUT_MS, Math.floor(remainingBudgetMs)),
+  );
   return {
     supportsReasoning: isGpt5Mini,
     temperature: isGpt4oMini ? 0.2 : null,
-    timeoutMs: isGpt4oMini || isGpt5Mini || isQualityRetry ? 25_000 : 50_000,
+    timeoutMs,
   };
 }
 

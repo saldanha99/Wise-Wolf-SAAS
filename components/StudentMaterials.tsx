@@ -260,7 +260,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
     if (contextLoading) {
         return (
-            <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-[2rem] border border-brand-border bg-brand-surface" role="status">
+            <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-4xl border border-brand-border bg-brand-surface" role="status">
                 <Loader2 className="animate-spin text-tenant-primary" size={28} />
                 <p className="text-xs font-black uppercase tracking-widest text-brand-muted">Preparando sua jornada...</p>
             </div>
@@ -273,12 +273,12 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
     return (
         <section className="overflow-hidden rounded-[2.5rem] border border-indigo-200/60 bg-brand-surface shadow-xl shadow-indigo-950/5 dark:border-indigo-900/40">
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 px-5 py-7 text-white sm:px-8 sm:py-9">
+            <div className="relative overflow-hidden bg-linear-to-br from-slate-950 via-indigo-950 to-violet-900 px-5 py-7 text-white sm:px-8 sm:py-9">
                 <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-violet-500/25 blur-3xl" />
                 <div className="pointer-events-none absolute -bottom-28 left-1/4 h-60 w-60 rounded-full bg-sky-400/15 blur-3xl" />
                 <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-2xl">
-                        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100 backdrop-blur">
+                        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100 backdrop-blur-sm">
                             <ShieldCheck size={13} aria-hidden="true" /> Jornada pedagógica verificada
                         </div>
                         <h2 className="text-2xl font-black tracking-tight sm:text-3xl">Seu próximo marco no inglês</h2>
@@ -287,11 +287,11 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                         </p>
                     </div>
                     <div className="grid grid-cols-2 gap-3 sm:min-w-[330px]">
-                        <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+                        <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200/70">Nível atual</p>
                             <p className="mt-1 text-2xl font-black">{currentModule}</p>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+                        <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200/70">Próximo marco</p>
                             <p className="mt-1 text-2xl font-black">{evaluationComplete ? '✓' : currentPartKey}</p>
                         </div>
@@ -310,7 +310,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     evaluationComplete
                         ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-900/15'
                         : evaluationUnlocked
-                            ? 'border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 dark:border-violet-800/40 dark:from-violet-950/40 dark:to-indigo-950/40'
+                            ? 'border-violet-200 bg-linear-to-br from-violet-50 to-indigo-50 dark:border-violet-800/40 dark:from-violet-950/40 dark:to-indigo-950/40'
                             : 'border-brand-border bg-brand-surface-2/60'
                 }`}>
                     <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -351,7 +351,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                             <button
                                 type="button"
                                 onClick={openEvaluation}
-                                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-violet-500/25 transition hover:bg-violet-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-300"
+                                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-violet-500/25 transition hover:bg-violet-700 focus:outline-hidden focus-visible:ring-4 focus-visible:ring-violet-300"
                             >
                                 <Sparkles size={16} aria-hidden="true" /> Iniciar avaliação
                             </button>
@@ -361,7 +361,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             </div>
 
             {showEvaluation && (
-                <div className="fixed inset-0 z-[220] flex items-end justify-center bg-slate-950/80 p-0 backdrop-blur-md sm:items-center sm:p-4" onMouseDown={(event) => {
+                <div className="fixed inset-0 z-220 flex items-end justify-center bg-slate-950/80 p-0 backdrop-blur-md sm:items-center sm:p-4" onMouseDown={(event) => {
                     if (event.target === event.currentTarget) closeEvaluation();
                 }}>
                     <div
@@ -370,7 +370,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                         aria-modal="true"
                         aria-labelledby="secure-evaluation-title"
                         aria-describedby="secure-evaluation-description"
-                        className="flex max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[2rem] bg-brand-surface shadow-2xl sm:max-h-[92dvh] sm:rounded-[2rem]"
+                        className="flex max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-4xl bg-brand-surface shadow-2xl sm:max-h-[92dvh] sm:rounded-4xl"
                     >
                         <header className="shrink-0 border-b border-brand-border bg-brand-surface px-4 py-4 sm:px-6">
                             <div className="flex items-center justify-between gap-3">
@@ -381,7 +381,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                     <h2 id="secure-evaluation-title" className="mt-1 truncate text-lg font-black text-brand-text sm:text-xl">Marco {result?.bookPart || currentPartKey}</h2>
                                     <p id="secure-evaluation-description" className="sr-only">Responda todas as questões. Suas respostas são corrigidas com segurança no servidor.</p>
                                 </div>
-                                <button type="button" onClick={closeEvaluation} disabled={submitting} aria-label="Fechar avaliação e salvar rascunho" className="rounded-xl p-2 text-brand-muted hover:bg-brand-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50">
+                                <button type="button" onClick={closeEvaluation} disabled={submitting} aria-label="Fechar avaliação e salvar rascunho" className="rounded-xl p-2 text-brand-muted hover:bg-brand-surface-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50">
                                     <X size={20} aria-hidden="true" />
                                 </button>
                             </div>
@@ -392,7 +392,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                         <span>{answeredCount} respondida{answeredCount === 1 ? '' : 's'}</span>
                                     </div>
                                     <div className="h-2 overflow-hidden rounded-full bg-brand-surface-2" aria-label={`${Math.round((answeredCount / questions.length) * 100)}% respondido`} role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={answeredCount}>
-                                        <div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${(answeredCount / questions.length) * 100}%` }} />
+                                        <div className="h-full rounded-full bg-linear-to-r from-violet-600 to-indigo-500 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${(answeredCount / questions.length) * 100}%` }} />
                                     </div>
                                 </div>
                             )}
@@ -453,7 +453,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                                     role="radio"
                                                     aria-checked={selected}
                                                     onClick={() => selectOption(optionIndex)}
-                                                    className={`flex min-h-14 w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left text-sm font-bold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 motion-reduce:transition-none sm:p-4 ${selected ? 'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' : 'border-brand-border bg-brand-surface text-brand-text hover:border-violet-300 hover:bg-brand-surface-2'}`}
+                                                    className={`flex min-h-14 w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left text-sm font-bold transition focus:outline-hidden focus-visible:ring-4 focus-visible:ring-violet-200 motion-reduce:transition-none sm:p-4 ${selected ? 'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' : 'border-brand-border bg-brand-surface text-brand-text hover:border-violet-300 hover:bg-brand-surface-2'}`}
                                                 >
                                                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${selected ? 'bg-violet-600 text-white' : 'bg-brand-surface-2 text-brand-muted'}`}>
                                                         {selected ? <Check size={15} aria-hidden="true" /> : String.fromCharCode(65 + optionIndex)}

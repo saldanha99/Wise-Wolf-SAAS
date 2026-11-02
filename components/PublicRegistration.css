@@ -995,6 +995,9 @@
 }
 
 .enrollment-contract-document > div {
+  /* A folha não pode encolher até a altura da coluna: com overflow hidden ela
+     cortava o contrato e a coluna ficava sem o que rolar (tablet/desktop). */
+  flex-shrink: 0;
   margin: 0 auto;
   overflow: hidden;
   border-radius: 5px;

@@ -74,3 +74,93 @@ Deno.test("failed persistence is not acknowledged as saved", async () => {
     "lesson_quality_reply_failed",
   );
 });
+
+Deno.test("número solto após auditoria pede contexto sem gravar presença nem cair no care", async () => {
+  const filters: Record<string, unknown> = {};
+  const query: any = {
+    select: () => query,
+    eq: (key: string, value: unknown) => {
+      filters[key] = value;
+      return query;
+    },
+    neq: (key: string, value: unknown) => {
+      filters[`not_${key}`] = value;
+      return query;
+    },
+    gte: (key: string, value: unknown) => {
+      filters[key] = value;
+      return query;
+    },
+    gt: (key: string, value: unknown) => {
+      filters[key] = value;
+      return query;
+    },
+    then: (resolve: (value: unknown) => void) =>
+      resolve({
+        data: [{ id: "audit", canonical_confirmation_id: "audit" }],
+        error: null,
+      }),
+  };
+  const result = await routeLessonQualityReply({
+    from: (table: string) => {
+      assertEquals(table, "attendance_confirmations");
+      return query;
+    },
+    rpc: () => {
+      throw new Error("não pode gravar retorno por palpite");
+    },
+  }, {
+    tenantId: "school",
+    instance: " Central ",
+    phone: "5511000000000",
+    messageId: "in-1",
+    text: "1",
+    quotedId: null,
+  });
+  assertEquals(result, { handled: true, needs_context: true });
+  assertEquals(filters.tenant_id, "school");
+  assertEquals(filters.provider_instance_name, "central");
+  assertEquals(filters.quality_recipient_phone, "5511000000000");
+  assertEquals(filters.delivery_status, "SENT");
+  assertEquals(filters.not_status, "CANCELLED");
+});
+
+Deno.test("número sem auditoria recente pode continuar para outro menu; falha de leitura não", async () => {
+  const input = {
+    tenantId: "s",
+    instance: "i",
+    phone: "5511000000000",
+    messageId: "m",
+    text: "2",
+    quotedId: null,
+  };
+  function client(result: unknown) {
+    const query: any = {
+      select: () => query,
+      eq: () => query,
+      neq: () => query,
+      gte: () => query,
+      gt: () => Promise.resolve(result),
+    };
+    return { from: () => query };
+  }
+  assertEquals(
+    await routeLessonQualityReply(client({ data: [], error: null }), input),
+    { handled: false },
+  );
+  assertEquals(
+    await routeLessonQualityReply(
+      client({
+        data: [{ id: "copy", canonical_confirmation_id: "original" }],
+        error: null,
+      }),
+      input,
+    ),
+    { handled: false },
+  );
+  await assertRejects(
+    () => routeLessonQualityReply(client({ error: {} }), input),
+    Error,
+    "lesson_quality_context_failed",
+  );
+});

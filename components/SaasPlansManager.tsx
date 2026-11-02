@@ -133,7 +133,7 @@ const SaasPlansManager: React.FC = () => {
                     <p className="text-brand-muted text-xs">Carregando planos...</p>
                 ) : plans.map((plan) => (
                     <div key={plan.id} className="group bg-brand-surface border border-brand-border rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-blue-200">
-                        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${plan.active ? 'from-emerald-500/10 to-teal-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
+                        <div className={`absolute top-0 right-0 w-24 h-24 bg-linear-to-br ${plan.active ? 'from-emerald-500/10 to-teal-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
 
                         <div className="flex justify-between items-start mb-4 relative z-10">
                             <div>
@@ -180,7 +180,7 @@ const SaasPlansManager: React.FC = () => {
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-xs animate-in fade-in">
                     <div className="bg-brand-surface w-full max-w-2xl rounded-[2.5rem] p-8 border border-brand-border dark:border-brand-border shadow-2xl overflow-y-auto max-h-[90vh]">
                         <h3 className="text-2xl font-black text-brand-text mb-6">
                             {editingPlan ? 'Editar Plano' : 'Novo Plano SaaS'}
@@ -193,7 +193,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="text"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                     placeholder="Ex: Start, Pro"
                                 />
                             </div>
@@ -203,7 +203,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.storage_limit_gb}
                                     onChange={e => setFormData({ ...formData, storage_limit_gb: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -212,7 +212,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.max_students}
                                     onChange={e => setFormData({ ...formData, max_students: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -221,7 +221,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.max_users}
                                     onChange={e => setFormData({ ...formData, max_users: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -230,7 +230,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.price}
                                     onChange={e => setFormData({ ...formData, price: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -239,7 +239,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.price_yearly}
                                     onChange={e => setFormData({ ...formData, price_yearly: Number(e.target.value) })}
-                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 space-y-2">
@@ -247,7 +247,7 @@ const SaasPlansManager: React.FC = () => {
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full h-24 bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600 resize-none"
+                                    className="w-full h-24 bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-hidden focus:ring-2 focus:ring-blue-600 resize-none"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 flex items-center gap-3">

@@ -20,14 +20,21 @@ Deno.test("payment reminders fence every irreversible send in durable order", ()
   );
   const claim = helper.indexOf("claimOutboundMessage(");
   const mark = helper.indexOf("markOutboundMessageSubmittingDecision(");
-  const send = helper.indexOf("sendWhatsTextDetailed(");
+  const permit = helper.indexOf("requestOutboundPermit(");
+  const send = helper.indexOf("sendWhatsTextToResolvedDestinationDetailed(");
   const finish = helper.indexOf("finishOutboundMessage(");
 
   assert(helperStart >= 0, "durable delivery helper is required");
   assert(claim >= 0 && claim < mark, "claim must precede mark");
+  assert(claim < permit, "durable claim must precede throttle reservation");
+  assert(permit < mark, "throttle reservation must precede SUBMITTING");
   assert(mark < send, "SUBMITTING must be durable before provider POST");
   assert(send < finish, "provider outcome must be durably finished");
-  assertEquals((helper.match(/sendWhatsTextDetailed\(/g) || []).length, 1);
+  assertEquals(
+    (helper.match(/sendWhatsTextToResolvedDestinationDetailed\(/g) || [])
+      .length,
+    1,
+  );
 });
 
 Deno.test("payment reminder scope is exact and test accounts are suppressed", () => {
@@ -40,6 +47,19 @@ Deno.test("payment reminder scope is exact and test accounts are suppressed", ()
   assert(source.includes("resolvePaymentRecipient(student)"));
   assert(source.includes('notificationKind: "PAYMENT_DUE_REMINDER"'));
   assert(source.includes("notificationKind: kind"));
+  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 3);
+  assert(source.includes("ACTIVE_STUDENT_WINDOW_DAYS = 30"));
+  assert(source.includes("stillStudies: (charge) =>"));
+});
+
+Deno.test("second overdue wave is service-triggered, provider-confirmed and idempotent", () => {
+  assert(source.includes('input.mode === "SECOND_WAVE"'));
+  assert(source.includes("input.campaign_date === todayISO"));
+  assert(source.includes('"payment.read"'));
+  assert(source.includes('provider.status !== "OVERDUE"'));
+  assert(source.includes("PAYMENT_OVERDUE_WAVE2_"));
+  assert(source.includes("SECOND_WAVE_MIN_INTERVAL_MS"));
+  assert(source.includes("recent_collection_message"));
 });
 
 Deno.test("legacy markers are repaired only after durable SENT", () => {
@@ -49,5 +69,31 @@ Deno.test("legacy markers are repaired only after durable SENT", () => {
     !source.includes(
       'due_reminder_sent_at: new Date().toISOString() }).eq("id", id)',
     ),
+  );
+});
+
+Deno.test("30-day collection is live-provider verified and email is claimed before POST", () => {
+  assert(source.includes("const OVERDUE_MILESTONES = [3, 10, 20, 30]"));
+  assert(source.includes('provider.status !== "OVERDUE"'));
+  assert(source.includes("profile.contract_accepted !== true"));
+  assert(
+    source.includes(
+      "provider.subscription !== charge.authoritative_subscription_id",
+    ),
+  );
+  assert(source.includes("provider.customer !== charge.provider_customer_id"));
+  assert(source.includes('email.endsWith("@accounts.invalid")'));
+  const start = source.indexOf("async function deliverThirtyDayEmail(");
+  const end = source.indexOf("\nasync function", start + 20);
+  const helper = source.slice(start, end < 0 ? source.length : end);
+  assert(start >= 0);
+  assert(
+    helper.indexOf("payment_overdue_email_attempts") <
+      helper.indexOf('fetch("https://api.resend.com/emails"'),
+  );
+  assert(helper.includes('"Idempotency-Key": key'));
+  assertEquals(
+    (helper.match(/fetch\("https:\/\/api\.resend\.com\/emails"/g) || []).length,
+    1,
   );
 });

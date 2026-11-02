@@ -663,6 +663,10 @@ select pg_temp.assert_true(
 );
 
 reset role;
+-- Fixture roda sem ator: a guarda de administracao de aluno
+-- (migration 20260922043021) so libera a direcao, e o reset role
+-- nao limpa o JWT do passo anterior.
+set local request.jwt.claims = '';
 
 update public.profiles
    set module = 'A1',
@@ -985,6 +989,10 @@ end;
 $$;
 
 reset role;
+-- Fixture roda sem ator: a guarda de administracao de aluno
+-- (migration 20260922043021) so libera a direcao, e o reset role
+-- nao limpa o JWT do passo anterior.
+set local request.jwt.claims = '';
 
 update public.profiles
    set status = 'Inativo',
@@ -1009,6 +1017,10 @@ end;
 $$;
 
 reset role;
+-- Fixture roda sem ator: a guarda de administracao de aluno
+-- (migration 20260922043021) so libera a direcao, e o reset role
+-- nao limpa o JWT do passo anterior.
+set local request.jwt.claims = '';
 
 update public.profiles
    set status = 'Ativo',
@@ -1035,6 +1047,10 @@ end;
 $$;
 
 reset role;
+-- Fixture roda sem ator: a guarda de administracao de aluno
+-- (migration 20260922043021) so libera a direcao, e o reset role
+-- nao limpa o JWT do passo anterior.
+set local request.jwt.claims = '';
 
 update public.profiles
    set status = 'Ativo',
@@ -1256,6 +1272,10 @@ end;
 $$;
 
 reset role;
+-- Fixture roda sem ator: a guarda de administracao de aluno
+-- (migration 20260922043021) so libera a direcao, e o reset role
+-- nao limpa o JWT do passo anterior.
+set local request.jwt.claims = '';
 
 update public.profiles
    set status = 'Ativo',

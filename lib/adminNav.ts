@@ -2,7 +2,7 @@ import type { ElementType } from 'react';
 import {
   LayoutDashboard, CalendarClock, GraduationCap, Users, DollarSign, FileBarChart,
   ShieldAlert, Zap, CalendarOff, Mic, Book, Target, Brain, Globe, Gift, Settings,
-  MessageCircle,
+  MessageCircle, Radio,
 } from 'lucide-react';
 
 /**
@@ -49,6 +49,8 @@ export const ADMIN_NAV: NavGroup[] = [
   // ── Dia a dia ─────────────────────────────────────────────────────────────
   { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Dia a dia', primary: true, tabs: [] },
   { id: 'schedule_explorer', label: 'Mapa de Aulas', icon: CalendarClock, section: 'Dia a dia', primary: true, tabs: [] },
+  // As aulas de hoje com o link de cada uma; a direção entra pela conta central.
+  { id: 'live-lessons', label: 'Ao vivo', icon: Radio, section: 'Dia a dia', tabs: [] },
   {
     id: 'students', label: 'Alunos', icon: GraduationCap, section: 'Dia a dia', primary: true,
     tabs: [
@@ -95,9 +97,11 @@ export const ADMIN_NAV: NavGroup[] = [
   // ── Aulas ─────────────────────────────────────────────────────────────────
   { id: 'lesson-quality', label: 'Qualidade das aulas', icon: ShieldAlert, section: 'Aulas', tabs: [
     { id: 'lesson-quality', label: 'Acompanhamento' },
+    { id: 'lesson-history', label: 'Histórico de aulas' },
     { id: 'schedule-requests', label: 'Aceites de horário' },
     { id: 'quality-contacts', label: 'Contatos verificados' },
-    { id: 'lesson-sessions', label: 'Salas e continuidade' },
+    { id: 'lesson-sessions', label: 'Salas e continuidade', badgeKey: 'resumos_para_revisar' },
+    { id: 'recording-consents', label: 'Autorizações de registro' },
     { id: 'google-meet', label: 'Conta central Google' },
   ] },
   { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca', tabs: [] },
@@ -159,7 +163,7 @@ export const ADMIN_NAV: NavGroup[] = [
     id: 'referral-admin', label: 'Indicações', icon: Gift, section: 'Crescimento',
     tabs: [
       { id: 'referral-admin', label: 'Programa' },
-      { id: 'vendors-mgmt', label: 'Vendedores' },
+      { id: 'vendors-mgmt', label: 'Afiliados' },
     ],
   },
 

@@ -119,8 +119,8 @@ const StudentProfileEditor: React.FC<StudentProfileEditorProps> = ({ studentId, 
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2rem] shadow-2xl border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-4xl shadow-2xl border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden">
                 {/* Header */}
                 <div className="p-6 border-b dark:border-slate-800 flex items-center justify-between bg-gray-50/50 dark:bg-slate-800/50 shrink-0">
                     <div className="flex items-center gap-3">
@@ -251,7 +251,7 @@ const Select: React.FC<{ label: string; value: string; onChange: (v: string) => 
         <select
             value={value}
             onChange={e => onChange(e.target.value)}
-            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all"
+            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-hidden transition-all"
         >
             <option value="">Selecionar...</option>
             {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -267,7 +267,7 @@ const TextInput: React.FC<{ label: string; value: string; onChange: (v: string) 
             value={value}
             onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all"
+            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-hidden transition-all"
         />
     </div>
 );
@@ -280,7 +280,7 @@ const Textarea: React.FC<{ label: string; value: string; onChange: (v: string) =
             onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
             rows={3}
-            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all resize-none"
+            className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-hidden transition-all resize-none"
         />
     </div>
 );

@@ -7,6 +7,8 @@ interface TeacherStudentScheduleEditorProps {
   studentName: string;
   tenantId: string;
   teacherId: string;
+  bookingId?: string;
+  managerMode?: boolean;
   onClose: () => void;
   onChanged?: () => void;
 }
@@ -28,6 +30,12 @@ const formatDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDate
 
 const friendlyScheduleError = (message: string) => {
   const knownMessages = [
+    'Sessão expirada. Entre novamente.',
+    'Seu perfil não pode alterar agendas.',
+    'Aluno fora da sua escola.',
+    'Aula fora da sua agenda.',
+    'Escolha um dia válido de segunda a sábado.',
+    'Nenhuma aula selecionada para troca.',
     'Você só pode alterar alunos da sua própria agenda.',
     'O professor já possui uma aula nesse dia e horário.',
     'O aluno já possui uma aula nesse dia e horário.',
@@ -39,10 +47,12 @@ const friendlyScheduleError = (message: string) => {
   ];
   const conflict = message.match(/Choque de agenda[^.]*\./);
   if (conflict) return conflict[0];
+  if (/booking_conflicts_with_enrollment_reservation/.test(message)) return 'Esse horário está reservado para uma matrícula em andamento. Escolha outro horário ou aguarde a conclusão da matrícula.';
+  if (/invalid_enrollment_booking_link/.test(message)) return 'Não foi possível atualizar o horário da aula vinculada à matrícula. Seus dados foram mantidos; peça à coordenação para verificar o vínculo.';
   if (/inactive_student_scheduled_booking_forbidden/.test(message)) return 'O aluno está inativo. Fale com a coordenação antes de trocar o horário.';
   if (/schedule_change_one_pending|duplicate key/.test(message)) return 'Já existe uma proposta pendente para esta aula. Aguarde a revisão da escola.';
   if (/original_occurrence|one_off|occurrence_already/.test(message)) return 'Confira a data original e a proposta. A data original precisa corresponder a uma aula futura da agenda.';
-  return knownMessages.find(known => message.includes(known)) || 'Não foi possível salvar. Confira a data, o horário e o motivo (mínimo de 8 caracteres).';
+  return knownMessages.find(known => message.includes(known)) || 'Não foi possível salvar a troca de horário. Seus dados foram mantidos. Tente novamente; se o erro continuar, fale com a coordenação.';
 };
 
 const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> = ({
@@ -50,6 +60,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   studentName,
   tenantId,
   teacherId,
+  bookingId,
+  managerMode = false,
   onClose,
   onChanged,
 }) => {
@@ -65,12 +77,12 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   const [originalDate, setOriginalDate] = useState('');
   const [proposedDate, setProposedDate] = useState('');
   const [reason, setReason] = useState('');
-  const [initiatedBy, setInitiatedBy] = useState('TEACHER');
+  const [initiatedBy, setInitiatedBy] = useState(managerMode ? 'SCHOOL' : 'TEACHER');
 
   const loadBookings = async () => {
     setLoading(true);
     setError('');
-    const { data, error: queryError } = await supabase
+    let query = supabase
       .from('bookings')
       .select('id, day_of_week, time_slot')
       .eq('student_id', studentId)
@@ -79,6 +91,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
       .in('status', ['SCHEDULED', 'scheduled'])
       .order('day_of_week')
       .order('time_slot');
+    if (bookingId) query = query.eq('id', bookingId);
+    const { data, error: queryError } = await query;
 
     if (queryError) {
       setError('Não foi possível carregar a agenda deste aluno.');
@@ -105,7 +119,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
 
   useEffect(() => {
     void loadBookings();
-  }, [studentId, teacherId, tenantId]);
+  }, [studentId, teacherId, tenantId, bookingId]);
 
   const changedBookings = useMemo(
     () => bookings.filter(item => item.day_of_week !== item.originalDay || item.time_slot !== item.originalTime),
@@ -119,7 +133,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
     setBookings(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
   };
 
-  // Troca permanente: o professor aplica direto, todas as aulas numa transação só.
+  // Professor e direção usam a mesma transação para preservar a vigência.
   // As aulas antes da vigência continuam no horário antigo; a Gestão é avisada no grupo.
   const applyPermanentChange = async () => {
     if (!changedBookings.length) return;
@@ -128,28 +142,35 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
       .join('\n');
     const confirmed = window.confirm(
       `Alterar o horário de ${studentName} a partir de ${formatDate(effectiveFrom)}?\n\n${summary}\n\n` +
-      'As aulas anteriores continuam no horário antigo. A Gestão será avisada no grupo.',
+      'A grade só será alterada após os aceites individuais exigidos. As aulas anteriores continuam no horário antigo.',
     );
     if (!confirmed) return;
 
     setApplying(true);
     setError('');
     setApplied('');
-    const { data: result, error: rpcError } = await supabase.rpc('teacher_apply_student_schedule_change', {
-      p_student_id: studentId,
-      p_changes: changedBookings.map(item => ({ booking_id: item.id, new_day: item.day_of_week, new_time: item.time_slot })),
-      p_effective_from: effectiveFrom,
-      p_reason: reason,
-    });
-    setApplying(false);
-
-    if (rpcError || result?.ok === false) {
-      setError(friendlyScheduleError(rpcError?.message || result?.error || ''));
-      return;
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc('teacher_apply_student_schedule_change', {
+        p_student_id: studentId,
+        p_changes: changedBookings.map(item => ({ booking_id: item.id, new_day: item.day_of_week, new_time: item.time_slot })),
+        p_effective_from: effectiveFrom,
+        p_reason: reason,
+      });
+      if (rpcError || result?.ok !== true) {
+        setError(friendlyScheduleError(rpcError?.message || result?.error || ''));
+        return;
+      }
+      if(result.pending_terms){setApplied('Proposta salva. A escola e o professor precisam assinar o termo individual, e a família confirmar a agenda. A grade atual foi preservada. Depois, retome esta alteração.');return;}
+      setApplied(result.changed === 0
+        ? 'A agenda já possui esse horário na data escolhida.'
+        : `Horário alterado a partir de ${formatDate(effectiveFrom)}.${result.notification_queued ? ' O aviso à coordenação foi colocado na fila.' : ''}`);
+      setBookings(current => current.map(item => ({ ...item, originalDay: item.day_of_week, originalTime: item.time_slot })));
+      onChanged?.();
+    } catch {
+      setError('Não foi possível confirmar a troca. Reabra a agenda e confira o horário antes de tentar novamente.');
+    } finally {
+      setApplying(false);
     }
-    setApplied(`Horário alterado a partir de ${formatDate(effectiveFrom)}.${result?.notification_queued ? ' A Gestão foi avisada no grupo.' : ''}`);
-    setBookings(current => current.map(item => ({ ...item, originalDay: item.day_of_week, originalTime: item.time_slot })));
-    onChanged?.();
   };
 
   // Troca de UMA aula continua sendo solicitação: aceite da família e revisão da escola.
@@ -196,8 +217,8 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
   const permanent = scope === 'PERMANENT';
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-brand-border bg-brand-surface shadow-2xl">
+    <div className="fixed inset-0 z-120 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-xl overflow-hidden rounded-4xl border border-brand-border bg-brand-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-brand-border bg-brand-surface-2/60 p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-500">
@@ -221,7 +242,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
           </div>
           <div className="grid gap-3 sm:grid-cols-2 text-xs">
             <label>Tipo de mudança<select value={scope} onChange={e => { setScope(e.target.value as 'PERMANENT' | 'ONE_OFF'); setApplied(''); setError(''); }} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3"><option value="PERMANENT">Permanente</option><option value="ONE_OFF">Somente uma aula</option></select></label>
-            {!permanent && <label>Quem pediu a mudança?<select value={initiatedBy} onChange={e => setInitiatedBy(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3"><option value="TEACHER">Eu, professor</option><option value="STUDENT">Aluno</option><option value="GUARDIAN">Responsável</option></select></label>}
+            {!permanent && <label>Quem pediu a mudança?<select value={initiatedBy} onChange={e => setInitiatedBy(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3">{managerMode && <option value="SCHOOL">Direção da escola</option>}<option value="TEACHER">Professor</option><option value="STUDENT">Aluno</option><option value="GUARDIAN">Responsável</option></select></label>}
             {permanent ? <label>A partir de<input type="date" min={tomorrow()} value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label> : <><label>Data original da aula<input type="date" min={tomorrow()} value={originalDate} onChange={e => setOriginalDate(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label><label>Data proposta<input type="date" min={tomorrow()} value={proposedDate} onChange={e => setProposedDate(e.target.value)} className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label></>}
             <label className="sm:col-span-2">Motivo<textarea value={reason} maxLength={1000} onChange={e => setReason(e.target.value)} placeholder="Explique o motivo (fica registrado e vai para a Gestão)." className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface p-3" /></label>
           </div>
@@ -229,7 +250,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
           {successId && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">Proposta registrada. Aguarde o aceite da família e a aprovação da escola.</p>}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold text-red-600 dark:text-red-300">
+            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold text-red-600 dark:text-red-300">
               <AlertCircle size={16} className="mt-0.5 shrink-0" /> {error}
             </div>
           )}
@@ -253,7 +274,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
                   value={booking.day_of_week}
                   onChange={event => updateDraft(booking.id, { day_of_week: event.target.value })}
                   disabled={applying || savingId === booking.id || !permanent}
-                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
+                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-hidden focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
                 >
                   {DAYS.map(day => <option key={day} value={day}>{day}</option>)}
                 </select>
@@ -264,7 +285,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
                   value={booking.time_slot}
                   onChange={event => updateDraft(booking.id, { time_slot: event.target.value })}
                   disabled={applying || savingId === booking.id}
-                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none [color-scheme:dark] focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
+                  className="rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-hidden scheme-dark focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 disabled:opacity-60"
                 />
                 {!permanent && (
                   <button

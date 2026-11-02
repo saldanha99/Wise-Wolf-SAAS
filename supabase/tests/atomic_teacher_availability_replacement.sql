@@ -27,6 +27,12 @@ select pg_temp.assert_true(
 insert into public.tenants (id, name)
 values ('atomic-availability-school', 'Atomic Availability School');
 
+-- Mudança de agenda feita por professor avisa o grupo de Coordenação desde a
+-- migration 20260922024045; sem canal configurado, replace_teacher_availability
+-- recusa a gravação. A escola do teste precisa de um grupo, como uma real.
+insert into public.tenant_notice_channels (tenant_id, channel, group_jid)
+values ('atomic-availability-school', 'coordenacao', '120363000000000001@g.us');
+
 insert into auth.users (
   id, aud, role, email,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at

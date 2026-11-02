@@ -105,3 +105,22 @@ export async function loadOpportunityDispatchGuard(
   }
   return parseOpportunityDispatchGuard(data);
 }
+
+/** Confere novamente a situação antes de um convite privado. */
+export async function teacherMayReceiveOpportunity(
+  admin: {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: unknown }>;
+  },
+  tenantId: string,
+  teacherId: string,
+): Promise<boolean> {
+  if (!tenantId.trim() || !UUID_PATTERN.test(teacherId)) return false;
+  const result = await admin.rpc("teacher_opportunity_recipient_eligible", {
+    p_tenant: tenantId,
+    p_teacher: teacherId,
+  });
+  return !result.error && result.data === true;
+}

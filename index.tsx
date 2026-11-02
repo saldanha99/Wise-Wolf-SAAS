@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { isHubMarketingHost } from './components/hub/hubRoutes';
 import { WOLFIE_SCENARIO_UI_V2_ENABLED } from './src/components/wolfie/visuals/featureFlags';
 import { installPwaFreshnessGuard } from './src/services/pwaFreshness';
+import { AppLoadBoundary } from './components/AppLoadBoundary';
 
 const App = React.lazy(() => import('./App'));
 const HubApp = React.lazy(() => import('./components/hub/HubApp'));
@@ -71,10 +72,12 @@ const RootApp = isHubMarketingHost() || normalizedPath === '/hub' || normalizedP
     : App;
 root.render(
   <React.StrictMode>
-    <ApplicationShell>
-      <React.Suspense fallback={<div className="min-h-screen bg-slate-950" aria-hidden="true" />}>
-        <RootApp />
-      </React.Suspense>
-    </ApplicationShell>
+    <AppLoadBoundary>
+      <ApplicationShell>
+        <React.Suspense fallback={<div className="min-h-screen bg-slate-950" aria-hidden="true" />}>
+          <RootApp />
+        </React.Suspense>
+      </ApplicationShell>
+    </AppLoadBoundary>
   </React.StrictMode>
 );

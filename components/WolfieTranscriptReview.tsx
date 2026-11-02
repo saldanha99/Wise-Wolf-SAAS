@@ -88,7 +88,7 @@ export const WolfieTranscriptReview: React.FC<
               if (event.key === "Enter") confirm();
               if (event.key === "Escape") setIsEditing(false);
             }}
-            className="mt-4 w-full rounded-2xl border border-cyan-400/35 bg-slate-900 px-4 py-3 text-base text-white outline-none ring-0 transition focus:border-cyan-300"
+            className="mt-4 w-full rounded-2xl border border-cyan-400/35 bg-slate-900 px-4 py-3 text-base text-white outline-hidden ring-0 transition focus:border-cyan-300"
             aria-label="Editar transcrição"
           />
         )

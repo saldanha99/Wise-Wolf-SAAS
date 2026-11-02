@@ -24,6 +24,7 @@ import {
   sendWhatsTextToResolvedDestinationDetailed,
 } from "../_shared/evolution-send.ts";
 import {
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
@@ -181,9 +182,16 @@ async function resolveManagementRoute(
     { requireDeliveryReceipts: true },
   );
   if (!route) return null;
+  // Dinheiro vai ao canal financeiro (sem grupo próprio: direção, depois o
+  // destino do DRE). A cerca do outbox compara com o MESMO canal.
+  const canal = await loadTenantNoticeDestination(
+    supabase,
+    tenantId,
+    "financeiro",
+  );
   const destination = resolveTenantConfiguredWhatsAppDestination(
     route,
-    cfg.destino,
+    canal || cfg.destino,
   );
   if (!destination) return null;
   const { data: instance, error: instanceError } = await supabase

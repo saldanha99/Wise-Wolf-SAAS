@@ -4,6 +4,7 @@ import { Video, Search, ExternalLink, Copy, CheckCircle, Smartphone, Monitor, Sh
 import { supabase } from '../lib/supabase';
 import { safeMeetingLink } from '../lib/meetingLink';
 import { User as UserType, UserRole } from '../types';
+import MyLessonLinks from './lessonLinks/MyLessonLinks';
 
 interface MeetingLinksViewProps {
     user: UserType;
@@ -149,24 +150,27 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
             <header>
                 <h2 className="text-3xl font-black text-brand-text tracking-tight">Central de Acessos</h2>
                 <p className="text-brand-muted mt-1">
-                    {user.role === UserRole.TEACHER
-                        ? 'Acesse e gerencie as salas virtuais dos seus alunos.'
-                        : 'Sua sala de aula fixa para todos os encontros virtuais.'}
+                    Cada aula tem a sua sala da escola no Google Meet, com o mesmo link para aluno e professor.
+                    O link reserva abaixo só vale quando a aula não tem sala da escola.
                 </p>
             </header>
 
+            {(user.role === UserRole.TEACHER || user.role === UserRole.STUDENT) && (
+                <MyLessonLinks role={user.role === UserRole.TEACHER ? 'TEACHER' : 'STUDENT'} />
+            )}
+
             {user.role === UserRole.STUDENT && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-blue-950 bg-gradient-to-br from-tenant-primary to-blue-900 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
+                    <div className="bg-blue-950 bg-linear-to-br from-tenant-primary to-blue-900 p-6 sm:p-10 rounded-4xl sm:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
                         <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32" />
 
                         <div className="relative z-10">
                             <div className="p-4 bg-white/10 rounded-2xl w-fit mb-6 sm:mb-8 backdrop-blur-md border border-white/20">
                                 <Video size={32} className="text-white" />
                             </div>
-                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Sua Sala Virtual</h3>
+                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Seu link reserva</h3>
                             <p className="text-blue-100 text-base sm:text-lg mb-7 sm:mb-10 max-w-md leading-relaxed">
-                                Este é o seu link permanente. Utilize-o para todas as suas aulas com qualquer professor da nossa rede.
+                                Use só quando a aula não tiver sala da escola (a lista acima diz qual link vale para cada aula).
                             </p>
 
                             {studentLink ? (
@@ -207,7 +211,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             <p className="text-sm text-brand-muted">Nossas salas são monitoradas pela coordenação para garantir a melhor qualidade pedagógica para você.</p>
                         </div>
 
-                        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm">
+                        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-xs">
                             <div className="flex items-center gap-4 mb-4">
                                 <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-xl">
                                     <Smartphone size={20} />
@@ -230,11 +234,11 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                 placeholder="Buscar aluno por nome..."
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="w-full pl-14 pr-6 py-4 bg-brand-surface border border-brand-border dark:border-brand-border rounded-2xl outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all font-medium text-brand-text dark:text-slate-200 shadow-sm"
+                                className="w-full pl-14 pr-6 py-4 bg-brand-surface border border-brand-border dark:border-brand-border rounded-2xl outline-hidden focus:ring-4 focus:ring-tenant-primary/10 transition-all font-medium text-brand-text dark:text-slate-200 shadow-xs"
                             />
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 px-6 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30 font-bold text-xs flex items-center gap-3">
-                            <Zap size={16} fill="currentColor" /> Alunos vinculados à sua conta
+                            <Zap size={16} fill="currentColor" /> Link reserva de cada aluno (vale só sem sala da escola)
                         </div>
                     </div>
 
@@ -242,7 +246,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                         {filteredStudents.map((student) => {
                             const meetingLink = safeMeetingLink(student.meeting_link);
                             return (
-                            <div key={student.id} className="group bg-brand-surface p-6 rounded-[2rem] border border-brand-border hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all">
+                            <div key={student.id} className="group bg-brand-surface p-6 rounded-4xl border border-brand-border hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all">
                                 <div className="flex items-center gap-4 mb-6">
                                     <div className="w-12 h-12 rounded-xl overflow-hidden bg-brand-surface-2">
                                         <img src={student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`} alt="" className="w-full h-full object-cover" />
@@ -304,7 +308,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
 
             {/* Edit Modal */}
             {editingStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
                     <div className="bg-brand-surface w-full max-w-md rounded-[2.5rem] shadow-2xl p-6 sm:p-8 border border-white/10 relative max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-black text-brand-text mb-2">Editar Sala de Aula</h3>
                         <p className="text-sm text-brand-muted mb-6">Defina o link permanente para <strong>{editingStudent.full_name}</strong>.</p>
@@ -313,7 +317,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             <div>
                                 <label className="text-[10px] uppercase font-black tracking-widest text-brand-muted ml-2">Link da Reunião (Meet/Zoom)</label>
                                 <input
-                                    className="w-full p-4 bg-brand-surface-2 border border-brand-border rounded-2xl outline-none font-bold text-sm focus:ring-2 focus:ring-tenant-primary"
+                                    className="w-full p-4 bg-brand-surface-2 border border-brand-border rounded-2xl outline-hidden font-bold text-sm focus:ring-2 focus:ring-tenant-primary"
                                     placeholder="https://meet.google.com/..."
                                     value={newLink}
                                     onChange={e => setNewLink(e.target.value)}

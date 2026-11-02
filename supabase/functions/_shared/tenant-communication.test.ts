@@ -178,6 +178,43 @@ Deno.test("tenant communication identity is canonical and server-derived", () =>
     wiseWolfIdentity?.portalUrl === "https://system.wisewolflanguage.com.br",
     "Wise Wolf default tenant must resolve to system.wisewolflanguage.com.br",
   );
+
+  // Regressão de 17/09/2026: `domain` gravado pela tela de configuração
+  // ("wisewolf.wisewolflanguage.com.br", sem DNS) passava na frente do portal
+  // oficial e o link de renovação saía quebrado.
+  const wiseWolfWithSlugDomain = resolveTenantCommunicationIdentity({
+    id: "school-wise-wolf",
+    name: "Wise Wolf Languages",
+    saas_status: "ACTIVE",
+    whatsapp_enabled: true,
+    slug: "wisewolf",
+    domain: "wisewolf.wisewolflanguage.com.br",
+    custom_domain: null,
+    custom_domain_verified: false,
+    branding: {},
+    school_info: {},
+  }, "school-wise-wolf");
+  assert(
+    wiseWolfWithSlugDomain?.portalUrl ===
+      "https://system.wisewolflanguage.com.br",
+    "tenants.domain derivado do slug não pode vencer o portal oficial da Wise Wolf",
+  );
+  const wiseWolfWithVerifiedDomain = resolveTenantCommunicationIdentity({
+    id: "school-wise-wolf",
+    name: "Wise Wolf Languages",
+    saas_status: "ACTIVE",
+    whatsapp_enabled: true,
+    slug: "wisewolf",
+    domain: "wisewolf.wisewolflanguage.com.br",
+    custom_domain: "portal.wisewolf.example",
+    custom_domain_verified: true,
+    branding: {},
+    school_info: {},
+  }, "school-wise-wolf");
+  assert(
+    wiseWolfWithVerifiedDomain?.portalUrl === "https://portal.wisewolf.example",
+    "domínio próprio verificado continua valendo",
+  );
 });
 
 Deno.test("tenant communication fails closed without exact active tenant linkage", () => {
