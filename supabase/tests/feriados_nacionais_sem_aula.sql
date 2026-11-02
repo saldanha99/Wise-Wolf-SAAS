@@ -63,6 +63,9 @@ begin
  update public.profiles set status='Ativo' where id=student;
 
  -- Pop-up: próximo feriado para a escola que adotou; nada para quem não adotou.
+ -- Release rodado num feriado real (Finados, 02/11): a rodada de avisos recoloca
+ -- o feriado de hoje no calendário, e o pop-up mostraria o de hoje.
+ delete from public.national_holidays where holiday_date=today;
  perform set_config('request.jwt.claims',json_build_object('sub',student,'role','authenticated')::text,true);
  h:=public.my_upcoming_national_holiday();
  perform pg_temp.fn_assert(h->>'date'=d1::text and (h->>'days_until')::int=1,'pop-up sem o proximo feriado');

@@ -1200,6 +1200,14 @@ from public.bookings booking
 where booking.id = '20000000-0000-4000-8000-00000000000f';
 set local session_replication_role = origin;
 
+-- Em feriado nacional a aula fixa não gera confirmação (20261028150000). A
+-- ocorrência deste teste vem do relógio: num release rodado em feriado ela
+-- cairia no dia sem aula. Tira o feriado do dia só nesta transação.
+delete from public.national_holidays holiday
+ using public.bookings booking
+ where booking.id = '20000000-0000-4000-8000-00000000000f'
+   and holiday.holiday_date = booking.start_date;
+
 select pg_temp.assert_true(
   public.enqueue_attendance_confirmations() >= 1,
   'enqueue did not create the recently finished covered occurrence'
