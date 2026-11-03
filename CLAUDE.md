@@ -4711,3 +4711,14 @@ O Hub nunca vendeu (0 checkouts até 03/11); estas travas vêm antes da 1ª vend
   (`docs/legal/hub-termos-v2-e-anexo-de-dados-rascunho.md`).
 Migrations `20261103100000`/`20261103100500` e testes `hub_checkout_abandonado.sql`/
 `hub_carencia_de_5_dias.sql` registrados no release.
+
+### 03/11/2026 — Dispensa de contrato geral no termo por aluno
+
+O termo por aluno exige contrato geral aceito e, sem ele, recusava a assinatura com
+"Proposta indisponível ou fonte alterada", que não era o motivo real. Agora a recusa
+diz que o contrato está pendente, e a direção pode dispensar um professor:
+`private.set_teacher_general_contract_waiver(escola, professor, diretor, true, motivo)`,
+só na VPS, com trilha em `private.teacher_general_contract_waivers`. Vale apenas para o
+termo por aluno (`student_term_source_valid`): cobertura pontual segue exigindo o aceite.
+⚠️ Nunca marque `contract_accepted = true` para destravar: esse aceite não existiu.
+Migration `20261103140000`, teste `dispensa_de_contrato_geral_no_termo.sql` no release.

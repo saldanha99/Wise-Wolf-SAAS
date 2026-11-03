@@ -1578,6 +1578,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261102140000_links_das_aulas_e_experimental_no_aceite.sql"
   "supabase/migrations/20261103100000_hub_checkout_abandonado.sql"
   "supabase/migrations/20261103100500_hub_carencia_de_5_dias.sql"
+  "supabase/migrations/20261103140000_dispensa_de_contrato_geral_no_termo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1775,6 +1776,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/reserva_de_agenda_inicio_futuro.sql"
   "supabase/tests/hub_checkout_abandonado.sql"
   "supabase/tests/hub_carencia_de_5_dias.sql"
+  "supabase/tests/dispensa_de_contrato_geral_no_termo.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

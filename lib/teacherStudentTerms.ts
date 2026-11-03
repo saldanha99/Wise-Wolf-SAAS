@@ -4,7 +4,7 @@ export type IndividualTerm = {
  status:string;phase:string;body?:string;content_hash?:string;unit_rate?:number;school_signed_at?:string|null;teacher_signed_at?:string|null;school_typed_name?:string|null;teacher_typed_name?:string|null;
  family_confirmed_at?:string|null;schedule_hash?:string;retired_at?:string|null;closed_reason?:string|null;events?:{event:string;created_at:string;content_hash:string}[];
 };
-export type IndividualTermsData = {ok:boolean;role:string;tenant_id?:string;actor_name:string;general_contract_accepted?:boolean;enabled:boolean;terms:IndividualTerm[];identity?:ProviderDetails|null};
+export type IndividualTermsData = {ok:boolean;role:string;tenant_id?:string;actor_name:string;general_contract_accepted?:boolean;general_contract_waived?:boolean;enabled:boolean;terms:IndividualTerm[];identity?:ProviderDetails|null};
 // kind INDIVIDUAL = prestador autônomo (CPF), sem empresa.
 export type ProviderDetails = {kind?:'COMPANY'|'INDIVIDUAL';companyName:string;cnpj:string;companyAddress:string;representativeCpf:string};
 export const individualTermPhase:Record<string,string>={IDENTITY_PENDING:'Dados da empresa pendentes',SCHOOL_PENDING:'Aguardando assinatura da escola',TEACHER_PENDING:'Aguardando assinatura do professor',FAMILY_PENDING:'Aguardando confirmação da agenda',EXECUTED:'Termo assinado e agenda confirmada',PROPOSED:'Proposta pendente',DECLINED:'Recusado pelo professor',REVOKED:'Proposta retirada',SUPERSEDED:'Substituído por nova versão',TERMINATED:'Atendimento encerrado'};
