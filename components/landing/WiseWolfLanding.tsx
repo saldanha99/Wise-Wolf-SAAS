@@ -53,7 +53,16 @@ const WiseWolfLanding: React.FC = () => {
     }, []);
 
     const loadPlans = async () => {
-        const { data } = await supabase.from('saas_plans').select('*').eq('active', true).order('price');
+        // Só planos de ESCOLA são vendidos aqui. Os planos Teacher (professor
+        // autônomo) não são produto à venda nesta página: o professor entra
+        // pelo Hub, e o tenant de professor é ativado pela plataforma
+        // (Professor Negócio). A edge create-saas-checkout recusa o resto.
+        const { data } = await supabase
+            .from('saas_plans')
+            .select('*')
+            .eq('active', true)
+            .eq('plan_type', 'school')
+            .order('price');
         setPlans((data || []) as Plan[]);
     };
 

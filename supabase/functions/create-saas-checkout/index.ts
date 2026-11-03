@@ -23,6 +23,7 @@ import {
   resolveProviderSubscription,
   saasCheckoutNextDueDate,
   saasCheckoutProviderReference,
+  saasPlanSaleBlockCode,
 } from "./provider-safety.ts";
 import {
   PLATFORM_ASAAS_TENANT_ID,
@@ -420,6 +421,15 @@ serve(async (req) => {
       .maybeSingle();
     if (planError || !plan || (!checkout && plan.active !== true)) {
       return json({ error: "Plano indisponível" }, 400);
+    }
+    // Plano Teacher não é vendido aqui (nem retomado): recusa antes do limite
+    // de tentativas, do lead, da intenção e de qualquer chamada à Asaas.
+    const planSaleBlock = saasPlanSaleBlockCode(plan.plan_type);
+    if (planSaleBlock) {
+      return json({
+        error: "Este plano não está disponível para contratação nesta página.",
+        code: planSaleBlock,
+      }, 400);
     }
 
     if (!checkout) {
