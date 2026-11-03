@@ -3,6 +3,7 @@ import {
   cancelHubProviderSubscriptionOnce,
   HubProviderOperationError,
   markHubProviderCreationSubmitting,
+  runHubAbandonedCheckoutCancellation,
   runHubProviderCancellation,
 } from "./hub-provider-operations.ts";
 import type { ResolvedAsaasIntegration } from "./tenant-integration-broker.ts";
@@ -636,5 +637,303 @@ Deno.test("webhook target reaches terminal state before operation finalization",
     calls.indexOf("hub_complete_provider_cancellation_target") <
       calls.indexOf("hub_finalize_webhook_provider_cancellation"),
     "target confirmation must precede operation finalization",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Checkout abandonado: banco e Asaas dublados, nada sai para a rede.
+
+const abandonedCheckoutId = "66666666-6666-4666-8666-666666666666";
+const abandonedSubscription = {
+  providerSubscriptionId: "sub_abandoned",
+  providerCustomerId: "cus_abandoned",
+  checkoutId: abandonedCheckoutId,
+};
+
+function abandonedBegin(action = "STARTED") {
+  return {
+    ok: true,
+    action,
+    operationId: "77777777-7777-4777-8777-777777777771",
+    leaseToken: "77777777-7777-4777-8777-777777777772",
+    snapshot: {
+      checkoutId: abandonedCheckoutId,
+      targets: [abandonedSubscription],
+      payment: {
+        providerPaymentId: "pay_abandoned",
+        providerCustomerId: "cus_abandoned",
+        providerSubscriptionId: "sub_abandoned",
+        checkoutId: abandonedCheckoutId,
+      },
+    },
+  };
+}
+
+function abandonedAdmin(overrides: Record<string, unknown> = {}) {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  return {
+    calls,
+    names: () => calls.map((call) => call.name),
+    client: {
+      rpc(name: string, args: Record<string, unknown>) {
+        calls.push({ name, args });
+        const data = name in overrides
+          ? overrides[name]
+          : name === "hub_begin_abandoned_checkout_cancellation"
+          ? abandonedBegin()
+          : name === "hub_claim_provider_cancellation_target"
+          ? { ok: true, action: "VERIFY_REQUIRED" }
+          : name === "hub_mark_abandoned_checkout_subscription_submitting"
+          ? { ok: true, action: "SUBMIT_ALLOWED" }
+          : name === "hub_mark_abandoned_checkout_payment_submitting"
+          ? { ok: true, action: "SUBMIT_ALLOWED" }
+          : name === "hub_abort_abandoned_checkout_cancellation"
+          ? { ok: true, action: "ABORTED" }
+          : name === "hub_finalize_abandoned_checkout_cancellation"
+          ? { ok: true, idempotent: false, status: "CANCELLED" }
+          : { ok: true };
+        return Promise.resolve({ data, error: null });
+      },
+    },
+  };
+}
+
+const activeSubscription = () =>
+  Response.json({
+    id: "sub_abandoned",
+    customer: "cus_abandoned",
+    externalReference: `hub:${abandonedCheckoutId}`,
+    status: "ACTIVE",
+  });
+
+const providerPayment = (patch: Record<string, unknown> = {}) =>
+  Response.json({
+    id: "pay_abandoned",
+    customer: "cus_abandoned",
+    subscription: "sub_abandoned",
+    externalReference: `hub:${abandonedCheckoutId}`,
+    status: "PENDING",
+    ...patch,
+  });
+
+// Roteia por "MÉTODO recurso" e consome as respostas em ordem.
+function scriptedFetch(script: Record<string, Array<() => Response>>) {
+  const requests: string[] = [];
+  const fetcher = (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = String(init?.method || "GET");
+    const resource = url.includes("/payments/") ? "payment" : "subscription";
+    const key = `${method} ${resource}`;
+    requests.push(key);
+    if (url.includes(integration.apiKey)) {
+      throw new Error("a chave do Asaas não pode ir na URL");
+    }
+    const next = script[key]?.shift();
+    if (!next) throw new Error(`requisição inesperada: ${key}`);
+    return Promise.resolve(next());
+  };
+  return { requests, fetcher };
+}
+
+Deno.test("checkout abandonado: assinatura e depois cobrança, um DELETE cada", async () => {
+  const admin = abandonedAdmin();
+  const provider = scriptedFetch({
+    "GET payment": [
+      () => providerPayment(),
+      () => providerPayment(),
+      () => providerPayment({ deleted: true }),
+    ],
+    "GET subscription": [
+      activeSubscription,
+      () => new Response(null, { status: 404 }),
+    ],
+    "DELETE subscription": [() => Response.json({ deleted: true })],
+    "DELETE payment": [() => Response.json({ deleted: true })],
+  });
+  const result = await runHubAbandonedCheckoutCancellation({
+    admin: admin.client,
+    checkoutId: abandonedCheckoutId,
+    fetcher: provider.fetcher,
+    resolveIntegration: resolver,
+  });
+  assert(result.outcome === "CANCELLED", "o checkout deveria ser cancelado");
+  assert(
+    provider.requests.join(",") ===
+      "GET payment,GET subscription,DELETE subscription,GET subscription," +
+        "GET payment,DELETE payment,GET payment",
+    `ordem de chamadas ao provedor inesperada: ${provider.requests.join(",")}`,
+  );
+  const names = admin.names();
+  assert(
+    names.indexOf("hub_bind_provider_operation_integration") <
+        names.indexOf("hub_claim_provider_cancellation_target") &&
+      names.indexOf("hub_mark_abandoned_checkout_subscription_submitting") <
+        names.indexOf("hub_mark_abandoned_checkout_payment_submitting") &&
+      names.lastIndexOf("hub_complete_abandoned_checkout_payment") <
+        names.indexOf("hub_finalize_abandoned_checkout_cancellation"),
+    "cerca, ordem assinatura→cobrança ou finalização fora de ordem",
+  );
+  const paymentCompletion = admin.calls.find((call) =>
+    call.name === "hub_complete_abandoned_checkout_payment"
+  );
+  assert(
+    paymentCompletion?.args.p_outcome === "CONFIRMED",
+    "cobrança removida por este DELETE deve ficar CONFIRMED",
+  );
+});
+
+Deno.test("checkout abandonado: cobrança já paga encerra sem mutação", async () => {
+  const admin = abandonedAdmin();
+  const provider = scriptedFetch({
+    "GET payment": [() => providerPayment({ status: "RECEIVED" })],
+  });
+  const result = await runHubAbandonedCheckoutCancellation({
+    admin: admin.client,
+    checkoutId: abandonedCheckoutId,
+    fetcher: provider.fetcher,
+    resolveIntegration: resolver,
+  });
+  assert(
+    result.outcome === "ABORTED" &&
+      result.reason === "PAYMENT_SETTLED_AT_PROVIDER",
+    "pagamento confirmado deve abortar a operação",
+  );
+  assert(
+    !provider.requests.some((request) => request.startsWith("DELETE")),
+    "nenhum DELETE pode sair para quem já pagou",
+  );
+  assert(
+    !admin.names().includes("hub_claim_provider_cancellation_target") &&
+      !admin.names().includes("hub_finalize_abandoned_checkout_cancellation"),
+    "operação abortada não reivindica alvo nem finaliza",
+  );
+});
+
+Deno.test("checkout abandonado: pagamento no meio do cancelamento não apaga a cobrança", async () => {
+  const admin = abandonedAdmin();
+  const provider = scriptedFetch({
+    "GET payment": [
+      () => providerPayment(),
+      () => providerPayment({ status: "CONFIRMED" }),
+    ],
+    "GET subscription": [
+      activeSubscription,
+      () => new Response(null, { status: 404 }),
+    ],
+    "DELETE subscription": [() => Response.json({ deleted: true })],
+  });
+  const result = await runHubAbandonedCheckoutCancellation({
+    admin: admin.client,
+    checkoutId: abandonedCheckoutId,
+    fetcher: provider.fetcher,
+    resolveIntegration: resolver,
+  });
+  assert(
+    result.outcome === "ABORTED" &&
+      result.reason === "PAYMENT_SETTLED_DURING_CANCELLATION",
+    "pagamento confirmado depois do DELETE da assinatura deve abortar",
+  );
+  assert(
+    !provider.requests.includes("DELETE payment") &&
+      !admin.names().includes("hub_finalize_abandoned_checkout_cancellation"),
+    "cobrança paga não pode ser apagada nem o checkout cancelado",
+  );
+});
+
+Deno.test("checkout abandonado: retentativa depois de DELETE perdido só faz GET", async () => {
+  const admin = abandonedAdmin({
+    hub_begin_abandoned_checkout_cancellation: abandonedBegin("RESUME"),
+    hub_claim_provider_cancellation_target: {
+      ok: true,
+      action: "RECONCILE_ONLY",
+    },
+  });
+  const provider = scriptedFetch({
+    "GET payment": [() => providerPayment()],
+    "GET subscription": [activeSubscription],
+  });
+  let code = "";
+  try {
+    await runHubAbandonedCheckoutCancellation({
+      admin: admin.client,
+      checkoutId: abandonedCheckoutId,
+      fetcher: provider.fetcher,
+      resolveIntegration: resolver,
+    });
+  } catch (error) {
+    code = error instanceof HubProviderOperationError ? error.code : "other";
+  }
+  assert(
+    code === "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+    "assinatura ativa depois de um DELETE submetido é revisão",
+  );
+  assert(
+    !provider.requests.some((request) => request.startsWith("DELETE")) &&
+      !admin.names().includes(
+        "hub_mark_abandoned_checkout_subscription_submitting",
+      ),
+    "o segundo DELETE nunca pode sair",
+  );
+});
+
+Deno.test("checkout abandonado: falha de rede no DELETE da cobrança não finaliza", async () => {
+  const admin = abandonedAdmin();
+  const provider = scriptedFetch({
+    "GET payment": [() => providerPayment(), () => providerPayment()],
+    "GET subscription": [
+      activeSubscription,
+      () => new Response(null, { status: 404 }),
+    ],
+    "DELETE subscription": [() => Response.json({ deleted: true })],
+    "DELETE payment": [() => {
+      throw new TypeError("rede caiu");
+    }],
+  });
+  let code = "";
+  try {
+    await runHubAbandonedCheckoutCancellation({
+      admin: admin.client,
+      checkoutId: abandonedCheckoutId,
+      fetcher: provider.fetcher,
+      resolveIntegration: resolver,
+    });
+  } catch (error) {
+    code = error instanceof HubProviderOperationError ? error.code : "other";
+  }
+  assert(
+    code === "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+    "resultado desconhecido deve ficar para reconciliação",
+  );
+  assert(
+    !admin.names().includes("hub_complete_abandoned_checkout_payment") &&
+      !admin.names().includes("hub_finalize_abandoned_checkout_cancellation"),
+    "sem prova da remoção, nada é concluído",
+  );
+});
+
+Deno.test("checkout abandonado: bloqueado no banco não chama o provedor", async () => {
+  const admin = abandonedAdmin({
+    hub_begin_abandoned_checkout_cancellation: {
+      ok: false,
+      action: "SKIPPED",
+      reason: "PAYMENT_APPLIED",
+    },
+  });
+  let resolved = 0;
+  const result = await runHubAbandonedCheckoutCancellation({
+    admin: admin.client,
+    checkoutId: abandonedCheckoutId,
+    fetcher: () => {
+      throw new Error("nenhuma chamada ao Asaas era esperada");
+    },
+    resolveIntegration: () => {
+      resolved += 1;
+      return Promise.resolve(integration);
+    },
+  });
+  assert(
+    result.outcome === "SKIPPED" && result.reason === "PAYMENT_APPLIED" &&
+      resolved === 0 && admin.calls.length === 1,
+    "checkout não elegível não pode tocar no provedor",
   );
 });

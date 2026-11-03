@@ -2,10 +2,12 @@ import {
   activateThenCancelHubReplacement,
   failedCheckoutStatus,
   HUB_CORE_PRODUCT_FAMILY,
+  hubAbandonedPaymentObservation,
   hubActivationAllowsReplacementCancellation,
   hubBillingBlockCode,
   hubCheckoutDecision,
   hubCheckoutIdFromExternalReference,
+  hubCheckoutWasAbandonedUnpaid,
   hubFixtureCheckoutBlockCode,
   hubPlanMatchesAccountAudience,
   hubRecoveryReason,
@@ -426,5 +428,95 @@ Deno.test("Hub routing and recovery events are conservative", () => {
   assert(
     !isHubRecoveryEvent("PAYMENT_RECEIVED"),
     "paid events keep their exactly-once ledger path",
+  );
+});
+
+Deno.test("só o checkout cancelado por abandono pula o cancelamento no estorno", () => {
+  assert(
+    hubCheckoutWasAbandonedUnpaid({
+      status: "CANCELLED",
+      metadata: { cancellationReason: "ABANDONED_UNPAID" },
+    }),
+    "checkout abandonado deve ser reconhecido",
+  );
+  assert(
+    !hubCheckoutWasAbandonedUnpaid({
+      status: "CANCELLED",
+      metadata: { billingBlockedCode: "HUB_ACCOUNT_INACTIVE" },
+    }),
+    "cancelamento por bloqueio de conta não é abandono",
+  );
+  assert(
+    !hubCheckoutWasAbandonedUnpaid({
+      status: "PENDING",
+      metadata: { cancellationReason: "ABANDONED_UNPAID" },
+    }),
+    "metadado sem o status CANCELLED não basta",
+  );
+  assert(
+    !hubCheckoutWasAbandonedUnpaid(null) &&
+      !hubCheckoutWasAbandonedUnpaid({ status: "CANCELLED", metadata: [] }),
+    "entrada inválida nunca é abandono",
+  );
+});
+
+Deno.test("1ª cobrança do checkout abandonado: só OPEN autoriza o DELETE", () => {
+  const expected = {
+    providerPaymentId: "pay_1",
+    providerCustomerId: "cus_1",
+    checkoutId: "11111111-1111-4111-8111-111111111111",
+    providerSubscriptionId: "sub_1",
+  };
+  const payment = (patch: Record<string, unknown>) => ({
+    id: "pay_1",
+    customer: "cus_1",
+    subscription: "sub_1",
+    externalReference: `hub:${expected.checkoutId}`,
+    status: "PENDING",
+    ...patch,
+  });
+  assert(
+    hubAbandonedPaymentObservation(payment({}), expected) === "OPEN",
+    "PENDING",
+  );
+  assert(
+    hubAbandonedPaymentObservation(payment({ status: "OVERDUE" }), expected) ===
+      "OPEN",
+    "OVERDUE",
+  );
+  for (const status of ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]) {
+    assert(
+      hubAbandonedPaymentObservation(payment({ status }), expected) ===
+        "SETTLED",
+      `${status} é pagamento e encerra sem cancelar`,
+    );
+  }
+  assert(
+    hubAbandonedPaymentObservation(payment({ deleted: true }), expected) ===
+      "REMOVED",
+    "cobrança removida",
+  );
+  assert(
+    hubAbandonedPaymentObservation(
+      payment({ deleted: true, customer: "cus_outro" }),
+      expected,
+    ) === "REVIEW_REQUIRED",
+    "identidade estranha nunca vira cobrança removida",
+  );
+  assert(
+    hubAbandonedPaymentObservation(
+          payment({ externalReference: "hub:outro" }),
+          expected,
+        ) === "REVIEW_REQUIRED" &&
+      hubAbandonedPaymentObservation(
+          payment({ subscription: "sub_outra" }),
+          expected,
+        ) === "REVIEW_REQUIRED" &&
+      hubAbandonedPaymentObservation(
+          payment({ status: "REFUNDED" }),
+          expected,
+        ) === "REVIEW_REQUIRED" &&
+      hubAbandonedPaymentObservation(null, expected) === "REVIEW_REQUIRED",
+    "referência, assinatura ou estado inesperados exigem revisão",
   );
 });

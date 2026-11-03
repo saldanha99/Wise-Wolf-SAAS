@@ -1,4 +1,6 @@
 import {
+  type HubAbandonedPaymentObservation,
+  hubAbandonedPaymentObservation,
   hubProviderCancellationDecision,
   providerCancellationIsFinal,
 } from "./hub-billing-safety.ts";
@@ -639,4 +641,564 @@ export async function cancelHubProviderSubscriptionOnce(input: {
     p_operation_id: operationId,
     p_lease_token: leaseToken,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Checkout abandonado: PIX/boleto sem o 1º pagamento em 5 dias.
+//
+// Ordem: (1) GET da 1ª cobrança — paga ou com identidade estranha encerra a
+// operação sem mutação nenhuma; (2) DELETE da assinatura pelo limite único de
+// DELETE do Hub; (3) DELETE explícito da 1ª cobrança, caso o DELETE da
+// assinatura não a tenha removido; (4) finalização local atômica.
+// Depois de um DELETE com resposta perdida, a retentativa só faz GET.
+
+type HubAbandonedPurpose =
+  | "subscription.read"
+  | "subscription.delete"
+  | "payment.read"
+  | "payment.delete";
+
+type AbandonedPaymentTarget = {
+  providerPaymentId: string;
+  providerCustomerId: string;
+  providerSubscriptionId: string | null;
+  checkoutId: string;
+};
+
+type AbandonedOperation = {
+  operationId: string;
+  leaseToken: string;
+  checkoutId: string;
+  targets: ProviderTarget[];
+  payment: AbandonedPaymentTarget | null;
+};
+
+type AbandonedBegin =
+  | { kind: "SKIPPED"; reason: string }
+  | { kind: "DONE"; operationId: string }
+  | { kind: "RUN"; operation: AbandonedOperation };
+
+export type HubAbandonedCheckoutResult =
+  | { outcome: "SKIPPED"; checkoutId: string; reason: string }
+  | {
+    outcome: "CANCELLED";
+    checkoutId: string;
+    operationId: string;
+    idempotent: boolean;
+  }
+  | {
+    outcome: "ABORTED";
+    checkoutId: string;
+    operationId: string;
+    reason: string;
+  };
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseAbandonedBegin(
+  value: unknown,
+  checkoutId: string,
+): AbandonedBegin {
+  const row = asRecord(value);
+  const action = requiredText(
+    row.action,
+    "HUB_PROVIDER_OPERATION_INVALID",
+    40,
+  );
+  if (action === "SKIPPED") {
+    const reason = typeof row.reason === "string" && row.reason.trim()
+      ? row.reason.trim().slice(0, 80)
+      : "UNKNOWN";
+    return { kind: "SKIPPED", reason };
+  }
+  const operationId = requiredText(
+    row.operationId,
+    "HUB_PROVIDER_OPERATION_INVALID",
+  );
+  if (action === "ALREADY_SUCCEEDED") return { kind: "DONE", operationId };
+  if (action !== "STARTED" && action !== "RESUME") {
+    throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+  }
+  const snapshot = asRecord(row.snapshot);
+  if (
+    requiredText(snapshot.checkoutId, "HUB_PROVIDER_OPERATION_INVALID") !==
+      checkoutId
+  ) {
+    throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+  }
+  if (!Array.isArray(snapshot.targets)) {
+    throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+  }
+  const targets = snapshot.targets.map((raw) => {
+    const item = asRecord(raw);
+    const target = {
+      providerSubscriptionId: requiredText(
+        item.providerSubscriptionId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+      providerCustomerId: requiredText(
+        item.providerCustomerId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+      checkoutId: requiredText(
+        item.checkoutId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+    };
+    if (target.checkoutId !== checkoutId) {
+      throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+    }
+    return target;
+  });
+  let payment: AbandonedPaymentTarget | null = null;
+  if (snapshot.payment !== null && snapshot.payment !== undefined) {
+    const item = asRecord(snapshot.payment);
+    const subscriptionId = typeof item.providerSubscriptionId === "string" &&
+        item.providerSubscriptionId.trim()
+      ? item.providerSubscriptionId.trim()
+      : null;
+    payment = {
+      providerPaymentId: requiredText(
+        item.providerPaymentId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+      providerCustomerId: requiredText(
+        item.providerCustomerId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+      providerSubscriptionId: subscriptionId,
+      checkoutId: requiredText(
+        item.checkoutId,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+    };
+    if (payment.checkoutId !== checkoutId) {
+      throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+    }
+  }
+  return {
+    kind: "RUN",
+    operation: {
+      operationId,
+      leaseToken: requiredText(
+        row.leaseToken,
+        "HUB_PROVIDER_OPERATION_INVALID",
+      ),
+      checkoutId,
+      targets,
+      payment,
+    },
+  };
+}
+
+async function revalidateHubMutationCapability(
+  admin: AdminClient,
+  expected: ResolvedAsaasIntegration,
+  resolver: (
+    admin: AdminClient,
+    purpose: HubAbandonedPurpose,
+  ) => Promise<ResolvedAsaasIntegration>,
+  purpose: "subscription.delete" | "payment.delete",
+): Promise<ResolvedAsaasIntegration> {
+  try {
+    return await revalidateAsaasMutationCapability(
+      admin,
+      { tenantId: expected.tenantId, purpose, expected },
+      {
+        resolve: async (client, _tenantId, requested) => {
+          if (requested !== purpose) {
+            throw new Error("HUB_PROVIDER_PURPOSE_INVALID");
+          }
+          return await resolver(client, purpose);
+        },
+      },
+    );
+  } catch (error) {
+    throw new HubProviderOperationError(
+      error instanceof AsaasCapabilityFenceError &&
+        error.failure === "UNAVAILABLE"
+        ? "HUB_PROVIDER_INTEGRATION_UNAVAILABLE"
+        : "HUB_PROVIDER_INTEGRATION_VERSION_CHANGED",
+    );
+  }
+}
+
+async function lookupAbandonedPayment(
+  integration: ResolvedAsaasIntegration,
+  payment: AbandonedPaymentTarget,
+  fetcher: FetchLike,
+): Promise<HubAbandonedPaymentObservation> {
+  let response: Response;
+  try {
+    response = await fetcher(
+      `${integration.baseUrl}/payments/${
+        encodeURIComponent(payment.providerPaymentId)
+      }`,
+      {
+        method: "GET",
+        headers: { access_token: integration.apiKey },
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+  } catch {
+    throw new HubProviderOperationError("HUB_PROVIDER_LOOKUP_FAILED");
+  }
+  if (response.status === 404 || response.status === 410) return "REMOVED";
+  if (!response.ok) {
+    throw new HubProviderOperationError("HUB_PROVIDER_LOOKUP_FAILED");
+  }
+  const entity = await response.json().catch(() => null);
+  return hubAbandonedPaymentObservation(entity, payment);
+}
+
+function rpcAction(result: unknown): { action: string; reason: string } {
+  const row = asRecord(result);
+  return {
+    action: requiredText(row.action, "HUB_PROVIDER_OPERATION_INVALID", 40),
+    reason: typeof row.reason === "string" ? row.reason.slice(0, 80) : "",
+  };
+}
+
+export async function runHubAbandonedCheckoutCancellation(input: {
+  admin: AdminClient;
+  checkoutId: string;
+  fetcher?: FetchLike;
+  resolveIntegration?: (
+    admin: AdminClient,
+    purpose: HubAbandonedPurpose,
+  ) => Promise<ResolvedAsaasIntegration>;
+}): Promise<HubAbandonedCheckoutResult> {
+  const fetcher = input.fetcher || fetch;
+  const resolveIntegration = input.resolveIntegration ||
+    resolvePlatformAsaasIntegration;
+  const checkoutId = requiredText(
+    input.checkoutId,
+    "HUB_PROVIDER_OPERATION_INVALID",
+  );
+  const begin = parseAbandonedBegin(
+    await rpc(input.admin, "hub_begin_abandoned_checkout_cancellation", {
+      p_checkout_id: checkoutId,
+    }),
+    checkoutId,
+  );
+  if (begin.kind === "SKIPPED") {
+    return { outcome: "SKIPPED", checkoutId, reason: begin.reason };
+  }
+  if (begin.kind === "DONE") {
+    return {
+      outcome: "CANCELLED",
+      checkoutId,
+      operationId: begin.operationId,
+      idempotent: true,
+    };
+  }
+  const operation = begin.operation;
+  const lease = {
+    p_operation_id: operation.operationId,
+    p_lease_token: operation.leaseToken,
+  };
+  const aborted = async (
+    reason: string,
+  ): Promise<HubAbandonedCheckoutResult> => {
+    await rpc(input.admin, "hub_abort_abandoned_checkout_cancellation", {
+      ...lease,
+      p_reason: reason,
+    });
+    return {
+      outcome: "ABORTED",
+      checkoutId,
+      operationId: operation.operationId,
+      reason,
+    };
+  };
+  const closedByDatabase = (
+    action: string,
+    reason: string,
+  ): HubAbandonedCheckoutResult | null => {
+    if (action === "ABORTED") {
+      return {
+        outcome: "ABORTED",
+        checkoutId,
+        operationId: operation.operationId,
+        reason: reason || "CHECKOUT_CHANGED",
+      };
+    }
+    if (action === "OPERATION_CLOSED") {
+      return { outcome: "SKIPPED", checkoutId, reason: "OPERATION_CLOSED" };
+    }
+    return null;
+  };
+
+  let subscriptionRead: ResolvedAsaasIntegration | null = null;
+  let subscriptionDelete: ResolvedAsaasIntegration | null = null;
+  let paymentRead: ResolvedAsaasIntegration | null = null;
+  let paymentDelete: ResolvedAsaasIntegration | null = null;
+  if (operation.targets.length > 0 || operation.payment) {
+    [subscriptionRead, subscriptionDelete, paymentRead, paymentDelete] =
+      await Promise.all([
+        resolveIntegration(input.admin, "subscription.read"),
+        resolveIntegration(input.admin, "subscription.delete"),
+        resolveIntegration(input.admin, "payment.read"),
+        resolveIntegration(input.admin, "payment.delete"),
+      ]);
+    assertSameIntegration(subscriptionRead, subscriptionDelete);
+    assertSameIntegration(subscriptionRead, paymentRead);
+    assertSameIntegration(subscriptionRead, paymentDelete);
+    await rpc(input.admin, "hub_bind_provider_operation_integration", {
+      ...lease,
+      p_integration_id: subscriptionDelete.integrationId,
+      p_integration_version: subscriptionDelete.version,
+    });
+  }
+
+  // (1) Cobrança já paga ou estranha: nada foi alterado no provedor ainda.
+  if (operation.payment && paymentRead) {
+    const before = await lookupAbandonedPayment(
+      paymentRead,
+      operation.payment,
+      fetcher,
+    );
+    if (before === "SETTLED") {
+      return await aborted("PAYMENT_SETTLED_AT_PROVIDER");
+    }
+    if (before === "REVIEW_REQUIRED") {
+      return await aborted("PROVIDER_PAYMENT_REVIEW");
+    }
+  }
+
+  // (2) Assinatura: mesmo limite de DELETE das outras operações do Hub.
+  for (const target of operation.targets) {
+    if (!subscriptionRead || !subscriptionDelete) {
+      throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+    }
+    const claim = rpcAction(
+      await rpc(input.admin, "hub_claim_provider_cancellation_target", {
+        ...lease,
+        p_provider_subscription_id: target.providerSubscriptionId,
+      }),
+    );
+    if (claim.action === "ALREADY_SUCCEEDED") continue;
+    if (claim.action === "REVIEW_REQUIRED") {
+      // Nenhum DELETE saiu: encerrar libera a cerca da conta.
+      return await aborted("PROVIDER_SUBSCRIPTION_REVIEW");
+    }
+    if (!["VERIFY_REQUIRED", "RECONCILE_ONLY"].includes(claim.action)) {
+      throw new HubProviderOperationError(
+        "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+      );
+    }
+    let observed: Awaited<ReturnType<typeof exactProviderLookup>>;
+    try {
+      observed = await exactProviderLookup(subscriptionRead, target, fetcher);
+    } catch (error) {
+      if (
+        claim.action === "VERIFY_REQUIRED" &&
+        error instanceof HubProviderOperationError &&
+        error.code === "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED"
+      ) {
+        return await aborted("PROVIDER_SUBSCRIPTION_REVIEW");
+      }
+      throw error;
+    }
+    if (observed.kind === "ABSENT" || observed.kind === "FINAL") {
+      await rpc(input.admin, "hub_complete_provider_cancellation_target", {
+        ...lease,
+        p_provider_subscription_id: target.providerSubscriptionId,
+        p_outcome: "ABSENT",
+      });
+      continue;
+    }
+    if (claim.action === "RECONCILE_ONLY") {
+      // Um DELETE pode ter saído e perdido a resposta: assinatura ainda
+      // ativa é prova para revisão, nunca permissão para um segundo DELETE.
+      throw new HubProviderOperationError(
+        "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+      );
+    }
+    const submit = rpcAction(
+      await rpc(
+        input.admin,
+        "hub_mark_abandoned_checkout_subscription_submitting",
+        {
+          ...lease,
+          p_provider_subscription_id: target.providerSubscriptionId,
+        },
+      ),
+    );
+    const closed = closedByDatabase(submit.action, submit.reason);
+    if (closed) return closed;
+    if (submit.action === "ALREADY_SUCCEEDED") continue;
+    if (submit.action === "REVIEW_REQUIRED") {
+      return await aborted("PROVIDER_SUBSCRIPTION_REVIEW");
+    }
+    if (submit.action !== "SUBMIT_ALLOWED") {
+      throw new HubProviderOperationError(
+        "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+      );
+    }
+    const freshDelete = await revalidateHubMutationCapability(
+      input.admin,
+      subscriptionDelete,
+      resolveIntegration,
+      "subscription.delete",
+    );
+    let deletion: Response;
+    try {
+      deletion = await fetcher(
+        `${freshDelete.baseUrl}/subscriptions/${
+          encodeURIComponent(target.providerSubscriptionId)
+        }`,
+        {
+          method: "DELETE",
+          headers: {
+            access_token: freshDelete.apiKey,
+            "Content-Type": "application/json",
+          },
+          redirect: "error",
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+    } catch {
+      throw new HubProviderOperationError(
+        "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+      );
+    }
+    const outcome = await confirmedDeletionOutcome(
+      deletion,
+      freshDelete,
+      target,
+      fetcher,
+    );
+    await rpc(input.admin, "hub_complete_provider_cancellation_target", {
+      ...lease,
+      p_provider_subscription_id: target.providerSubscriptionId,
+      p_outcome: outcome,
+    });
+  }
+
+  // (3) A 1ª cobrança é removida explicitamente se ainda estiver aberta.
+  if (operation.payment) {
+    if (!paymentRead || !paymentDelete) {
+      throw new HubProviderOperationError("HUB_PROVIDER_OPERATION_INVALID");
+    }
+    const observed = await lookupAbandonedPayment(
+      paymentRead,
+      operation.payment,
+      fetcher,
+    );
+    if (observed === "SETTLED") {
+      return await aborted("PAYMENT_SETTLED_DURING_CANCELLATION");
+    }
+    if (observed === "REVIEW_REQUIRED") {
+      return await aborted("PROVIDER_PAYMENT_REVIEW");
+    }
+    if (observed === "REMOVED") {
+      await rpc(input.admin, "hub_complete_abandoned_checkout_payment", {
+        ...lease,
+        p_outcome: "ABSENT",
+      });
+    } else {
+      const submit = rpcAction(
+        await rpc(
+          input.admin,
+          "hub_mark_abandoned_checkout_payment_submitting",
+          lease,
+        ),
+      );
+      const closed = closedByDatabase(submit.action, submit.reason);
+      if (closed) return closed;
+      if (submit.action === "RECONCILE_ONLY") {
+        throw new HubProviderOperationError(
+          "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+        );
+      }
+      if (submit.action !== "SUBMIT_ALLOWED") {
+        throw new HubProviderOperationError(
+          "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+        );
+      }
+      const freshDelete = await revalidateHubMutationCapability(
+        input.admin,
+        paymentDelete,
+        resolveIntegration,
+        "payment.delete",
+      );
+      let deletion: Response;
+      try {
+        deletion = await fetcher(
+          `${freshDelete.baseUrl}/payments/${
+            encodeURIComponent(operation.payment.providerPaymentId)
+          }`,
+          {
+            method: "DELETE",
+            headers: {
+              access_token: freshDelete.apiKey,
+              "Content-Type": "application/json",
+            },
+            redirect: "error",
+            signal: AbortSignal.timeout(15_000),
+          },
+        );
+      } catch {
+        throw new HubProviderOperationError(
+          "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+        );
+      }
+      if (!providerCancellationIsFinal(deletion.status)) {
+        throw new HubProviderOperationError(
+          "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+        );
+      }
+      let outcome: "CONFIRMED" | "ABSENT" = "ABSENT";
+      if (deletion.status !== 404 && deletion.status !== 410) {
+        // Aceite do DELETE não é prova: confirma com um GET exato.
+        let confirmed: HubAbandonedPaymentObservation;
+        try {
+          confirmed = await lookupAbandonedPayment(
+            freshDelete,
+            operation.payment,
+            fetcher,
+          );
+        } catch {
+          throw new HubProviderOperationError(
+            "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+          );
+        }
+        if (confirmed === "SETTLED") {
+          return await aborted("PAYMENT_SETTLED_DURING_CANCELLATION");
+        }
+        if (confirmed !== "REMOVED") {
+          throw new HubProviderOperationError(
+            "HUB_PROVIDER_CANCELLATION_OUTCOME_UNKNOWN",
+          );
+        }
+        outcome = "CONFIRMED";
+      }
+      await rpc(input.admin, "hub_complete_abandoned_checkout_payment", {
+        ...lease,
+        p_outcome: outcome,
+      });
+    }
+  }
+
+  // (4) Checkout CANCELLED + entregas encerradas, na mesma transação.
+  const finalized = asRecord(
+    await rpc(
+      input.admin,
+      "hub_finalize_abandoned_checkout_cancellation",
+      lease,
+    ),
+  );
+  return {
+    outcome: "CANCELLED",
+    checkoutId,
+    operationId: operation.operationId,
+    idempotent: finalized.idempotent === true,
+  };
 }

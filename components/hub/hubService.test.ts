@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   getHubSubscriptionAccessState,
+  HUB_PAYMENT_GRACE_DAYS,
+  hubSubscriptionHasCurrentAccess,
   isHubCorePlan,
   isHubEnabled,
   isHubPlanAvailableToAudience,
@@ -85,5 +87,35 @@ describe('Hub subscription access state', () => {
       current_period_ends_at: '2026-08-01T12:00:00.000Z',
     }, now)).toBe('EXPIRED');
     expect(getHubSubscriptionAccessState(null, now)).toBe('NONE');
+  });
+
+  it('keeps paid access for 5 days after the period ends, like the server', () => {
+    const paid = (status: string, endsAt: string | null) => ({
+      id: 'paid',
+      status,
+      trial_ends_at: null,
+      current_period_ends_at: endsAt,
+    });
+    // now = 2026-08-22T12:00Z
+    expect(getHubSubscriptionAccessState(paid('ACTIVE', '2026-08-20T12:00:00.000Z'), now)).toBe('GRACE_PAID');
+    expect(getHubSubscriptionAccessState(paid('ACTIVE', '2026-08-16T12:00:00.000Z'), now)).toBe('EXPIRED');
+    expect(getHubSubscriptionAccessState(paid('PAST_DUE', '2026-08-19T12:00:00.000Z'), now)).toBe('GRACE_PAID');
+    expect(getHubSubscriptionAccessState(paid('PAST_DUE', '2026-08-17T11:00:00.000Z'), now)).toBe('EXPIRED');
+    expect(getHubSubscriptionAccessState(paid('PAST_DUE', '2026-08-25T12:00:00.000Z'), now)).toBe('GRACE_PAID');
+    expect(getHubSubscriptionAccessState(paid('EXPIRED', '2026-09-22T12:00:00.000Z'), now)).toBe('EXPIRED');
+    expect(getHubSubscriptionAccessState(paid('CANCELLED', '2026-09-22T12:00:00.000Z'), now)).toBe('EXPIRED');
+    expect(getHubSubscriptionAccessState(paid('ACTIVE', null), now)).toBe('EXPIRED');
+    expect(hubSubscriptionHasCurrentAccess('GRACE_PAID')).toBe(true);
+    expect(hubSubscriptionHasCurrentAccess('EXPIRED')).toBe(false);
+    expect(HUB_PAYMENT_GRACE_DAYS).toBe(5);
+  });
+
+  it('gives no grace to an expired trial', () => {
+    expect(getHubSubscriptionAccessState({
+      id: 'trial',
+      status: 'TRIALING',
+      trial_ends_at: '2026-08-22T11:00:00.000Z',
+      current_period_ends_at: '2026-09-22T12:00:00.000Z',
+    }, now)).toBe('EXPIRED');
   });
 });
