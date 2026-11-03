@@ -26,6 +26,7 @@ import { supabase } from '../../lib/supabase';
 import { UserRole, type Tenant, type TenantMembershipOption, type User as UserType } from '../../types';
 import {
   getHubSubscriptionAccessState,
+  hubSubscriptionHasCurrentAccess,
   isHubCatalogReady,
   isHubPlanAvailableToAudience,
   openHubContent,
@@ -130,7 +131,7 @@ const HubOverview: React.FC<{
   onNavigate: (tab: HubTab) => void;
 }> = ({ bootstrap, canUseEducator, onNavigate }) => {
   const accessState = getHubSubscriptionAccessState(bootstrap.subscription);
-  const hasCurrentAccess = accessState === 'ACTIVE_TRIAL' || accessState === 'ACTIVE_PAID';
+  const hasCurrentAccess = hubSubscriptionHasCurrentAccess(accessState);
   const trialEnd = bootstrap.subscription?.trial_ends_at;
   const daysLeft = accessState === 'ACTIVE_TRIAL' && trialEnd ? Math.max(1, Math.ceil((new Date(trialEnd).getTime() - Date.now()) / 86_400_000)) : null;
   const preview = bootstrap.entitlements['library.preview'];
@@ -591,7 +592,7 @@ const HubSchoolSystemAccess: React.FC<{
 
 const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, settings, content, userId, userEmail, onRefresh, onLogout, onSwitchAccount, initialPlanIntent, initialTab = 'overview', onPlanIntentConsumed }) => {
   const accessState = getHubSubscriptionAccessState(bootstrap.subscription);
-  const hasCurrentAccess = accessState === 'ACTIVE_TRIAL' || accessState === 'ACTIVE_PAID';
+  const hasCurrentAccess = hubSubscriptionHasCurrentAccess(accessState);
   const [tab, setTab] = useState<HubTab>(() => initialPlanIntent ? 'plans' : hasCurrentAccess ? initialTab : 'plans');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

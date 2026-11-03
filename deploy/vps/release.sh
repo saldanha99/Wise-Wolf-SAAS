@@ -615,6 +615,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/cancel-hub-subscription/core.test.ts \
   supabase/functions/cancel-hub-subscription/index.ts \
   supabase/functions/cancel-hub-subscription/index.test.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/core.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/core.test.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/index.ts \
   supabase/functions/asaas-webhook/billing-safety.ts \
   supabase/functions/asaas-webhook/event-contract.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -798,6 +801,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/_shared/request-auth.test.ts \
   supabase/functions/create-hub-checkout/legal.test.ts \
   supabase/functions/cancel-hub-subscription/core.test.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/core.test.ts \
   supabase/functions/process-hub-fulfillment/core.test.ts \
   supabase/functions/update-student-billing-method/core.test.ts \
   supabase/functions/generate-student-manual-pix/core.test.ts \
@@ -993,6 +997,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/create-hub-checkout/index.ts \
   supabase/functions/cancel-hub-subscription/core.ts \
   supabase/functions/cancel-hub-subscription/index.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/core.ts \
+  supabase/functions/expire-hub-abandoned-checkouts/index.ts \
   supabase/functions/process-hub-fulfillment/index.ts \
   supabase/functions/manage-hub-account-status/index.ts \
   supabase/functions/create-saas-checkout/index.ts \
@@ -1570,6 +1576,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261101030000_termo_por_link_espera_as_8h.sql"
   "supabase/migrations/20261101040000_termo_so_executa_com_a_escola.sql"
   "supabase/migrations/20261102140000_links_das_aulas_e_experimental_no_aceite.sql"
+  "supabase/migrations/20261103100000_hub_checkout_abandonado.sql"
+  "supabase/migrations/20261103100500_hub_carencia_de_5_dias.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1765,6 +1773,8 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/reposicao_pelo_whatsapp_e_comandos_por_canal.sql"
   "supabase/tests/canal_financeiro_e_folha_previa_do_mes.sql"
   "supabase/tests/reserva_de_agenda_inicio_futuro.sql"
+  "supabase/tests/hub_checkout_abandonado.sql"
+  "supabase/tests/hub_carencia_de_5_dias.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1888,6 +1898,7 @@ HARDENED_FUNCTIONS=(
   kiwify-webhook
   manage-hub-account-status
   cancel-hub-subscription
+  expire-hub-abandoned-checkouts
   model-probe
   monthly-teacher-closing
   oral-test-scan
@@ -4612,6 +4623,12 @@ wait_for_http_status 200 "preflight do cancelamento do Hub" \
   -X OPTIONS "$api_url/functions/v1/cancel-hub-subscription"
 wait_for_http_status 401 "autenticação do cancelamento do Hub" \
   -X POST "$api_url/functions/v1/cancel-hub-subscription" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 200 "preflight do checkout abandonado do Hub" \
+  -X OPTIONS "$api_url/functions/v1/expire-hub-abandoned-checkouts"
+wait_for_http_status 401 "autenticação do checkout abandonado do Hub" \
+  -X POST "$api_url/functions/v1/expire-hub-abandoned-checkouts" \
   -H 'Content-Type: application/json' \
   --data '{}'
 wait_for_http_status 200 "preflight do checkout SaaS" \

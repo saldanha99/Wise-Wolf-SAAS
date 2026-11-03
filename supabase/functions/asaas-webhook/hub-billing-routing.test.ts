@@ -283,3 +283,30 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "estorno de checkout abandonado não abre outra operação no provedor",
+  permissions: { read: true },
+  async fn() {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const reversalBranch = source.indexOf(
+      "} else if (HUB_REVERSAL_EVENTS.has(event)) {",
+    );
+    const guard = source.indexOf(
+      "if (!hubCheckoutWasAbandonedUnpaid(checkout)) {",
+      reversalBranch,
+    );
+    const cancellation = source.indexOf(
+      "await cancelHubProviderSubscriptionForAccount(",
+      guard,
+    );
+    const reversal = source.indexOf('"hub_reverse_paid_checkout"', guard);
+    assert(
+      reversalBranch >= 0 && guard > reversalBranch &&
+        cancellation > guard && reversal > cancellation,
+      "o estorno precisa pular só o DELETE do abandonado e ainda chamar o RPC",
+    );
+  },
+});

@@ -55,6 +55,7 @@ import {
   type HubBillingBlockCode,
   hubBillingBlockCode,
   hubCheckoutIdFromExternalReference,
+  hubCheckoutWasAbandonedUnpaid,
   hubRecoveryReason,
   isHubRecoveryEvent,
   replacementProviderSubscriptionId,
@@ -1646,11 +1647,17 @@ async function processHubPaymentEvent(
       // A local reversal without cancelling the scheduler would keep creating
       // charges for an account whose access was already revoked. Deletion is
       // idempotent (404/410 means it was already absent) and must finish first.
-      await cancelHubProviderSubscriptionForAccount(
-        supabase,
-        checkout.account_id,
-        providerSubscriptionId,
-      );
+      // Checkout cancelado por abandono: a operação durável já comprovou a
+      // assinatura encerrada antes do CANCELLED, e a exclusão da 1ª cobrança
+      // (que ela mesma fez) não deve abrir outra operação na conta. O RPC
+      // reconfere sob a trava e ignora o estorno do que nunca foi aplicado.
+      if (!hubCheckoutWasAbandonedUnpaid(checkout)) {
+        await cancelHubProviderSubscriptionForAccount(
+          supabase,
+          checkout.account_id,
+          providerSubscriptionId,
+        );
+      }
       const { error } = await supabase.rpc("hub_reverse_paid_checkout", {
         p_checkout_id: checkoutId,
         p_payment_id: payment.id,

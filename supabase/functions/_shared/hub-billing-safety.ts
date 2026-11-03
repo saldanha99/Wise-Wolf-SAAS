@@ -270,3 +270,71 @@ export function hubRecoveryReason(event: string): string {
     ? "CHARGEBACK_WON_RECONCILIATION"
     : "CHARGEBACK_DISPUTE_REVIEW";
 }
+
+// Checkout cancelado pela rotina de abandono (PIX/boleto sem o 1º pagamento
+// em 5 dias). A operação durável já comprovou a assinatura encerrada no
+// Asaas; um estorno/exclusão posterior da 1ª cobrança não tem o que desfazer.
+export function hubCheckoutWasAbandonedUnpaid(
+  checkout: { status?: string | null; metadata?: unknown } | null | undefined,
+): boolean {
+  if (!checkout || checkout.status !== "CANCELLED") return false;
+  const metadata = checkout.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+  return (metadata as Record<string, unknown>).cancellationReason ===
+    "ABANDONED_UNPAID";
+}
+
+export type HubAbandonedPaymentObservation =
+  | "OPEN"
+  | "REMOVED"
+  | "SETTLED"
+  | "REVIEW_REQUIRED";
+
+const HUB_SETTLED_PAYMENT_STATUSES = new Set([
+  "RECEIVED",
+  "CONFIRMED",
+  "RECEIVED_IN_CASH",
+]);
+
+// Lê a 1ª cobrança de um checkout abandonado. Só "OPEN" autoriza o DELETE;
+// identidade divergente nunca é tratada como cobrança removida.
+export function hubAbandonedPaymentObservation(
+  providerPayment: unknown,
+  expected: {
+    providerPaymentId: string;
+    providerCustomerId: string;
+    checkoutId: string;
+    providerSubscriptionId?: string | null;
+  },
+): HubAbandonedPaymentObservation {
+  if (
+    !providerPayment || typeof providerPayment !== "object" ||
+    Array.isArray(providerPayment)
+  ) {
+    return "REVIEW_REQUIRED";
+  }
+  const entity = providerPayment as Record<string, unknown>;
+  const value = (key: string) =>
+    typeof entity[key] === "string" ? entity[key].trim() : "";
+  if (
+    value("id") !== expected.providerPaymentId ||
+    value("customer") !== expected.providerCustomerId ||
+    value("externalReference") !== `hub:${expected.checkoutId}`
+  ) {
+    return "REVIEW_REQUIRED";
+  }
+  const expectedSubscription = expected.providerSubscriptionId?.trim() || "";
+  if (
+    expectedSubscription && value("subscription") &&
+    value("subscription") !== expectedSubscription
+  ) {
+    return "REVIEW_REQUIRED";
+  }
+  if (entity.deleted === true) return "REMOVED";
+  const status = value("status").toUpperCase();
+  if (status === "PENDING" || status === "OVERDUE") return "OPEN";
+  if (HUB_SETTLED_PAYMENT_STATUSES.has(status)) return "SETTLED";
+  return "REVIEW_REQUIRED";
+}

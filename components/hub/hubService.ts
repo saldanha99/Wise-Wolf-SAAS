@@ -31,21 +31,39 @@ export function isHubCatalogReady(
   return settings.metadata?.catalogReady === true && content.length > 0;
 }
 
-export type HubSubscriptionAccessState = 'ACTIVE_TRIAL' | 'ACTIVE_PAID' | 'EXPIRED' | 'NONE';
+// GRACE_PAID: pagamento em atraso, dentro dos 5 dias de carência — o acesso
+// continua. Espelho de private.hub_subscription_grants_access (quem decide é o
+// servidor; aqui só a tela acompanha).
+export type HubSubscriptionAccessState = 'ACTIVE_TRIAL' | 'ACTIVE_PAID' | 'GRACE_PAID' | 'EXPIRED' | 'NONE';
+
+export const HUB_PAYMENT_GRACE_DAYS = 5;
+const HUB_PAYMENT_GRACE_MS = HUB_PAYMENT_GRACE_DAYS * 86_400_000;
 
 export function getHubSubscriptionAccessState(
   subscription: HubBootstrap['subscription'],
   nowMs = Date.now(),
 ): HubSubscriptionAccessState {
   if (!subscription) return 'NONE';
-  const isFuture = (value: string | null) => {
-    if (!value) return false;
+  const timestampOf = (value: string | null) => {
+    if (!value) return null;
     const timestamp = Date.parse(value);
-    return Number.isFinite(timestamp) && timestamp > nowMs;
+    return Number.isFinite(timestamp) ? timestamp : null;
   };
-  if (subscription.status === 'TRIALING' && isFuture(subscription.trial_ends_at)) return 'ACTIVE_TRIAL';
-  if (subscription.status === 'ACTIVE' && isFuture(subscription.current_period_ends_at)) return 'ACTIVE_PAID';
+  if (subscription.status === 'TRIALING') {
+    const trialEnd = timestampOf(subscription.trial_ends_at);
+    return trialEnd !== null && trialEnd > nowMs ? 'ACTIVE_TRIAL' : 'EXPIRED';
+  }
+  if (subscription.status === 'ACTIVE' || subscription.status === 'PAST_DUE') {
+    const periodEnd = timestampOf(subscription.current_period_ends_at);
+    if (periodEnd === null) return 'EXPIRED';
+    if (subscription.status === 'ACTIVE' && periodEnd > nowMs) return 'ACTIVE_PAID';
+    if (periodEnd + HUB_PAYMENT_GRACE_MS > nowMs) return 'GRACE_PAID';
+  }
   return 'EXPIRED';
+}
+
+export function hubSubscriptionHasCurrentAccess(state: HubSubscriptionAccessState): boolean {
+  return state === 'ACTIVE_TRIAL' || state === 'ACTIVE_PAID' || state === 'GRACE_PAID';
 }
 
 export const DEFAULT_HUB_SETTINGS: HubSettings = {
