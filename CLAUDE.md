@@ -4678,3 +4678,36 @@ conta central com `authuser`; Meet não tem participante invisível). Professor
 com pedido para não registrar não tem sala da escola. Migration
 `20261102140000`, teste SQL e tours no release:
 [runbook](docs/runbooks/turbo-e-experimental-pelo-meet.md).
+
+### 03/11/2026 — Hub: checkout abandonado, carência e ajustes de cobrança (Fase 0)
+
+O Hub nunca vendeu (0 checkouts até 03/11); estas travas vêm antes da 1ª venda.
+- PIX/boleto sem 1º pagamento é cancelado (PIX após 5 dias; boleto após 8, por
+  causa da compensação) pela edge `expire-hub-abandoned-checkouts` (cron
+  `wisewolf-hub-abandoned-checkouts` de hora em hora, só chave de serviço), no
+  trilho durável `hub_provider_operations` (kind `ABANDONED_CHECKOUT`, status
+  `ABORTED`): GET da 1ª cobrança → DELETE da assinatura → DELETE explícito da
+  1ª cobrança → checkout `CANCELLED` (`ABANDONED_UNPAID`) e entregas `SKIPPED`.
+  Cobrança paga ou identidade estranha → `ABORTED` sem mutação. Pagamento que
+  chega depois do abandono NUNCA libera acesso: só `requiresManualReconciliation`.
+- Carência de 5 dias: `private.hub_subscription_grants_access(status,
+  trial_ends_at, current_period_ends_at)` é a régua única de acesso pago
+  (TRIALING no prazo; ACTIVE/PAST_DUE até o fim do período + 5 dias), aplicada
+  por âncora em reserve/commit/consume, bootstrap e planner; a tela espelha em
+  `hubSubscriptionHasCurrentAccess` (`GRACE_PAID`). Renovação paga na carência
+  começa no fim do período anterior. Wolfie avulso e autocancelamento seguem
+  sem carência. ⚠️ Dentro de IF do PL/pgSQL, o THEN de um CASE encerra a
+  condição: a janela do abandono é a função `private.hub_abandonment_window`.
+- Vencimento da 1ª cobrança no calendário de Brasília (`create-hub-checkout/
+  due-date.ts`). ⚠️ `create-saas-checkout` e `create-wolfie-topup` ainda usam UTC.
+- WhatsApp de entrega vetado pela régua (`throttled`) reagenda sem gastar
+  tentativa (até 96 adiamentos ou 48 h).
+- Planos Teacher (`saas_plans.plan_type = 'teacher'`) fora de venda: `/lp`,
+  `/wisewolf` e `/assine` só mostram escola; `create-saas-checkout` recusa com
+  `TEACHER_PLAN_NOT_FOR_SALE`.
+- Receita do Hub cai na conta Asaas da escola e fica fora de caixa/DRE/rateio:
+  consulta mensal em `docs/runbooks/hub-receita-da-plataforma.md`. Primeira compra
+  real: `docs/runbooks/hub-primeira-compra-real.md`. Termos v2 só como rascunho
+  (`docs/legal/hub-termos-v2-e-anexo-de-dados-rascunho.md`).
+Migrations `20261103100000`/`20261103100500` e testes `hub_checkout_abandonado.sql`/
+`hub_carencia_de_5_dias.sql` registrados no release.

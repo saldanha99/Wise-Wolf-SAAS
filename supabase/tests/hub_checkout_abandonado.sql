@@ -108,7 +108,7 @@ insert into public.hub_checkout_sessions (id, account_id, plan_id, requested_by,
 values
   ('7e000000-0000-4000-8000-000000000401', '7e000000-0000-4000-8000-000000000301', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000101', 'MONTHLY', 'PIX', 1, 'PENDING', 'sub_abandoned_1', 'pay_abandoned_1', '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '6 days'),
   ('7e000000-0000-4000-8000-000000000402', '7e000000-0000-4000-8000-000000000302', '7e000000-0000-4000-8000-000000000201', '7e000000-0000-4000-8000-000000000102', 'MONTHLY', 'PIX', 1, 'PENDING', 'sub_abandoned_2', 'pay_abandoned_2', '{"test_fixture":true}', 'HUB_CORE', now() - interval '6 days'),
-  ('7e000000-0000-4000-8000-000000000403', '7e000000-0000-4000-8000-000000000303', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000103', 'MONTHLY', 'BOLETO', 1, 'PENDING', 'sub_abandoned_3', 'pay_abandoned_3', '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '6 days'),
+  ('7e000000-0000-4000-8000-000000000403', '7e000000-0000-4000-8000-000000000303', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000103', 'MONTHLY', 'BOLETO', 1, 'PENDING', 'sub_abandoned_3', 'pay_abandoned_3', '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '9 days'),
   ('7e000000-0000-4000-8000-000000000404', '7e000000-0000-4000-8000-000000000304', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000104', 'MONTHLY', 'PIX', 1, 'PENDING', 'sub_abandoned_4', 'pay_abandoned_4', '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '6 days'),
   ('7e000000-0000-4000-8000-000000000405', '7e000000-0000-4000-8000-000000000305', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000105', 'MONTHLY', 'PIX', 1, 'CREATED', null, null, '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '6 days'),
   ('7e000000-0000-4000-8000-000000000406', '7e000000-0000-4000-8000-000000000306', '7e000000-0000-4000-8000-000000000202', '7e000000-0000-4000-8000-000000000106', 'MONTHLY', 'PIX', 1, 'PENDING', 'sub_abandoned_recent', 'pay_abandoned_recent', '{"test_fixture":true}', 'WOLFIE_STANDALONE', now() - interval '4 days'),
@@ -174,6 +174,22 @@ select pg_temp.assert_true(
   and private.hub_abandoned_checkout_block_reason('7e000000-0000-4000-8000-000000000408') = 'PAYMENT_APPLIED'
   and private.hub_abandoned_checkout_block_reason('7e000000-0000-4000-8000-000000000409') = 'PROVIDER_CREATION_RECONCILIATION_REQUIRED',
   'regra de elegibilidade do abandono errada'
+);
+
+-- Boleto pago continua PENDING até compensar: com 6 dias ainda espera; com 9 entra.
+update public.hub_checkout_sessions
+   set created_at = now() - interval '6 days'
+ where id = '7e000000-0000-4000-8000-000000000403';
+select pg_temp.assert_true(
+  private.hub_abandoned_checkout_block_reason('7e000000-0000-4000-8000-000000000403') = 'ABANDONMENT_WINDOW_NOT_REACHED',
+  'boleto com 6 dias deveria esperar a compensação (8 dias)'
+);
+update public.hub_checkout_sessions
+   set created_at = now() - interval '9 days'
+ where id = '7e000000-0000-4000-8000-000000000403';
+select pg_temp.assert_true(
+  private.hub_abandoned_checkout_block_reason('7e000000-0000-4000-8000-000000000403') is null,
+  'boleto com 9 dias deveria entrar na rotina'
 );
 
 -- 3) Início recusado para quem não pode entrar.

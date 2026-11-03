@@ -1,7 +1,9 @@
 -- Checkout do Hub abandonado (HUB_CORE e WOLFIE_STANDALONE).
 --
 -- Decisão do dono (03/11/2026): PIX/boleto sem o 1º pagamento é cancelado em
--- 5 dias. Hoje quem gera a cobrança e não paga deixa a assinatura viva no
+-- 5 dias. Boleto espera 8 (5 + até 3 dias úteis de compensação): boleto pago
+-- continua PENDING no Asaas até compensar, e apagá-lo nesse intervalo deixaria
+-- quem pagou sem acesso, à espera de conciliação manual. Hoje quem gera a cobrança e não paga deixa a assinatura viva no
 -- Asaas (que continua gerando cobrança todo mês) e o checkout PENDING/OVERDUE
 -- bloqueia a compra de outro plano (409 PENDING_CHECKOUT_EXISTS).
 --
@@ -134,6 +136,20 @@ create index if not exists hub_checkout_sessions_open_created_idx
 -- 3. Regra de elegibilidade num lugar só. NULL = pode cancelar.
 --    Tudo que não é prova de abandono vira motivo de bloqueio (conciliação
 --    manual), nunca cancelamento por palpite.
+-- Janela do abandono: PIX 5 dias; boleto 8 (5 + até 3 dias úteis de
+-- compensação). Função à parte porque, dentro de um IF do PL/pgSQL, o THEN de
+-- um CASE encerraria a condição.
+create or replace function private.hub_abandonment_window(p_billing_type text)
+returns interval
+language sql
+immutable
+set search_path = ''
+as $function$
+  select case when p_billing_type = 'BOLETO' then interval '8 days' else interval '5 days' end;
+$function$;
+alter function private.hub_abandonment_window(text) owner to postgres;
+revoke all on function private.hub_abandonment_window(text) from public, anon, authenticated, service_role;
+
 create or replace function private.hub_abandoned_checkout_block_reason(
   p_checkout_id uuid
 )
@@ -163,7 +179,7 @@ begin
   if v_checkout.billing_type not in ('PIX', 'BOLETO') then
     return 'BILLING_TYPE_NOT_COVERED';
   end if;
-  if v_checkout.created_at > pg_catalog.now() - interval '5 days' then
+  if v_checkout.created_at > pg_catalog.now() - private.hub_abandonment_window(v_checkout.billing_type) then
     return 'ABANDONMENT_WINDOW_NOT_REACHED';
   end if;
   -- Um único pagamento aplicado (inclusive renovação de um checkout que já
@@ -263,7 +279,7 @@ begin
     where checkout.status in ('CREATED', 'PENDING', 'OVERDUE')
       and checkout.product_family in ('HUB_CORE', 'WOLFIE_STANDALONE')
       and checkout.billing_type in ('PIX', 'BOLETO')
-      and checkout.created_at <= pg_catalog.now() - interval '5 days'
+      and checkout.created_at <= pg_catalog.now() - private.hub_abandonment_window(checkout.billing_type)
       and not exists (
         select 1
         from private.hub_provider_operations as closed_operation
@@ -1211,6 +1227,6 @@ $cron$;
 comment on table private.hub_abandoned_checkout_payment_targets is
   'Primeira cobrança de um checkout do Hub abandonado; DELETE no máximo uma vez, retentativa só com GET.';
 comment on function public.hub_begin_abandoned_checkout_cancellation(uuid) is
-  'Abre (ou retoma) a operação durável que cancela no Asaas um checkout PIX/boleto sem pagamento há mais de 5 dias.';
+  'Abre (ou retoma) a operação durável que cancela no Asaas um checkout sem pagamento há mais de 5 dias (PIX) ou 8 dias (boleto).';
 comment on function public.hub_finalize_abandoned_checkout_cancellation(uuid,uuid) is
   'Com assinatura e 1ª cobrança comprovadamente encerradas, marca o checkout CANCELLED (ABANDONED_UNPAID) e fecha as entregas sem enviar.';
