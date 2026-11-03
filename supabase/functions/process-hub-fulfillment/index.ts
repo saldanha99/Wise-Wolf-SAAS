@@ -17,6 +17,7 @@ import {
   hubFulfillmentProviderIdempotencyKey,
   isHubFulfillmentTestFixture,
   nextHubFulfillmentAttempt,
+  nextHubFulfillmentThrottleDeferral,
   normalizeHubFulfillmentPhone,
   normalizeHubFulfillmentPublicUrl,
 } from "./core.ts";
@@ -73,6 +74,7 @@ type FulfillmentOutcome =
   | "sent"
   | "skipped"
   | "retry"
+  | "throttled"
   | "failed"
   | "uncertain";
 
@@ -84,6 +86,15 @@ class ProviderDeliveryError extends Error {
   ) {
     super(message);
     this.name = "ProviderDeliveryError";
+  }
+}
+
+// Veto do teto de envio (`whatsapp_outbound_permit`): não é falha do provedor
+// nem do destino, é "agora não". Vira nova tentativa agendada.
+class ProviderThrottledError extends Error {
+  constructor(readonly retryAfterMs: number | undefined) {
+    super("whatsapp_throttled");
+    this.name = "ProviderThrottledError";
   }
 }
 
@@ -241,6 +252,10 @@ async function sendWhatsApp(
       false,
     );
   }
+  if (result.outcome === "rejected" && result.throttled === true) {
+    // A régua anti-bloqueio vetou antes do POST: nada foi enviado.
+    throw new ProviderThrottledError(result.retryAfterMs);
+  }
   if (result.outcome === "rejected") {
     throw new ProviderDeliveryError(
       "whatsapp_provider_rejected",
@@ -249,6 +264,49 @@ async function sendWhatsApp(
     );
   }
   return result.messageId;
+}
+
+async function deferThrottledDelivery(
+  admin: SupabaseClient,
+  row: FulfillmentRow,
+  retryAfterMs: number | undefined,
+): Promise<FulfillmentOutcome> {
+  const decision = nextHubFulfillmentThrottleDeferral({
+    attemptCount: row.attempt_count,
+    metadata: row.metadata,
+    retryAfterMs,
+  });
+  // O marcador de despacho foi gravado antes de pedir licença à régua; como o
+  // POST não aconteceu, ele é limpo. Sem isso o claim seguinte colocaria a
+  // linha em UNCERTAIN ("resultado desconhecido") por uma mensagem não enviada.
+  if (decision.kind === "defer") {
+    await markDelivery(admin, row, {
+      status: "PENDING",
+      attempt_count: decision.attemptCount,
+      next_attempt_at: decision.nextAttemptAt,
+      last_error: "whatsapp_throttled",
+      completed_at: null,
+      provider_dispatch_started_at: null,
+      metadata: decision.metadata,
+    });
+    console.warn("Hub fulfillment WhatsApp adiado pelo teto de envio", {
+      id: row.id,
+      nextAttemptAt: decision.nextAttemptAt,
+    });
+    return "throttled";
+  }
+  await markDelivery(admin, row, {
+    status: "FAILED",
+    last_error: decision.reason,
+    completed_at: new Date().toISOString(),
+    provider_dispatch_started_at: null,
+    metadata: decision.metadata,
+  });
+  console.warn("Hub fulfillment WhatsApp desistiu depois do teto de envio", {
+    id: row.id,
+    reason: decision.reason,
+  });
+  return "failed";
 }
 
 async function processDelivery(
@@ -270,6 +328,9 @@ async function processDelivery(
       ? await sendEmail(admin, row)
       : await sendWhatsApp(admin, row);
   } catch (error) {
+    if (error instanceof ProviderThrottledError) {
+      return await deferThrottledDelivery(admin, row, error.retryAfterMs);
+    }
     const reason = error instanceof Error &&
         /^[a-z0-9_]+(?:_[0-9]{3})?$/i.test(error.message)
       ? error.message.slice(0, 160)
@@ -385,6 +446,7 @@ serve(async (req) => {
     sent: outcomes.filter((outcome) => outcome === "sent").length,
     skipped: outcomes.filter((outcome) => outcome === "skipped").length,
     retrying: outcomes.filter((outcome) => outcome === "retry").length,
+    throttled: outcomes.filter((outcome) => outcome === "throttled").length,
     failed: outcomes.filter((outcome) => outcome === "failed").length,
     uncertain: outcomes.filter((outcome) => outcome === "uncertain").length,
   });

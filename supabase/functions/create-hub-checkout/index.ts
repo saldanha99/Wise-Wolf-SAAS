@@ -48,6 +48,7 @@ import {
   resolveHubAsaasCustomerCandidate,
   resolveHubAsaasSubscriptionCandidate,
 } from "./customer-idempotency.ts";
+import { hubFirstDueDate } from "./due-date.ts";
 import {
   type AsaasIntegrationPurpose,
   type ResolvedAsaasIntegration,
@@ -1485,7 +1486,9 @@ serve(async (req) => {
 
     if (!customerId) throw new Error("ASAAS_CUSTOMER_ID_REQUIRED");
     await assertProviderCustomerIdentity(customerId);
-    const checkoutCreatedDate = text(checkout.created_at, 10);
+    // Vencimento pelo calendário de Brasília (ver due-date.ts). É a MESMA data
+    // na criação da assinatura e em toda conferência da 1ª cobrança abaixo.
+    const checkoutCreatedDate = hubFirstDueDate(checkout.created_at) ?? "";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(checkoutCreatedDate)) {
       throw new Error("HUB_CHECKOUT_CREATED_AT_INVALID");
     }

@@ -157,3 +157,135 @@ export function nextHubFulfillmentAttempt(
     nextAttemptAt: new Date(nowMs + delayMinutes * 60_000).toISOString(),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp vetado pela régua anti-bloqueio (`whatsapp_outbound_permit`).
+//
+// O veto acontece ANTES do POST: nada saiu para o provedor. Tratar isso como
+// recusa definitiva (como era) deixava o cliente que acabou de pagar sem o
+// aviso de acesso só porque o número da escola estava no teto da hora. Agora o
+// veto vira nova tentativa no horário que a régua indicou, sem gastar uma das
+// MAX_FULFILLMENT_ATTEMPTS (o claim soma 1; aqui devolvemos), com teto próprio
+// de adiamentos e prazo final contado do primeiro veto. Passado o prazo, a
+// entrega do WhatsApp termina como FAILED — o e-mail da mesma compra segue
+// pela sua própria linha.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const HUB_FULFILLMENT_THROTTLE_MIN_DELAY_MS = 60_000;
+export const HUB_FULFILLMENT_THROTTLE_MAX_DELAY_MS = 6 * 60 * 60_000;
+export const HUB_FULFILLMENT_THROTTLE_MAX_DEFERRALS = 96;
+export const HUB_FULFILLMENT_THROTTLE_DEADLINE_MS = 48 * 60 * 60_000;
+export const HUB_FULFILLMENT_THROTTLE_METADATA_KEY = "whatsapp_throttle";
+
+export type HubFulfillmentThrottleState = {
+  deferrals: number;
+  first_at: string;
+  last_at: string;
+};
+
+export type HubFulfillmentThrottleDecision =
+  | {
+    kind: "defer";
+    nextAttemptAt: string;
+    attemptCount: number;
+    metadata: UnknownRecord;
+  }
+  | {
+    kind: "expired";
+    reason:
+      | "whatsapp_throttle_deadline_exceeded"
+      | "whatsapp_throttle_deferrals_exhausted";
+    metadata: UnknownRecord;
+  };
+
+function readThrottleState(
+  metadata: unknown,
+): HubFulfillmentThrottleState | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const raw = (metadata as UnknownRecord)[
+    HUB_FULFILLMENT_THROTTLE_METADATA_KEY
+  ];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const state = raw as UnknownRecord;
+  const deferrals = Number(state.deferrals);
+  const firstAt = typeof state.first_at === "string" ? state.first_at : "";
+  if (
+    !Number.isInteger(deferrals) || deferrals < 0 ||
+    !Number.isFinite(Date.parse(firstAt))
+  ) {
+    return null;
+  }
+  return {
+    deferrals,
+    first_at: firstAt,
+    last_at: typeof state.last_at === "string" ? state.last_at : firstAt,
+  };
+}
+
+/**
+ * Decide o que fazer com uma entrega de WhatsApp vetada pelo teto.
+ *
+ * `attemptCount` é o valor JÁ incrementado pelo claim desta rodada; no
+ * adiamento ele volta ao que era, porque o provedor não foi tocado.
+ */
+export function nextHubFulfillmentThrottleDeferral(input: {
+  attemptCount: number;
+  metadata: unknown;
+  retryAfterMs: unknown;
+  nowMs?: number;
+}): HubFulfillmentThrottleDecision {
+  const nowMs = input.nowMs ?? Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const base: UnknownRecord = input.metadata &&
+      typeof input.metadata === "object" && !Array.isArray(input.metadata)
+    ? { ...(input.metadata as UnknownRecord) }
+    : {};
+  const previous = readThrottleState(input.metadata);
+  const firstAt = previous?.first_at ?? nowIso;
+  const deferrals = (previous?.deferrals ?? 0) + 1;
+  const state: HubFulfillmentThrottleState = {
+    deferrals,
+    first_at: firstAt,
+    last_at: nowIso,
+  };
+  const metadata: UnknownRecord = {
+    ...base,
+    [HUB_FULFILLMENT_THROTTLE_METADATA_KEY]: state,
+  };
+
+  const deadlineMs = Date.parse(firstAt) + HUB_FULFILLMENT_THROTTLE_DEADLINE_MS;
+  if (deferrals > HUB_FULFILLMENT_THROTTLE_MAX_DEFERRALS) {
+    return {
+      kind: "expired",
+      reason: "whatsapp_throttle_deferrals_exhausted",
+      metadata,
+    };
+  }
+  if (nowMs >= deadlineMs) {
+    return {
+      kind: "expired",
+      reason: "whatsapp_throttle_deadline_exceeded",
+      metadata,
+    };
+  }
+
+  const requested = Number(input.retryAfterMs);
+  const delayMs = Math.min(
+    Math.max(
+      Number.isFinite(requested) ? Math.trunc(requested) : 0,
+      HUB_FULFILLMENT_THROTTLE_MIN_DELAY_MS,
+    ),
+    HUB_FULFILLMENT_THROTTLE_MAX_DELAY_MS,
+  );
+  // A próxima tentativa nunca passa do prazo final: se o teto mandou esperar
+  // além dele, tenta uma última vez no limite.
+  const nextMs = Math.min(nowMs + delayMs, deadlineMs);
+  return {
+    kind: "defer",
+    nextAttemptAt: new Date(nextMs).toISOString(),
+    attemptCount: Math.max(Math.trunc(input.attemptCount) - 1, 0),
+    metadata,
+  };
+}

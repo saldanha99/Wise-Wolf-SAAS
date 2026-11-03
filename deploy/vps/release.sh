@@ -597,6 +597,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
+  supabase/functions/create-hub-checkout/due-date.ts \
+  supabase/functions/create-hub-checkout/due-date.test.ts \
   supabase/functions/create-hub-checkout/legal.ts \
   supabase/functions/create-hub-checkout/legal.test.ts \
   supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
@@ -607,6 +609,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/create-wolfie-topup/index.ts \
   supabase/functions/create-saas-checkout/provider-safety.ts \
   supabase/functions/create-saas-checkout/provider-safety.test.ts \
+  supabase/functions/create-saas-checkout/plan-sale.test.ts \
   supabase/functions/create-saas-checkout/index.ts \
   supabase/functions/cancel-hub-subscription/core.ts \
   supabase/functions/cancel-hub-subscription/core.test.ts \
@@ -685,6 +688,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/process-hub-fulfillment/core.test.ts \
   supabase/functions/process-hub-fulfillment/index.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
+  supabase/functions/process-hub-fulfillment/throttle.test.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.ts \
@@ -911,16 +915,19 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/monthly-teacher-closing/safety.test.ts \
   supabase/functions/create-wolfie-topup/provider-safety.test.ts \
   supabase/functions/create-saas-checkout/provider-safety.test.ts \
+  supabase/functions/create-saas-checkout/plan-sale.test.ts \
   supabase/functions/create-asaas-subscription/provider-identity.test.ts \
   supabase/functions/asaas-webhook/payment-classification.test.ts \
   supabase/functions/sync-plan-change-billing/claim-fencing.test.ts \
   supabase/functions/wolf-tutor-api/conversation-scope.test.ts \
   supabase/functions/create-hub-checkout/account-scope.test.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
+  supabase/functions/create-hub-checkout/due-date.test.ts \
   supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
   supabase/functions/cancel-hub-subscription/index.test.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
+  supabase/functions/process-hub-fulfillment/throttle.test.ts \
   supabase/functions/manage-hub-account-status/index.test.ts \
   supabase/functions/student-context/profile-access.test.ts \
   supabase/functions/school-admin/tenant-asaas-isolation.test.ts \
@@ -981,6 +988,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/hub-library-access/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
+  supabase/functions/create-hub-checkout/due-date.ts \
   supabase/functions/create-hub-checkout/legal.ts \
   supabase/functions/create-hub-checkout/index.ts \
   supabase/functions/cancel-hub-subscription/core.ts \

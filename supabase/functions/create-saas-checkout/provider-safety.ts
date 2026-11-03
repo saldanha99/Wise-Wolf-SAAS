@@ -149,6 +149,26 @@ export function resolveProviderSubscription(
   return stableMatch(exactMatches);
 }
 
+export const TEACHER_PLAN_NOT_FOR_SALE = "TEACHER_PLAN_NOT_FOR_SALE";
+
+/**
+ * Plano que este checkout público NÃO vende.
+ *
+ * Os planos Teacher (Starter/Growth/Scale) estão ativos em `saas_plans` porque
+ * o tenant de professor (Professor Negócio) é ativado por dentro, pela
+ * plataforma (`activate-teacher-tenant`). Vender pelo checkout público criaria
+ * cliente e assinatura na Asaas para um produto que não existe à venda — o
+ * professor autônomo entra pelo Wise Wolf Hub. A recusa vem antes de qualquer
+ * escrita no banco (limite de tentativas, lead, intenção) e antes da Asaas.
+ */
+export function saasPlanSaleBlockCode(
+  planType: unknown,
+): typeof TEACHER_PLAN_NOT_FOR_SALE | null {
+  return text(planType).toLowerCase() === "teacher"
+    ? TEACHER_PLAN_NOT_FOR_SALE
+    : null;
+}
+
 export function saasCheckoutNextDueDate(createdAt: unknown): string | null {
   const raw = text(createdAt);
   if (!raw) return null;
