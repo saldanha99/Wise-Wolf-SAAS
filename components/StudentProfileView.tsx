@@ -1,4 +1,5 @@
 import LessonHistoryPanel from './LessonHistoryPanel';
+import TeacherStudentTerms from './TeacherStudentTerms';
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
@@ -257,6 +258,9 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
               />
             )}
 
+            {/* Termo pendente: é o que explica o aluno pago sem aula fixa, e assina aqui mesmo. */}
+            <div className="px-6 pt-4 empty:hidden"><TeacherStudentTerms studentId={studentId} /></div>
+
             {/* Tabs */}
             <div className="flex gap-1 px-4 pt-3 border-b border-brand-border overflow-x-auto">
               {tabs.map(([id, label]) => (
@@ -352,7 +356,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
               {/* Histórico operacional e pedagógico do aluno */}
               {tab === 'classes' && (
                 <div className="space-y-2">
-                  <LessonHistoryPanel user={user} initialStudentId={studentId} />
+                  <LessonHistoryPanel user={user} initialStudentId={studentId} defaultTeacherId={p.professor_id} />
                   {(data.classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (data.classes || []).map((c: any, i: number) => {
                       const pl = PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };

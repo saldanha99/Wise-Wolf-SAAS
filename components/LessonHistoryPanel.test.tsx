@@ -13,5 +13,24 @@ describe('Histórico de aulas', () => {
  it('filtra categorias sem somar faltas a realizadas', async () => { render(<LessonHistoryPanel user={{ id: 'teacher', role: 'TEACHER' }} />); await screen.findByText(/01\/10\/2026 · 08:00/); fireEvent.click(screen.getByRole('button', { name: /Faltas dos alunos/ })); expect(screen.getByText('Sem aulas para estes filtros.')).toBeTruthy(); fireEvent.click(screen.getByText('Ver todas as categorias')); expect(screen.getByText(/01\/10\/2026 · 08:00/)).toBeTruthy(); });
  it('teacher contesta mas não corrige nem resolve; exige descrição', async () => { render(<LessonHistoryPanel user={{ id: 'teacher', role: 'TEACHER' }} />); fireEvent.click(await screen.findByText('Detalhes e alterações')); expect(screen.queryByText('Registrar correção')).toBeNull(); fireEvent.click(screen.getByText('Contestar registro')); fireEvent.change(screen.getByLabelText('Justificativa'), { target: { value: 'Conferir informação da aula' } }); fireEvent.click(screen.getByText('Salvar registro')); await waitFor(() => expect(rpc).toHaveBeenCalledWith('open_lesson_history_dispute', expect.objectContaining({ p_teacher: 'teacher', p_source_id: '1', p_description: 'Conferir informação da aula' }))); });
  it('coordenação tem correção versionada com justificativa', async () => { render(<LessonHistoryPanel user={{ id: 'manager', role: 'COORDINATOR' }} teacherId="teacher" />); fireEvent.click(await screen.findByText('Detalhes e alterações')); fireEvent.click(screen.getByText('Registrar correção')); fireEvent.change(screen.getByLabelText('Justificativa'), { target: { value: 'Justificativa registrada pela coordenação' } }); fireEvent.click(screen.getByText('Salvar registro')); await waitFor(() => expect(rpc).toHaveBeenCalledWith('correct_lesson_history', expect.objectContaining({ p_expected_version: 0, p_classification: null }))); });
+ describe('professor que abre primeiro', () => {
+  const roster = [{ id: 'encerrada', name: 'Aaa Encerrada', lifecycle: 'offboarded' }, { id: 'outro', name: 'Bbb Ativo', lifecycle: 'active' }, { id: 'teacher', name: 'Teacher', lifecycle: 'active' }];
+  beforeEach(() => rpc.mockReset().mockImplementation((name: string) => Promise.resolve({ data: name === 'list_lesson_history_teachers' ? roster : data, error: null })));
+  it('na ficha abre no professor do aluno, não no primeiro da lista', async () => {
+   render(<LessonHistoryPanel user={{ id: 'manager', role: 'SCHOOL_ADMIN' }} initialStudentId="student" defaultTeacherId="teacher" />);
+   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_teacher_lesson_history', expect.objectContaining({ p_teacher: 'teacher', p_student: 'student' })));
+   expect((screen.getByLabelText('Teacher') as HTMLSelectElement).value).toBe('teacher');
+   expect(rpc).not.toHaveBeenCalledWith('get_teacher_lesson_history', expect.objectContaining({ p_teacher: 'encerrada' }));
+  });
+  it('na ficha de aluno sem professor pede a escolha em vez de presumir um', async () => {
+   render(<LessonHistoryPanel user={{ id: 'manager', role: 'SCHOOL_ADMIN' }} initialStudentId="student" defaultTeacherId={null} />);
+   expect(await screen.findByText('Selecione um teacher para consultar.')).toBeTruthy();
+   expect(rpc).not.toHaveBeenCalledWith('get_teacher_lesson_history', expect.anything());
+  });
+  it('fora da ficha abre no primeiro professor ativo', async () => {
+   render(<LessonHistoryPanel user={{ id: 'manager', role: 'SCHOOL_ADMIN' }} />);
+   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_teacher_lesson_history', expect.objectContaining({ p_teacher: 'outro' })));
+  });
+ });
  it('erro não mostra relatório vazio como sucesso', async () => { rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } }); render(<LessonHistoryPanel user={{ id: 'teacher', role: 'TEACHER' }} />); expect(await screen.findByRole('alert')).toBeTruthy(); expect(screen.queryByText('Baixar relatório para arquivamento')).toBeNull(); });
 });

@@ -4736,3 +4736,24 @@ CONFIRMED criada depois da oferta, sem estorno, com as pré-condições de
 não libera; falha na consulta mantém o bloqueio. Com aluno pago, o lembrete de assinatura
 sai em 2 h, não em 24 h. Migration `20261104120000` e teste
 `aluno_pago_nao_fica_bloqueado_pelo_termo.sql` no release; tour da direção.
+
+### 04/11/2026 — Agenda rola com a página; ficha mostra o termo pendente
+
+Mapa de Aulas e Gestão de horários tinham caixa de altura fixa com rolagem interna:
+num notebook sobravam 2 linhas de grade. Agora a página inteira rola, os dias grudam
+sob o topo do app (`top-[65px]`), a lista de professores fica ao lado (sticky) e, no
+celular do professor, gruda o seletor de dia. A grade não tem mais largura mínima nem
+rolagem lateral. ⚠️ `overflow-x-auto` num ancestral faz o `sticky` vertical parar de
+funcionar: use `overflow-x-clip`/`overflow-clip`. ⚠️ `.ww-slab` define `position:
+relative` fora das camadas do Tailwind, então `xl:sticky` não vale sem `!`
+(`xl:sticky!`). ⚠️ `overflow-clip` não zera a largura mínima de item flex: precisa de
+`min-w-0`. A barra inferior do celular também é do professor, que passou a ter `pb-24`.
+
+Aluno pago com "Sem aula fixa na agenda" costuma não ser defeito: a agenda só nasce
+com o termo individual completo (escola, professor e família) e a rotina de 2 min.
+Consulte `private.teacher_student_terms` antes de procurar bug. A ficha agora mostra o
+termo pendente (`TeacherStudentTerms studentId=…`) e a direção assina ali mesmo. O
+histórico da aba Aulas abria no primeiro professor em ordem alfabética, mesmo encerrado,
+e parecia que o aluno era dele; agora abre no professor do aluno (`defaultTeacherId`).
+Tours `2026-11-04-termo-pendente-na-ficha` e `2026-11-04-zz-agenda-rola-inteira`.
+

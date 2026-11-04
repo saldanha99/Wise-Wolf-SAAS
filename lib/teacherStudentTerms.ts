@@ -1,6 +1,6 @@
 export type TermSlot = { day:number;time:string;date:string|null };
 export type IndividualTerm = {
- id:string;version:number;student_name:string;teacher_name:string;source_kind?:string;mode:'RECURRING'|'DATED';starts_on:string;ends_on:string|null;slots:TermSlot[];
+ id:string;version:number;student_id?:string;student_name:string;teacher_name:string;source_kind?:string;mode:'RECURRING'|'DATED';starts_on:string;ends_on:string|null;slots:TermSlot[];
  status:string;phase:string;body?:string;content_hash?:string;unit_rate?:number;school_signed_at?:string|null;teacher_signed_at?:string|null;school_typed_name?:string|null;teacher_typed_name?:string|null;
  family_confirmed_at?:string|null;schedule_hash?:string;retired_at?:string|null;closed_reason?:string|null;events?:{event:string;created_at:string;content_hash:string}[];
 };

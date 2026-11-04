@@ -1022,6 +1022,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'sidebar-nav',view:'contracts',title:'O pagamento libera o acesso; o termo libera a agenda',text:'O aluno que pagou entra na plataforma mesmo com o termo do professor pendente: vê um aviso de pagamento confirmado e já usa os materiais e o Wolfie. As aulas só entram na agenda depois que a escola e o professor assinarem. Por isso, com o aluno já pago, o lembrete de assinatura sai em 2 horas em vez de 24 (entre 9h e 21h). Assine logo para ele não perder a primeira aula.'},
     ],
   },
+  {
+    id:'2026-11-04-termo-pendente-na-ficha',title:'Aluno sem horário fixo: a ficha diz por quê',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'student-schedule-change',view:'students',title:'O termo pendente aparece na ficha',text:'Quando um aluno pago aparece em "Sem horário fixo", abra a Ficha 360°. Se falta concluir o termo com o professor, ele aparece no topo, com o que está pendente e a grade combinada, e a direção assina ali mesmo. Assinado por todos, as aulas entram na agenda em até 2 minutos e a aula do dia pode ser lançada. Na aba Aulas, o histórico agora abre no professor do aluno.'},
+      {target:'schedule-week-portrait',view:'schedule_explorer',title:'O Mapa de Aulas rola inteiro',text:'Ao descer a página, o retrato da semana sobe junto e a grade ocupa a tela. Os dias da semana ficam grudados no topo e a lista de professores continua ao lado.'},
+    ],
+  },
+  {
+    id:'2026-11-04-zz-agenda-rola-inteira',title:'Sua agenda rola inteira',roles:['TEACHER'],
+    steps:[
+      {target:'agenda-week-towers',view:'schedule',title:'Mais espaço para o calendário',text:'Em Gestão de horários, ao descer a página, os indicadores sobem junto e o calendário ocupa a tela, com os dias da semana grudados no topo. No celular, quem fica grudado é o seletor de dia. Se você tiver alterações não salvas, o botão Salvar Agenda continua à vista.'},
+    ],
+  },
 ];
 
 /**

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { localMonth } from '../lib/dateUtils';
 import { HISTORY_CATEGORIES, historyDate, historyEventsFor, lessonHistoryReport, type HistoryCategory, type HistoryData, type HistoryRow } from '../lib/lessonHistory';
 
-interface Props { user: { id: string; role?: string }; initialStudentId?: string; teacherId?: string; }
+interface Props { user: { id: string; role?: string }; initialStudentId?: string; teacherId?: string; defaultTeacherId?: string | null; }
 const field = 'rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-brand-text min-w-0';
 const button = 'rounded-xl border border-brand-border px-3 py-2 text-sm font-bold disabled:opacity-40';
 const monthBounds = (m: string) => { const [y, n] = m.split('-').map(Number); return { from: `${m}-01`, to: `${m}-${new Date(y, n, 0).getDate()}` }; };
@@ -14,7 +14,7 @@ const failure = (e: unknown) => {
   return 'Não foi possível concluir. Confira o acesso, o período e os dados e tente novamente.';
 };
 
-export default function LessonHistoryPanel({ user, initialStudentId, teacherId }: Props) {
+export default function LessonHistoryPanel({ user, initialStudentId, teacherId, defaultTeacherId }: Props) {
   const manager = user.role === 'SCHOOL_ADMIN' || user.role === 'COORDINATOR';
   const [teachers, setTeachers] = useState<{ id: string; name: string; lifecycle: string }[]>([]);
   const [teacher, setTeacher] = useState(teacherId || (manager ? '' : user.id));
@@ -41,10 +41,15 @@ export default function LessonHistoryPanel({ user, initialStudentId, teacherId }
       if (!active) return;
       if (err) { setError('Não foi possível consultar os teachers.'); return; }
       const list = (roster || []) as typeof teachers;
-      setTeachers(list); setTeacher(list[0]?.id || '');
+      setTeachers(list);
+      // Na ficha, abre no professor do aluno. O primeiro da lista em ordem alfabética
+      // fazia parecer que o aluno era de quem nunca deu aula para ele.
+      const fromStudent = list.find(t => t.id === defaultTeacherId)?.id;
+      const firstActive = (list.find(t => t.lifecycle !== 'offboarded') || list[0])?.id;
+      setTeacher(fromStudent || (initialStudentId ? '' : firstActive) || '');
     });
     return () => { active = false; };
-  }, [manager, teacherId]);
+  }, [manager, teacherId, defaultTeacherId, initialStudentId]);
   useEffect(() => {
     const token = ++request.current;
     setData(null); setSelected(null); setAction(null); setError('');

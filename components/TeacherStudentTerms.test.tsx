@@ -17,6 +17,33 @@ describe('individual terms screen',()=>{
   fireEvent.click(await screen.findByRole('button',{name:'Conferir e confirmar agenda'}));const dialog=screen.getByRole('dialog');expect(within(dialog).queryByText(term.body)).not.toBeInTheDocument();expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
   fireEvent.click(within(dialog).getByLabelText(/Conferi os horários/));fireEvent.click(within(dialog).getByRole('button',{name:'Confirmar agenda'}));await waitFor(()=>expect(rpc).toHaveBeenCalledWith('teacher_student_terms',{p_action:'family_confirm',p_id:'term-fixture',p_payload:{confirmed:true,schedule_hash:'schedule-only-hash'}}));
  });
+ describe('recorte da ficha do aluno',()=>{
+  const school={...term,student_id:'aluno-a',phase:'SCHOOL_PENDING'};
+  const list=(terms:unknown[],role='SCHOOL_ADMIN')=>({data:{ok:true,enabled:true,role,actor_name:'Direção Fixture',terms},error:null});
+  it('mostra só o termo pendente daquele aluno, sem as ferramentas da tela geral',async()=>{
+   rpc.mockResolvedValue(list([school,{...school,id:'de-outro',student_id:'aluno-b',student_name:'Outro Aluno'},{...school,id:'executado',status:'EXECUTED',phase:'EXECUTED'}]));
+   render(<TeacherStudentTerms studentId="aluno-a" />);
+   expect(await screen.findByText('Termo pendente deste aluno')).toBeInTheDocument();
+   expect(screen.getByText('Aguardando assinatura da escola')).toBeInTheDocument();
+   expect(screen.getAllByRole('article')).toHaveLength(1);
+   expect(screen.queryByText(/Outro Aluno/)).not.toBeInTheDocument();
+   expect(screen.queryByRole('button',{name:'Preparar atendimento manual ou reposição'})).not.toBeInTheDocument();
+  });
+  it('não ocupa espaço na ficha de quem não tem pendência',async()=>{
+   rpc.mockResolvedValue(list([{...school,status:'EXECUTED',phase:'EXECUTED'}]));
+   const {container}=render(<TeacherStudentTerms studentId="aluno-a" />);
+   await waitFor(()=>expect(rpc).toHaveBeenCalled());
+   await waitFor(()=>expect(container).toBeEmptyDOMElement());
+  });
+  it('confirma a assinatura e avisa quando as aulas entram na agenda',async()=>{
+   let signed=false;
+   rpc.mockImplementation((_name,args)=>{if(args.p_action==='sign'){signed=true;return Promise.resolve({data:{ok:true,phase:'EXECUTED'},error:null});}return Promise.resolve(list([signed?{...school,status:'EXECUTED',phase:'EXECUTED'}:school]));});
+   render(<TeacherStudentTerms studentId="aluno-a" />);
+   fireEvent.click(await screen.findByRole('button',{name:'Ler termo e comprovantes'}));const dialog=screen.getByRole('dialog');
+   fireEvent.click(within(dialog).getByLabelText(/Li a via integral/));fireEvent.click(within(dialog).getByLabelText(/Tenho poderes/));fireEvent.change(within(dialog).getByLabelText(/Digite seu nome completo/),{target:{value:'Direção Fixture'}});fireEvent.click(within(dialog).getByRole('button',{name:'Assinar esta versão'}));
+   expect(await screen.findByRole('status')).toHaveTextContent('As aulas fixas entram na agenda em até 2 minutos');
+  });
+ });
  it('shows a stale-version refusal inside the document and keeps the form open',async()=>{
   rpc.mockImplementation((_name,args)=>Promise.resolve(args.p_action==='list'?{data:{ok:true,enabled:true,role:'TEACHER',actor_name:'Professor Fixture',terms:[term]},error:null}:{data:null,error:{message:'Confira a versão atual.'}}));render(<TeacherStudentTerms />);
   fireEvent.click(await screen.findByRole('button',{name:'Ler termo e comprovantes'}));const dialog=screen.getByRole('dialog');fireEvent.click(within(dialog).getByLabelText(/Li a via/));fireEvent.click(within(dialog).getByLabelText(/Tenho poderes/));fireEvent.change(within(dialog).getByRole('textbox'),{target:{value:'Professor Fixture'}});fireEvent.click(within(dialog).getByRole('button',{name:'Assinar esta versão'}));expect(await within(dialog).findByRole('alert')).toHaveTextContent('Confira a versão atual.');expect(screen.getByRole('dialog')).toBeInTheDocument();

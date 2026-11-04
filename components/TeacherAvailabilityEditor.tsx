@@ -652,11 +652,12 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         </label>
       </div>
 
-      {/* Grade */}
-      <div className="ww-slab overflow-hidden flex flex-col h-[calc(100dvh-250px)] min-h-[28rem]">
+      {/* Grade: rola com a página. Numa caixa de altura fixa, o calendário ficava
+          com a rolagem dentro da rolagem. */}
+      <div className="ww-slab overflow-clip flex flex-col min-h-[28rem]">
 
         {/* Seletor de dia no celular */}
-        <div className="lg:hidden flex overflow-x-auto gap-2 p-3 border-b border-brand-border custom-scrollbar snap-x">
+        <div className="lg:hidden sticky top-[65px] z-30 bg-brand-surface/95 backdrop-blur-md flex overflow-x-auto gap-2 p-3 border-b border-brand-border custom-scrollbar snap-x">
           {DAYS.map((day, idx) => (
             <button
               key={day}
@@ -671,16 +672,17 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto custom-scrollbar relative p-2">
+        <div className="flex-1 overflow-x-clip relative p-2">
           {gridRows.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2 text-center text-brand-muted p-6">
+            <div className="min-h-60 flex flex-col items-center justify-center gap-2 text-center text-brand-muted p-6">
               <span className="ww-orb tone-sky h-14 w-14"><Clock size={22} /></span>
               <p className="text-sm font-black text-brand-text">Nenhum horário marcado ainda</p>
               <p className="text-xs max-w-xs">Desmarque "Só o meu horário" para ver a grade inteira e tocar nos horários em que você pode dar aula.</p>
             </div>
           ) : (
-          <table className="w-full border-separate border-spacing-1.5">
-            <thead className="sticky top-0 z-40">
+          <table className="w-full table-fixed border-separate border-spacing-1.5">
+            {/* 65 px: altura do topo do app. No celular quem gruda é o seletor de dia. */}
+            <thead className="lg:sticky lg:top-[65px] z-20">
               <tr>
                 <th className="w-16 rounded-xl bg-brand-surface/90 backdrop-blur-md">
                   <Clock size={15} className="text-brand-muted mx-auto" />
@@ -688,7 +690,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
                 {DAYS.map((day, idx) => (
                   <th
                     key={day}
-                    className={`p-2.5 min-w-[130px] rounded-xl backdrop-blur-md ${selectedDay !== idx ? 'hidden lg:table-cell' : 'table-cell'} ${idx === todayIdx ? 'ww-block tone-brand' : 'bg-brand-surface/90 border border-brand-border'}`}
+                    className={`p-2.5 rounded-xl backdrop-blur-md ${selectedDay !== idx ? 'hidden lg:table-cell' : 'table-cell'} ${idx === todayIdx ? 'ww-block tone-brand' : 'bg-brand-surface/90 border border-brand-border'}`}
                   >
                     <span className={`relative block text-[11px] font-black uppercase tracking-[0.16em] ${idx === todayIdx ? 'text-white' : 'text-brand-text'}`}>{day}</span>
                     <span className={`relative block text-[9px] font-bold ${idx === todayIdx ? 'text-white/80' : 'text-brand-muted'}`}>
@@ -772,7 +774,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         </div>
 
         {/* Rodapé */}
-        <div className="p-4 border-t border-brand-border bg-brand-surface/80 backdrop-blur-md flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+        <div className={`p-4 border-t border-brand-border bg-brand-surface/80 backdrop-blur-md flex flex-col sm:flex-row justify-between sm:items-center gap-3 ${pendingChanges.dirty ? 'sticky z-30 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:bottom-0' : ''}`}>
           <div className={`flex items-center gap-2 text-xs font-semibold ${pendingChanges.dirty ? 'text-amber-600 dark:text-amber-400' : 'text-brand-muted'}`}>
             <RefreshCw size={12} />
             <span>{pendingChanges.dirty ? 'Você tem alterações não salvas — elas se perdem ao sair.' : 'Alterações não salvas são perdidas ao sair.'}</span>

@@ -1892,10 +1892,10 @@ const App: React.FC = () => {
             </div>
           </header>
 
-          {/* pb extra no celular: a barra inferior do diretor é fixa e cobriria
-              o fim da tela (o último lançamento, o botão de salvar). */}
+          {/* pb extra no celular: a barra inferior do diretor e do professor é fixa e
+              cobriria o fim da tela (o último lançamento, o botão de salvar). */}
           <div className={`p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip ${
-            user.role === UserRole.SCHOOL_ADMIN ? 'pb-24 lg:pb-8' : ''
+            user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.TEACHER ? 'pb-24 lg:pb-8' : ''
           }`}>
             <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules', 'whatsapp'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={

@@ -19,6 +19,7 @@ vi.mock('../lib/supabase', () => {
 });
 
 import TeacherScheduleExplorer from './TeacherScheduleExplorer';
+import TeacherAvailabilityEditor from './TeacherAvailabilityEditor';
 import AdminPaymentsList from './AdminPaymentsList';
 
 afterEach(cleanup);
@@ -53,6 +54,39 @@ describe('Mapa de Aulas', () => {
     // Mostrar tudo devolve as 37 linhas.
     fireEvent.click(screen.getByLabelText('Esconder horas sem agenda'));
     expect(within(screen.getByRole('table')).getByText('06:00')).toBeTruthy();
+  });
+});
+
+describe('Rolagem da agenda', () => {
+  // Uma caixa de altura fixa ou uma rolagem interna deixam o retrato da semana preso
+  // em cima, com duas linhas de grade numa tela de notebook. E overflow-x-auto faz
+  // os dias da semana pararem de grudar no topo da página.
+  const expectPageScroll = (table: HTMLElement, stage: Element) => {
+    expect(stage.className).not.toMatch(/(^|\s|:)h-\[/);
+    for (let el = table.parentElement; el && el !== stage.parentElement; el = el.parentElement) {
+      expect(el.className, el.tagName).not.toMatch(/overflow-(auto|scroll|hidden|y-auto|x-auto)|(^|\s|:)h-\[calc/);
+    }
+    expect(table.querySelector('thead')!.className).toMatch(/top-\[65px\]/);
+  };
+
+  it('Mapa de Aulas rola com a página', async () => {
+    tables.bookings = [];
+    tables.teacher_availability = [{ teacher_id: 't1', day_of_week: 1, start_time: '08:00' }];
+    tables.appointments = [];
+    tables.profiles = [];
+    const { container } = render(<TeacherScheduleExplorer user={{ role: 'SCHOOL_ADMIN' }} teachers={[teacher]} />);
+    const table = await screen.findByRole('table');
+    expectPageScroll(table, container.querySelector('[data-tour="director-schedule-change"]')!);
+  });
+
+  it('Minha agenda rola com a página', async () => {
+    tables.bookings = [];
+    tables.teacher_availability = [{ teacher_id: 't1', day_of_week: 1, start_time: '08:00' }];
+    tables.appointments = [];
+    tables.profiles = [];
+    const { container } = render(<TeacherAvailabilityEditor teacherId="t1" tenantId="school" />);
+    const table = await screen.findByRole('table');
+    expectPageScroll(table, container.firstElementChild!);
   });
 });
 

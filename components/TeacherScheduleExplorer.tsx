@@ -832,9 +832,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const ddmm = (ymd: string) => ymd.split('-').slice(1).reverse().join('/');
 
   return (
-    <div data-tour="director-schedule-change" className="ww-stage flex flex-col xl:flex-row gap-5 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
+    // A página inteira rola. Com altura fixa aqui, o retrato da semana ficava preso
+    // em cima e sobravam duas linhas de grade numa tela de notebook.
+    <div data-tour="director-schedule-change" className="ww-stage flex flex-col xl:flex-row xl:items-start gap-5 animate-in fade-in duration-500 relative">
       {/* Corpo docente: cada professor com o quanto da agenda dele está ocupado */}
-      <aside data-tour="schedule-teacher-loads" className="ww-slab w-full xl:w-80 flex flex-col shrink-0 overflow-hidden">
+      <aside data-tour="schedule-teacher-loads" className="ww-slab w-full xl:w-80 flex flex-col shrink-0 overflow-hidden xl:sticky! xl:top-20 xl:max-h-[calc(100dvh-6rem)]">
         <div className="p-5 pb-4 border-b border-brand-border/60">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="font-black text-brand-text text-[11px] uppercase tracking-[0.18em] flex items-center gap-2">
@@ -877,7 +879,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           </div>
         </div>
 
-        <div className="max-h-72 xl:max-h-none xl:flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
+        <div className="max-h-72 xl:max-h-none xl:flex-1 xl:min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-hide">
           {filteredTeachers.map((teacher) => {
             const active = selectedTeacher?.id === teacher.id;
             const load = teacherLoads[teacher.id];
@@ -917,7 +919,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       </aside>
 
       {/* Agenda do professor selecionado */}
-      <section className="ww-slab flex-1 min-h-[70vh] xl:min-h-0 flex flex-col overflow-hidden">
+      <section className="ww-slab flex-1 min-w-0 min-h-[70vh] flex flex-col overflow-clip">
         {selectedTeacher ? (
           <>
             <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-brand-border/60 space-y-4">
@@ -1078,8 +1080,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               </div>
             </div>
 
-            {/* Grade */}
-            <div className="flex-1 overflow-auto p-3 sm:p-4 scrollbar-hide relative">
+            {/* Grade: overflow-clip e overflow-x-clip não criam rolagem própria, então
+                os dias da semana grudam no topo da página enquanto ela rola. */}
+            <div className="flex-1 overflow-x-clip p-3 sm:p-4 relative">
               {gridRows.length === 0 && (
                 <div className="h-full min-h-60 flex flex-col items-center justify-center text-center gap-2 text-brand-muted">
                   <span className="ww-orb tone-slate h-14 w-14"><Clock size={22} /></span>
@@ -1195,9 +1198,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
               {/* COMPUTADOR: grade completa */}
               {gridRows.length > 0 && (
-              <div className="hidden md:block min-w-[760px]">
+              <div className="hidden md:block">
                 <table className="w-full table-fixed border-separate border-spacing-1.5">
-                  <thead className="sticky top-0 z-40">
+                  {/* 65 px: altura do topo do app, que também gruda no <main>. */}
+                  <thead className="sticky top-[65px] z-40">
                     <tr>
                       <th className="w-14 bg-brand-surface/90 backdrop-blur-md rounded-xl" aria-label="Horário"></th>
                       {DAYS.map((day, dIdx) => {
@@ -1292,7 +1296,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                     title={`${booking.student} · ${booking.module}`}
                                     className={`ww-block tone-emerald w-full h-full px-1.5 flex items-center gap-1.5 text-left cursor-pointer ${isConflict ? 'tone-rose ring-2 ring-rose-400' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
                                   >
-                                    <span className="relative hidden lg:grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/20 text-[9px] font-black">{initials(booking.student)}</span>
+                                    <span className="relative hidden 2xl:grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/20 text-[9px] font-black">{initials(booking.student)}</span>
                                     <span className="relative min-w-0">
                                       <span className="block text-[9px] font-black uppercase truncate leading-tight">{booking.student}</span>
                                       <span className="block text-[8px] font-bold text-white/75 uppercase truncate">{booking.module}</span>
