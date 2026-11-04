@@ -21,7 +21,7 @@ export type StudentBillingDecision = {
 export type StudentAccess =
   | {
     status: "ACTIVE";
-    enrollmentState: "COMPLETED" | null;
+    enrollmentState: "COMPLETED" | "AWAITING_TEACHER_TERMS" | null;
   }
   | {
     status: "PENDING_ACTIVATION";
@@ -167,4 +167,19 @@ export function resolveStudentAccess(
   }
 
   return { status: "ACTIVE", enrollmentState: null };
+}
+
+/**
+ * Pagamento confirmado no servidor libera o portal enquanto o termo individual
+ * espera assinatura; a agenda continua dependendo do termo. Sem essa
+ * confirmação (inclusive quando a consulta falhou), o bloqueio fica como está.
+ */
+export function releasePaidEnrollmentAwaitingTerms(
+  access: StudentAccess,
+  paidAwaitingTerms: boolean,
+): StudentAccess {
+  if (access.status === "PENDING_ACTIVATION" && paidAwaitingTerms) {
+    return { status: "ACTIVE", enrollmentState: "AWAITING_TEACHER_TERMS" };
+  }
+  return access;
 }

@@ -252,6 +252,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
           não só que existem. StudentOnboarding.tsx segue no repo caso se queira
           voltar aos slides. */}
 
+      {studentContext?.access?.enrollmentState === 'AWAITING_TEACHER_TERMS' && (
+        <div role="status" className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+          <CheckCircle size={20} className="mt-0.5 shrink-0" />
+          <p className="text-sm font-medium leading-relaxed">
+            <strong>Pagamento confirmado, seu acesso está liberado.</strong> Suas aulas aparecem aqui assim que a escola e o professor concluírem o termo do seu horário. Já pode usar os materiais e o Wolfie.
+          </p>
+        </div>
+      )}
+
       {/* 0. LEMBRETE DE AUDITORIA (aparece só com pendências) */}
       <StudentAuditReminder />
 

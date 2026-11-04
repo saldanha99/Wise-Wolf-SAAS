@@ -1016,6 +1016,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'lesson-links-today',view:'meeting_links',title:'O link certo de cada aula',text:'Em Links aparecem as aulas de hoje e amanhã com o link de cada uma. Na sala da escola, aluno e professor usam o mesmo link. Se a sala ainda está sendo preparada, o link aparece ali sozinho — não use outro. Dez minutos antes da aula, a plataforma abre um aviso com o botão para entrar.'},
     ],
   },
+  {
+    id:'2026-11-04-aluno-pago-acesso-liberado',title:'Aluno que pagou já entra na plataforma',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'sidebar-nav',view:'contracts',title:'O pagamento libera o acesso; o termo libera a agenda',text:'O aluno que pagou entra na plataforma mesmo com o termo do professor pendente: vê um aviso de pagamento confirmado e já usa os materiais e o Wolfie. As aulas só entram na agenda depois que a escola e o professor assinarem. Por isso, com o aluno já pago, o lembrete de assinatura sai em 2 horas em vez de 24 (entre 9h e 21h). Assine logo para ele não perder a primeira aula.'},
+    ],
+  },
 ];
 
 /**

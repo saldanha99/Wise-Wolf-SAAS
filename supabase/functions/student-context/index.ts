@@ -7,6 +7,7 @@ import {
 import {
   type BillingStatus,
   type OpenStudentPaymentRow,
+  releasePaidEnrollmentAwaitingTerms,
   resolveDisplayedStreak,
   resolveStudentAccess,
   resolveStudentBilling,
@@ -365,7 +366,24 @@ Deno.serve(async (req: Request) => {
         503,
       );
     }
-    const access = resolveStudentAccess(enrollmentOffers ?? [], user.id);
+    let access = resolveStudentAccess(enrollmentOffers ?? [], user.id);
+    if (access.status === "PENDING_ACTIVATION") {
+      const { data: paidAwaitingTerms, error: paidAwaitingTermsError } =
+        await admin.rpc("student_paid_awaiting_teacher_terms", {
+          p_student: user.id,
+          p_tenant: tenantId,
+        });
+      if (paidAwaitingTermsError) {
+        console.error(
+          "[student-context] pagamento da matrícula não conferido",
+          paidAwaitingTermsError.code,
+        );
+      }
+      access = releasePaidEnrollmentAwaitingTerms(
+        access,
+        !paidAwaitingTermsError && paidAwaitingTerms === true,
+      );
+    }
 
     const now = new Date();
     const businessDate = dateInSaoPaulo(now);

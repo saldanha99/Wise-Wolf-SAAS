@@ -4722,3 +4722,17 @@ só na VPS, com trilha em `private.teacher_general_contract_waivers`. Vale apena
 termo por aluno (`student_term_source_valid`): cobertura pontual segue exigindo o aceite.
 ⚠️ Nunca marque `contract_accepted = true` para destravar: esse aceite não existiu.
 Migration `20261103140000`, teste `dispensa_de_contrato_geral_no_termo.sql` no release.
+
+### 04/11/2026 — Aluno pago não fica preso à tela de pagamento pelo termo
+
+Desde 29/10 o aluno paga antes de escola e professor assinarem o termo, e a matrícula
+só chega a COMPLETED depois das assinaturas. `student-context` lia "não concluída" como
+"falta pagar": quem pagou via "Conclua o pagamento para liberar seus estudos". Agora
+`private.enrollment_paid_awaiting_terms` libera o portal (`AWAITING_TEACHER_TERMS`, com
+aviso no painel) quando só falta o termo. ⚠️ `BILLING_READY` não prova pagamento: também
+é gravado ao criar a cobrança. A prova é `student_payments` RECEIVED, RECEIVED_IN_CASH ou
+CONFIRMED criada depois da oferta, sem estorno, com as pré-condições de
+`complete_enrollment_offer`. Agenda e conclusão seguem exigindo o termo; termo recusado
+não libera; falha na consulta mantém o bloqueio. Com aluno pago, o lembrete de assinatura
+sai em 2 h, não em 24 h. Migration `20261104120000` e teste
+`aluno_pago_nao_fica_bloqueado_pelo_termo.sql` no release; tour da direção.

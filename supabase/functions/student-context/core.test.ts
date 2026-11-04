@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   businessDaysAfter,
+  releasePaidEnrollmentAwaitingTerms,
   resolveDisplayedStreak,
   resolveStudentAccess,
   resolveStudentBilling,
@@ -35,6 +36,21 @@ Deno.test("unfinished authoritative enrollment keeps pedagogy locked", () => {
       },
     );
   }
+});
+
+Deno.test("paid enrollment waiting for the teacher term unlocks pedagogy", () => {
+  const pending = {
+    status: "PENDING_ACTIVATION",
+    enrollmentState: "BILLING_READY",
+  } as const;
+  assertEquals(releasePaidEnrollmentAwaitingTerms(pending, true), {
+    status: "ACTIVE",
+    enrollmentState: "AWAITING_TEACHER_TERMS",
+  });
+  // Sem confirmação do servidor (ou com a consulta falha) o bloqueio fica.
+  assertEquals(releasePaidEnrollmentAwaitingTerms(pending, false), pending);
+  const active = { status: "ACTIVE", enrollmentState: "COMPLETED" } as const;
+  assertEquals(releasePaidEnrollmentAwaitingTerms(active, true), active);
 });
 
 Deno.test("only completion consumed by this student unlocks pedagogy", () => {
