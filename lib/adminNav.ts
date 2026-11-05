@@ -169,10 +169,10 @@ export const ADMIN_NAV: NavGroup[] = [
 
   // ── Configurações ─────────────────────────────────────────────────────────
   {
-    id: 'settings_school', label: 'Configurações', icon: Settings, section: 'Configurações',
+    id: 'settings_school', label: 'Configurações', icon: Settings, section: 'Configurações', badgeKey: 'termos_para_assinar',
     tabs: [
       { id: 'settings_school', label: 'Central da escola' },
-      { id: 'contracts', label: 'Contratos' },
+      { id: 'contracts', label: 'Contratos', badgeKey: 'termos_para_assinar' },
       { id: 'admin_workflows', label: 'Workflows' },
     ],
   },

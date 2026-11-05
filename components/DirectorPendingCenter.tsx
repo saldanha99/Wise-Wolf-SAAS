@@ -25,6 +25,9 @@ const ITEMS: Item[] = [
   { key: 'presenca', label: 'Conflitos de presença a resolver', tab: 'attendance-disputes', icon: ShieldAlert, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
   { key: 'materiais', label: 'Materiais aguardando aprovação', tab: 'material-approvals', icon: FileText, color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
   { key: 'trials', label: 'Experimentais/Treinos a pagar', tab: 'trial-settlement', icon: GraduationCap, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
+  // A agenda do aluno só nasce com o termo completo. O link da escola chegou a ir
+  // para o próprio número central por dias, sem ninguém ver: daqui ele não some.
+  { key: 'termos_para_assinar', label: 'Termos por aluno esperando a assinatura da escola', tab: 'contracts', icon: FileText, color: 'text-teal-600 bg-teal-100 dark:bg-teal-900/30' },
   // Reposição é dívida com o aluno: a aula foi paga (falta dele) ou é obrigação
   // do professor (falta dele), e ainda não aconteceu. Sem data ela não aparece
   // em "Lançar Aula" nem em "Pendentes" — só na aba Reposições, que ninguém abre

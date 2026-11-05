@@ -292,6 +292,7 @@ const NOTIFICATION_ITEMS: { key: string; label: string; tab: string }[] = [
   { key: 'presenca', label: 'Conflitos de presença para resolver', tab: 'attendance-disputes' },
   { key: 'materiais', label: 'Materiais para aprovar', tab: 'material-approvals' },
   { key: 'trials', label: 'Experimentais/treinos para liquidar', tab: 'trial-settlement' },
+  { key: 'termos_para_assinar', label: 'Termos por aluno para a escola assinar', tab: 'contracts' },
   { key: 'fechamentos', label: 'Fechamentos de professor pendentes', tab: 'payments' },
   { key: 'pagamentos_retidos', label: 'Pagamentos retidos por conflito', tab: 'attendance-disputes' },
 ];

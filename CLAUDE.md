@@ -4757,3 +4757,30 @@ histórico da aba Aulas abria no primeiro professor em ordem alfabética, mesmo 
 e parecia que o aluno era dele; agora abre no professor do aluno (`defaultTeacherId`).
 Tours `2026-11-04-termo-pendente-na-ficha` e `2026-11-04-zz-agenda-rola-inteira`.
 
+### 05/11/2026 — Link de assinatura da escola no WhatsApp pessoal
+
+O link da escola saía do número central para ele mesmo: o perfil do diretor tem o
+telefone da instância. A fila marcava `sent`, e foram 10 links com 0 abertos. ⚠️ `sent`
+na fila não prova que alguém viu: confira `student_term_links.opened_at`. Agora a
+direção cadastra um celular em Contratos → Termos por aluno
+(`set_my_term_signature_contact`, tabela `private.term_signature_contacts`). O número
+central é recusado, número novo reemite os links em aberto, salvar o mesmo não reenvia
+e a auditoria guarda só o final. `private.student_term_school_signer_phone` decide:
+cadastrado, senão o telefone do perfil que não seja o central; nulo = não envia. O número
+nunca entra no código nem no chat. `whatsapp_outbound_kind` trata esse celular como
+`staff`, senão cairia no teto de prospecção.
+
+Termo esperando a escola conta em `director_pending_counts.termos_para_assinar`
+(Central, sino e menu). `list_term_reserved_slots` mostra o horário de matrícula à
+espera do termo como reservado na agenda do professor e no Mapa de Aulas, que antes o
+mostravam LIVRE; o Mapa também passou a mostrar a reserva de início futuro. Remendos
+por âncora: `student_term_issue_link`, `whatsapp_outbound_kind` e
+`director_pending_counts`. Migration `20261105120000` e teste
+`assinatura_da_escola_no_whatsapp_pessoal.sql` no release. Tours
+`2026-11-05-whatsapp-para-assinar` e `2026-11-05-zz-horario-reservado-na-agenda`.
+
+⚠️ Ainda vão ao número central, por falta de decisão da direção: `ASAAS_HEALTH`,
+`ASAAS_TRIAGE_SETTLED`, `CRON_ALERT` e `SCHOOL_AI_BRIEFING` (este aceita
+`ai_team_config.ownerWhatsapp`). Aviso novo para a direção: use grupo por canal
+(`tenant_notice_destination`), nunca `profiles.phone` do dono da instância.
+

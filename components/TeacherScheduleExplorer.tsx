@@ -41,6 +41,7 @@ import {
   type GridTrial,
 } from '../lib/scheduleGrid';
 import { localYMD } from '../lib/dateUtils';
+import { buildReservedCells, parseHoldSlots, parseTermReservedSlots, type ReservedCell } from '../lib/scheduleHold';
 import { nullableUuid } from '../lib/dbValues';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
@@ -100,6 +101,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   // horário para sempre. `weekOffset` em semanas a partir da atual.
   const [weekOffset, setWeekOffset] = useState(0);
   const [trials, setTrials] = useState<GridTrial[]>([]);
+  const [reservedCells, setReservedCells] = useState<Record<string, ReservedCell>>({});
   const [compactGrid, setCompactGrid] = useState(true);
   const [focusWindow, setFocusWindow] = useState<FreeWindow | null>(null);
   const [teacherSort, setTeacherSort] = useState<TeacherSort>('name');
@@ -174,7 +176,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     const detailTenantId = currentTenantId || selectedTeacher.tenantId;
 
     // 1. Fetch Bookings, Availability and Trials in Parallel
-    const [bookingsRes, availRes, trialsRes, stdsRes] = await Promise.all([
+    const noReservations = Promise.resolve({ data: [] as unknown, error: null });
+    const [bookingsRes, availRes, trialsRes, stdsRes, holdsRes, termSlotsRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('id, day_of_week, time_slot, type, module, student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)')
@@ -197,8 +200,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .from('profiles')
         .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
-        .eq('tenant_id', detailTenantId)
+        .eq('tenant_id', detailTenantId),
+      // Horário segurado (início futuro ou termo pendente) não é horário livre.
+      detailTenantId
+        ? supabase.rpc('list_future_start_holds', { p_tenant_id: detailTenantId, p_teacher_ids: [selectedTeacher.id], p_include_inactive: false })
+        : noReservations,
+      detailTenantId
+        ? supabase.rpc('list_term_reserved_slots', { p_tenant_id: detailTenantId, p_teacher_ids: [selectedTeacher.id] })
+        : noReservations,
     ]);
+
+    setReservedCells(buildReservedCells(parseHoldSlots(holdsRes.data), parseTermReservedSlots(termSlotsRes.data)));
 
     // A relação embutida acima é propositalmente pequena para a grade. O modal
     // de edição, porém, precisa do perfil completo; caso contrário os defaults
@@ -786,10 +798,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const readSlot = React.useCallback<SlotReader>((dIdx, time) => {
     const key = `${dIdx}-${time}`;
     if (bookings[key]) return 'booked';
-    if (findRescheduleForSlot(teacherReschedules, dIdx, time, weekStart) || findTrialForSlot(weekTrials, dIdx, time, weekStart)) return 'event';
+    if (reservedCells[key] || findRescheduleForSlot(teacherReschedules, dIdx, time, weekStart) || findTrialForSlot(weekTrials, dIdx, time, weekStart)) return 'event';
     if (availableSlots.has(key)) return 'free';
     return 'off';
-  }, [bookings, availableSlots, teacherReschedules, weekTrials, weekStart]);
+  }, [bookings, reservedCells, availableSlots, teacherReschedules, weekTrials, weekStart]);
 
   const gridRows = React.useMemo<GridRow[]>(
     () => (compactGrid ? compactRows(TIMES, DAYS.length, readSlot) : TIMES.map(time => ({ kind: 'time' as const, time }))),
@@ -1066,6 +1078,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 <Legend tone="emerald" label="Aula fixa" />
                 <Legend tone="amber" label="Reposição" ghost />
                 <Legend tone="violet" label="Experimental / teste oral" ghost />
+                <Legend tone="teal" label="Reservado (início futuro ou termo pendente)" ghost />
                 <Legend well label="Livre" />
                 <Legend off label="Fora da grade" />
                 <label className="ml-auto inline-flex items-center gap-2 text-[11px] font-bold text-brand-muted cursor-pointer select-none">
@@ -1100,15 +1113,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                       booking: bookings[`${dIdx}-${time}`],
                       reschedule: getRescheduleForSlot(dIdx, time),
                       trial: getTrialForSlot(dIdx, time),
+                      reserved: reservedCells[`${dIdx}-${time}`],
                       conflict: conflicts.has(`${dIdx}-${time}`),
                     }));
-                  const dayEntries = daySlots.filter(entry => entry.booking || entry.reschedule || entry.trial);
+                  const dayEntries = daySlots.filter(entry => entry.booking || entry.reschedule || entry.trial || entry.reserved);
                   const freeTimes = daySlots
                     .filter(entry => (
                       availableSlots.has(`${dIdx}-${entry.time}`)
                       && !entry.booking
                       && !entry.reschedule
                       && !entry.trial
+                      && !entry.reserved
                     ))
                     .map(entry => entry.time);
                   const ymd = dateForDayIndex(weekStart, dIdx);
@@ -1128,10 +1143,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                         <p className="text-[11px] text-brand-muted italic">Sem aulas</p>
                       ) : (
                         <div className="space-y-1.5">
-                          {dayEntries.map(({ time, booking, reschedule, trial, conflict }) => {
+                          {dayEntries.map(({ time, booking, reschedule, trial, reserved, conflict }) => {
                             const hit = (name?: string) =>
                               slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
-                            const match = hit(reschedule?.studentName) || hit(trial?.studentName) || hit(booking?.student);
+                            const match = hit(reschedule?.studentName) || hit(trial?.studentName) || hit(booking?.student) || hit(reserved?.student);
                             const dim = slotSearch.trim() !== '' && !match;
                             // Reposição e experimental são de UM dia: aparecem
                             // JUNTO da aula fixa, nunca no lugar dela. Substituir
@@ -1153,6 +1168,14 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                     <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
                                     <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{trial.studentName}</span>
                                     <span className="text-[9px] font-bold uppercase opacity-80">{trial.type === 'oral_test' ? 'Teste oral · só hoje' : 'Experimental · só hoje'}</span>
+                                  </div>
+                                )}
+                                {reserved && !booking && (
+                                  <div title={reserved.caption} className={`ww-ghost tone-teal flex items-center gap-2 px-2.5 py-2 ${match ? 'ring-2 ring-teal-400' : ''}`}>
+                                    <Lock size={13} aria-hidden="true" className="shrink-0" />
+                                    <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
+                                    <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{reserved.student}</span>
+                                    <span className="text-[9px] font-bold uppercase opacity-80">{reserved.label}</span>
                                   </div>
                                 )}
                                 {booking && (
@@ -1256,11 +1279,12 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                             const isAvailable = availableSlots.has(key);
                             const reschedule = getRescheduleForSlot(dIdx, time);
                             const trial = getTrialForSlot(dIdx, time);
+                            const reservedCell = reservedCells[key];
                             const isConflict = conflicts.has(key);
                             const hitName = (name?: string) =>
                               slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
-                            const matchSearch = hitName(booking?.student) || hitName(reschedule?.studentName) || hitName(trial?.studentName);
-                            const dimmed = slotSearch.trim() !== '' && (booking || reschedule || trial) && !matchSearch;
+                            const matchSearch = hitName(booking?.student) || hitName(reschedule?.studentName) || hitName(trial?.studentName) || hitName(reservedCell?.student);
+                            const dimmed = slotSearch.trim() !== '' && (booking || reschedule || trial || reservedCell) && !matchSearch;
                             const isTodayCol = dateForDayIndex(weekStart, dIdx) === todayYMD;
                             const focused = inFocusWindow(dIdx, time);
                             // O evento de UM dia (reposição/experimental) é uma
@@ -1302,6 +1326,14 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                       <span className="block text-[8px] font-bold text-white/75 uppercase truncate">{booking.module}</span>
                                     </span>
                                   </button>
+                                ) : reservedCell ? (
+                                  <div
+                                    title={reservedCell.caption}
+                                    className={`ww-ghost tone-teal w-full h-full px-1.5 flex flex-col justify-center cursor-help ${matchSearch ? 'ring-2 ring-yellow-300 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
+                                  >
+                                    <span className="block truncate text-[9px] font-black uppercase leading-tight">{reservedCell.student}</span>
+                                    <span className="block truncate text-[8px] font-bold uppercase opacity-80">{reservedCell.label}</span>
+                                  </div>
                                 ) : overlay ? (
                                   <div className="w-full h-full ww-off" />
                                 ) : isAvailable ? (

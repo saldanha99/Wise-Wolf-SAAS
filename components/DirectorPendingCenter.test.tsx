@@ -25,6 +25,16 @@ describe('<DirectorPendingCenter />', () => {
     expect(screen.getByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
   });
 
+  it('mostra os termos esperando a escola e leva a Contratos', async () => {
+    rpc.mockResolvedValue({ data: { termos_para_assinar: 4 }, error: null });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    fireEvent.click(await screen.findByText('Termos por aluno esperando a assinatura da escola'));
+    expect(onNavigate).toHaveBeenCalledWith('contracts');
+  });
+
   it('permite tentar novamente e só mostra o estado positivo após leitura válida', async () => {
     rpc
       .mockResolvedValueOnce({ data: null, error: { message: 'falha temporária' } })

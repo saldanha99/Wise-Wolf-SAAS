@@ -57,6 +57,46 @@ describe('Mapa de Aulas', () => {
   });
 });
 
+describe('Horário à espera do termo', () => {
+  const termSlots = async (name: string) => ({
+    data: name === 'list_term_reserved_slots'
+      ? [{ slot_id: 's1', teacher_id: 't1', student_label: 'Aluno Reservado', day_of_week: 1, class_time: '12:30', starts_on: '2026-11-04', waiting_school: true, waiting_teacher: false, waiting_family: false }]
+      : [],
+    error: null,
+  });
+
+  afterEach(() => { rpc.mockImplementation(async () => ({ data: [], error: null })); });
+
+  const seed = () => {
+    rpc.mockImplementation(termSlots as never);
+    tables.bookings = [];
+    tables.teacher_availability = ['12:30', '13:00'].map(start_time => ({ teacher_id: 't1', day_of_week: 1, start_time }));
+    tables.appointments = [];
+    tables.profiles = [];
+  };
+
+  it('no Mapa de Aulas aparece reservado, não livre', async () => {
+    seed();
+    render(<TeacherScheduleExplorer user={{ role: 'SCHOOL_ADMIN' }} teachers={[teacher]} />);
+    const grid = await screen.findByRole('table');
+    expect(await within(grid).findByText('Aluno Reservado')).toBeTruthy();
+    expect(within(grid).getByText('Aguardando termo')).toBeTruthy();
+    expect(within(grid).getAllByText('livre')).toHaveLength(1);
+  });
+
+  it('na agenda do professor aparece com o aluno e o selo de reservado', async () => {
+    seed();
+    render(<TeacherAvailabilityEditor teacherId="t1" tenantId="school" />);
+    const grid = await screen.findByRole('table');
+    // A célula da agenda mostra só o primeiro nome.
+    expect(await within(grid).findByText('Aluno')).toBeTruthy();
+    expect(within(grid).getByText('aguarda termo')).toBeTruthy();
+    expect(within(grid).getByText('RES')).toBeTruthy();
+    expect(within(grid).getByTitle(/Falta: assinatura da escola/)).toBeTruthy();
+    expect(within(grid).getAllByText('livre')).toHaveLength(1);
+  });
+});
+
 describe('Rolagem da agenda', () => {
   // Uma caixa de altura fixa ou uma rolagem interna deixam o retrato da semana preso
   // em cima, com duas linhas de grade numa tela de notebook. E overflow-x-auto faz

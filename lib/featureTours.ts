@@ -1035,6 +1035,18 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'agenda-week-towers',view:'schedule',title:'Mais espaço para o calendário',text:'Em Gestão de horários, ao descer a página, os indicadores sobem junto e o calendário ocupa a tela, com os dias da semana grudados no topo. No celular, quem fica grudado é o seletor de dia. Se você tiver alterações não salvas, o botão Salvar Agenda continua à vista.'},
     ],
   },
+  {
+    id:'2026-11-05-whatsapp-para-assinar',title:'O link de assinatura chega no seu celular',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'term-signature-phone',view:'contracts',title:'Cadastre seu WhatsApp',text:'O link para a escola assinar os termos por aluno ia para o próprio número da escola, e ninguém recebia o aviso. Cadastre aqui um celular seu: os termos pendentes chegam nele e os próximos também. Sem assinatura da escola, a agenda do aluno não nasce. Os termos pendentes agora também contam na Central de Pendências.'},
+    ],
+  },
+  {
+    id:'2026-11-05-zz-horario-reservado-na-agenda',title:'Horário reservado não aparece mais como livre',roles:['TEACHER'],
+    steps:[
+      {target:'agenda-future-start-hold-legend',view:'schedule',title:'Reservado à espera do termo',text:'Quando um aluno novo está com o termo em andamento, o horário dele aparece na sua agenda com o nome do aluno e a marca "aguarda termo". Esse horário já está segurado para ele. A aula entra na agenda e pode ser lançada quando o termo for concluído.'},
+    ],
+  },
 ];
 
 /**

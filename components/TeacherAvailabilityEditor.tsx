@@ -22,7 +22,7 @@ import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { localYMD } from '../lib/dateUtils';
 import { dateForDayIndex, weekStartOf } from '../lib/scheduleGrid';
 import { coverageAgendaItems, dateWindow, rescheduleAgendaItems, type CoverageAgendaRow, type RescheduleAgendaRow } from '../lib/coverageAgenda';
-import { formatHoldDay, parseHoldSlots } from '../lib/scheduleHold';
+import { formatHoldDay, parseHoldSlots, parseTermReservedSlots, reservedCellKey, termReservedCaption } from '../lib/scheduleHold';
 import StudentProfileForm from './StudentProfileForm';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -240,6 +240,31 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           isExperimental: false,
           dateLabel: startLabel,
           caption: `Reservado para ${hold.student_label} — começa em ${startLabel}. A escola paga a reserva na sua folha.`,
+        };
+      }
+
+      // 3c. Matrícula à espera do termo: a aula ainda não existe, mas o horário
+      // está segurado. Sem isto a célula aparecia como LIVRE.
+      const { data: termSlotData, error: termSlotError } = await supabase.rpc('list_term_reserved_slots', {
+        p_tenant_id: resolvedTenantId,
+        p_teacher_ids: [teacherId],
+      });
+      if (termSlotError) {
+        console.warn('[TeacherAvailabilityEditor] Falha ao carregar horários à espera do termo:', termSlotError);
+      }
+      for (const slot of parseTermReservedSlots(termSlotData)) {
+        const key = reservedCellKey(slot.day_of_week, slot.class_time);
+        if (!key || newBookings[key]) continue;
+        newBookings[key] = {
+          id: slot.slot_id,
+          studentId: `term-${slot.slot_id}`,
+          student: slot.student_label,
+          module: 'RES',
+          type: 'RESERVA',
+          readOnly: true,
+          isExperimental: false,
+          dateLabel: 'aguarda termo',
+          caption: termReservedCaption(slot),
         };
       }
     }
@@ -645,7 +670,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         <LegendItem cls="ww-off border border-brand-border" label="Indisponível" />
         <LegendItem cls="ww-ghost tone-violet" label="Experimental" />
         <span data-tour="agenda-coverage-legend"><LegendItem cls="ww-ghost tone-amber" label="Cobertura / Reposição (com a data)" /></span>
-        <span data-tour="agenda-future-start-hold-legend"><LegendItem cls="ww-ghost tone-teal" label="Reservado (aluno começa na data)" /></span>
+        <span data-tour="agenda-future-start-hold-legend"><LegendItem cls="ww-ghost tone-teal" label="Reservado (início futuro ou termo pendente)" /></span>
         <label className="ml-auto inline-flex items-center gap-2 text-[11px] font-bold text-brand-muted cursor-pointer select-none">
           <input type="checkbox" checked={onlyMyHours} onChange={e => setOnlyMyHours(e.target.checked)} className="h-4 w-4 rounded" />
           Só o meu horário

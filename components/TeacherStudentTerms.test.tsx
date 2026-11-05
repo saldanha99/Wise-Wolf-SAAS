@@ -17,6 +17,12 @@ describe('individual terms screen',()=>{
   fireEvent.click(await screen.findByRole('button',{name:'Conferir e confirmar agenda'}));const dialog=screen.getByRole('dialog');expect(within(dialog).queryByText(term.body)).not.toBeInTheDocument();expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
   fireEvent.click(within(dialog).getByLabelText(/Conferi os horários/));fireEvent.click(within(dialog).getByRole('button',{name:'Confirmar agenda'}));await waitFor(()=>expect(rpc).toHaveBeenCalledWith('teacher_student_terms',{p_action:'family_confirm',p_id:'term-fixture',p_payload:{confirmed:true,schedule_hash:'schedule-only-hash'}}));
  });
+ describe('cartão do WhatsApp para assinar',()=>{
+  const answer=(role:string)=>async(name:string)=>name==='my_term_signature_contact'?{data:{ok:true,phone:null,needs_number:true,pending:1},error:null}:{data:{ok:true,enabled:true,role,actor_name:'Fixture',terms:[]},error:null};
+  it('aparece para a direção na tela geral',async()=>{rpc.mockImplementation(answer('SCHOOL_ADMIN'));render(<TeacherStudentTerms />);expect(await screen.findByText('WhatsApp para assinar pela escola')).toBeInTheDocument();});
+  it('não aparece para o professor',async()=>{rpc.mockImplementation(answer('TEACHER'));render(<TeacherStudentTerms />);expect(await screen.findByText('Termos por aluno')).toBeInTheDocument();expect(screen.queryByText('WhatsApp para assinar pela escola')).not.toBeInTheDocument();expect(rpc).not.toHaveBeenCalledWith('my_term_signature_contact');});
+  it('não aparece no recorte da ficha do aluno',async()=>{rpc.mockImplementation(async(name:string)=>name==='my_term_signature_contact'?{data:{ok:true,phone:null,needs_number:true},error:null}:{data:{ok:true,enabled:true,role:'SCHOOL_ADMIN',actor_name:'Fixture',terms:[{...term,student_id:'aluno-a',phase:'SCHOOL_PENDING'}]},error:null});render(<TeacherStudentTerms studentId="aluno-a" />);expect(await screen.findByText('Termo pendente deste aluno')).toBeInTheDocument();expect(rpc).not.toHaveBeenCalledWith('my_term_signature_contact');});
+ });
  describe('recorte da ficha do aluno',()=>{
   const school={...term,student_id:'aluno-a',phase:'SCHOOL_PENDING'};
   const list=(terms:unknown[],role='SCHOOL_ADMIN')=>({data:{ok:true,enabled:true,role,actor_name:'Direção Fixture',terms},error:null});

@@ -5,6 +5,14 @@ Publicado pelo release oficial `20261027T165826Z-e9ab217f6a92`, origem
 27/10/2026 às 14:15:55 (America/Sao_Paulo), prospectivamente. A ativação por escola
 é separada da aplicação da migration; os demais tenants permanecem desabilitados.
 
+## Quem assina pela escola recebe o link no celular cadastrado
+
+Desde 05/11/2026 (migration `20261105120000`), o link da escola só sai para o celular
+cadastrado pela direção em Contratos → Termos por aluno, ou para o telefone do perfil
+quando ele não é o da instância central. Sem destino válido não há mensagem: o termo
+aparece na Central de Pendências e pode ser assinado no portal. Aluno pago sem agenda:
+consulte `private.teacher_student_terms` e `private.student_term_links.opened_at`.
+
 ## Partes e manifestação
 
 O aluno mantém o contrato com a escola. O instrumento individual é escola-PJ,
