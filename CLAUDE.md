@@ -4779,8 +4779,14 @@ por âncora: `student_term_issue_link`, `whatsapp_outbound_kind` e
 `assinatura_da_escola_no_whatsapp_pessoal.sql` no release. Tours
 `2026-11-05-whatsapp-para-assinar` e `2026-11-05-zz-horario-reservado-na-agenda`.
 
-⚠️ Ainda vão ao número central, por falta de decisão da direção: `ASAAS_HEALTH`,
-`ASAAS_TRIAGE_SETTLED`, `CRON_ALERT` e `SCHOOL_AI_BRIEFING` (este aceita
-`ai_team_config.ownerWhatsapp`). Aviso novo para a direção: use grupo por canal
-(`tenant_notice_destination`), nunca `profiles.phone` do dono da instância.
+### 05/11/2026 — Alertas da direção nos grupos
+
+Quatro avisos iam para `profiles.phone` do diretor, o próprio número central. Agora
+`ASAAS_HEALTH` e `ASAAS_TRIAGE_SETTLED` vão ao canal `financeiro`; `CRON_ALERT` e
+`SCHOOL_AI_BRIEFING` ao canal `direcao`. Só o destino mudou. O telefone segue como
+último recurso, para escola sem grupo. O resumo aceita `ai_team_config.ownerWhatsapp`
+antes do grupo (`school-ai-team/briefing-destination.ts`). Migration `20261105160000`
+(remendos por âncora) e teste `alertas_da_direcao_nos_grupos.sql` no release. ⚠️ Aviso
+novo para a direção: use grupo por canal (`tenant_notice_destination`), nunca
+`profiles.phone` do dono da instância. Tour `2026-11-05-zzz-alertas-nos-grupos`.
 

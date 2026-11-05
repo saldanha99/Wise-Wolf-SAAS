@@ -8,8 +8,10 @@ import {
 } from "../_shared/commercial-contact-policy.ts";
 import {
   loadTenantCentralWhatsAppInstance,
+  loadTenantNoticeDestination,
   loadTenantWhatsAppRoute,
 } from "../_shared/tenant-communication.ts";
+import { briefingDestination } from "./briefing-destination.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EQUIPE DE IA DA ESCOLA — 4 "funcionários" virtuais (migrado do padrão MotoFix).
@@ -1003,13 +1005,18 @@ serve(async (req) => {
           result.skipped++;
           continue;
         }
-        // telefone do diretor: ownerWhatsapp configurado, senão o phone do admin do tenant
-        let phone = (cfg.ownerWhatsapp || "").replace(/\D/g, "");
         const route = await loadTenantWhatsAppRoute(admin, t.id);
-        if (!phone) phone = route?.ownerPhone || "";
-        if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
-        if (phone.length < 12) {
-          result.failures.push(`${t.id}: telefone do diretor ausente`);
+        const destination = briefingDestination({
+          ownerWhatsapp: cfg.ownerWhatsapp,
+          directionGroup: await loadTenantNoticeDestination(
+            admin,
+            t.id,
+            "direcao",
+          ),
+          ownerPhone: route?.ownerPhone,
+        });
+        if (!destination) {
+          result.failures.push(`${t.id}: destino do resumo ausente`);
           continue;
         }
         try {
@@ -1018,7 +1025,7 @@ serve(async (req) => {
           const { error: queueError } = await admin.from("notification_queue")
             .insert({
               tenant_id: t.id,
-              student_phone: phone,
+              student_phone: destination,
               message_body: wa(secretary.markdown),
               scheduled_for: queuedAt,
               next_attempt_at: queuedAt,

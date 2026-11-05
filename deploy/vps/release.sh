@@ -587,6 +587,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/register-vendor/index.test.ts \
   supabase/functions/register-teacher/contract-terms.ts \
   supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/school-ai-team/briefing-destination.ts \
+  supabase/functions/school-ai-team/briefing-destination.test.ts \
   supabase/functions/register-teacher/provider-identity.ts \
   supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/student-context/index.ts \
@@ -894,6 +896,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/accept-coverage/form-action.test.ts \
   supabase/functions/student-card-suggestions/source.test.ts \
   supabase/functions/register-teacher/contract-terms.test.ts \
+  supabase/functions/school-ai-team/briefing-destination.test.ts \
   supabase/functions/register-teacher/provider-identity.test.ts \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/submit-quiz/safety.test.ts \
@@ -1581,6 +1584,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261103140000_dispensa_de_contrato_geral_no_termo.sql"
   "supabase/migrations/20261104120000_aluno_pago_nao_fica_bloqueado_pelo_termo.sql"
   "supabase/migrations/20261105120000_assinatura_da_escola_no_whatsapp_pessoal.sql"
+  "supabase/migrations/20261105160000_alertas_da_direcao_nos_grupos.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1781,6 +1785,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/dispensa_de_contrato_geral_no_termo.sql"
   "supabase/tests/aluno_pago_nao_fica_bloqueado_pelo_termo.sql"
   "supabase/tests/assinatura_da_escola_no_whatsapp_pessoal.sql"
+  "supabase/tests/alertas_da_direcao_nos_grupos.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

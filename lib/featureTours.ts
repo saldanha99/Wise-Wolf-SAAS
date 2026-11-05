@@ -1047,6 +1047,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'agenda-future-start-hold-legend',view:'schedule',title:'Reservado à espera do termo',text:'Quando um aluno novo está com o termo em andamento, o horário dele aparece na sua agenda com o nome do aluno e a marca "aguarda termo". Esse horário já está segurado para ele. A aula entra na agenda e pode ser lançada quando o termo for concluído.'},
     ],
   },
+  {
+    id:'2026-11-05-zzz-alertas-nos-grupos',title:'Alertas da escola agora chegam nos grupos',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'notice-channel-financeiro',view:'automation',title:'Alertas que ninguém via',text:'Quatro avisos saíam do número da escola para ele mesmo, sem notificar ninguém. Agora os alertas do Asaas chegam no grupo Financeiro, e a rotina automática com falha e o resumo diário da IA chegam no grupo Direção. Os grupos são os que estão configurados aqui, nesta tela.'},
+    ],
+  },
 ];
 
 /**

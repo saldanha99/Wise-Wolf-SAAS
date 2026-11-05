@@ -325,7 +325,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                             user={user}
                                             instanceName={instance.instance_name}
                                             label="Direção"
-                                            description="Decisões, planos, renovação, leads de professor e o assistente de gestão. É também o destino de tudo que não tem canal próprio."
+                                            description="Decisões, planos, renovação, leads de professor, o assistente de gestão, rotina automática com falha e o resumo diário da IA. É também o destino de tudo que não tem canal próprio."
                                             channel="direcao"
                                         />
                                         <div data-tour="notice-channel-financeiro">
@@ -333,7 +333,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                                 user={user}
                                                 instanceName={instance.instance_name}
                                                 label="Financeiro"
-                                                description="Rateio de cada pagamento, DRE, folha do mês (com prévia do mês em aberto), caixinha, despesas e ajustes de repasse pelo assistente."
+                                                description="Rateio de cada pagamento, DRE, folha do mês (com prévia do mês em aberto), caixinha, despesas, ajustes de repasse pelo assistente e alertas do Asaas (saúde da integração e pagamento preso em triagem)."
                                                 channel="financeiro"
                                             />
                                         </div>
