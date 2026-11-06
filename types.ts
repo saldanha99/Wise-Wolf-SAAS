@@ -217,6 +217,8 @@ export interface Reschedule {
   // na agenda de outro sem ninguém tropeçar no tipo).
   teacherId: string;
   studentId?: string;
+  /** Aula gerada por uma atribuição temporária (a grade fixa do aluno não muda). */
+  isTemporaryAssignment?: boolean;
 }
 
 export type JobStatus =

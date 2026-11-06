@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Calendar, User as UserIcon, CalendarClock, RefreshCw, ArrowRightLeft } from 'lucide-react';
+import { Trash2, Plus, Calendar, User as UserIcon, CalendarClock, RefreshCw, ArrowRightLeft, UserRoundCog } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import DirectTeacherTransferModal from './DirectTeacherTransferModal';
 import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
+import TemporaryAssignmentsPanel from './TemporaryAssignmentsPanel';
 
 interface StudentScheduleManagerProps {
     studentId: string;
@@ -35,6 +36,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     const [isAdding, setIsAdding] = useState(false);
     const [showTransfer, setShowTransfer] = useState(false);
     const [showDirectTransfer, setShowDirectTransfer] = useState(false);
+    const [showTemporary, setShowTemporary] = useState(false);
     const [currentTeacherId, setCurrentTeacherId] = useState(student?.professor_id || '');
 
     // New Slot State
@@ -154,6 +156,16 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             <ArrowRightLeft size={12} /> Transferir com aceite futuro
                         </button>
                     )}
+                    {student && (
+                        <button
+                            type="button"
+                            aria-expanded={showTemporary}
+                            onClick={() => setShowTemporary(value => !value)}
+                            className="text-[10px] font-bold uppercase tracking-wide text-indigo-500 hover:bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-indigo-500/20"
+                        >
+                            <UserRoundCog size={12} /> Atribuição temporária
+                        </button>
+                    )}
                     <button
                         onClick={() => setIsAdding(!isAdding)}
                         className="text-[10px] font-bold uppercase tracking-wide text-brand-accent hover:bg-brand-accent/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-transparent hover:border-brand-accent/20"
@@ -251,6 +263,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             </div>
 
             <p className="text-xs text-brand-muted">Para trocar um horário, use Alterar horário e Aplicar troca. Salvar Perfil salva somente os dados cadastrais.</p>
+            {showTemporary && student && <TemporaryAssignmentsPanel lockedStudentId={student.id} />}
             {editingSchedule && (
                 <TeacherStudentScheduleEditor
                     studentId={studentId}

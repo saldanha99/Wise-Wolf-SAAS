@@ -44,6 +44,7 @@ const PendingLessons = lazy(() => import('./components/PendingLessons'));
 const TeacherAvailabilityEditor = lazy(() => import('./components/TeacherAvailabilityEditor'));
 const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleExplorer'));
 const LessonAdvancesManager = lazy(() => import('./components/LessonAdvancesManager'));
+const TemporaryAssignmentsPanel = lazy(() => import('./components/TemporaryAssignmentsPanel'));
 const SchoolAdminDashboard = lazy(() => import('./components/SchoolAdminDashboard'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
 const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
@@ -197,6 +198,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'schedule_explorer', label: 'Mapa de Aulas', group: 'Aulas', keywords: 'agenda horários' },
     { tab: 'live-lessons', label: 'Ao vivo', group: 'Aulas', keywords: 'link meet sala entrar agora' },
     { tab: 'lesson-advances', label: 'Antecipações', group: 'Aulas', keywords: 'adiantamento viagem competência' },
+    { tab: 'temporary-assignments', label: 'Atribuição temporária', group: 'Aulas', keywords: 'reposição substituição outro professor redistribuir saldo' },
     { tab: 'attendance-disputes', label: 'Verificar Presença', group: 'Aulas' },
     { tab: 'trials', label: 'Agendar Experimental', group: 'Aulas' },
     { tab: 'trial-settlement', label: 'Pagar Experimental/Treino', group: 'Aulas' },
@@ -230,6 +232,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
   ],
   [UserRole.COORDINATOR]: [
     { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
+    { tab: 'temporary-assignments', label: 'Atribuição temporária', group: 'Aulas', keywords: 'reposição substituição outro professor redistribuir saldo' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Qualidade' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
@@ -860,6 +863,7 @@ const App: React.FC = () => {
             date,
             time,
             original_booking_id,
+            temporary_assignment_id,
             teacher:teacher_id(full_name),
             student:student_id(full_name),
             teacher_id,
@@ -884,7 +888,8 @@ const App: React.FC = () => {
           originalLessonId: 0,
           teacherId: r.teacher_id,
           studentId: r.student_id,
-          time: r.time
+          time: r.time,
+          isTemporaryAssignment: !!r.temporary_assignment_id
         }));
         // Sem `as any`: o cast escondia que `teacherId` estava tipado como number.
         // É ele que decide de quem é a reposição na grade do Explorador.
@@ -1388,6 +1393,7 @@ const App: React.FC = () => {
         onRefresh={loadAppData}
       />,
       'lesson-advances': <LessonAdvancesManager tenantId={currentTenant?.id} />,
+      'temporary-assignments': <TemporaryAssignmentsPanel />,
       'schedule': user.role === UserRole.STUDENT ?
         <StudentSchedule user={user} tenantId={currentTenant?.id} /> :
         <TeacherAvailabilityEditor teacherId={user.id} tenantId={currentTenant?.id} />,

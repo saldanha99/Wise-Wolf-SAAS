@@ -1053,6 +1053,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'notice-channel-financeiro',view:'automation',title:'Alertas que ninguém via',text:'Quatro avisos saíam do número da escola para ele mesmo, sem notificar ninguém. Agora os alertas do Asaas chegam no grupo Financeiro, e a rotina automática com falha e o resumo diário da IA chegam no grupo Direção. Os grupos são os que estão configurados aqui, nesta tela.'},
     ],
   },
+  {
+    id:'2026-11-06-atribuicao-temporaria',title:'Outro professor assume reposições por um período',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'temporary-assignments',view:'temporary-assignments',title:'A grade do aluno não muda',text:'Escolha o aluno, quem deixou as aulas, quem assume, os dias, o horário e o período. O sistema mostra aula por aula o que vai para a agenda, pula feriado e avisa quando o professor ou o aluno está ocupado. Cada aula vira uma reposição na agenda de quem assumiu e entra na folha dele quando for dada. O titular e a grade fixa continuam iguais.'},
+      {target:'temporary-assignments',view:'temporary-assignments',title:'O saldo fica à vista',text:'Informe o total de aulas pendentes, em aulas de 30 minutos. Cada atribuição mostra quantas foram realizadas, quantas estão agendadas e quantas ainda não têm professor, e a próxima atribuição desconta do mesmo saldo. Ela encerra sozinha depois da última aula, ou aqui, com o motivo. Também dá para criar pela ficha do aluno.'},
+    ],
+  },
+  {
+    id:'2026-11-06-atribuicao-temporaria-professor',title:'Reposições atribuídas a você por um período',roles:['TEACHER'],
+    steps:[
+      {target:'agenda-week-towers',view:'schedule',title:'Elas aparecem na sua agenda',text:'A escola pode te atribuir reposições de um aluno de outro professor por um período. Você recebe o aviso no WhatsApp, e as aulas aparecem na agenda como "Reposição · atribuição temporária". Depois de cada aula, lance em Lançar Aula: ela entra no seu pagamento como reposição. O aluno continua na carteira do professor titular.'},
+    ],
+  },
 ];
 
 /**

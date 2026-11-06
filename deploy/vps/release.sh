@@ -1585,6 +1585,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261104120000_aluno_pago_nao_fica_bloqueado_pelo_termo.sql"
   "supabase/migrations/20261105120000_assinatura_da_escola_no_whatsapp_pessoal.sql"
   "supabase/migrations/20261105160000_alertas_da_direcao_nos_grupos.sql"
+  "supabase/migrations/20261106140000_atribuicao_temporaria_de_aulas.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1786,6 +1787,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/aluno_pago_nao_fica_bloqueado_pelo_termo.sql"
   "supabase/tests/assinatura_da_escola_no_whatsapp_pessoal.sql"
   "supabase/tests/alertas_da_direcao_nos_grupos.sql"
+  "supabase/tests/atribuicao_temporaria_de_aulas.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

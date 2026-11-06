@@ -123,6 +123,7 @@ export const ADMIN_NAV: NavGroup[] = [
     tabs: [
       { id: 'coverage', label: 'Cobertura de profs' },
       { id: 'reschedules', label: 'Reposições', badgeKey: 'reposicoes' },
+      { id: 'temporary-assignments', label: 'Atribuição temporária' },
       { id: 'lesson-advances', label: 'Antecipações' },
       { id: 'verify-rooms', label: 'Verificar salas' },
     ],

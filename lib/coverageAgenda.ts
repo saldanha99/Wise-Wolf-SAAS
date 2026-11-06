@@ -62,6 +62,7 @@ export interface RescheduleAgendaRow {
   time: string | null;
   fault_type?: string | null;
   used_at?: string | null;
+  temporary_assignment_id?: string | null;
   student: CoverageStudentRow | null;
 }
 
@@ -70,6 +71,8 @@ export interface RescheduleAgendaItem {
   classDate: string;
   time: string;
   faultType: string | null;
+  /** Aula de uma atribuição temporária: o aluno não entrou na carteira do professor. */
+  temporaryAssignment: boolean;
   studentId: string | null;
   studentName: string;
   studentPhone: string | null;
@@ -146,6 +149,7 @@ export function rescheduleAgendaItems(rows: RescheduleAgendaRow[]): RescheduleAg
       classDate: date,
       time,
       faultType: row.fault_type ?? null,
+      temporaryAssignment: !!row.temporary_assignment_id,
       studentId: row.student?.id ?? null,
       studentName,
       studentPhone: row.student?.phone ?? null,

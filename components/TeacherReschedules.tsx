@@ -317,7 +317,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                                     <span className="font-black text-brand-text uppercase">{item.studentName}</span>
                                                 </td>
                                                 <td className="p-4 text-xs font-medium text-brand-muted text-[10px] tracking-widest font-black uppercase">
-                                                    {item.repoId > 0 ? 'CRÉDITO' : 'AGENDADA'}
+                                                    {item.isTemporaryAssignment ? 'ATRIBUIÇÃO TEMPORÁRIA' : item.repoId > 0 ? 'CRÉDITO' : 'AGENDADA'}
                                                 </td>
                                                 <td className="p-4">
                                                     {item.date === 'Pendente' ? (

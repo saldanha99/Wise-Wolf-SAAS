@@ -4790,3 +4790,22 @@ antes do grupo (`school-ai-team/briefing-destination.ts`). Migration `2026110516
 novo para a direção: use grupo por canal (`tenant_notice_destination`), nunca
 `profiles.phone` do dono da instância. Tour `2026-11-05-zzz-alertas-nos-grupos`.
 
+
+### 06/11/2026 — Atribuição temporária de aulas
+
+Outro professor assume reposições de um aluno por um período, sem mexer na grade
+fixa nem no titular. Tela em Cobertura e Reposições e na agenda da ficha do aluno;
+direção e coordenação. `temporary_lesson_assignments` é só o molde e o saldo (RPC
+apenas, o motivo não chega a professor nem a aluno). Cada aula de 30 min é uma linha
+de `reschedules` com `temporary_assignment_id`, `fault_type = 'TEACHER'` e atestado:
+agenda, Lançar Aula, presença, sala e folha já leem isso, e paga como `REPOSIÇÃO_PROF`
+sem alterar `v_payable_class_logs`. O plano é um só para prévia e criação
+(`private.temporary_assignment_plan`): pula feriado nacional e recusa choque por data
+concreta. Saldo por par aluno + professor original: a próxima atribuição desconta do
+mesmo total. Crédito antigo sem data é substituído e volta se a aula for cancelada.
+⚠️ Encerrar grava `date = 'Pendente'`: `upcoming_classes` e o Lançar Aula não olham
+`used_at`, e a data mantida mandaria link de presença de aula cancelada. Um aviso por
+pessoa, nunca por aula (`app.reschedule_silent`). Termina sozinha pelo cron
+`wisewolf-temporary-assignments-end`. Migration `20261106140000` e teste SQL no release;
+tours da direção e do professor. Fluxo:
+[runbook](docs/runbooks/temporary-lesson-assignments.md).

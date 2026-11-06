@@ -106,6 +106,17 @@ describe('rescheduleAgendaItems', () => {
   });
 });
 
+describe('rescheduleAgendaItems — atribuição temporária', () => {
+  it('marca a aula gerada por uma atribuição, para a agenda dizer de onde ela veio', () => {
+    const [gerada, comum] = rescheduleAgendaItems([
+      { id: 'a', date: '2026-11-07', time: '10:30', fault_type: 'TEACHER', temporary_assignment_id: 'atribuicao', student: null },
+      { id: 'b', date: '2026-11-08', time: '10:30', fault_type: 'TEACHER', student: null },
+    ]);
+    expect(gerada.temporaryAssignment).toBe(true);
+    expect(comum.temporaryAssignment).toBe(false);
+  });
+});
+
 describe('dateWindow', () => {
   it('atravessa a virada de mês sem pular dia', () => {
     expect(dateWindow('2026-09-29', 4)).toEqual(['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']);

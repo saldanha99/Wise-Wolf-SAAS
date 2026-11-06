@@ -325,7 +325,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
 
     const { data: rescheduleRows, error: rescheduleError } = await supabase
       .from('reschedules')
-      .select('id, date, time, fault_type, used_at, student:student_id(id, full_name, phone, avatar_url, module, meeting_link)')
+      .select('id, date, time, fault_type, used_at, temporary_assignment_id, student:student_id(id, full_name, phone, avatar_url, module, meeting_link)')
       .eq('teacher_id', teacherId)
       .is('used_at', null)
       .gte('date', window[0])
@@ -343,7 +343,9 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         avatar: item.studentAvatar,
         fullProfile: { full_name: item.studentName, phone: item.studentPhone, module: item.studentModule },
         isExperimental: false,
-        caption: item.faultType === 'TEACHER' ? 'Reposição (falta do professor)' : 'Reposição',
+        caption: item.temporaryAssignment
+          ? 'Reposição · atribuição temporária'
+          : item.faultType === 'TEACHER' ? 'Reposição (falta do professor)' : 'Reposição',
       });
     }
 
