@@ -1,5 +1,10 @@
 # Condições comerciais de renovação
 
+> **Desde 06/11/2026 a direção conduz a renovação pela ficha do aluno** (botão
+> Renovar): 6 ou 12 meses, parcelada ou com pagamento integral adiantado. Fluxo
+> na seção "Renovação pela ficha", no fim deste arquivo. O comando de operador
+> abaixo continua existindo só para 6 meses.
+
 Este registro prepara uma condição de **6 meses**, mantendo mensalidade e
 frequência existentes. Ele é um rascunho auditável, não um contrato assinado.
 
@@ -69,3 +74,63 @@ falham fechados até recarregarem a página.
 Os testes SQL rodam exclusivamente no ambiente de QA vazio e sem rede,
 com rollback, pelo `deploy/vps/finance-qa-test.mjs`. Nunca inserir fixtures
 deste teste em produção.
+
+## Renovação pela ficha do aluno (06/11/2026)
+
+Ficha → **Renovar** (`StudentRenewalModal`), só `SCHOOL_ADMIN`/`SUPER_ADMIN`; o
+servidor confere de novo (`private.prepayment_caller_can_write`). Migration
+`20261106210000`, teste `supabase/tests/renovacao_pela_ficha_e_pagamento_integral.sql`.
+
+RPCs: `get_student_renewal_context`, `create_student_renewal_offer`,
+`cancel_student_renewal_offer`, `retry_student_renewal_billing`. A oferta, o link
+`/renovar-curso`, a assinatura e a fila são os mesmos do fluxo antigo.
+
+| Forma de pagamento | Estratégia | Cobrança | Cobertura dos meses |
+|---|---|---|---|
+| Parcelado | `CREATE_NEW` / `REUSE_EXISTING` | assinatura mensal, `maxPayments` = prazo | os meses são cobrados normalmente |
+| Integral: cobrar no Asaas | `UPFRONT_CHARGE` | depois da assinatura, cobrança única pelo total, `externalReference` = id do aluno | no `RECEIVED`, em `MENSAL` |
+| Integral: recebido por fora | `UPFRONT_EXTERNAL` | nenhuma | na assinatura, em `LEGADO`, sem caixa nem rateio |
+
+**Regras que o servidor recusa:**
+
+- Sem `contract_accepted`, a direção precisa dizer qual documento é prorrogado
+  (`contract_reference`). A renovação não marca `contract_accepted`: a flag quer
+  dizer "aceitou o contrato no sistema", e esse aceite não houve. Se não existe
+  documento, a renovação não tem o que prorrogar; o aluno precisa assinar o
+  contrato completo, e esse caminho não existe na ficha.
+- Valor diferente do catálogo (`student_pricing_plans`, prazo × frequência) exige
+  o motivo por escrito. O preço do catálogo fica congelado na oferta.
+- Início antes do fim do período pago (`paid_through`), mês já coberto, renovação
+  assinada no mesmo período, oferta em aberto ou negociação em aberto: recusado.
+- Pagamento integral com assinatura ativa no período: recusado. Ela cobraria os
+  mesmos meses, e o registro de cobertura não cancela nada no Asaas.
+- Cobrança única exige aluno ativo: o caixa recusa evento de cadastro suspenso.
+
+**Datas:** `first_due_date` é o dia de vencimento no início ou depois dele, nunca
+antes de amanhã. `last_due_date` = `private.renewal_last_due_date` (`fim_do_servico`
+mês a mês, igual à conta antiga). Fim do serviço = um mês depois da última parcela.
+Na cobrança única, `upfront_due_date` é o vencimento do pagamento e não muda a
+competência dos meses.
+
+**Rateio da renovação antecipada:** `register_prepayment` recusa `MENSAL` que comece
+depois do mês do recebimento, então a cobertura entra direto por
+`private.renewal_register_coverage`. A 1ª parcela sai no aviso do recebimento,
+marcada com a competência dela, mesmo meses antes; as parcelas 2..N saem mês a mês
+(`monthly-reserve-notify`, que depende do opt-in da escola) e entram no relatório do
+mês. Cada parcela é rateada uma vez, e o custo do professor é o previsto pela agenda
+do mês de cada parcela. Quem quiser adiar também a 1ª parcela precisa de um
+agendador novo, que não existe.
+
+**Efeitos no perfil:** a assinatura aplica mensalidade, frequência e vencimento. A
+cobertura registrada avança `paid_through` e `prepaid_months`, que é o que a tela do
+aluno lê. Estorno leva as parcelas para revisão pelo trilho de sempre; `paid_through`
+não volta sozinho e precisa de conferência.
+
+**Bot da renovação:** só negocia oferta de 6 meses com assinatura mensal, porque
+`approve_renewal_negotiation` remonta a oferta assim. Prazo de 12 meses e pagamento
+integral ficam fora dele.
+
+**Falha na cobrança única:** vira `REVIEW` ou `FAILED`, com aviso no grupo e motivo
+na ficha. "Tentar de novo" é seguro: `claim_asaas_provider_creation` reconcilia antes
+de qualquer POST e resultado incerto nunca gera um segundo POST. Assinatura mensal em
+revisão continua sendo conferência no Asaas.

@@ -1066,6 +1066,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'agenda-week-towers',view:'schedule',title:'Elas aparecem na sua agenda',text:'A escola pode te atribuir reposições de um aluno de outro professor por um período. Você recebe o aviso no WhatsApp, e as aulas aparecem na agenda como "Reposição · atribuição temporária". Depois de cada aula, lance em Lançar Aula: ela entra no seu pagamento como reposição. O aluno continua na carteira do professor titular.'},
     ],
   },
+  {
+    id:'2026-11-06-z-renovacao-na-ficha',title:'Renove o contrato pela ficha do aluno',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'student-schedule-change',view:'students',title:'Abra a ficha do aluno',text:'Na ficha, o botão Renovar mostra até quando o período atual vale e o valor do catálogo. Escolha 6 ou 12 meses. Valor fora do catálogo pede quem autorizou e por quê.'},
+      {target:'student-schedule-change',view:'students',title:'Pagamento integral adiantado',text:'Você pode cobrar o valor total de uma vez no Asaas ou registrar que já recebeu por fora. O aluno assina pelo link e nada muda antes disso. Cobrança no Asaas: os meses ficam cobertos quando o dinheiro entra, com rateio mês a mês. Recebido por fora: cobre na assinatura, sem caixa e sem rateio.'},
+    ],
+  },
 ];
 
 /**

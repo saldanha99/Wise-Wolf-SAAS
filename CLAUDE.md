@@ -4809,3 +4809,18 @@ pessoa, nunca por aula (`app.reschedule_silent`). Termina sozinha pelo cron
 `wisewolf-temporary-assignments-end`. Migration `20261106140000` e teste SQL no release;
 tours da direção e do professor. Fluxo:
 [runbook](docs/runbooks/temporary-lesson-assignments.md).
+
+### 06/11/2026 — Renovação pela ficha, 12 meses e pagamento integral
+
+A direção conduz pela ficha (`StudentRenewalModal`). A oferta, o link
+`/renovar-curso`, a assinatura e a fila são os do fluxo antigo, agora com 6 ou 12
+meses. Integral no Asaas: cobrança única com `externalReference` = id do aluno; no
+RECEIVED, `private.renewal_register_coverage` cobre os meses em MENSAL e avança
+`paid_through`. Recebido por fora: cobre na assinatura em LEGADO, sem caixa nem
+rateio. Sem contrato no sistema, a direção diz qual documento é prorrogado, e
+`contract_accepted` não é marcado. Preço fora do catálogo pede motivo. ⚠️ Renovação
+antecipada rateia a 1ª parcela no aviso do recebimento, com a competência dela; as
+outras saem mês a mês. ⚠️ `sign_student_course_renewal`, `get_student_course_renewal_public`
+e `on_student_course_renewal_signed` foram recriadas aqui; o bot só pega 6 meses com
+assinatura mensal. Migration `20261106210000` e teste SQL no release; tour da direção.
+Fluxo: [runbook](docs/runbooks/student-course-renewal-proposals.md).

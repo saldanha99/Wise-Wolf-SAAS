@@ -3,8 +3,14 @@ import { AlertCircle, CalendarDays, CheckCircle2, Loader2, Lock } from 'lucide-r
 import { supabase } from '../lib/supabase';
 
 type RenewalSchedule = { teacher_first_name: string; slots: { day: string; time: string }[] };
+type RenewalPaymentPlan = 'INSTALLMENTS' | 'UPFRONT_CHARGE' | 'UPFRONT_EXTERNAL';
 type Renewal = {
   student_name: string; school_name: string; term_months: number;
+  payment_plan?: RenewalPaymentPlan;
+  upfront_total_cents?: number | null;
+  upfront_due_date?: string | null;
+  external_received_on?: string | null;
+  invoice_url?: string | null;
   monthly_fee_cents: number; classes_per_week: number; contract_start: string;
   first_due_date: string; last_due_date: string; service_end_date: string;
   status: 'PENDING_SIGNATURE' | 'SIGNED'; billing_status: string; expired: boolean;
@@ -23,6 +29,7 @@ const DEFAULT_PRIMARY = '#06142d';
 const DEFAULT_SECONDARY = '#320606';
 
 const date = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR');
+const monthYear = (value: string) => `${value.slice(5, 7)}/${value.slice(0, 4)}`;
 const money = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const hexColor = (value: unknown) => (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null);
 const httpsUrl = (value: unknown) => (typeof value === 'string' && /^https:\/\/[^\s"<>]+$/.test(value) ? value : null);
@@ -39,15 +46,22 @@ function parseSchedule(value: unknown): RenewalSchedule | null {
 
 function parse(value: unknown): Renewal {
   const v = value as Partial<Renewal> | null;
-  if (!v || typeof v.student_name !== 'string' || typeof v.school_name !== 'string' || v.term_months !== 6
+  if (!v || typeof v.student_name !== 'string' || typeof v.school_name !== 'string' || ![6, 12].includes(Number(v.term_months))
     || !Number.isSafeInteger(v.monthly_fee_cents) || Number(v.monthly_fee_cents) <= 0
     || !Number.isInteger(v.classes_per_week) || Number(v.classes_per_week) < 1 || Number(v.classes_per_week) > 7
     || !['PENDING_SIGNATURE', 'SIGNED'].includes(String(v.status))
     || [v.contract_start, v.first_due_date, v.last_due_date, v.service_end_date].some(x => typeof x !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(x))) {
     throw new Error('invalid_renewal');
   }
+  const plan = v.payment_plan ?? 'INSTALLMENTS';
+  if (!['INSTALLMENTS', 'UPFRONT_CHARGE', 'UPFRONT_EXTERNAL'].includes(plan)
+    || (plan !== 'INSTALLMENTS' && (!Number.isSafeInteger(v.upfront_total_cents) || Number(v.upfront_total_cents) <= 0))) {
+    throw new Error('invalid_renewal');
+  }
   return {
     ...(v as Renewal),
+    payment_plan: plan,
+    invoice_url: httpsUrl(v.invoice_url),
     schedule: parseSchedule(v.schedule),
     school_logo_url: httpsUrl(v.school_logo_url),
     brand_primary: hexColor(v.brand_primary),
@@ -82,7 +96,7 @@ function BrandShell({ data, children }: { data: Renewal | null; children: React.
           <h1 className="mt-2 text-[28px] font-extrabold leading-tight tracking-tight" style={{ fontFamily: DISPLAY }}>Renovação do curso</h1>
         </div>
       </div>
-      <div className="mx-auto -mt-20 max-w-xl px-4 pb-12">{children}</div>
+      <div className="relative z-10 mx-auto -mt-20 max-w-xl px-4 pb-12">{children}</div>
     </main>
   );
 }
@@ -98,6 +112,27 @@ export default function CourseRenewalSign() {
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
   const [signing, setSigning] = useState(false);
+  // Assinou o pagamento integral: a cobrança leva alguns segundos para nascer.
+  useEffect(() => {
+    if (data?.status !== 'SIGNED' || data.payment_plan !== 'UPFRONT_CHARGE' || data.invoice_url) return;
+    let attempts = 0;
+    let cancelled = false;
+    const tick = async () => {
+      attempts += 1;
+      const response = await supabase.rpc('get_student_course_renewal_public', { p_token: token });
+      if (cancelled) return;
+      if (!response.error && response.data?.ok) {
+        try {
+          const fresh = parse(response.data.data);
+          setData(fresh);
+          if (fresh.invoice_url) return;
+        } catch { /* mantém o que já está na tela */ }
+      }
+      if (attempts < 24) timer = window.setTimeout(tick, 5000);
+    };
+    let timer = window.setTimeout(tick, 5000);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [data?.status, data?.payment_plan, data?.invoice_url, token]);
   useEffect(() => { void (async () => {
     if (!/^[a-f0-9]{64}$/.test(token)) { setError('Link inválido.'); setLoading(false); return; }
     const response = await supabase.rpc('get_student_course_renewal_public', { p_token: token });
@@ -153,25 +188,41 @@ export default function CourseRenewalSign() {
             <CheckCircle2 size={34} style={{ color: primary }} />
           </div>
           <h2 className="mt-4 text-2xl font-extrabold text-slate-900" style={{ fontFamily: DISPLAY }}>Renovação assinada</h2>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">Recebemos sua assinatura. A situação da cobrança será processada e registrada pela escola.</p>
+          {data.payment_plan === 'UPFRONT_CHARGE' ? (
+            <>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
+                Recebemos sua assinatura. Falta o pagamento único de <b className="font-semibold text-slate-900">{money(Number(data.upfront_total_cents))}</b>{data.upfront_due_date ? `, com vencimento em ${date(data.upfront_due_date)}` : ''}.
+              </p>
+              {data.invoice_url ? (
+                <a href={data.invoice_url} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-extrabold uppercase tracking-[0.12em] text-white" style={{ background: primary, fontFamily: DISPLAY }}>Pagar agora</a>
+              ) : (
+                <p role="status" className="mx-auto mt-4 flex max-w-sm items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin" /> Gerando a cobrança. O link também chega no seu WhatsApp.</p>
+              )}
+            </>
+          ) : data.payment_plan === 'UPFRONT_EXTERNAL' ? (
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">Recebemos sua assinatura. O pagamento integral já está registrado e não há nada a pagar agora.</p>
+          ) : (
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">Recebemos sua assinatura. A situação da cobrança será processada e registrada pela escola.</p>
+          )}
         </section>
       </BrandShell>
     );
   }
 
   const schedule = data.schedule;
+  const upfront = data.payment_plan !== 'INSTALLMENTS';
   return (
     <BrandShell data={data}>
       <section className={sheet}>
         <p className="text-sm text-slate-500">Olá, <b className="font-semibold text-slate-900">{data.student_name}</b>. Confira as condições aprovadas:</p>
 
-        <div className="mt-6 flex items-end justify-between gap-4 border-b border-slate-100 pb-6">
+        <div className="mt-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b border-slate-100 pb-6">
           <div>
-            <p className={eyebrow}>Mensalidade</p>
-            <p className="mt-1 text-[40px] font-extrabold leading-none tracking-tight text-slate-900" style={{ fontFamily: DISPLAY }}>{money(data.monthly_fee_cents)}</p>
-            <p className="mt-2 text-xs text-slate-500">por mês · 6 parcelas</p>
+            <p className={eyebrow}>{upfront ? 'Pagamento integral' : 'Mensalidade'}</p>
+            <p className="mt-1 text-[40px] font-extrabold leading-none tracking-tight text-slate-900" style={{ fontFamily: DISPLAY }}>{money(upfront ? Number(data.upfront_total_cents) : data.monthly_fee_cents)}</p>
+            <p className="mt-2 text-xs text-slate-500">{upfront ? `equivale a ${money(data.monthly_fee_cents)} por mês · ${data.term_months} meses` : `por mês · ${data.term_months} parcelas`}</p>
           </div>
-          <span className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white" style={{ background: primary }}>6 meses</span>
+          <span className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white" style={{ background: primary }}>{data.term_months} meses</span>
         </div>
 
         <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5">
@@ -195,14 +246,20 @@ export default function CourseRenewalSign() {
 
         <div className="mt-6 flex gap-3 text-sm text-slate-600">
           <CalendarDays size={18} className="mt-0.5 shrink-0 text-slate-400" />
-          <p>São 6 parcelas mensais, da competência de {date(data.first_due_date)} até {date(data.last_due_date)}. A última parcela mantém as aulas até {date(data.service_end_date)}.</p>
+          {data.payment_plan === 'UPFRONT_CHARGE' ? (
+            <p>Pagamento único{data.upfront_due_date ? `, com vencimento em ${date(data.upfront_due_date)}` : ''}. Ele cobre as mensalidades de {monthYear(data.first_due_date)} a {monthYear(data.last_due_date)} e mantém as aulas até {date(data.service_end_date)}. Depois de assinar, você recebe o link para pagar.</p>
+          ) : data.payment_plan === 'UPFRONT_EXTERNAL' ? (
+            <p>Pagamento integral já recebido pela escola{data.external_received_on ? ` em ${date(data.external_received_on)}` : ''}. Ele cobre as mensalidades de {monthYear(data.first_due_date)} a {monthYear(data.last_due_date)} e mantém as aulas até {date(data.service_end_date)}.</p>
+          ) : (
+            <p>São {data.term_months} parcelas mensais, da competência de {date(data.first_due_date)} até {date(data.last_due_date)}. A última parcela mantém as aulas até {date(data.service_end_date)}.</p>
+          )}
         </div>
         {data.dates_adjusted && (
           <div role="status" className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
             Como as aulas já começaram, o primeiro vencimento foi atualizado para uma data válida. Confira as datas acima antes de assinar.
           </div>
         )}
-        <p className="mt-3 text-xs leading-relaxed text-slate-400">Esta renovação prorroga o contrato anterior. As demais cláusulas continuam válidas; somente vigência, parcelas, valor{schedule ? ', frequência e horário ficam confirmados' : ' e frequência ficam confirmados'} conforme o resumo acima.</p>
+        <p className="mt-3 text-xs leading-relaxed text-slate-400">Esta renovação prorroga o contrato anterior. As demais cláusulas continuam válidas; somente vigência, {upfront ? 'forma de pagamento' : 'parcelas'}, valor{schedule ? ', frequência e horário ficam confirmados' : ' e frequência ficam confirmados'} conforme o resumo acima.</p>
 
         {data.expired ? (
           <div role="alert" className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">Este link expirou. Peça um novo à escola.</div>

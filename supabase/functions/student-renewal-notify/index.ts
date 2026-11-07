@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
 import { loadTenantCentralWhatsAppContext } from "../_shared/tenant-communication.ts";
+import { renewalMessage } from "./message.ts";
 import { resolveEvolutionIntegration } from "../_shared/tenant-integration-broker.ts";
 import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 
@@ -25,7 +26,8 @@ function validSource(v: unknown) {
       typeof s.recipient_phone === "string" &&
       /^[1-9][0-9]{11,14}$/.test(s.recipient_phone) &&
       typeof s.recipient_name === "string" &&
-      typeof s.student_name === "string" && s.term_months === 6 &&
+      typeof s.student_name === "string" &&
+      [6, 12].includes(Number(s.term_months)) &&
       Number.isSafeInteger(s.monthly_fee_cents) &&
       Number(s.monthly_fee_cents) > 0 && Number.isInteger(s.classes_per_week) &&
       Number(s.classes_per_week) >= 1 && Number(s.classes_per_week) <= 7 &&
@@ -33,9 +35,6 @@ function validSource(v: unknown) {
     ? s
     : null;
 }
-const brl = (c: number) =>
-  (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const brDate = (v: string) => v.split("-").reverse().join("/");
 
 serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers });
@@ -169,14 +168,7 @@ serve(async (request) => {
         result.skipped++;
         continue;
       }
-      const message =
-        `Olá, ${source.recipient_name}! A renovação do curso de ${source.student_name} está pronta.\n\nCondição: 6 meses, ${
-          brl(Number(source.monthly_fee_cents))
-        } por mês e ${source.classes_per_week} aulas por semana. Vigência: ${
-          brDate(String(source.contract_start))
-        } a ${
-          brDate(String(source.service_end_date))
-        }.\n\nConfira e assine pelo link individual:\n${link}\n\nSe precisar ajustar a data, fale conosco antes de assinar.`;
+      const message = renewalMessage(source, link);
       const sent = await sendWhatsTextDetailed({
         base: integration.baseUrl,
         keys: [integration.apiKey],

@@ -4,13 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   X, Loader2, Flame, Gem, Heart, CalendarCheck, AlertTriangle, TrendingUp,
-  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users, ArrowRightLeft
+  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users, ArrowRightLeft, FileSignature
 } from 'lucide-react';
 import { User as UserType, UserRole } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import StudentHandover from './StudentHandover';
 import StudentLessonRecordsErasure from './StudentLessonRecordsErasure';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
+import StudentRenewalModal from './StudentRenewalModal';
 import StudentManualPixManager from './StudentManualPixManager';
 import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
 
@@ -73,6 +74,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [dependents, setDependents] = useState<any[]>([]);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showPlanChange, setShowPlanChange] = useState(false);
+  const [showRenewal, setShowRenewal] = useState(false);
   const [serasaBusy, setSerasaBusy] = useState<string | null>(null);
 
   // Negativação Serasa (via Asaas) de uma cobrança vencida — só admin (a aba financeira é gated).
@@ -134,6 +136,8 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   useEffect(() => { load(); }, [studentId]);
 
   const isAdmin = data?.can_edit_financial === true;
+  // Decisão financeira é da direção: o servidor recusa os outros papéis de novo.
+  const canRenew = isAdmin && (user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN);
 
   const applyCredit = async () => {
     if (creditBalance <= 0) return;
@@ -221,6 +225,12 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   <span>Desde {fmtDate(p.start_date || p.created_at)}</span>
                 </p>
               </div>
+              {canRenew && (
+                <button data-tour="student-renewal" onClick={() => setShowRenewal(true)} title="Renovar contrato"
+                  className="px-3 py-2 rounded-xl bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20 text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0">
+                  <FileSignature size={14} /> Renovar
+                </button>
+              )}
               {isAdmin && (
                 <button onClick={() => setShowPlanChange(true)} title="Mudar plano (frequência e valor)"
                   className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0">
@@ -248,6 +258,10 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                 }}
                 onClose={() => setShowPlanChange(false)}
               />
+            )}
+
+            {showRenewal && (
+              <StudentRenewalModal studentId={studentId} onClose={() => setShowRenewal(false)} onChanged={() => void load()} />
             )}
 
             {showTransfer && (

@@ -6,6 +6,7 @@ import {
   type ResolvedAsaasIntegration,
 } from "../_shared/tenant-integration-broker.ts";
 import { revalidateAsaasMutationCapability } from "../_shared/asaas-capability-fence.ts";
+import { parseUpfrontSource, processUpfrontCharge } from "./upfront.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -77,7 +78,9 @@ function validSource(v: unknown) {
       typeof s.customer_id === "string" && /^cus_/.test(s.customer_id) &&
       ["PIX", "BOLETO", "CREDIT_CARD"].includes(String(s.billing_type)) &&
       Number.isSafeInteger(s.monthly_fee_cents) &&
-      Number(s.monthly_fee_cents) > 0 && safeDate(s.first_due_date) &&
+      Number(s.monthly_fee_cents) > 0 &&
+      [6, 12].includes(Number(s.term_months)) &&
+      safeDate(s.first_due_date) &&
       safeDate(s.last_due_date) && safeDate(s.service_end_date) &&
       typeof s.external_reference === "string" &&
       /^renewal:[0-9a-f-]{36}:subscription$/.test(s.external_reference)
@@ -147,11 +150,83 @@ serve(async (requestEvent) => {
       else if (status === "REVIEW") result.review++;
       else result.failed++;
     };
+    let upfrontStarted = false;
+    const finishUpfront = async (
+      status: "SYNCED" | "FAILED" | "REVIEW",
+      customer: string | null,
+      payment: string | null,
+      invoice: string | null,
+      error: string | null,
+    ) => {
+      const r = await admin.rpc(
+        "finish_student_course_renewal_upfront_billing",
+        {
+          p_id: claim.id,
+          p_claim: claim.claim_token,
+          p_status: status,
+          p_customer: customer,
+          p_payment: payment,
+          p_invoice_url: invoice,
+          p_error: error,
+        },
+      );
+      if (r.error || obj(r.data).ok !== true) {
+        throw new Error("billing_finish_failed");
+      }
+      if (status === "SYNCED") result.synced++;
+      else if (status === "REVIEW") result.review++;
+      else result.failed++;
+    };
     try {
       const sourceResponse = await admin.rpc(
         "student_course_renewal_billing_source",
         { p_id: claim.id, p_claim: claim.claim_token },
       );
+      // Pagamento integral adiantado: cobrança única, não assinatura.
+      if (obj(sourceResponse.data).strategy === "UPFRONT_CHARGE") {
+        upfrontStarted = true;
+        const upfront = parseUpfrontSource(sourceResponse.data);
+        if (sourceResponse.error || !upfront) {
+          await finishUpfront(
+            "REVIEW",
+            null,
+            null,
+            null,
+            "billing_source_invalid",
+          );
+          continue;
+        }
+        const outcome = await processUpfrontCharge({
+          admin,
+          resolve: (purpose) =>
+            resolveAsaasIntegration(admin, upfront.tenantId, purpose),
+          revalidate: (purpose, expected) =>
+            revalidateAsaasMutationCapability(admin, {
+              tenantId: upfront.tenantId,
+              purpose,
+              expected,
+            }),
+          bindCustomer: async (customerId) => {
+            const bound = await admin.rpc(
+              "bind_student_course_renewal_customer",
+              {
+                p_id: claim.id,
+                p_claim: claim.claim_token,
+                p_customer: customerId,
+              },
+            );
+            return !bound.error && obj(bound.data).ok === true;
+          },
+        }, upfront);
+        await finishUpfront(
+          outcome.status,
+          outcome.customerId,
+          outcome.paymentId,
+          outcome.invoiceUrl,
+          outcome.error,
+        );
+        continue;
+      }
       const s = validSource(sourceResponse.data);
       if (sourceResponse.error || !s) {
         await finish("REVIEW", null, "billing_source_invalid");
@@ -204,7 +279,16 @@ serve(async (requestEvent) => {
         const oldId = typeof s.source_subscription_id === "string"
           ? s.source_subscription_id
           : "";
-        if (!/^sub_/.test(oldId)) {
+        // Aluno que nunca teve assinatura não tem a antiga para provar: a prova
+        // é a lista inteira do cliente, lida acima, sem nenhuma ativa.
+        if (
+          !/^sub_/.test(oldId) &&
+          (oldId !== "" ||
+            subscriptions.some((x) =>
+              x.deleted !== true &&
+              !["EXPIRED", "INACTIVE"].includes(String(x.status))
+            ))
+        ) {
           await finish("REVIEW", null, "source_subscription_missing");
           continue;
         }
@@ -215,17 +299,19 @@ serve(async (requestEvent) => {
         // R$ 261, assinatura antiga apagada na suspensão; a comparação de
         // valor com a antiga deixava a oferta assinada presa em REVIEW e a
         // reativação do cadastro exigia justamente a assinatura que sumiu).
-        const oldResponse = await request(
-          integration,
-          `subscriptions/${encodeURIComponent(oldId)}`,
-        );
-        let old: Row | null;
-        if (oldResponse.status === 404) {
-          old = null;
-        } else if (!oldResponse.ok) {
-          throw new Error(`provider_read_${oldResponse.status}`);
-        } else {
-          old = obj(await oldResponse.json());
+        let old: Row | null = null;
+        if (oldId) {
+          const oldResponse = await request(
+            integration,
+            `subscriptions/${encodeURIComponent(oldId)}`,
+          );
+          if (oldResponse.status === 404) {
+            old = null;
+          } else if (!oldResponse.ok) {
+            throw new Error(`provider_read_${oldResponse.status}`);
+          } else {
+            old = obj(await oldResponse.json());
+          }
         }
         if (
           old &&
@@ -257,8 +343,8 @@ serve(async (requestEvent) => {
           nextDueDate: s.first_due_date,
           cycle: "MONTHLY",
           endDate: s.last_due_date,
-          maxPayments: 6,
-          description: `Renovação Wise Wolf - 6 meses`,
+          maxPayments: Number(s.term_months),
+          description: `Renovação Wise Wolf - ${Number(s.term_months)} meses`,
           externalReference: s.external_reference,
         };
         if (old && Array.isArray(old.split) && old.split.length) {
@@ -402,7 +488,11 @@ serve(async (requestEvent) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : "billing_error";
       try {
-        await finish("REVIEW", null, message);
+        if (upfrontStarted) {
+          await finishUpfront("REVIEW", null, null, null, message);
+        } else {
+          await finish("REVIEW", null, message);
+        }
       } catch {
         result.errors.push("billing_finish_failed");
       }

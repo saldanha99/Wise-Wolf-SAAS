@@ -768,6 +768,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-card-notify/worker.test.ts \
   supabase/functions/student-renewal-notify/source.test.ts \
   supabase/functions/student-renewal-billing/source.test.ts \
+  supabase/functions/student-renewal-notify/message.test.ts \
+  supabase/functions/student-renewal-billing/upfront.test.ts \
   supabase/functions/_shared/lesson-quality-reply.test.ts \
   supabase/functions/google-meet/core.test.ts \
   supabase/functions/google-meet/attendance.test.ts \
@@ -1586,6 +1588,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261105120000_assinatura_da_escola_no_whatsapp_pessoal.sql"
   "supabase/migrations/20261105160000_alertas_da_direcao_nos_grupos.sql"
   "supabase/migrations/20261106140000_atribuicao_temporaria_de_aulas.sql"
+  "supabase/migrations/20261106210000_renovacao_pela_ficha_e_pagamento_integral.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1788,6 +1791,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/assinatura_da_escola_no_whatsapp_pessoal.sql"
   "supabase/tests/alertas_da_direcao_nos_grupos.sql"
   "supabase/tests/atribuicao_temporaria_de_aulas.sql"
+  "supabase/tests/renovacao_pela_ficha_e_pagamento_integral.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
