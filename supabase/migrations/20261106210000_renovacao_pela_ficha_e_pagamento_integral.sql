@@ -754,7 +754,7 @@ begin
   v_last_due := private.renewal_last_due_date(v_first_due, o.term_months);
   v_service_end := public.fim_do_servico(v_last_due);
   v_ip := coalesce(
-    nullif(btrim(split_part(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ',', 1)), ''),
+    nullif(btrim(split_part(nullif(current_setting('request.headers', true), '')::json ->> 'x-forwarded-for', ',', 1)), ''),
     'Via Web (Digital)'
   );
   -- Já recebido por fora não passa pelo Asaas: a assinatura encerra a cobrança.

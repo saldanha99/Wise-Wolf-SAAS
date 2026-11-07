@@ -196,6 +196,8 @@ select pg_temp.assert_rf((select j ->> 'ok' = 'true' and j -> 'data' ->> 'studen
 select pg_temp.assert_rf((select class_frequency is null and paid_through = pg_temp.hoje() + 100
     from public.profiles where id = '7e1b0000-0000-4000-8000-000000000011'), 'perfil mudou antes da assinatura');
 
+-- Fora do PostgREST o cabeçalho chega vazio, e isso não pode derrubar a assinatura.
+select set_config('request.headers', '', true);
 select pg_temp.assert_rf(public.sign_student_course_renewal((select j ->> 'token' from rf_offer), 'Outra Pessoa',
     (select (j -> 'data' ->> 'first_due_date')::date from rf_public)) ->> 'ok' = 'false', 'assinatura com nome errado passou');
 select pg_temp.assert_rf(public.sign_student_course_renewal((select j ->> 'token' from rf_offer), 'Aluno Sem Contrato',
