@@ -1073,6 +1073,13 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'student-schedule-change',view:'students',title:'Pagamento integral adiantado',text:'Você pode cobrar o valor total de uma vez no Asaas ou registrar que já recebeu por fora. O aluno assina pelo link e nada muda antes disso. Cobrança no Asaas: os meses ficam cobertos quando o dinheiro entra, com rateio mês a mês. Recebido por fora: cobre na assinatura, sem caixa e sem rateio.'},
     ],
   },
+  {
+    id:'2026-11-10-baixa-manual-de-aulas',title:'Baixa manual de aulas, com motivo',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'manual-lessons-form',view:'manual-lessons',title:'A aula que ficou fora dos fluxos',text:'Teste oral de quem não é aluno, experimental fora do sistema ou reposição deixada por outro professor: escolha o professor, o tipo, a data e a hora, e o aluno ou o nome de quem fez a aula. O motivo é obrigatório. A aula entra na folha do professor como um lançamento, pela tarifa dele, ou pelo valor por 30 min que você informar.'},
+      {target:'manual-lessons-list',view:'manual-lessons',title:'Quem lançou e por quê',text:'Cada baixa mostra quem lançou, quando, o motivo e quanto entra na folha. Mês já fechado não aceita baixa nova nem cancelamento. Cancelar pede motivo e tira o lançamento da folha. Reposição que ainda vai acontecer se agenda em Atribuição temporária.'},
+    ],
+  },
 ];
 
 /**

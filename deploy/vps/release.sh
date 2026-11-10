@@ -1589,6 +1589,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261105160000_alertas_da_direcao_nos_grupos.sql"
   "supabase/migrations/20261106140000_atribuicao_temporaria_de_aulas.sql"
   "supabase/migrations/20261106210000_renovacao_pela_ficha_e_pagamento_integral.sql"
+  "supabase/migrations/20261110140000_baixa_manual_de_aulas.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
@@ -1792,6 +1793,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/alertas_da_direcao_nos_grupos.sql"
   "supabase/tests/atribuicao_temporaria_de_aulas.sql"
   "supabase/tests/renovacao_pela_ficha_e_pagamento_integral.sql"
+  "supabase/tests/baixa_manual_de_aulas.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

@@ -78,6 +78,7 @@ export const ADMIN_NAV: NavGroup[] = [
     tabs: [
       { id: 'student-payments', label: 'Mensalidades' },
       { id: 'payments', label: 'Repasse a profs' },
+      { id: 'manual-lessons', label: 'Baixa manual de aulas' },
       { id: 'financial', label: 'Lançamentos' },
       { id: 'reconciliation', label: 'Reconciliação' },
     ],

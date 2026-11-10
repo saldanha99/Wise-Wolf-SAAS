@@ -4824,3 +4824,22 @@ outras saem mês a mês. ⚠️ `sign_student_course_renewal`, `get_student_cour
 e `on_student_course_renewal_signed` foram recriadas aqui; o bot só pega 6 meses com
 assinatura mensal. Migration `20261106210000` e teste SQL no release; tour da direção.
 Fluxo: [runbook](docs/runbooks/student-course-renewal-proposals.md).
+
+### 10/11/2026 — Baixa manual de aulas, com motivo
+
+Dinheiro → Baixa manual de aulas (direção e coordenação). Para a aula que não passou
+pelos fluxos: teste oral de quem não é aluno, experimental fora do sistema, reposição
+deixada por outro professor. Escolha: **lançamento por aula, não ajuste em reais.** A
+RPC `create_manual_lesson_entry` grava um `class_log` sem origem, `COMPLETED`, pago por
+`v_payable_class_logs` pela tarifa de quem deu (ou `rate_override` por 30 min, se a
+direção informar); entra na prévia, no fechamento e no histórico. Aluno do sistema OU
+nome livre (`guest_name`, `student_id` nulo, como a experimental). Subtypes: `AULA
+EXPERIMENTAL`, `Teste Oral`, `REPOSIÇÃO MANUAL` e `BAIXA MANUAL` (reposição não usa
+`REPOSIÇÃO_PROF`, que exige reposição de origem). Motivo (≥ 10 letras) e quem lançou
+ficam em `manual_lesson_entries` (só RPC); o professor vê só "Baixa manual pela direção".
+Recusa mês fechado (`teacher_closings` ≠ PENDENTE), aula que não terminou, mais de 120
+dias, horário já lançado do professor ou do aluno, mesma pessoa de fora no mesmo dia e
+tipo, e o dia em que a folha não pagaria (aula da agenda do mesmo par). Cancelar pede
+motivo e apaga o lançamento, guardando a trilha. ⚠️ Reposição que ainda vai acontecer
+não é baixa: use Atribuição temporária (agenda, presença e folha de sempre). Migration
+`20261110140000`, teste `baixa_manual_de_aulas.sql` no release; tour da direção.

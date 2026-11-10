@@ -45,6 +45,7 @@ const TeacherAvailabilityEditor = lazy(() => import('./components/TeacherAvailab
 const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleExplorer'));
 const LessonAdvancesManager = lazy(() => import('./components/LessonAdvancesManager'));
 const TemporaryAssignmentsPanel = lazy(() => import('./components/TemporaryAssignmentsPanel'));
+const ManualLessonEntriesPanel = lazy(() => import('./components/ManualLessonEntriesPanel'));
 const SchoolAdminDashboard = lazy(() => import('./components/SchoolAdminDashboard'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
 const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
@@ -210,6 +211,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'training', label: 'Treinamentos', group: 'Pedagógico' },
     { tab: 'student-payments', label: 'Mensalidades dos Alunos', group: 'Financeiro' },
     { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
+    { tab: 'manual-lessons', label: 'Baixa manual de aulas', group: 'Financeiro', keywords: 'lançamento manual teste oral experimental reposição folha professor' },
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
     { tab: 'dre', label: 'Resultado (DRE)', group: 'Financeiro' },
     { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
@@ -233,6 +235,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
   [UserRole.COORDINATOR]: [
     { tab: 'lesson-history', label: 'Histórico de aulas', group: 'Aulas', keywords: 'transparência rastreabilidade encerramento' },
     { tab: 'temporary-assignments', label: 'Atribuição temporária', group: 'Aulas', keywords: 'reposição substituição outro professor redistribuir saldo' },
+    { tab: 'manual-lessons', label: 'Baixa manual de aulas', group: 'Aulas', keywords: 'lançamento manual teste oral experimental reposição folha professor' },
     { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Qualidade' },
     { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
     { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
@@ -1394,6 +1397,7 @@ const App: React.FC = () => {
       />,
       'lesson-advances': <LessonAdvancesManager tenantId={currentTenant?.id} />,
       'temporary-assignments': <TemporaryAssignmentsPanel />,
+      'manual-lessons': <ManualLessonEntriesPanel />,
       'schedule': user.role === UserRole.STUDENT ?
         <StudentSchedule user={user} tenantId={currentTenant?.id} /> :
         <TeacherAvailabilityEditor teacherId={user.id} tenantId={currentTenant?.id} />,

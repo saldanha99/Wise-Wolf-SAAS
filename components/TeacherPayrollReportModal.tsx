@@ -62,6 +62,9 @@ const presenceLabel = (p: string, subtype: string | null) => {
     }
     if (subtype === 'REPOSIÇÃO' || subtype === 'REPOSIÇÃO_PROF') return `${base} (reposição)`;
     if (subtype === 'AULA EXPERIMENTAL') return `${base} (experimental)`;
+    if (subtype === 'Teste Oral') return `${base} (teste oral)`;
+    if (subtype === 'REPOSIÇÃO MANUAL') return `${base} (reposição, baixa manual)`;
+    if (subtype === 'BAIXA MANUAL') return `${base} (baixa manual)`;
     return base;
 };
 
