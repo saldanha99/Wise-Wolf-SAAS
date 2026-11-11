@@ -81,3 +81,30 @@ Deno.test("a turn authorizes effects once and finishes once", async () => {
   assertEquals(effects, 1);
   assertEquals(finished, 1);
 });
+
+Deno.test("IA fora do ar adia a mensagem em vez de dá-la como respondida", async () => {
+  const calls: Array<[string, any]> = [];
+  const sb = {
+    rpc: (name: string, args: any) => {
+      calls.push([name, args]);
+      return Promise.resolve({
+        data: name === "claim_sdr_work"
+          ? { claimed: true, token: "token", payload: {} }
+          : true,
+        error: null,
+      });
+    },
+  };
+  const ran = await runSdrWork(sb, "t", "p", async (_input, begin) => {
+    await begin();
+    return { deferSeconds: 120 };
+  });
+  assertEquals(ran, false);
+  assertEquals(calls.map(([n]) => n), [
+    "claim_sdr_work",
+    "begin_sdr_effects",
+    "defer_sdr_work",
+  ]);
+  assertEquals(calls[2][1].p_delay_seconds, 120);
+  assertEquals(calls[2][1].p_token, "token");
+});

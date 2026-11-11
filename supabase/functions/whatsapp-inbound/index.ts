@@ -181,7 +181,18 @@ import {
   trialAccessReply,
   vetoInventedPresential,
 } from "./trial-access.ts";
-import { enqueueSdrInput, runSdrWork } from "./sdr-work.ts";
+import {
+  enqueueSdrInput,
+  runSdrWork,
+  type SdrDeferral,
+} from "./sdr-work.ts";
+import {
+  AI_OUTAGE_HOLD_REPLY,
+  aiFailureAction,
+  classifyAiFailure,
+  delayedReplyInstruction,
+  planAiOutage,
+} from "./ai-outage.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
   alternativeQuestion,
@@ -7616,7 +7627,7 @@ async function handleSDR(
   beginEffects: () => Promise<boolean>,
   postTrialHandoffOverride = false,
   entry: WhatsappEntry | null = null,
-) {
+): Promise<SdrDeferral | void> {
   const { data: allLeads } = await sb.from("crm_leads").select(
     "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count",
   ).eq("tenant_id", tenantId).not("phone", "is", null);
@@ -7947,6 +7958,12 @@ async function handleSDR(
   }
 
   const adm = await adminProfile(sb, tenantId);
+  // Avisos da atendente vão ao grupo Comercial. O telefone do admin costuma ser
+  // o PRÓPRIO número central — mensagem para si mesmo não notifica ninguém
+  // (05/11 e 11/11/2026) — e só vale para escola sem grupo configurado.
+  const alertaComercial =
+    (await loadTenantNoticeDestination(sb, tenantId, "comercial")) ||
+    adm.ownerPhone;
   if (isMedia) {
     if (!(await beginEffects())) return;
     // Áudio já é transcrito antes de chegar aqui; isto cobre imagem, vídeo,
@@ -8078,6 +8095,23 @@ async function handleSDR(
     }. Se esse horário já passou, não fale dele como compromisso futuro nem confirme que a aula aconteceu.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`
     : "";
 
+  // Este lead está esperando a IA voltar? A última fala da atendente com ele
+  // ser o aviso de espera (`ai_down`, até 24 h atrás) significa que ainda não
+  // houve resposta de verdade depois da queda.
+  const { data: lastSdrOut } = await sb.from("ai_wa_messages")
+    .select("created_at, meta").eq("tenant_id", tenantId).eq("phone", phone)
+    .eq("agent", "sdr").eq("direction", "out")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastSdrOutAt = Date.parse(String(lastSdrOut?.created_at || ""));
+  const waitingAiSince = lastSdrOut?.meta?.kind === "ai_down" &&
+      Number.isFinite(lastSdrOutAt) &&
+      Date.now() - lastSdrOutAt < 24 * 3600_000
+    ? lastSdrOutAt
+    : null;
+  const delayLine = waitingAiSince === null
+    ? ""
+    : delayedReplyInstruction((Date.now() - waitingAiSince) / 60_000);
+
   const system =
     `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription}.\nMODALIDADE CONFIRMADA (prevalece sobre treinamento e histórico): ${
       schoolModalityFacts(tenantId)
@@ -8085,7 +8119,7 @@ async function handleSDR(
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
-    }\n${afterTrial ? "" : leadTraining}${styleBlock}${trialContext}${
+    }\n${afterTrial ? "" : leadTraining}${styleBlock}${trialContext}${delayLine}${
       waiting
         ? `\nPEDIDO DE REMARCAÇÃO EXISTENTE: ${waiting.requested_start_time}; estado=${waiting.status}; limite de espera de 60 minutos desde ${waiting.created_at}. Não abra novamente o mesmo pedido ao receber agradecimento ou cobrança de retorno. Se o prazo passou, negocie outro horário, sem repetir promessas passadas.`
         : ""
@@ -8123,30 +8157,71 @@ async function handleSDR(
   }
   if (!(await beginEffects())) return;
   if (!ai || !ai.reply) {
-    console.error("SDR AI falhou:", JSON.stringify(diag));
-    await sb.from("crm_leads").update({
-      ai_handoff: true,
-      ai_handoff_at: new Date().toISOString(),
-    }).eq("tenant_id", tenantId).eq("id", lead.id);
-    const hold =
-      "Oi! Recebi sua mensagem 😊 Já já alguém da equipe te responde por aqui, tá?";
-    if (await sendWhats(instance, phone, hold)) {
-      await logMsg(sb, tenantId, phone, "sdr", "out", hold, {
+    // IA fora do ar é ESPERA, não "humano assumiu" — ver ai-outage.ts.
+    const failure = classifyAiFailure(diag);
+    console.error("SDR AI falhou:", failure.summary, JSON.stringify(diag));
+    const { data: lastAlert } = await sb.from("ai_wa_messages")
+      .select("created_at").eq("tenant_id", tenantId).eq("agent", "sdr_alert")
+      .eq("meta->>kind", "ai_outage_alert")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const lastAlertAt = Date.parse(String(lastAlert?.created_at || ""));
+    const plan = planAiOutage({
+      now: Date.now(),
+      lastHoldToLeadAt: waitingAiSince,
+      lastTenantAlertAt: Number.isFinite(lastAlertAt) ? lastAlertAt : null,
+    });
+    const quem = lead.name || phone;
+
+    if (plan.giveUp) {
+      // Horas sem IA: a promessa "já te respondo" não pode virar silêncio.
+      await sb.from("crm_leads").update({
+        ai_handoff: true,
+        ai_handoff_at: new Date().toISOString(),
+      }).eq("tenant_id", tenantId).eq("id", lead.id);
+      if (alertaComercial) {
+        await sendWhats(
+          instance,
+          alertaComercial,
+          `⚠️ *Atendente IA:* o lead *${quem}* está esperando resposta há mais de 6 h e a IA continua fora do ar (${failure.summary}).\n\nÚltima mensagem: "${
+            text.slice(0, 200)
+          }"\n\nWhatsApp: ${phone}\n_Responda por aqui; a IA não fala mais com este contato até ele ser devolvido._`,
+        );
+      }
+      await logMsg(sb, tenantId, phone, "sdr", "out", "[IA fora do ar há 6 h — contato entregue à equipe]", {
+        lead_id: lead.id,
+        kind: "ai_down_handoff",
+        diag,
+      });
+      return;
+    }
+
+    if (plan.sendHold) {
+      const entregue = await sendWhats(instance, phone, AI_OUTAGE_HOLD_REPLY);
+      await logMsg(sb, tenantId, phone, "sdr", "out", AI_OUTAGE_HOLD_REPLY, {
         lead_id: lead.id,
         kind: "ai_down",
+        entregue,
         diag,
       });
     }
-    if (adm.ownerPhone) {
-      await sendWhats(
-        instance,
-        adm.ownerPhone,
-        `⚠️ *Atendente IA:* não consegui responder o lead ${
-          lead.name || phone
-        } (IA indisponível). Mensagem: "${text.slice(0, 200)}"`,
-      );
+
+    if (plan.alertDirection) {
+      const destino =
+        (await loadTenantNoticeDestination(sb, tenantId, "direcao")) ||
+        alertaComercial;
+      if (destino) {
+        const alerta =
+          `🚨 *Atendente IA fora do ar*\n\n${failure.summary}.\n\nO que fazer: ${
+            aiFailureAction(failure)
+          }.\n\nEnquanto isso, cada lead recebe um aviso de espera e a IA tenta de novo a cada 2 minutos; quando voltar, responde sozinha. Lead sem resposta há 6 h vai para a equipe no grupo Comercial.`;
+        await sendWhats(instance, destino, alerta);
+        await logMsg(sb, tenantId, destino, "sdr_alert", "out", alerta, {
+          kind: "ai_outage_alert",
+          causes: failure.causes,
+        });
+      }
     }
-    return;
+    return { deferSeconds: plan.retryInSeconds };
   }
 
   const up: Record<string, unknown> = {};
@@ -8379,7 +8454,7 @@ async function handleSDR(
             decision.from,
             decision.to,
             decision.newStartIso,
-            adm.ownerPhone,
+            alertaComercial,
           );
           dispatchMeta = {
             action: confirmation.ok
@@ -8415,10 +8490,10 @@ async function handleSDR(
               ai_handoff_at: new Date().toISOString(),
               last_status_change: new Date().toISOString(),
             }).eq("id", freshLead.id);
-            if (adm.ownerPhone) {
+            if (alertaComercial) {
               await sendWhats(
                 instance,
-                adm.ownerPhone,
+                alertaComercial,
                 `⚠️ *Atendente IA:* não consegui abrir a confirmação da remarcação de *${
                   freshLead.name || phone
                 }* para ${
@@ -8444,7 +8519,7 @@ async function handleSDR(
           }* pediu para mudar de ${formatSlot(decision.from)} para ${
             formatSlot(decision.to)
           }.\nProfessora: ${decision.trial.teacherName} — mas ela tem *${decision.conflict}* no horário novo.\n\nNão remarquei nem chamei outro professor. Combine com ela ou reatribua a aula.`;
-          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, aviso);
+          if (alertaComercial) await sendWhats(instance, alertaComercial, aviso);
           if (decision.trial.teacherPhone) {
             await sendWhats(
               instance,
@@ -8477,10 +8552,10 @@ async function handleSDR(
               ai_handoff_at: new Date().toISOString(),
               last_status_change: new Date().toISOString(),
             }).eq("id", freshLead.id);
-            if (adm.ownerPhone) {
+            if (alertaComercial) {
               await sendWhats(
                 instance,
-                adm.ownerPhone,
+                alertaComercial,
                 `⚠️ *Agendamento sem portal do tenant*\n\n${
                   freshLead.name || phone
                 } pediu ${
@@ -8520,10 +8595,10 @@ async function handleSDR(
                 .slice(0, 3000),
               last_status_change: new Date().toISOString(),
             }).eq("id", freshLead.id);
-            if (adm.ownerPhone) {
+            if (alertaComercial) {
               await sendWhats(
                 instance,
-                adm.ownerPhone,
+                alertaComercial,
                 `🎯 *Atendente IA:* experimental EM VALIDAÇÃO\n\n*${
                   freshLead.name || phone
                 }* — ${
@@ -8538,10 +8613,10 @@ async function handleSDR(
           } else {
             reply =
               `Deixa eu confirmar a disponibilidade certinho e já te retorno, tá? 😊`;
-            if (adm.ownerPhone) {
+            if (alertaComercial) {
               await sendWhats(
                 instance,
-                adm.ownerPhone,
+                alertaComercial,
                 `⚠️ *Atendente IA:* não consegui disparar a experimental de *${
                   freshLead.name || phone
                 }* (${st.date} ${st.time}) para os professores. Verifique a conexão do WhatsApp.`,
@@ -8558,14 +8633,14 @@ async function handleSDR(
       ai_handoff: true,
       ai_handoff_at: new Date().toISOString(),
     }).eq("id", lead.id);
-    if (adm.ownerPhone) {
+    if (alertaComercial) {
       const lastMsgs = [...hist.slice(-5), { role: "user", content: text }].map(
         (m: any) =>
           `${m.role === "user" ? "Lead" : "IA"}: ${m.content.slice(0, 120)}`,
       ).join("\n");
       await sendWhats(
         instance,
-        adm.ownerPhone,
+        alertaComercial,
         `👋 *Atendente IA:* o lead *${
           freshLead.name || phone
         }* precisa de VOCÊ (pediu humano ou assunto fora do meu escopo).\n\nÚltimas mensagens:\n${lastMsgs}\n\nWhatsApp: ${phone}\n_(A IA parou de responder este contato.)_`,
@@ -9068,7 +9143,7 @@ async function drainSdrConversation(
             input.msgId,
           )
         ) return;
-        await handleSDR(
+        return await handleSDR(
           sb,
           input.instance,
           tenantId,

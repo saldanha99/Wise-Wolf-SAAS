@@ -11,6 +11,15 @@ export interface SdrInput {
   entry?: WhatsappEntry | null;
 }
 
+/**
+ * A atendente pode pedir para a mesma mensagem ser tentada de novo mais tarde
+ * (IA fora do ar). A mensagem continua pendente na fila; nada é dado como
+ * respondido.
+ */
+export interface SdrDeferral {
+  deferSeconds: number;
+}
+
 export async function enqueueSdrInput(
   sb: any,
   tenantId: string,
@@ -32,7 +41,7 @@ export async function runSdrWork(
   respond: (
     input: SdrInput,
     beginEffects: () => Promise<boolean>,
-  ) => Promise<void>,
+  ) => Promise<SdrDeferral | void>,
 ): Promise<boolean> {
   const { data: work, error } = await sb.rpc("claim_sdr_work", {
     p_tenant_id: tenantId,
@@ -50,7 +59,16 @@ export async function runSdrWork(
     return applying;
   };
   try {
-    await respond(work.payload, beginEffects);
+    const outcome = await respond(work.payload, beginEffects);
+    if (outcome && outcome.deferSeconds > 0) {
+      const { error } = await sb.rpc("defer_sdr_work", {
+        ...args,
+        p_delay_seconds: Math.round(outcome.deferSeconds),
+      });
+      if (error) throw new Error("sdr_defer_failed");
+      // Adiada não conta como "rodou": quem drena não deve insistir agora.
+      return false;
+    }
     const { error } = await sb.rpc("finish_sdr_work", {
       ...args,
       p_success: true,

@@ -4843,3 +4843,24 @@ tipo, e o dia em que a folha não pagaria (aula da agenda do mesmo par). Cancela
 motivo e apaga o lançamento, guardando a trilha. ⚠️ Reposição que ainda vai acontecer
 não é baixa: use Atribuição temporária (agenda, presença e folha de sempre). Migration
 `20261110140000`, teste `baixa_manual_de_aulas.sql` no release; tour da direção.
+
+### 11/11/2026 — IA fora do ar não é "humano assumiu"
+
+Sintoma: a atendente mandava só "já já alguém da equipe te responde" e calava o
+lead. Causa medida nos logs: cota do Gemini estourada (429) e OpenRouter sem
+saldo (402). O `callAI` devolvia null, `handleSDR` marcava `ai_handoff = true`
+(72 h de silêncio) e o aviso ia ao `ownerPhone`, que é o próprio número central,
+ou seja, ninguém era notificado.
+
+Agora (`whatsapp-inbound/ai-outage.ts`, puro e testado):
+- Falha de provedor vira ESPERA: um único aviso neutro ao lead ("já te
+  respondo"), mensagem devolvida à fila por `defer_sdr_work` (migration
+  `20261111120000`), nova tentativa a cada 2 min pelo cron `wisewolf-sdr-work`.
+  Quando a IA volta, responde sozinha e pede desculpas pela demora uma vez.
+- Só depois de 6 h sem IA o contato vai para humano, com aviso no grupo Comercial.
+- A direção recebe a CAUSA e o que fazer (crédito OpenRouter, cota/faturamento
+  Gemini, chave) no grupo Direção, no máximo um alerta por hora por escola
+  (registro em `ai_wa_messages`, agent `sdr_alert`, kind `ai_outage_alert`).
+- Todos os avisos da `handleSDR` (lead pediu humano, disparo de experimental,
+  falhas) saem no grupo Comercial; o telefone do admin é só último recurso.
+- Teste SQL `atendente_espera_a_ia_voltar.sql` e testes Deno no release.
