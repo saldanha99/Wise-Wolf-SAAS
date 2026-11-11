@@ -31,6 +31,11 @@ returns numeric language sql immutable set search_path = '' as $$
   end;
 $$;
 
+-- Mesmo dono das funções que as chamam (create_offer, get_offer_public e
+-- claim_enrollment_offer rodam como postgres): sem isso o revoke abaixo deixa
+-- postgres sem permissão de executar (falhou no release de 11/11/2026).
+alter function private.trial_closing_agenda_hold_months(date, date) owner to postgres;
+alter function private.trial_closing_enrollment_charge(date, date) owner to postgres;
 revoke all on function private.trial_closing_agenda_hold_months(date, date) from public, anon, authenticated;
 revoke all on function private.trial_closing_enrollment_charge(date, date) from public, anon, authenticated;
 
@@ -107,6 +112,7 @@ begin
   return pg_catalog.jsonb_build_object('enrollmentFee', v_fee, 'agendaHoldMonths', v_months);
 end;
 $$;
+alter function private.trial_closing_apply_enrollment_charge(uuid) owner to postgres;
 revoke all on function private.trial_closing_apply_enrollment_charge(uuid) from public, anon, authenticated;
 
 create or replace function public.get_offer_public(p_offer_id uuid)
