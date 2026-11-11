@@ -181,11 +181,7 @@ import {
   trialAccessReply,
   vetoInventedPresential,
 } from "./trial-access.ts";
-import {
-  enqueueSdrInput,
-  runSdrWork,
-  type SdrDeferral,
-} from "./sdr-work.ts";
+import { enqueueSdrInput, runSdrWork, type SdrDeferral } from "./sdr-work.ts";
 import {
   AI_OUTAGE_HOLD_REPLY,
   aiFailureAction,
@@ -729,10 +725,21 @@ const GEMINI_MODELS = [
 // JSON. Os dois primeiros responderam 200 com a chave da escola. Lista curta de
 // modelos que EXISTEM vale mais que lista longa de nomes mortos: cada nome
 // morto custa uma ida e volta enquanto o lead espera resposta.
+//
+// 11/11/2026: a escola decidiu depender SÓ do crédito do OpenRouter (o Gemini
+// direto estourou a cota gratuita e não terá faturamento). Os agentes de rotina
+// usam um modelo rápido e barato; a atendente comercial, que conduz o lead até a
+// experimental e fecha a matrícula depois dela, usa um modelo mais capaz.
+// IDs conferidos em openrouter.ai/api/v1/models em 11/11/2026.
 const OR_MODELS = [
-  "google/gemini-2.5-flash-lite",
+  "anthropic/claude-haiku-5.5",
+  "google/gemini-3.8-flash",
   "openai/gpt-4o-mini",
-  "meta-llama/llama-3.3-70b-instruct",
+];
+const SDR_MODELS = [
+  "anthropic/claude-sonnet-5.5",
+  "anthropic/claude-haiku-5.5",
+  "google/gemini-3.8-flash",
 ];
 
 function parseJson(raw: string): any | null {
@@ -754,66 +761,18 @@ async function callAI(
   system: string,
   messages: { role: string; content: string }[],
   diag?: string[],
-  opts?: { skipGemini?: boolean; temperature?: number },
+  opts?: { temperature?: number; models?: readonly string[] },
 ): Promise<any | null> {
   const temperature = Number.isFinite(opts?.temperature)
     ? Math.max(0, Math.min(1, Number(opts?.temperature)))
     : 0.6;
-  if (GEMINI_KEY && !opts?.skipGemini) {
-    const contents = messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-    for (const model of GEMINI_MODELS) {
-      try {
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: system }] },
-              contents,
-              generationConfig: {
-                temperature,
-                maxOutputTokens: 1200,
-                responseMimeType: "application/json",
-              },
-            }),
-            signal: AbortSignal.timeout(25000),
-          },
-        );
-        if (!resp.ok) {
-          const t = await resp.text().catch(() => "");
-          diag?.push(
-            `gemini/${model}: HTTP ${resp.status} ${
-              t.replace(/\s+/g, " ").slice(0, 120)
-            }`,
-          );
-          // A cota gratuita do Gemini é da CHAVE, não do modelo: se um deu 429,
-          // os outros dão também. Insistir só gasta 25s por modelo enquanto o
-          // lead espera — e foi assim que duas conversas quentes de 15/09/2026
-          // acabaram em "já já alguém te responde".
-          if (resp.status === 429) break;
-          continue;
-        }
-        const d = await resp.json();
-        const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        const parsed = parseJson(raw);
-        if (parsed) return parsed;
-        diag?.push(`gemini/${model}: sem JSON ${String(raw).slice(0, 80)}`);
-      } catch (e) {
-        diag?.push(`gemini/${model}: ${(e as Error).message.slice(0, 90)}`);
-      }
-    }
-  } else if (!opts?.skipGemini) diag?.push("GEMINI_API_KEY ausente");
 
   const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
   if (!apiKey) {
     diag?.push("OPENROUTER_API_KEY ausente");
     return null;
   }
-  for (const model of OR_MODELS) {
+  for (const model of opts?.models?.length ? opts.models : OR_MODELS) {
     try {
       const resp = await fetch(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -7445,8 +7404,10 @@ async function handleCareStudent(
   });
   const diag: string[] = [];
   const ai = parseCareModelReply(
+    // Inclui o fechamento pós-experimental: conversa de venda, modelo capaz.
     await callAI(system, [...safeHist, { role: "user", content: text }], diag, {
       temperature: 0.4,
+      models: SDR_MODELS,
     }),
   );
   const invalidCareRole = ai && careReplySpeaksAsStudent(
@@ -8119,7 +8080,9 @@ async function handleSDR(
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
-    }\n${afterTrial ? "" : leadTraining}${styleBlock}${trialContext}${delayLine}${
+    }\n${
+      afterTrial ? "" : leadTraining
+    }${styleBlock}${trialContext}${delayLine}${
       waiting
         ? `\nPEDIDO DE REMARCAÇÃO EXISTENTE: ${waiting.requested_start_time}; estado=${waiting.status}; limite de espera de 60 minutos desde ${waiting.created_at}. Não abra novamente o mesmo pedido ao receber agradecimento ou cobrança de retorno. Se o prazo passou, negocie outro horário, sem repetir promessas passadas.`
         : ""
@@ -8136,7 +8099,7 @@ async function handleSDR(
     system,
     [...hist, { role: "user", content: text }],
     diag,
-    { temperature: 0.25 },
+    { temperature: 0.25, models: SDR_MODELS },
   );
   if (!(await isLatestSdrTurn(sb, tenantId, phone, msgId))) return;
   const { data: currentLead, error: currentLeadError } = await sb.from(
@@ -8187,11 +8150,19 @@ async function handleSDR(
           }"\n\nWhatsApp: ${phone}\n_Responda por aqui; a IA não fala mais com este contato até ele ser devolvido._`,
         );
       }
-      await logMsg(sb, tenantId, phone, "sdr", "out", "[IA fora do ar há 6 h — contato entregue à equipe]", {
-        lead_id: lead.id,
-        kind: "ai_down_handoff",
-        diag,
-      });
+      await logMsg(
+        sb,
+        tenantId,
+        phone,
+        "sdr",
+        "out",
+        "[IA fora do ar há 6 h — contato entregue à equipe]",
+        {
+          lead_id: lead.id,
+          kind: "ai_down_handoff",
+          diag,
+        },
+      );
       return;
     }
 
@@ -8519,7 +8490,9 @@ async function handleSDR(
           }* pediu para mudar de ${formatSlot(decision.from)} para ${
             formatSlot(decision.to)
           }.\nProfessora: ${decision.trial.teacherName} — mas ela tem *${decision.conflict}* no horário novo.\n\nNão remarquei nem chamei outro professor. Combine com ela ou reatribua a aula.`;
-          if (alertaComercial) await sendWhats(instance, alertaComercial, aviso);
+          if (alertaComercial) {
+            await sendWhats(instance, alertaComercial, aviso);
+          }
           if (decision.trial.teacherPhone) {
             await sendWhats(
               instance,
@@ -9400,7 +9373,7 @@ serve(async (req) => {
         'Responda SOMENTE com JSON válido: {"ok": true, "msg": "cadeia funcionando"}',
         [{ role: "user", content: "teste" }],
         diag,
-        { skipGemini: selftest === "or" },
+        { models: selftest === "or" ? OR_MODELS : SDR_MODELS },
       );
       return new Response(JSON.stringify({ result: out, diag }), {
         status: 200,

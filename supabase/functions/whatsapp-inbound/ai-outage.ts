@@ -91,7 +91,9 @@ export function aiFailureAction(failure: AiFailure): string {
     steps.push("colocar crédito no OpenRouter (openrouter.ai → Credits)");
   }
   if (failure.causes.includes("cota_excedida")) {
-    steps.push("ativar faturamento ou aumentar a cota da chave do Gemini (Google AI Studio)");
+    steps.push(
+      "ativar faturamento ou aumentar a cota da chave do Gemini (Google AI Studio)",
+    );
   }
   if (
     failure.causes.includes("chave_invalida") ||

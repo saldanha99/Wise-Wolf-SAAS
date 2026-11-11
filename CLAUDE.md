@@ -4864,3 +4864,13 @@ Agora (`whatsapp-inbound/ai-outage.ts`, puro e testado):
 - Todos os avisos da `handleSDR` (lead pediu humano, disparo de experimental,
   falhas) saem no grupo Comercial; o telefone do admin é só último recurso.
 - Teste SQL `atendente_espera_a_ia_voltar.sql` e testes Deno no release.
+
+### 11/11/2026 — Agentes só no OpenRouter; atendente com modelo mais capaz
+
+Decisão da direção: sem faturamento no Gemini, tudo pelo crédito do OpenRouter.
+`callAI` não chama mais o Gemini direto (a transcrição de áudio continua
+Whisper → Gemini). `SDR_MODELS` (Sonnet 5.5 → Haiku 5.5 → Gemini 3.8 Flash)
+atende o lead até a experimental e o fechamento pós-experimental
+(`handleSDR` e `handleCareStudent`); os demais agentes usam `OR_MODELS`
+(Haiku 5.5 → Gemini 3.8 Flash → GPT-4o-mini). Selftest: `?selftest=ai`
+(cadeia da atendente) e `?selftest=or` (cadeia de rotina).

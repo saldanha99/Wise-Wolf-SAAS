@@ -1,5 +1,8 @@
 /// <reference lib="deno.ns" />
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   AI_OUTAGE_GIVE_UP_MS,
   aiFailureAction,
@@ -34,7 +37,11 @@ Deno.test("chave ausente e resposta inválida são distinguidas", () => {
     "openai/gpt-4o-mini: sem JSON",
     "meta-llama/llama-3.3-70b-instruct: HTTP 503 upstream",
   ]);
-  assertEquals(f.causes.sort(), ["chave_ausente", "instavel", "resposta_invalida"]);
+  assertEquals(f.causes.sort(), [
+    "chave_ausente",
+    "instavel",
+    "resposta_invalida",
+  ]);
   assert(aiFailureAction(f).includes("chaves"));
 });
 
@@ -43,13 +50,26 @@ Deno.test("diag vazio não quebra", () => {
 });
 
 Deno.test("primeira falha: um aviso ao lead, alerta à direção, nova tentativa", () => {
-  const p = planAiOutage({ now: 1_000_000, lastHoldToLeadAt: null, lastTenantAlertAt: null });
-  assertEquals(p, { sendHold: true, alertDirection: true, giveUp: false, retryInSeconds: 120 });
+  const p = planAiOutage({
+    now: 1_000_000,
+    lastHoldToLeadAt: null,
+    lastTenantAlertAt: null,
+  });
+  assertEquals(p, {
+    sendHold: true,
+    alertDirection: true,
+    giveUp: false,
+    retryInSeconds: 120,
+  });
 });
 
 Deno.test("nova tentativa não repete aviso ao lead nem alerta dentro da hora", () => {
   const now = 10_000_000;
-  const p = planAiOutage({ now, lastHoldToLeadAt: now - 5 * 60_000, lastTenantAlertAt: now - 10 * 60_000 });
+  const p = planAiOutage({
+    now,
+    lastHoldToLeadAt: now - 5 * 60_000,
+    lastTenantAlertAt: now - 10 * 60_000,
+  });
   assertEquals(p.sendHold, false);
   assertEquals(p.alertDirection, false);
   assertEquals(p.giveUp, false);
@@ -57,13 +77,21 @@ Deno.test("nova tentativa não repete aviso ao lead nem alerta dentro da hora", 
 
 Deno.test("alerta da escola volta a sair depois de uma hora", () => {
   const now = 10_000_000;
-  const p = planAiOutage({ now, lastHoldToLeadAt: now - 60_000, lastTenantAlertAt: now - 3_600_000 });
+  const p = planAiOutage({
+    now,
+    lastHoldToLeadAt: now - 60_000,
+    lastTenantAlertAt: now - 3_600_000,
+  });
   assertEquals(p.alertDirection, true);
 });
 
 Deno.test("depois de 6 h sem IA, o contato vai para humano", () => {
   const now = 100_000_000;
-  const p = planAiOutage({ now, lastHoldToLeadAt: now - AI_OUTAGE_GIVE_UP_MS, lastTenantAlertAt: now });
+  const p = planAiOutage({
+    now,
+    lastHoldToLeadAt: now - AI_OUTAGE_GIVE_UP_MS,
+    lastTenantAlertAt: now,
+  });
   assertEquals(p.giveUp, true);
   assertEquals(p.sendHold, false);
 });
