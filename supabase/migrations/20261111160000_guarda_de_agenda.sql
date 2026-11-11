@@ -147,7 +147,10 @@ end $function$;
 
 alter function public.get_offer_public(uuid) owner to postgres;
 alter function public.claim_enrollment_offer(uuid,jsonb) owner to postgres;
+-- Só o servidor chama as duas (travas de 26/09, migration 20260926050000): a
+-- página pública busca a oferta pela edge tenant-legal-assets e o aluno assina
+-- por begin_enrollment_offer. Nunca devolver EXECUTE a anon/authenticated.
 revoke all on function public.get_offer_public(uuid) from public, anon, authenticated;
 revoke all on function public.claim_enrollment_offer(uuid,jsonb) from public, anon, authenticated;
-grant execute on function public.get_offer_public(uuid) to anon, authenticated;
-grant execute on function public.claim_enrollment_offer(uuid,jsonb) to authenticated;
+grant execute on function public.get_offer_public(uuid) to service_role;
+grant execute on function public.claim_enrollment_offer(uuid,jsonb) to service_role;
