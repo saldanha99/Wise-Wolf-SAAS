@@ -184,9 +184,11 @@ select pg_temp.assert_true(
   '[6] professora sem pergunta aberta deveria seguir para os outros agentes'
 );
 
--- [7] isenção da taxa: com o início a até 7 dias a página mostra taxa zero, e a
--- cobrança lê offers.enrollment_fee (begin_enrollment_offer) — a oferta tem de
--- gravar a mesma isenção que a página mostra (migration 20260926130000).
+-- [7] taxa da oferta. Desde 11/11/2026 (migration 20261111160000) quem recalcula
+-- a cobrança inicial pela data de início é a guarda de agenda, e só no
+-- fechamento da Wise Wolf (até 7 dias: R$ 49,90; depois: R$ 60 por mês, matrícula
+-- inclusa — regra testada em guarda_de_agenda.sql). Nesta escola de teste a
+-- página NÃO pode mexer na taxa que a oferta gravou, seja qual for o início.
 create temporary table fee_offer as
 select o.id from public.offers o, fx
  where fx.k = 'opportunity' and o.opportunity_id = fx.v and o.kind = 'ENROLLMENT'
@@ -202,20 +204,19 @@ update private.trial_closing_flows
 select public.get_offer_public((select id from fee_offer));
 select pg_temp.assert_true(
   (select enrollment_fee from public.offers where id = (select id from fee_offer)) = 49.90,
-  '[7] com o início daqui a 20 dias a taxa continua'
+  '[7] com o início daqui a 20 dias a taxa gravada continua'
 );
 update private.trial_closing_flows
    set plan = jsonb_set(plan, '{start_date}',
      to_jsonb(to_char((now() at time zone 'America/Sao_Paulo')::date + 3, 'YYYY-MM-DD')), true)
  where offer_id = (select id from fee_offer);
 select pg_temp.assert_true(
-  ((select public.get_offer_public((select id from fee_offer))) ->> 'enrollmentFee')::numeric = 0,
-  '[7] com o início a até 7 dias a página mostra taxa zero'
+  ((select public.get_offer_public((select id from fee_offer))) ->> 'enrollmentFee')::numeric = 49.90,
+  '[7] fora da Wise Wolf, a página mostra a taxa que a oferta gravou'
 );
 select pg_temp.assert_true(
-  (select enrollment_fee = 0 and (payload ->> 'enrollmentFee')::numeric = 0
-     from public.offers where id = (select id from fee_offer)),
-  '[7] a oferta grava a isenção que a página mostrou (é dela que a cobrança lê)'
+  (select enrollment_fee = 49.90 from public.offers where id = (select id from fee_offer)),
+  '[7] fora da Wise Wolf, a página não reescreve a cobrança'
 );
 
 rollback;
