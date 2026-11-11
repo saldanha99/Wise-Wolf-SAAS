@@ -1,4 +1,8 @@
 begin;
+-- A atenção operacional lista do mais antigo para o mais novo. O teste roda
+-- contra o banco de produção: com 100+ avisos reais pendentes (11/11/2026), o
+-- caso sintético saía da janela de 100 e o release reprovava sem defeito
+-- nenhum. As consultas usam o teto da função (500).
 
 create or replace function pg_temp.assert_true(value boolean, message text)
 returns void
@@ -526,7 +530,7 @@ select pg_temp.assert_true(
   )
   and exists (
     select 1
-    from public.management_payment_notification_attention(100) as attention
+    from public.management_payment_notification_attention(500) as attention
     where attention.payment_id = '71000000-0000-4000-8000-000000000011'
       and attention.status = 'UNKNOWN'
       and attention.submit_attempt_count = 1
@@ -841,7 +845,7 @@ select pg_temp.assert_true(
   )
   and exists (
     select 1
-    from public.management_payment_notification_attention(100) as attention
+    from public.management_payment_notification_attention(500) as attention
     where attention.payment_id = '71000000-0000-4000-8000-000000000017'
       and attention.status = 'SUBMITTING'
       and attention.provider_delivery_status = 'accepted'
@@ -875,7 +879,7 @@ select pg_temp.assert_true(
   )
   and exists (
     select 1
-    from public.management_payment_notification_attention(100) as attention
+    from public.management_payment_notification_attention(500) as attention
     where attention.payment_id = '71000000-0000-4000-8000-000000000017'
       and attention.status = 'SUBMITTING'
       and attention.provider_delivery_status = 'sent'
@@ -902,7 +906,7 @@ select pg_temp.assert_true(
   )
   and not exists (
     select 1
-    from public.management_payment_notification_attention(100) as attention
+    from public.management_payment_notification_attention(500) as attention
     where attention.payment_id = '71000000-0000-4000-8000-000000000017'
   ),
   'DELIVERY_ACK did not finalize the management-group delivery'
