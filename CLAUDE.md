@@ -4891,3 +4891,13 @@ pela mesma cobrança da taxa (`offers.enrollment_fee`).
   instruções da atendente explicam a guarda e que a matrícula está inclusa.
 - Página e contrato: `enrollmentChargeLabel` troca "Taxa de matrícula" por
   "Guarda de agenda (N meses, matrícula inclusa)".
+
+### 11/11/2026 — Experimentais organizadas pela próxima ação, com busca
+
+A direção não achava a experimental realizada para gerar o link: a lista
+misturava as etapas, sem busca, na ordem de criação do pedido. Agora
+(`lib/trialPipeline.ts`: `groupTrialRows`, `matchesTrialSearch`) a tela abre em
+"Em andamento", agrupada pela próxima ação (aula feita → gerar link; registrar
+resultado; remarcar; link enviado; agendadas), parados primeiro e aula mais
+recente em cima. A busca por nome (sem acento) ou telefone procura em todas as
+etapas, inclusive convertidos e perdidos.

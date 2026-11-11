@@ -3,6 +3,8 @@ import {
     formatBrazilPhone,
     relativeTrialLabel,
     trialAttention,
+    groupTrialRows,
+    matchesTrialSearch,
     trialNextAction,
     trialStage,
     whatsappHref,
@@ -81,5 +83,49 @@ describe('formatação', () => {
         expect(whatsappHref('11987654321')).toBe('https://wa.me/5511987654321');
         expect(whatsappHref('5511987654321')).toBe('https://wa.me/5511987654321');
         expect(whatsappHref('123')).toBeNull();
+    });
+});
+
+describe('organização da lista de experimentais', () => {
+    const row = (action: any, start: string | null, attention: string | null = null, createdAt = '2026-11-01T00:00:00Z') => ({
+        action, attention, createdAt, start: start ? new Date(start) : null,
+    });
+
+    it('aula feita sem link vem primeiro, depois registrar, remarcar, link enviado, agendadas', () => {
+        const groups = groupTrialRows([
+            row('AWAIT', '2026-11-20T12:00:00Z'),
+            row('RESEND_LINK', '2026-11-05T12:00:00Z'),
+            row('GENERATE_LINK', '2026-11-10T12:00:00Z'),
+            row('MARK_DONE', '2026-11-11T12:00:00Z'),
+            row('RESCHEDULE', '2026-11-09T12:00:00Z'),
+        ]);
+        expect(groups.map(group => group.action)).toEqual(['GENERATE_LINK', 'MARK_DONE', 'RESCHEDULE', 'RESEND_LINK', 'AWAIT']);
+        expect(groups[0].title).toContain('gerar link');
+    });
+
+    it('dentro do grupo: parados primeiro, depois a aula mais recente', () => {
+        const [group] = groupTrialRows([
+            row('GENERATE_LINK', '2026-11-01T12:00:00Z'),
+            row('GENERATE_LINK', '2026-11-10T12:00:00Z'),
+            row('GENERATE_LINK', '2026-10-01T12:00:00Z', 'Aula feita há 41 dias e sem link'),
+        ]);
+        expect(group.rows.map(r => r.start?.toISOString().slice(0, 10))).toEqual(['2026-10-01', '2026-11-10', '2026-11-01']);
+    });
+
+    it('agendadas: a próxima aula primeiro', () => {
+        const [group] = groupTrialRows([
+            row('AWAIT', '2026-11-25T12:00:00Z'),
+            row('AWAIT', '2026-11-12T12:00:00Z'),
+        ]);
+        expect(group.rows[0].start?.toISOString().slice(0, 10)).toBe('2026-11-12');
+    });
+
+    it('busca por nome sem acento ou por telefone', () => {
+        expect(matchesTrialSearch('amanda', 'Amanda Souza', '5511987654321')).toBe(true);
+        expect(matchesTrialSearch('LAÍS', 'Lais Ferreira', null)).toBe(true);
+        expect(matchesTrialSearch('98765', 'Bia', '5511987654321')).toBe(true);
+        expect(matchesTrialSearch('carla', 'Amanda', '5511987654321')).toBe(false);
+        expect(matchesTrialSearch('  ', 'Qualquer', null)).toBe(true);
+        expect(matchesTrialSearch('11', 'Bia', '5511987654321')).toBe(false);
     });
 });

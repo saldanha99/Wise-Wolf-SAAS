@@ -26,6 +26,8 @@ import {
     TrialNextAction,
     TrialStage,
     formatBrazilPhone,
+    groupTrialRows,
+    matchesTrialSearch,
     relativeTrialLabel,
     trialAttention,
     trialNextAction,
@@ -209,6 +211,7 @@ interface PipelineRow {
     stage: TrialStage;
     action: TrialNextAction;
     attention: string | null;
+    createdAt: string | null | undefined;
 }
 
 interface LeadAction {
@@ -429,7 +432,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [reschedSaving, setReschedSaving] = useState(false);
 
     // Filtro por etapa do funil ('open' = ainda em andamento; 'attention' = parado)
-    const [stageFilter, setStageFilter] = useState<StageFilter>('all');
+    // Abre no que ainda pede ação; "Todos" continua a um clique.
+    const [stageFilter, setStageFilter] = useState<StageFilter>('open');
+    // Busca por nome ou telefone do aluno.
+    const [studentSearch, setStudentSearch] = useState('');
     // Relógio da tela: "hoje às", "aula passou há" e o que está parado dependem da hora.
     const [now, setNow] = useState(() => new Date());
     useEffect(() => {
@@ -764,6 +770,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 stage: trialStage(opp, hasLink),
                 action: trialNextAction(opp, hasLink, start, now),
                 attention: trialAttention(opp, hasLink, start, linkCreated, now),
+                createdAt: opp.created_at,
             };
         });
     }, [opportunities, enrollmentLinks, appointments, teacherFilter, now]);
@@ -783,16 +790,19 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     const attentionCount = useMemo(() => scopedRows.filter(row => row.attention).length, [scopedRows]);
 
-    // Parados primeiro; dentro de cada grupo, a ordem de sempre (mais recentes no topo).
-    const filtered = useMemo(() => {
-        const list = scopedRows.filter(row => {
-            if (stageFilter === 'all') return true;
-            if (stageFilter === 'open') return row.stage === 'SCHEDULED' || row.stage === 'DONE' || row.stage === 'LINK_SENT';
-            if (stageFilter === 'attention') return Boolean(row.attention);
-            return row.stage === stageFilter;
-        });
-        return [...list.filter(row => row.attention), ...list.filter(row => !row.attention)];
-    }, [scopedRows, stageFilter]);
+    // Busca vale em qualquer etapa: com texto digitado, procura em tudo, inclusive
+    // convertidos e perdidos — quem busca um nome quer achá-lo onde estiver.
+    const searching = studentSearch.trim().length > 0;
+    const filtered = useMemo(() => scopedRows.filter(row => {
+        if (!matchesTrialSearch(studentSearch, row.opp.student_name, row.opp.student_phone)) return false;
+        if (searching || stageFilter === 'all') return true;
+        if (stageFilter === 'open') return row.stage === 'SCHEDULED' || row.stage === 'DONE' || row.stage === 'LINK_SENT';
+        if (stageFilter === 'attention') return Boolean(row.attention);
+        return row.stage === stageFilter;
+    }), [scopedRows, stageFilter, studentSearch, searching]);
+
+    // Agrupada pela próxima ação: o que pede alguém vem primeiro (lib/trialPipeline).
+    const groupedRows = useMemo(() => groupTrialRows(filtered), [filtered]);
 
     // =============================================================
     // Quantas experimentais cada professor pegou — some no seletor para o diretor
@@ -1139,9 +1149,11 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         { key: 'all', label: 'Todos', count: scopedRows.length },
         { key: 'open', label: 'Em andamento', count: openCount },
     ];
-    const emptyMessage = stageFilter === 'attention'
-        ? 'Nada parado. Todos os leads estão em dia. 🎉'
-        : 'Nenhuma experimental nesta etapa.';
+    const emptyMessage = searching
+        ? `Nenhuma experimental encontrada para "${studentSearch.trim()}".`
+        : stageFilter === 'attention'
+            ? 'Nada parado. Todos os leads estão em dia. 🎉'
+            : 'Nenhuma experimental nesta etapa.';
 
     return (
         <div className="space-y-6">
@@ -1207,7 +1219,27 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                     })}
                 </div>
 
-                <div className="mt-4 flex flex-col gap-3 border-t border-brand-border pt-4 sm:flex-row sm:items-center">
+                <div className="mt-4 border-t border-brand-border pt-4">
+                    <label htmlFor="trial-student-search" className="sr-only">Buscar aluno</label>
+                    <div className="relative">
+                        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" aria-hidden />
+                        <input
+                            id="trial-student-search"
+                            type="search"
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                            placeholder="Buscar aluno por nome ou telefone"
+                            className="w-full rounded-xl border border-brand-border bg-brand-surface py-2.5 pl-9 pr-3 text-sm font-semibold text-brand-text placeholder:font-medium placeholder:text-brand-muted outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+                        />
+                    </div>
+                    {searching && (
+                        <p className="mt-2 text-xs font-semibold text-brand-muted">
+                            Buscando em todas as etapas, inclusive convertidos e perdidos.
+                        </p>
+                    )}
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="flex flex-wrap gap-2">
                         {filterChips.map(chip => (
                             <button
@@ -1274,8 +1306,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                     <p className="font-medium text-brand-muted">{emptyMessage}</p>
                 </div>
             ) : (
-                <div className="space-y-3">
-                    {filtered.map(row => {
+                <div className="space-y-6">
+                    {groupedRows.map(group => (
+                        <section key={group.action} aria-label={group.title} className="space-y-3">
+                            <h3 className="flex items-center gap-2 px-1 text-xs font-black uppercase tracking-widest text-brand-muted">
+                                {group.title}
+                                <span className="rounded-full bg-brand-surface-2 px-2 py-0.5 text-[11px] text-brand-text">{group.rows.length}</span>
+                            </h3>
+                    {group.rows.map(row => {
                         const { opp, link, start, stage, action, attention } = row;
                         const fb = feedbacks[opp.id];
                         const meta = STAGE_META[stage];
@@ -1415,6 +1453,8 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             </article>
                         );
                     })}
+                        </section>
+                    ))}
                 </div>
             )}
 

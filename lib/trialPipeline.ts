@@ -130,3 +130,68 @@ export function whatsappHref(raw: string | null | undefined): string | null {
     if (digits.length < 10) return null;
     return `https://wa.me/${digits.length <= 11 ? `55${digits}` : digits}`;
 }
+
+// =============================================================
+// ORGANIZAÇÃO DA LISTA (11/11/2026)
+//
+// A direção não achava a experimental já realizada para gerar o link: a lista
+// misturava todas as etapas, sem busca, ordenada pela data de criação do
+// pedido. Agora a lista é agrupada pela PRÓXIMA AÇÃO — o que precisa de alguém
+// vem primeiro — e dá para buscar por nome ou telefone.
+// =============================================================
+
+const NEXT_ACTION_GROUPS: { action: TrialNextAction; title: string }[] = [
+    { action: 'GENERATE_LINK', title: 'Aula feita — gerar link de matrícula' },
+    { action: 'MARK_DONE', title: 'Aula passou — registrar o resultado' },
+    { action: 'RESCHEDULE', title: 'Faltou ou cancelou — remarcar' },
+    { action: 'RESEND_LINK', title: 'Link enviado — aguardando o aluno' },
+    { action: 'AWAIT', title: 'Agendadas' },
+    { action: 'NONE', title: 'Encerradas' },
+];
+
+export interface TrialListRow {
+    action: TrialNextAction;
+    attention: string | null;
+    start: Date | null;
+    createdAt: string | null | undefined;
+}
+
+const foldSearch = (value: string): string =>
+    value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+/** Busca por nome (sem acento, qualquer parte) ou por dígitos do telefone. */
+export function matchesTrialSearch(
+    query: string,
+    name: string | null | undefined,
+    phone: string | null | undefined,
+): boolean {
+    const folded = foldSearch(query);
+    if (!folded) return true;
+    if (foldSearch(String(name || '')).includes(folded)) return true;
+    const digits = folded.replace(/\D/g, '');
+    return digits.length >= 3 && String(phone || '').replace(/\D/g, '').includes(digits);
+}
+
+function rowTime(row: TrialListRow): number {
+    if (row.start) return row.start.getTime();
+    const created = Date.parse(String(row.createdAt || ''));
+    return Number.isFinite(created) ? created : 0;
+}
+
+/**
+ * Grupos na ordem em que a escola age. Dentro do grupo: parados primeiro; depois
+ * a aula mais recente (aula futura: a mais próxima primeiro).
+ */
+export function groupTrialRows<T extends TrialListRow>(rows: T[]): { title: string; action: TrialNextAction; rows: T[] }[] {
+    return NEXT_ACTION_GROUPS
+        .map(group => {
+            const inGroup = rows.filter(row => row.action === group.action);
+            const future = group.action === 'AWAIT';
+            inGroup.sort((a, b) => {
+                if (Boolean(a.attention) !== Boolean(b.attention)) return a.attention ? -1 : 1;
+                return future ? rowTime(a) - rowTime(b) : rowTime(b) - rowTime(a);
+            });
+            return { title: group.title, action: group.action, rows: inGroup };
+        })
+        .filter(group => group.rows.length > 0);
+}
