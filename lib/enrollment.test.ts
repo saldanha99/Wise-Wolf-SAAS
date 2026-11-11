@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
     calculateEnrollmentQuote,
+    enrollmentChargeLabel,
     normalizeEnrollmentProRataTerms,
 } from './enrollment';
+
+describe('enrollmentChargeLabel', () => {
+    it('início próximo continua sendo taxa de matrícula', () => {
+        expect(enrollmentChargeLabel(0)).toBe('Taxa de matrícula');
+        expect(enrollmentChargeLabel(undefined)).toBe('Taxa de matrícula');
+    });
+    it('início distante é guarda de agenda com a matrícula inclusa', () => {
+        expect(enrollmentChargeLabel(1)).toBe('Guarda de agenda (1 mês, matrícula inclusa)');
+        expect(enrollmentChargeLabel(2)).toBe('Guarda de agenda (2 meses, matrícula inclusa)');
+    });
+});
 
 const recurringOffer = {
     planDuration: 12,

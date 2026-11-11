@@ -6245,6 +6245,7 @@ async function handleTrialClosingTeacherSlotsReply(
       startDate: String(data.offer.start_date || ""),
       dueDay: Number(data.offer.due_day || 10),
       enrollmentFee: Number(data.offer.enrollment_fee || 0),
+      agendaHoldMonths: Number(data.offer.agenda_hold_months || 0),
     });
   } else if (data.offer?.error) {
     reply = studentSlotsUnavailableMessage(
@@ -6463,6 +6464,9 @@ async function handleTrialClosingStudent(
                     startDate: String(data.offer.start_date || ""),
                     dueDay: Number(data.offer.due_day || 10),
                     enrollmentFee: Number(data.offer.enrollment_fee || 0),
+                    agendaHoldMonths: Number(
+                      data.offer.agenda_hold_months || 0,
+                    ),
                   })
                   : data.offer?.error
                   ? "Anotei sua escolha, mas ainda não consegui liberar o link. Vou conferir os dados da matrícula com a escola."
@@ -6573,6 +6577,7 @@ async function handleTrialClosingStudent(
       startDate: String(data.offer.start_date || ""),
       dueDay: Number(data.offer.due_day || 10),
       enrollmentFee: Number(data.offer.enrollment_fee || 0),
+      agendaHoldMonths: Number(data.offer.agenda_hold_months || 0),
     });
   } else if (data.offer?.error) {
     const slotProblem = [
@@ -7191,7 +7196,7 @@ function trialClosingStageInstructions(
       free || "nenhum livre agora — diga que a coordenação encaixa"
     }.`,
     `FEEDBACK ESTRUTURADO DA EXPERIMENTAL: ${feedbackFacts}. Use somente estes dados; nunca invente elogio, opinião ou fala da professora. Se perguntarem o nível ou o feedback, responda isso primeiro, antes de qualquer pergunta comercial.`,
-    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte frequência e apresente os valores daquela frequência nos planos mensal, 6 e 12 meses da tabela; (3) pergunte dias e horários; (4) pergunte data de início explícita (DD/MM/AAAA) e dia de vencimento mensal (1 a 31). A professora confirma os horários; só depois o sistema pode gerar o link. A taxa única é R$ 49,90 quando a assinatura ocorre mais de 7 dias antes do início, e é dispensada quando faltam até 7 dias. Nunca invente valor, desconto, horário confirmado ou link.`,
+    `Conduza como uma pessoa, UMA coisa por vez: (1) reaja ao que ele achou; (2) pergunte frequência e apresente os valores daquela frequência nos planos mensal, 6 e 12 meses da tabela; (3) pergunte dias e horários; (4) pergunte data de início explícita (DD/MM/AAAA) e dia de vencimento mensal (1 a 31). A professora confirma os horários; só depois o sistema pode gerar o link. COBRANÇA INICIAL (diga ao aluno quando ele falar da data de início): começando em até 7 dias depois da assinatura, a taxa de matrícula é R$ 49,90; se ele quiser começar mais tarde (ex.: daqui a algumas semanas ou meses, mantendo a mesma teacher), ofereça a GUARDA DA AGENDA: R$ 60 por mês até a primeira aula, com a matrícula JÁ INCLUSA nesse valor (até 30 dias = R$ 60; daqui a 2 meses = R$ 120; 3 meses = R$ 180). Deixe claro que a guarda segura os horários dele com a professora e que não soma os R$ 49,90. Pergunte também o dia de vencimento da mensalidade. Nunca invente valor, desconto, horário confirmado ou link.`,
     `PERGUNTAS PENDENTES: responda todas as perguntas diretas da mensagem antes de conduzir para a próxima etapa. Se a pessoa cobrar "conseguiu a informação?", releia a última pergunta dela e responda objetivamente. Nunca substitua uma resposta sobre nível, feedback, contrato ou horário por uma tabela de preços.`,
     `HORÁRIO FORA DA LISTA: a lista acima é a disponibilidade cadastrada, não uma prova de que a professora recusou. Nunca diga que "nenhum professor atende" ou que o horário é impossível sem consulta. Para grade recorrente fora da lista, diga que vai confirmar diretamente com a professora. Não marque handoff só por essa razão; a confirmação de horário é tratada pelo fluxo automático.`,
     `NEGOCIAÇÃO DA GRADE: se a professora confirmar apenas uma mudança de horário, explique ao aluno exatamente qual pedido não atende. Quando couber trocar um dia por outro mantendo a frequência, consulte a professora sobre os dias e horários exatos antes de oferecer a alternativa. Disponibilidade da professora não é escolha do aluno. Fale em blocos curtos, com saudação pelo nome e "tudo bem?" uma única vez; nunca repita opções já enviadas nem envie em paralelo a um humano. Se o aluno disser "dia 05/10 para começar e vencimento", ambos se referem ao dia 5; não pergunte de novo o vencimento.`,

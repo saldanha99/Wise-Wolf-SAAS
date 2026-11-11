@@ -4874,3 +4874,20 @@ atende o lead até a experimental e o fechamento pós-experimental
 (`handleSDR` e `handleCareStudent`); os demais agentes usam `OR_MODELS`
 (Haiku 5.5 → Gemini 3.8 Flash → GPT-4o-mini). Selftest: `?selftest=ai`
 (cadeia da atendente) e `?selftest=or` (cadeia de rotina).
+
+### 11/11/2026 — Guarda de agenda no fechamento pós-experimental
+
+Decisão da direção. Início em até 7 dias depois da assinatura: taxa de matrícula
+R$ 49,90 (antes era isenta). Início mais tarde: **guarda de agenda** de R$ 60 por
+mês iniciado de espera, com a matrícula INCLUSA, sem somar os R$ 49,90
+(8–30 dias = R$ 60; 31–60 = R$ 120; 61–90 = R$ 180). Sai de uma vez no link,
+pela mesma cobrança da taxa (`offers.enrollment_fee`).
+- Banco (migration `20261111160000`): `private.trial_closing_agenda_hold_months`
+  e `_enrollment_charge` são a regra; `trial_closing_create_offer` passa a usá-la
+  e grava `agendaHoldMonths`; `get_offer_public` e `claim_enrollment_offer`
+  recalculam pelo dia de hoje (`trial_closing_apply_enrollment_charge`) e gravam
+  na oferta o que mostram. Só fluxos `school-wise-wolf` com `start_date`.
+- Mensagens (`trial-closing.ts`: `agendaHoldRuleText`, `enrollmentChargeLine`) e
+  instruções da atendente explicam a guarda e que a matrícula está inclusa.
+- Página e contrato: `enrollmentChargeLabel` troca "Taxa de matrícula" por
+  "Guarda de agenda (N meses, matrícula inclusa)".

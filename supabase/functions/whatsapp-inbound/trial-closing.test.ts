@@ -5,10 +5,13 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   adjacentFourDayAlternative,
+  agendaHoldMonths,
+  agendaHoldRuleText,
   asksToReadContract,
   type CatalogPrice,
   classifyTeacherSlotsReply,
   contractReadingAnswer,
+  enrollmentCharge,
   mergeTeacherCounterproposal,
   parseCounterproposalDecision,
   parseEnrollmentDueDay,
@@ -374,9 +377,45 @@ Deno.test("link reflete vencimento escolhido e taxa condicional", () => {
   };
   const charged = studentOfferMessage({ ...base, enrollmentFee: 49.9 });
   assert(charged.includes("todo dia 20"));
-  assert(charged.includes("R$ 49,90"));
-  const waived = studentOfferMessage({ ...base, enrollmentFee: 0 });
-  assert(waived.includes("Sem taxa de matrícula"));
+  assert(charged.includes("Taxa de matrícula: R$ 49,90"));
+  const held = studentOfferMessage({
+    ...base,
+    enrollmentFee: 120,
+    agendaHoldMonths: 2,
+  });
+  assert(held.includes("Guarda da sua agenda"));
+  assert(held.includes("R$ 120,00"));
+  assert(held.includes("2 meses"));
+  assert(held.includes("matrícula inclusa"));
+  assert(!held.includes("Taxa de matrícula"));
+});
+
+Deno.test("guarda de agenda: até 7 dias é taxa; depois, R$ 60 por mês iniciado", () => {
+  const today = "2026-11-11";
+  assertEquals(agendaHoldMonths("2026-11-11", today), 0);
+  assertEquals(agendaHoldMonths("2026-11-18", today), 0); // 7 dias
+  assertEquals(enrollmentCharge("2026-11-18", today), 49.9);
+  assertEquals(agendaHoldMonths("2026-11-19", today), 1); // 8 dias
+  assertEquals(enrollmentCharge("2026-11-19", today), 60);
+  assertEquals(enrollmentCharge("2026-12-11", today), 60); // 30 dias
+  assertEquals(enrollmentCharge("2026-12-12", today), 120); // 31 dias
+  assertEquals(enrollmentCharge("2027-01-10", today), 120); // 60 dias
+  assertEquals(enrollmentCharge("2027-01-11", today), 180); // 61 dias
+  assertEquals(agendaHoldMonths("data ruim", today), 0);
+});
+
+Deno.test("regra explicada ao aluno diz que a matrícula está inclusa na guarda", () => {
+  const rule = agendaHoldRuleText();
+  assert(rule.includes("R$ 49,90"));
+  assert(rule.includes("R$ 60,00 por mês"));
+  assert(rule.includes("matrícula já está inclusa"));
+  assert(rule.includes("2 meses = R$ 120,00"));
+  const need = studentNeedMessage({
+    need: ["inicio", "vencimento"],
+    frequency: 2,
+    prices: [],
+  });
+  assert(need.includes("matrícula já está inclusa"));
 });
 
 Deno.test("lê dias e horários do aluno", () => {

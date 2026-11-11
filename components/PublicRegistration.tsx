@@ -35,6 +35,7 @@ import './PublicRegistration.css';
 import {
     calculateEnrollmentQuote,
     digitsOnly,
+    enrollmentChargeLabel,
     formatBrl,
     formatCpf,
     formatDateBr,
@@ -1193,7 +1194,7 @@ const PublicRegistration: React.FC = () => {
                 </strong>
                 {quote.enrollmentFee > 0 ? (
                     <>
-                        <span>Taxa de matrícula via Pix</span>
+                        <span>{enrollmentChargeLabel(contractData?.agendaHoldMonths)} via Pix</span>
                         <strong>{formatBrl(quote.enrollmentFee)}</strong>
                     </>
                 ) : null}
@@ -1597,6 +1598,7 @@ const PublicRegistration: React.FC = () => {
                                 dueDay={contractData.dueDay || 10}
                                 classFrequency={contractData.classesPerWeek || 2}
                                 enrollmentFee={quote.enrollmentFee}
+                                agendaHoldMonths={Number(contractData?.agendaHoldMonths || 0)}
                                 proRataValue={quote.proRataValue}
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
@@ -2041,6 +2043,7 @@ const PublicRegistration: React.FC = () => {
                         dueDay={contractData?.dueDay || 10}
                         classFrequency={contractData?.classesPerWeek || 2}
                         enrollmentFee={quote.enrollmentFee}
+                        agendaHoldMonths={Number(contractData?.agendaHoldMonths || 0)}
                         proRataValue={quote.proRataValue}
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}

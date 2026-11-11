@@ -468,6 +468,60 @@ export function teacherNoShowConfirmation(leadName: string | null): string {
   return `Registrei que ${lead} não compareceu. Vou oferecer outro horário para ele. Obrigado por avisar!`;
 }
 
+/**
+ * GUARDA DE AGENDA (decisão da direção, 11/11/2026). Espelha
+ * `private.trial_closing_agenda_hold_months` / `_enrollment_charge` — o banco é
+ * quem cobra; aqui só se explica.
+ *
+ * - Começa em até 7 dias depois da assinatura → taxa de matrícula R$ 49,90.
+ * - Começa depois → R$ 60 por mês iniciado de espera, matrícula INCLUSA
+ *   (8–30 dias = R$ 60; 31–60 = R$ 120; 61–90 = R$ 180).
+ */
+export const ENROLLMENT_FEE = 49.9;
+export const AGENDA_HOLD_MONTHLY = 60;
+
+function isoDayNumber(iso: string): number | null {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000;
+}
+
+export function agendaHoldMonths(startIso: string, todayIso: string): number {
+  const start = isoDayNumber(startIso);
+  const today = isoDayNumber(todayIso);
+  if (start === null || today === null || start <= today + 7) return 0;
+  return Math.ceil((start - today) / 30);
+}
+
+export function enrollmentCharge(startIso: string, todayIso: string): number {
+  const months = agendaHoldMonths(startIso, todayIso);
+  return months === 0 ? ENROLLMENT_FEE : AGENDA_HOLD_MONTHLY * months;
+}
+
+/** A regra em uma frase, para o aluno, antes de ele escolher a data. */
+export function agendaHoldRuleText(): string {
+  return `Começando em até 7 dias depois da assinatura, a taxa de matrícula é ${
+    brlFromNumber(ENROLLMENT_FEE)
+  }. Se preferir começar mais pra frente, a gente guarda sua agenda com a professora por ${
+    brlFromNumber(AGENDA_HOLD_MONTHLY)
+  } por mês até a primeira aula — e a matrícula já está inclusa nesse valor (ex.: começar daqui a 2 meses = ${
+    brlFromNumber(AGENDA_HOLD_MONTHLY * 2)
+  }).`;
+}
+
+/** Linha da cobrança inicial no link, conforme a regra. */
+export function enrollmentChargeLine(fee: number, holdMonths: number): string {
+  if (holdMonths > 0) {
+    return `Guarda da sua agenda até a primeira aula: ${
+      brlFromNumber(fee)
+    } (${holdMonths} ${holdMonths === 1 ? "mês" : "meses"} × ${
+      brlFromNumber(AGENDA_HOLD_MONTHLY)
+    }, matrícula inclusa)`;
+  }
+  if (fee > 0) return `Taxa de matrícula: ${brlFromNumber(fee)}`;
+  return "Sem taxa de matrícula";
+}
+
 export function studentPlanQuestion(input: {
   leadName: string | null;
   teacherName: string | null;
@@ -517,7 +571,7 @@ export function studentNeedMessage(input: {
       : "Os horários já foram confirmados pela professora.";
     return `Perfeito! Para preparar sua matrícula, me diga ${
       parts.join(" e ")
-    }. Se as aulas começarem em até 7 dias após a assinatura, não há taxa de matrícula; para início mais distante, a taxa é R$ 49,90. ${scheduleStatus}`;
+    }. ${agendaHoldRuleText()} ${scheduleStatus}`;
   }
   if (!needPlan && input.need.includes("professora")) {
     return "Anotei suas escolhas. Pedi à professora a confirmação dos horários e, assim que ela responder, envio o link da matrícula. 😊";
@@ -542,6 +596,7 @@ export function studentOfferMessage(input: {
   startDate: string;
   dueDay?: number;
   enrollmentFee?: number;
+  agendaHoldMonths?: number;
 }): string {
   const lead = firstName(input.leadName);
   const teacher = firstName(input.teacherName);
@@ -558,12 +613,11 @@ export function studentOfferMessage(input: {
     }\n` +
     `Primeira aula em ${input.startDate}\n` +
     `${
-      (input.enrollmentFee || 0) > 0
-        ? `Taxa de matrícula se assinar hoje: ${
-          brlFromNumber(input.enrollmentFee!)
-        } (o link atualiza essa condição na assinatura)`
-        : "Sem taxa de matrícula se as aulas começarem em até 7 dias após a assinatura"
-    }\n\n` +
+      enrollmentChargeLine(
+        input.enrollmentFee || 0,
+        input.agendaHoldMonths || 0,
+      )
+    } — valor de quem assina hoje; o link recalcula no dia da assinatura\n\n` +
     `É só preencher a matrícula aqui: ${input.url}\n\n` +
     `Qualquer dúvida é só me chamar por aqui.`;
 }

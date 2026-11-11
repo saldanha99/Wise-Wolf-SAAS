@@ -189,6 +189,18 @@ export function calculateEnrollmentQuote(contractData: Record<string, unknown> |
     };
 }
 
+/**
+ * Nome da cobrança inicial. Quem começa as aulas mais de 7 dias depois de
+ * assinar paga a GUARDA DE AGENDA (R$ 60 por mês de espera), com a matrícula
+ * inclusa — decisão da direção em 11/11/2026; o banco devolve os meses em
+ * `agendaHoldMonths`.
+ */
+export function enrollmentChargeLabel(agendaHoldMonths: unknown): string {
+    const months = Math.max(0, Math.floor(Number(agendaHoldMonths) || 0));
+    if (months === 0) return 'Taxa de matrícula';
+    return `Guarda de agenda (${months} ${months === 1 ? 'mês' : 'meses'}, matrícula inclusa)`;
+}
+
 export function formatBrl(value: number): string {
     return value.toLocaleString('pt-BR', {
         style: 'currency',

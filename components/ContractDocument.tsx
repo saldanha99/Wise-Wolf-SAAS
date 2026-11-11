@@ -3,6 +3,7 @@ import { useReactToPrint } from 'react-to-print';
 import { ShieldCheck, Building2, Printer } from 'lucide-react';
 import { SUPABASE_URL } from '../lib/supabase-config';
 import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
+import { enrollmentChargeLabel } from '../lib/enrollment';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS
@@ -82,6 +83,8 @@ interface ContractDocumentProps {
     dueDay: number;
     classFrequency: number | string;
     enrollmentFee?: number;
+    /** Meses de guarda de agenda (matrícula inclusa); 0 = taxa de matrícula. */
+    agendaHoldMonths?: number;
     proRataValue?: number;
     classDuration?: number;
     cancellationFee?: number;
@@ -293,6 +296,7 @@ export function ContractDocument({
     dueDay,
     classFrequency,
     enrollmentFee = 0,
+    agendaHoldMonths = 0,
     proRataValue = 0,
     classDuration = 30,
     cancellationFee = 30,
@@ -514,7 +518,7 @@ export function ContractDocument({
                     <div className="mt-2 pt-2 border-t border-[#002366]/20 text-[9px] text-gray-500">
                         <strong>Vigência:</strong> {startDate} a {endDate}
                         {enrollmentFee > 0 && (
-                            <> | <strong>Taxa de matrícula:</strong> R$ {enrollmentFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
+                            <> | <strong>{enrollmentChargeLabel(agendaHoldMonths)}:</strong> R$ {enrollmentFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
                         )}
                         {proRataValue > 0 && (
                             <> | <strong>Valor proporcional inicial:</strong> R$ {proRataValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
