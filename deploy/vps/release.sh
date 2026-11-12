@@ -735,6 +735,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
   supabase/functions/whatsapp-inbound/lead-age.ts \
   supabase/functions/whatsapp-inbound/lead-age.test.ts \
+  supabase/functions/whatsapp-inbound/lead-frequency.ts \
+  supabase/functions/whatsapp-inbound/lead-frequency.test.ts \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
@@ -827,6 +829,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/lead-entry.test.ts \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
+  supabase/functions/whatsapp-inbound/lead-frequency.test.ts \
   supabase/functions/whatsapp-inbound/lead-age.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
@@ -1603,8 +1606,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261112170000_reativar_aluno_sem_asaas.sql"
   "supabase/migrations/20261112180000_sugestao_de_plano_antes_da_aula.sql"
   "supabase/migrations/20261112190000_notificacao_de_reposicao_pela_data_real.sql"
+  "supabase/migrations/20261112200000_frequencia_pretendida_do_lead.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/frequencia_pretendida_do_lead.sql"
   "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"
   "supabase/tests/sugestao_de_plano_antes_da_aula.sql"
   "supabase/tests/reativar_aluno_sem_asaas.sql"

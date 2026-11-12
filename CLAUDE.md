@@ -4928,3 +4928,30 @@ JSON cortado ("sem JSON"/"vazio"). Agora `max_tokens: 2000` + `reasoning:
 "(cortada no limite)". Alarme: falha só `instavel`/`resposta_invalida` alerta
 a direção apenas se o lead esperar 15 min (`AI_OUTAGE_TRANSIENT_GRACE_MS`);
 sem crédito, cota ou chave alertam na hora.
+
+### 12/11/2026 — Pedidos da Débora: pausa, reposição, Planner e frequência do lead
+
+- **Pausa/reativação sem Asaas:** aluno sem cliente, assinatura e cobrança no
+  Asaas (pagou integral ou por fora) é pausado só na plataforma (o school-admin
+  abortava com `NEW_ENROLLMENT_REQUIRED`) e reativado por
+  `reactivate_student_without_billing` (service_role; recusa quem tem vínculo).
+- **Reposição pela data real:** falta lançada de mês já encerrado não gera
+  reposição (remendo em `log_teacher_classes_engine`). As 42 reposições assim
+  criadas em 12/11 foram ENCERRADAS (`closed_reason`, backup em
+  `/opt/wisewolf/backups/reposicoes-encerradas-20261112.csv`). Cota e motor
+  ignoram reposição encerrada. Aluno que falta (mês corrente) recebe só "Não
+  conseguiu comparecer? Combine sua reposição diretamente com seu professor." —
+  a IA nunca fala de cota nem marca horário. Professor vê as reposições do mês
+  no cartão do painel. ⚠️ O `wisewolf-care-sweeper` foi PAUSADO em 12/11 após
+  o incidente (`cron.job.active = false`); religar depois de conferir o release.
+- **Planner:** o "Planejar" de Aulas de Hoje descartava o plano gerado (ref do
+  aluno). Virou "Preparar aula" e gera sozinho. Pop-up de 60 a 10 min antes da
+  aula ("Ver o plano"/"Agora não"/"Não mostrar mais", preferência em
+  `teacher_lesson_plan_prompt_prefs`, religa no Planner).
+- **Frequência do lead:** a atendente sonda (uma vez, transparente, sem
+  compromisso) quantas vezes por semana o lead pensa em estudar
+  (`crm_leads.weekly_frequency`). `lead-frequency.ts` estima pelos horários
+  livres de 14 dias em quantos dias cada professor tem aquele horário (±30 min),
+  filtra a lista de experimental para horários que comportam a continuidade e o
+  convite vai primeiro a esses professores. Nada é reservado; nunca bloqueia a
+  experimental.

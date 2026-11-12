@@ -198,6 +198,14 @@ import {
   parseLeadAge,
   trialAgeGate,
 } from "./lead-age.ts";
+import {
+  LEAD_FREQUENCY_RULE,
+  parseWeeklyFrequency,
+  slotsFittingFrequency,
+  teacherWeeklyDays,
+  WEEKDAY_SHORT,
+  weeklyFrequencyFacts,
+} from "./lead-frequency.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
   alternativeQuestion,
@@ -6939,6 +6947,31 @@ async function dispatchTrial(
   if (eligible.length === 0) {
     return { dispatched: 0, teachers: [], noTeacher: true };
   }
+  // Frequência pretendida (sondagem, não reserva): o convite vai primeiro a
+  // quem tem esse horário livre em dias suficientes na semana. Ninguém tem?
+  // Vai a todos, como antes — a frequência nunca bloqueia a experimental.
+  const frequency = Number(lead.weekly_frequency) || 0;
+  const weekDaysByTeacher = new Map<string, number[]>();
+  if (frequency >= 2) {
+    try {
+      const twoWeeks = await loadAvailableTrialSlots(
+        sb,
+        tenantId,
+        date,
+        null,
+        14,
+      );
+      for (const t of eligible) {
+        weekDaysByTeacher.set(t.id, teacherWeeklyDays(twoWeeks, t.id, time));
+      }
+      const fitting = eligible.filter((t) =>
+        (weekDaysByTeacher.get(t.id) || []).length >= frequency
+      );
+      if (fitting.length) eligible.splice(0, eligible.length, ...fitting);
+    } catch {
+      // Sem a grade de 14 dias o convite segue para todos os livres no horário.
+    }
+  }
 
   const studentPhone = verifiedPhone || lead.phone || "";
   const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
@@ -7036,8 +7069,17 @@ async function dispatchTrial(
         t.name.split(" ")[0]
       }! Vi que você tem esse horário livre.\n\n📋 *Aluno:* ${
         lead.name || "Lead WhatsApp"
-      }\n🎯 *Objetivo:* ${
-        goal || lead.goal || "Não informado"
+      }\n🎯 *Objetivo:* ${goal || lead.goal || "Não informado"}${
+        frequency >= 2
+          ? `\n📅 *Pensa em ~${frequency}x/semana* (sondagem, não é plano fechado)${
+            (weekDaysByTeacher.get(t.id) || []).length
+              ? ` — você tem esse horário livre em ${
+                (weekDaysByTeacher.get(t.id) || []).map((d) => WEEKDAY_SHORT[d])
+                  .join(", ")
+              }`
+              : ""
+          }`
+          : ""
       }\n\n🏆 *Quer pegar essa aula?* O primeiro a clicar garante:\n👇 ${claimLink}`;
     if (await sendWhats(instance, t.phone, msg)) {
       dispatched++;
@@ -7611,7 +7653,7 @@ async function handleSDR(
   entry: WhatsappEntry | null = null,
 ): Promise<SdrDeferral | void> {
   const { data: allLeads } = await sb.from("crm_leads").select(
-    "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count, age, guardian_name, guardian_phone",
+    "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count, age, guardian_name, guardian_phone, weekly_frequency",
   ).eq("tenant_id", tenantId).not("phone", "is", null);
   let lead = (allLeads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (!lead) {
@@ -8040,10 +8082,26 @@ async function handleSDR(
     }\n${text}`,
   );
   const menuSlots = filterSlotsByWindows(availableSlots, availabilityWindows);
-  const menu = availableMenu(menuSlots.length ? menuSlots : availableSlots);
-  const availabilityLine = availabilityWindows.length
-    ? `\n${availabilityFacts(availabilityWindows, availableSlots)}`
-    : "";
+  // Frequência pretendida: a dita agora ou a já gravada. Filtra a lista para
+  // horários que comportam a continuidade e gera a prévia (sondagem).
+  const leadFrequency = (isMedia ? null : parseWeeklyFrequency(text)) ??
+    (Number(lead.weekly_frequency) || null);
+  const fitted = slotsFittingFrequency(
+    menuSlots.length ? menuSlots : availableSlots,
+    availableSlots,
+    leadFrequency,
+  );
+  const menu = availableMenu(fitted.slots);
+  const availabilityLine =
+    (availabilityWindows.length
+      ? `\n${availabilityFacts(availabilityWindows, availableSlots)}`
+      : "") +
+    (afterTrial ? "" : weeklyFrequencyFacts(
+      fitted.slots,
+      availableSlots,
+      leadFrequency,
+      fitted.fits,
+    ));
   const stageInstructions = closing
     ? trialClosingStageInstructions(closing, leadTraining ? "" : catalogFacts)
     : afterTrial
@@ -8098,7 +8156,7 @@ async function handleSDR(
     `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription}.\nMODALIDADE CONFIRMADA (prevalece sobre treinamento e histórico): ${
       schoolModalityFacts(tenantId)
     }\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n${
-      afterTrial || closing ? "" : `${LEAD_AGE_RULE}\n`
+      afterTrial || closing ? "" : `${LEAD_AGE_RULE}\n${LEAD_FREQUENCY_RULE}\n`
     }- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
@@ -8117,9 +8175,11 @@ async function handleSDR(
         : ""
     }, disponibilidade=${
       lead.weekly_availability || "ainda não informada"
+    }, frequência pretendida=${
+      leadFrequency ? `~${leadFrequency}x/semana` : "ainda não perguntada"
     }, contexto já informado=${
       lead.notes || "ainda não informado"
-    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null, \"age\": null, \"guardian_name\": null, \"guardian_phone\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null, \"age\": null, \"guardian_name\": null, \"guardian_phone\": null, \"weekly_frequency\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(
@@ -8230,6 +8290,13 @@ async function handleSDR(
   if (u.level) up.level = String(u.level).slice(0, 60);
   if (u.weekly_availability) {
     up.weekly_availability = String(u.weekly_availability).slice(0, 500);
+  }
+  const frequencyNow = (Number.isInteger(Number(u.weekly_frequency)) &&
+      Number(u.weekly_frequency) >= 1 && Number(u.weekly_frequency) <= 6
+    ? Number(u.weekly_frequency)
+    : null) ?? (isMedia ? null : parseWeeklyFrequency(text));
+  if (frequencyNow !== null && frequencyNow !== lead.weekly_frequency) {
+    up.weekly_frequency = frequencyNow;
   }
   // Idade e responsável: o modelo propõe; o texto do lead confirma quando o
   // modelo esquece de preencher (ver lead-age.ts).
