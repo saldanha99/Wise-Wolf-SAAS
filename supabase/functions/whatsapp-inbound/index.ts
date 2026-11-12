@@ -189,6 +189,15 @@ import {
   delayedReplyInstruction,
   planAiOutage,
 } from "./ai-outage.ts";
+import {
+  asksAge,
+  asksGuardian,
+  LEAD_AGE_RULE,
+  normalizeAge,
+  parseGuardianPhone,
+  parseLeadAge,
+  trialAgeGate,
+} from "./lead-age.ts";
 import { claimTrialTimeoutNotice } from "../_shared/trial-timeout.ts";
 import {
   alternativeQuestion,
@@ -7595,7 +7604,7 @@ async function handleSDR(
   entry: WhatsappEntry | null = null,
 ): Promise<SdrDeferral | void> {
   const { data: allLeads } = await sb.from("crm_leads").select(
-    "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count",
+    "id, name, phone, status, goal, level, notes, opportunity_id, weekly_availability, ai_handoff, ai_handoff_at, followup_count, age, guardian_name, guardian_phone",
   ).eq("tenant_id", tenantId).not("phone", "is", null);
   let lead = (allLeads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (!lead) {
@@ -8081,7 +8090,9 @@ async function handleSDR(
   const system =
     `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription}.\nMODALIDADE CONFIRMADA (prevalece sobre treinamento e histórico): ${
       schoolModalityFacts(tenantId)
-    }\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
+    }\nSEU OBJETIVO: acolher, entender a necessidade, personalizar a explicação, gerar valor e convidar para a experiência no momento adequado.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS LIVRES CADASTRADOS DOS PROFESSORES (ofereça SOMENTE horários desta lista; ela não autoriza afirmar que a escola inteira jamais atende fora dela):\n${menu}${availabilityLine}\nSe o horário da EXPERIMENTAL não aparecer, explique que ele não está livre no calendário atual e ofereça o MESMO horário em OUTROS DIAS e outros horários no MESMO dia. Nunca transforme ausência na lista em uma regra geral como \"nossos professores só começam às 08h\". Para uma GRADE RECORRENTE após a experimental, siga a regra de consulta à professora da etapa de fechamento.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n${stageInstructions}\n${
+      afterTrial || closing ? "" : `${LEAD_AGE_RULE}\n`
+    }- Para NOVOS pedidos ainda sem aceite, NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te retorno em até 60 minutos — se ninguém puder, eu te aviso para combinarmos outro horário 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS LIVRES CADASTRADOS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- FERIADOS NACIONAIS: NUNCA ofereça nem agende aulas em feriados nacionais (como 07/09 Independência). Se o lead sugerir uma data que cai em feriado, explique com simpatia que a escola estará em recesso de feriado nacional e ofereça o dia útil seguinte ou outro dia da semana disponível.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Considere a disponibilidade semanal e restrições explícitas já informadas pelo aluno. Priorize o mesmo período e os dias preferidos; se só houver opções fora da preferência, explique isso. Registre em updates.weekly_availability somente preferências explicitamente ditas, incluindo restrições; nunca invente.\n- Aproveite o histórico e os dados já conhecidos: não repita perguntas sobre nome, objetivo ou nível já respondidas. Não reinicie a apresentação a cada mensagem.\n- Ofereça no máximo duas alternativas por vez, sempre futuras e sujeitas ao aceite. Não transforme agradecimento ou cobrança de retorno em uma nova escolha de horário. schedule_trial só muda quando o cliente escolhe explicitamente uma opção.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
       training
         ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
         : ""
@@ -8093,11 +8104,15 @@ async function handleSDR(
         : ""
     }\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${
       lead.goal || "?"
-    }, nível=${lead.level || "?"}, disponibilidade=${
+    }, nível=${lead.level || "?"}, idade=${lead.age ?? "?"}${
+      lead.guardian_phone
+        ? `, responsável=${lead.guardian_name || "?"} (${lead.guardian_phone})`
+        : ""
+    }, disponibilidade=${
       lead.weekly_availability || "ainda não informada"
     }, contexto já informado=${
       lead.notes || "ainda não informado"
-    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null, \"age\": null, \"guardian_name\": null, \"guardian_phone\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(
@@ -8208,9 +8223,42 @@ async function handleSDR(
   if (u.weekly_availability) {
     up.weekly_availability = String(u.weekly_availability).slice(0, 500);
   }
+  // Idade e responsável: o modelo propõe; o texto do lead confirma quando o
+  // modelo esquece de preencher (ver lead-age.ts).
+  const lastSchoolMessage = [...hist].reverse()
+    .find((m: { role: string }) => m.role === "assistant")?.content || "";
+  const ageNow = normalizeAge(u.age) ??
+    (isMedia ? null : parseLeadAge(text, asksAge(lastSchoolMessage)));
+  if (ageNow !== null && ageNow !== lead.age) up.age = ageNow;
+  const effectiveAge = (up.age as number | undefined) ?? lead.age ?? null;
+  if (effectiveAge !== null && effectiveAge < 18) {
+    const guardianNow =
+      parseGuardianPhone(String(u.guardian_phone || ""), phone) ||
+      (isMedia ? null : parseGuardianPhone(text, phone));
+    if (guardianNow && guardianNow !== lead.guardian_phone) {
+      up.guardian_phone = guardianNow;
+    }
+    if (u.guardian_name && !lead.guardian_name) {
+      up.guardian_name = String(u.guardian_name).slice(0, 120);
+    }
+  }
   if (u.notes) {
     up.notes = ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] ` +
       String(u.notes)).slice(0, 3000);
+  }
+  if (up.age !== undefined || up.guardian_phone) {
+    const partes = [
+      up.age !== undefined ? `idade ${up.age}` : "",
+      up.guardian_phone
+        ? `responsável ${
+          up.guardian_name || lead.guardian_name || ""
+        } ${up.guardian_phone}`
+          .replace(/\s+/g, " ")
+        : "",
+    ].filter(Boolean).join("; ");
+    const base = (up.notes as string | undefined) ?? lead.notes ?? "";
+    up.notes = ((base ? base + "\n" : "") + `[IA ${todayBRT()}] ${partes}`)
+      .slice(0, 3000);
   }
   if (lead.status === "NEW") {
     up.status = "CONTACTED";
@@ -8265,6 +8313,28 @@ async function handleSDR(
       );
     }
   }
+  // ── IDADE E RESPONSÁVEL ANTES DA EXPERIMENTAL ──
+  // Pedido NOVO de experimental só vai aos professores com a idade conhecida
+  // e, para menor de 18, com o WhatsApp de um responsável (lead menor de
+  // idade, 11/11/2026). Remarcação de aula já aceita não passa por aqui. O
+  // horário escolhido fica no histórico: quando a resposta chegar, o modelo
+  // (ou o resgate acima) pede o mesmo horário.
+  let ageGateAsk: string | null = null;
+  if (st && !activeTrial && !afterTrial && !closing) {
+    const gate = trialAgeGate({
+      age: (freshLead.age as number | null | undefined) ?? null,
+      guardianPhone: (freshLead.guardian_phone as string | null | undefined) ??
+        null,
+    });
+    if (!gate.ok) {
+      st = null;
+      ageGateAsk = gate.ask;
+      console.warn("[sdr] experimental retida até idade/responsável", {
+        leadId: lead.id,
+        reason: gate.reason,
+      });
+    }
+  }
   const commercialReply = applyCommercialReplyPolicy({
     history: hist,
     currentMessage: text,
@@ -8281,6 +8351,15 @@ async function handleSDR(
       : undefined,
   });
   reply = commercialReply.reply;
+  if (ageGateAsk) {
+    // A resposta do modelo pode ter prometido "vou verificar o professor":
+    // sem idade/responsável isso é falso. Fica a pergunta que falta, a menos
+    // que o modelo já a tenha feito.
+    const jaPerguntou = asksAge(ageGateAsk)
+      ? asksAge(reply)
+      : asksGuardian(reply);
+    if (!jaPerguntou || replyPromisesTrialCheck(reply)) reply = ageGateAsk;
+  }
   const postTrialAnswer = closing
     ? applyPostTrialAnswerPolicy({
       history: hist,

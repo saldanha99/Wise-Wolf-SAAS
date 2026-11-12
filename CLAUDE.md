@@ -4901,3 +4901,19 @@ misturava as etapas, sem busca, na ordem de criação do pedido. Agora
 resultado; remarcar; link enviado; agendadas), parados primeiro e aula mais
 recente em cima. A busca por nome (sem acento) ou telefone procura em todas as
 etapas, inclusive convertidos e perdidos.
+
+### 11/11/2026 — Idade do lead e responsável antes da experimental
+
+Caso de 10/11 (lead menor de idade): em 10/11 a IA caiu (cota Gemini + OpenRouter sem
+saldo), o código antigo marcou handoff de 72 h e ninguém respondeu por 28 h; a
+equipe perguntou a idade e pediu o contato do responsável na mão. Regra da direção: a
+atendente SEMPRE pergunta a idade; menor de 18 só tem a experimental pedida aos
+professores com nome e WhatsApp de um responsável ciente. `whatsapp-inbound/
+lead-age.ts` (puro, testado): o modelo grava `updates.age/guardian_*`, o texto
+do lead confirma ("tenho 15 anos"; número solto só se a escola perguntou), e o
+veto segura `schedule_trial` de pedido NOVO sem idade ou menor sem responsável,
+trocando a promessa "vou verificar o professor" pela pergunta que falta. O
+horário escolhido fica no histórico e volta quando a resposta chega.
+Remarcação de aula já aceita e pós-experimental não passam pelo veto. Colunas
+`crm_leads.age/guardian_name/guardian_phone` (migration `20261111200000`), nota
+no CRM. O responsável NÃO é contatado automaticamente.

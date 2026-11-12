@@ -733,6 +733,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/lead-entry.test.ts \
   supabase/functions/whatsapp-inbound/ai-outage.ts \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
+  supabase/functions/whatsapp-inbound/lead-age.ts \
+  supabase/functions/whatsapp-inbound/lead-age.test.ts \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
@@ -825,6 +827,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
   supabase/functions/whatsapp-inbound/lead-entry.test.ts \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
+  supabase/functions/whatsapp-inbound/lead-age.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \
@@ -1595,6 +1598,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261110140000_baixa_manual_de_aulas.sql"
   "supabase/migrations/20261111120000_atendente_espera_a_ia_voltar.sql"
   "supabase/migrations/20261111160000_guarda_de_agenda.sql"
+  "supabase/migrations/20261111200000_idade_do_lead_e_responsavel.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
