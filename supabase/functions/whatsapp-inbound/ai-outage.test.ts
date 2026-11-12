@@ -101,3 +101,36 @@ Deno.test("instrução de atraso pede desculpas sem motivo técnico", () => {
   assert(line.includes("37 min"));
   assert(line.includes("desculpas"));
 });
+
+Deno.test("resposta cortada isolada não vira alerta no grupo", () => {
+  const now = 10_000_000;
+  const p = planAiOutage({
+    now,
+    lastHoldToLeadAt: null,
+    lastTenantAlertAt: null,
+    causes: ["resposta_invalida"],
+  });
+  assertEquals(p.sendHold, true);
+  assertEquals(p.alertDirection, false);
+});
+
+Deno.test("falha passageira que persiste 15 min vira alerta", () => {
+  const now = 10_000_000;
+  const p = planAiOutage({
+    now,
+    lastHoldToLeadAt: now - 15 * 60_000,
+    lastTenantAlertAt: null,
+    causes: ["instavel", "resposta_invalida"],
+  });
+  assertEquals(p.alertDirection, true);
+});
+
+Deno.test("sem crédito alerta na hora", () => {
+  const p = planAiOutage({
+    now: 10_000_000,
+    lastHoldToLeadAt: null,
+    lastTenantAlertAt: null,
+    causes: ["sem_credito", "instavel"],
+  });
+  assertEquals(p.alertDirection, true);
+});

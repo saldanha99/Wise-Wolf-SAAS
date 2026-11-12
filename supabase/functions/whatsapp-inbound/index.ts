@@ -796,7 +796,11 @@ async function callAI(
           body: JSON.stringify({
             model,
             messages: [{ role: "system", content: system }, ...messages],
-            max_tokens: 700,
+            // Os modelos atuais raciocinam antes de responder e esse
+            // raciocínio conta no limite: com 700 tokens o JSON saía cortado
+            // ("sem JSON"/"vazio", 12/11/2026). Raciocínio baixo + folga.
+            max_tokens: 2000,
+            reasoning: { effort: "low" },
             temperature,
             // O prompt pede JSON; sem isto o modelo às vezes responde em texto
             // corrido e a resposta inteira era descartada.
@@ -813,8 +817,11 @@ async function callAI(
       }
       const d = await resp.json();
       const raw = d.choices?.[0]?.message?.content;
+      const cortada = d.choices?.[0]?.finish_reason === "length"
+        ? " (cortada no limite)"
+        : "";
       if (!raw) {
-        diag?.push(`${model}: vazio`);
+        diag?.push(`${model}: vazio${cortada}`);
         continue;
       }
       const parsed = parseJson(raw);
@@ -837,7 +844,7 @@ async function callAI(
           handoff: false,
         };
       }
-      diag?.push(`${model}: sem JSON`);
+      diag?.push(`${model}: sem JSON${cortada}`);
     } catch (e) {
       diag?.push(`${model}: ${(e as Error).message.slice(0, 90)}`);
     }
@@ -8152,6 +8159,7 @@ async function handleSDR(
       now: Date.now(),
       lastHoldToLeadAt: waitingAiSince,
       lastTenantAlertAt: Number.isFinite(lastAlertAt) ? lastAlertAt : null,
+      causes: failure.causes,
     });
     const quem = lead.name || phone;
 

@@ -18,6 +18,13 @@ export const AI_OUTAGE_RETRY_SECONDS = 120;
 export const AI_OUTAGE_GIVE_UP_MS = 6 * 3600_000;
 /** No máximo um alerta de indisponibilidade por escola nesse intervalo. */
 export const AI_OUTAGE_ALERT_EVERY_MS = 3600_000;
+/**
+ * Falha passageira (provedor instável, resposta cortada) só vira alerta no
+ * grupo se o lead continuar esperando depois disso. Em 12/11/2026 uma única
+ * resposta cortada gerou "Atendente IA fora do ar" e a próxima tentativa, 3
+ * minutos depois, respondeu normalmente — a direção leu "desconectado".
+ */
+export const AI_OUTAGE_TRANSIENT_GRACE_MS = 15 * 60_000;
 
 export const AI_OUTAGE_HOLD_REPLY =
   "Oi! Recebi sua mensagem 😊 Só um instante que já te respondo por aqui, tá?";
@@ -111,6 +118,21 @@ export interface AiOutageState {
   lastHoldToLeadAt: number | null;
   /** Último alerta de indisponibilidade da escola (ms), se houver. */
   lastTenantAlertAt: number | null;
+  /** Causas da falha (`classifyAiFailure`); sem elas, trata como grave. */
+  causes?: readonly AiFailureCause[];
+}
+
+const TRANSIENT_CAUSES: readonly AiFailureCause[] = [
+  "instavel",
+  "resposta_invalida",
+];
+
+/** Só instabilidade/resposta ruim: nada para a direção fazer agora. */
+export function isTransientFailure(
+  causes: readonly AiFailureCause[] | undefined,
+): boolean {
+  return Boolean(causes?.length) &&
+    causes!.every((c) => TRANSIENT_CAUSES.includes(c));
 }
 
 export interface AiOutagePlan {
@@ -128,10 +150,14 @@ export function planAiOutage(state: AiOutageState): AiOutagePlan {
   const waitingSince = state.lastHoldToLeadAt;
   const giveUp = waitingSince !== null &&
     state.now - waitingSince >= AI_OUTAGE_GIVE_UP_MS;
+  const outsideAlertWindow = state.lastTenantAlertAt === null ||
+    state.now - state.lastTenantAlertAt >= AI_OUTAGE_ALERT_EVERY_MS;
+  const persistent = !isTransientFailure(state.causes) ||
+    (waitingSince !== null &&
+      state.now - waitingSince >= AI_OUTAGE_TRANSIENT_GRACE_MS);
   return {
     sendHold: waitingSince === null,
-    alertDirection: state.lastTenantAlertAt === null ||
-      state.now - state.lastTenantAlertAt >= AI_OUTAGE_ALERT_EVERY_MS,
+    alertDirection: outsideAlertWindow && persistent,
     giveUp,
     retryInSeconds: AI_OUTAGE_RETRY_SECONDS,
   };

@@ -4917,3 +4917,14 @@ horário escolhido fica no histórico e volta quando a resposta chega.
 Remarcação de aula já aceita e pós-experimental não passam pelo veto. Colunas
 `crm_leads.age/guardian_name/guardian_phone` (migration `20261111200000`), nota
 no CRM. O responsável NÃO é contatado automaticamente.
+
+### 12/11/2026 — Resposta cortada não é "atendente fora do ar"
+
+O grupo recebeu "Atendente IA fora do ar" (lido como desconectado; o WhatsApp
+estava `open`). Causa medida: Sonnet/Haiku 5.5 e Gemini 3.8 raciocinam e o
+raciocínio conta no `max_tokens: 700` do `callAI` → `finish_reason: length`,
+JSON cortado ("sem JSON"/"vazio"). Agora `max_tokens: 2000` + `reasoning:
+{ effort: "low" }` (desligar raciocínio dá 400 nesses modelos) e o diag marca
+"(cortada no limite)". Alarme: falha só `instavel`/`resposta_invalida` alerta
+a direção apenas se o lead esperar 15 min (`AI_OUTAGE_TRANSIENT_GRACE_MS`);
+sem crédito, cota ou chave alertam na hora.
