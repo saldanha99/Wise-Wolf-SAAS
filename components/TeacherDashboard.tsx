@@ -829,14 +829,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                           setPlannerIntent({
                             studentId: aula.studentId as string,
                             studentName: aula.name,
-                            request: `Aula de hoje às ${aula.time} com ${aula.name}.`,
+                            request: `Aula de hoje às ${aula.time} com ${aula.name}. Continue de onde a última aula parou: revise o que foi trabalhado, retome os pontos de atenção e os erros recorrentes, defina o objetivo desta aula e traga um roteiro com pergunta de abertura, conversação nos interesses do aluno, exercícios para os pontos fracos e uma atividade final que mostre a evolução.`,
+                            autoGenerate: true,
                           });
                           onNavigate?.('lesson-planner-ai');
                         }}
-                        className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 flex items-center justify-center transition-all shadow-xs border border-brand-border"
-                        title="Planejar esta aula com a IA"
+                        className="min-h-10 px-3 rounded-xl bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20 flex items-center justify-center gap-2 transition-all shadow-xs border border-brand-accent/30 text-xs font-bold"
+                        title="A IA monta o plano desta aula a partir das aulas anteriores do aluno"
                       >
-                        <Sparkles size={18} />
+                        <Sparkles size={16} />
+                        <span>Preparar aula</span>
                       </button>
                     )}
                     {aula.meet && (

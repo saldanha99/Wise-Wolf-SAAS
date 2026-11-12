@@ -1080,6 +1080,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'manual-lessons-list',view:'manual-lessons',title:'Quem lançou e por quê',text:'Cada baixa mostra quem lançou, quando, o motivo e quanto entra na folha. Mês já fechado não aceita baixa nova nem cancelamento. Cancelar pede motivo e tira o lançamento da folha. Reposição que ainda vai acontecer se agenda em Atribuição temporária.'},
     ],
   },
+  {
+    id:'2026-11-12-preparar-aula-com-a-ia',title:'Preparar aula com a IA, a partir da aula anterior',roles:['TEACHER'],
+    steps:[
+      {target:'lesson-plan-ai',view:'dashboard',title:'Preparar aula ✨',text:'Em cada aula de hoje há o botão Preparar aula. Um toque abre o Planner IA com o aluno já escolhido e o plano já sendo gerado: revisão da última aula, pontos de atenção, objetivo de hoje, roteiro com pergunta de abertura e exercícios, e próximos passos. A base são as aulas que você lançou: lançar a aula com o resumo do Meet é o que alimenta o próximo plano.'},
+    ],
+  },
 ];
 
 /**

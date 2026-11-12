@@ -2817,9 +2817,16 @@ export async function handleRequest(req: Request): Promise<Response> {
         const subscriptionPurpose = preserveCurrentInvoices
           ? "subscription.update" as const
           : "subscription.delete" as const;
+        // Aluno sem nenhum vínculo no Asaas (sem cliente, sem assinatura e
+        // sem cobrança a cancelar — ex.: pagou o curso integral ou por fora)
+        // não tem o que mexer no provedor: a pausa é só local. Antes isso
+        // abortava com NEW_ENROLLMENT_REQUIRED e a direção não conseguia
+        // pausar (Gabriel Cavalcante, 12/11/2026).
+        const withoutProviderBilling = !claim.subscriptionId &&
+          !claim.customerId && paymentTargets.length === 0;
         if (
           claim.providerSubscriptionFinalStatus === "INACTIVE" &&
-          !claim.subscriptionId
+          !claim.subscriptionId && !withoutProviderBilling
         ) {
           await abortStudentLifecycleOperation(
             admin,
@@ -3103,13 +3110,14 @@ export async function handleRequest(req: Request): Promise<Response> {
                   );
                 }
               }
-              const subscriptionPostconditionMet =
-                claim.providerSubscriptionFinalStatus === "INACTIVE"
-                  ? SUBSCRIPTION_NON_BILLING_STATUSES.has(
-                    finalSubscriptionStatus,
-                  )
-                  : finalSubscriptionStatus ===
-                    claim.providerSubscriptionFinalStatus;
+              const subscriptionPostconditionMet = withoutProviderBilling
+                ? true
+                : claim.providerSubscriptionFinalStatus === "INACTIVE"
+                ? SUBSCRIPTION_NON_BILLING_STATUSES.has(
+                  finalSubscriptionStatus,
+                )
+                : finalSubscriptionStatus ===
+                  claim.providerSubscriptionFinalStatus;
               if (!subscriptionPostconditionMet) {
                 throw new ApiError(
                   409,

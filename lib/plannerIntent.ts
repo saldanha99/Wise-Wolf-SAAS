@@ -9,6 +9,8 @@ export interface PlannerIntent {
   studentName?: string;
   /** Objetivo sugerido para a caixa de pedido (ex.: "aula de hoje às 16:30"). */
   request?: string;
+  /** "Preparar minha aula": gera o plano assim que o contexto do aluno carrega. */
+  autoGenerate?: boolean;
 }
 
 const KEY = 'wisewolf.planner.intent';
@@ -32,6 +34,7 @@ export function takePlannerIntent(): PlannerIntent | null {
       studentId: parsed.studentId,
       studentName: typeof parsed.studentName === 'string' ? parsed.studentName : undefined,
       request: typeof parsed.request === 'string' ? parsed.request : undefined,
+      autoGenerate: parsed.autoGenerate === true,
     };
   } catch {
     return null;

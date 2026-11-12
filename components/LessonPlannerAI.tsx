@@ -314,9 +314,12 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
     const [selectedStudent, setSelectedStudent] = useState('');
     const [loading, setLoading] = useState(true);
     const [contextLoading, setContextLoading] = useState(false);
+    const [contextLoadedFor, setContextLoadedFor] = useState('');
     const [generating, setGenerating] = useState(false);
     const [saving, setSaving] = useState(false);
     const [customPrompt, setCustomPrompt] = useState('');
+    // "Preparar minha aula" (Aulas de Hoje): gera sozinho, uma vez, para o aluno pedido.
+    const pendingAutoGenerateRef = useRef<string | null>(null);
     const [taskMode, setTaskMode] = useState<PlannerTaskMode>('lesson_plan');
     const [bilingual, setBilingual] = useState(true);
     const [durationMinutes, setDurationMinutes] = useState(30);
@@ -391,8 +394,12 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                     // já escolhidos — o professor só revisa e gera.
                     const intent = takePlannerIntent();
                     if (intent && nextStudents.some((student) => student.id === intent.studentId)) {
+                        // Sem isto o plano gerado era descartado: handleGeneratePlan
+                        // confere o aluno pela ref, que só o seletor atualizava.
+                        selectedStudentRef.current = intent.studentId;
                         setSelectedStudent(intent.studentId);
                         if (intent.request) setCustomPrompt((current) => current || intent.request || '');
+                        if (intent.autoGenerate) pendingAutoGenerateRef.current = intent.studentId;
                     }
                 }
             } catch (queryError: unknown) {
@@ -477,7 +484,10 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                     setError(errorMessage(queryError, 'Não foi possível carregar o contexto do aluno.'));
                 }
             } finally {
-                if (active) setContextLoading(false);
+                if (active) {
+                    setContextLoading(false);
+                    setContextLoadedFor(selectedStudent);
+                }
             }
         };
 
@@ -552,6 +562,16 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
             setGenerating(false);
         }
     };
+
+    useEffect(() => {
+        const pending = pendingAutoGenerateRef.current;
+        if (!pending || pending !== selectedStudent) return;
+        if (contextLoading || contextLoadedFor !== selectedStudent || generating) return;
+        pendingAutoGenerateRef.current = null;
+        void handleGeneratePlan();
+        // handleGeneratePlan lê o estado atual; só reagimos ao contexto ficar pronto.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedStudent, contextLoading, contextLoadedFor, generating]);
 
     const handleSavePlan = async (): Promise<void> => {
         if (
