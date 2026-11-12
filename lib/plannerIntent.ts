@@ -15,6 +15,10 @@ export interface PlannerIntent {
 
 const KEY = 'wisewolf.planner.intent';
 
+/** Pedido padrão do "Preparar aula" e do pop-up de sugestão de plano. */
+export const PLANNER_REQUEST = (time: string, name: string): string =>
+  `Aula de hoje às ${time} com ${name}. Continue de onde a última aula parou: revise o que foi trabalhado, retome os pontos de atenção e os erros recorrentes, defina o objetivo desta aula e traga um roteiro com pergunta de abertura, conversação nos interesses do aluno, exercícios para os pontos fracos e uma atividade final que mostre a evolução.`;
+
 export function setPlannerIntent(intent: PlannerIntent): void {
   try {
     sessionStorage.setItem(KEY, JSON.stringify(intent));

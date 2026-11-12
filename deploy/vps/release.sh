@@ -1600,8 +1600,12 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261111160000_guarda_de_agenda.sql"
   "supabase/migrations/20261111200000_idade_do_lead_e_responsavel.sql"
   "supabase/migrations/20261112160000_falta_de_mes_anterior_nao_gera_reposicao.sql"
+  "supabase/migrations/20261112170000_reativar_aluno_sem_asaas.sql"
+  "supabase/migrations/20261112180000_sugestao_de_plano_antes_da_aula.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/sugestao_de_plano_antes_da_aula.sql"
+  "supabase/tests/reativar_aluno_sem_asaas.sql"
   "supabase/tests/falta_de_mes_anterior_nao_gera_reposicao.sql"
   "supabase/tests/links_das_aulas_e_experimental_no_aceite.sql"
   "supabase/tests/termo_individual_por_link.sql"

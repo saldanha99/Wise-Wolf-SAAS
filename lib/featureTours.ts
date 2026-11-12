@@ -1084,6 +1084,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     id:'2026-11-12-preparar-aula-com-a-ia',title:'Preparar aula com a IA, a partir da aula anterior',roles:['TEACHER'],
     steps:[
       {target:'lesson-plan-ai',view:'dashboard',title:'Preparar aula ✨',text:'Em cada aula de hoje há o botão Preparar aula. Um toque abre o Planner IA com o aluno já escolhido e o plano já sendo gerado: revisão da última aula, pontos de atenção, objetivo de hoje, roteiro com pergunta de abertura e exercícios, e próximos passos. A base são as aulas que você lançou: lançar a aula com o resumo do Meet é o que alimenta o próximo plano.'},
+      {target:'plan-suggestion-toggle',view:'lesson-planner-ai',title:'Sugestão antes de cada aula',text:'Entre 1 hora e 10 minutos antes de cada aula aparece a sugestão do plano daquele aluno, com o próximo passo da última aula. Ver o plano abre tudo pronto; Agora não fecha só aquela aula; Não mostrar mais desliga. Para ligar ou desligar de novo, use esta opção aqui no Planner.'},
     ],
   },
 ];

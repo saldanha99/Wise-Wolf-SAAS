@@ -68,6 +68,7 @@ const OralTestsPanel = lazy(() => import('./components/OralTestsPanel'));
 const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const LiveLessonsBoard = lazy(() => import('./components/lessonLinks/LiveLessonsBoard'));
 const LessonStartingSoon = lazy(() => import('./components/lessonLinks/LessonStartingSoon'));
+const LessonPlanSuggestion = lazy(() => import('./components/lessonLinks/LessonPlanSuggestion'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
@@ -369,6 +370,7 @@ const App: React.FC = () => {
   // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
   const [lessonSoonActive, setLessonSoonActive] = useState(false);
+  const [planSuggestionActive, setPlanSuggestionActive] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
     const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -1966,7 +1968,13 @@ const App: React.FC = () => {
           <LessonStartingSoon key={user.id} userId={user.id} role={user.role === UserRole.STUDENT ? 'STUDENT' : 'TEACHER'} onActiveChange={setLessonSoonActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && (
+      {/* Sugestão de plano: 60 a 10 min antes de cada aula, o professor abre o plano da IA. */}
+      {user.role === UserRole.TEACHER && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !lessonSoonActive && !featureTour && !dossierLink.holdsTours && (
+        <Suspense fallback={null}>
+          <LessonPlanSuggestion key={user.id} userId={user.id} onOpenPlanner={() => setActiveTab('lesson-planner-ai')} onActiveChange={setPlanSuggestionActive} />
+        </Suspense>
+      )}
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

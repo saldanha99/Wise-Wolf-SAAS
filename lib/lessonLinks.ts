@@ -94,6 +94,21 @@ export function lessonToAnnounce(lessons: LessonLink[], now: Date, dismissed: Re
   }) || null;
 }
 
+/**
+ * Aula do pop-up "Sugestão de plano": a próxima aula regular (com aluno) que
+ * começa entre 10 e 60 minutos. Antes de 10 min quem aparece é o aviso com o
+ * link da aula — os dois nunca disputam a tela.
+ */
+export function lessonToSuggestPlan(lessons: LessonLink[], now: Date, dismissed: ReadonlySet<string>): LessonLink | null {
+  const t = now.getTime();
+  return lessons.find(lesson => {
+    if (lesson.kind !== 'aula' || !lesson.studentId) return false;
+    if (dismissed.has(`plan:${lessonKey(lesson)}`)) return false;
+    const minutes = (lesson.startsAt.getTime() - t) / 60_000;
+    return minutes > 10 && minutes <= 60;
+  }) || null;
+}
+
 export function lessonKey(lesson: LessonLink): string {
   return `${lesson.kind}:${lesson.id}:${lesson.startsAt.toISOString()}`;
 }

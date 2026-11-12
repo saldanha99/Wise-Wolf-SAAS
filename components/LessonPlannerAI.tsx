@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { takePlannerIntent } from '../lib/plannerIntent';
+import PlanSuggestionToggle from './lessonLinks/PlanSuggestionToggle';
 import { parsePlannerLessonBasis, plannerDayMonth, type PlannerLessonBasis } from '../lib/plannerLessonBasis';
 import { parsePlannerStudentRows, plannerAccessNote, type PlannerAccessReason } from '../lib/plannerStudents';
 import { User as UserType, UserRole } from '../types';
@@ -670,6 +671,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapt
                         Estruture aulas com a metodologia Wise Wolf e o contexto isolado de cada aluno.
                     </p>
                 </div>
+                {user.role === UserRole.TEACHER && !adapter && <PlanSuggestionToggle userId={user.id} />}
             </header>
 
             {(error || statusMessage) && (

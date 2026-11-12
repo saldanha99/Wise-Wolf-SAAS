@@ -3289,6 +3289,41 @@ export async function handleRequest(req: Request): Promise<Response> {
             "A definitively offboarded student needs a new enrollment",
           );
         }
+        // Aluno sem nada no Asaas (pausado só na plataforma): não há cobrança a
+        // religar, então a reativação também é só local.
+        if (
+          !String(target.asaas_customer_id || "").trim() &&
+          !String(target.subscription_id || "").trim()
+        ) {
+          const { data: local, error: localError } = await admin.rpc(
+            "reactivate_student_without_billing",
+            { p_tenant_id: tenantId, p_student_id: target.id },
+          );
+          if (localError || local?.ok !== true) {
+            throw new ApiError(
+              409,
+              "REACTIVATION_REVIEW_REQUIRED",
+              String(local?.reason || "Could not reactivate the student"),
+            );
+          }
+          await writeAudit(admin, auth.context, tenantId, req, {
+            action: action.action,
+            resourceType: "student",
+            resourceId: target.id,
+            oldValues: { lifecycle_status: target.lifecycle_status },
+            newValues: {
+              lifecycle_status: "active",
+              reason: action.reason,
+              billing: { mode: "NONE" },
+            },
+          });
+          return json({
+            ok: true,
+            id: target.id,
+            lifecycle_status: "active",
+            billing: { subscriptionReactivated: false, mode: "NONE" },
+          });
+        }
         let reactivationRenewalSubscription = false;
         const begun = await beginStudentReactivation(admin, {
           tenantId,

@@ -9,7 +9,7 @@ import { localMonth, localYMD } from '../lib/dateUtils';
 import { lessonMeetingLink, officialLessonRoom, type LessonRoom } from '../lib/lessonRooms';
 import { coverageAgendaItems, coverageCaption, coverageDisplayTime, type CoverageAgendaRow } from '../lib/coverageAgenda';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
-import { setPlannerIntent } from '../lib/plannerIntent';
+import { setPlannerIntent, PLANNER_REQUEST } from '../lib/plannerIntent';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
@@ -829,7 +829,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                           setPlannerIntent({
                             studentId: aula.studentId as string,
                             studentName: aula.name,
-                            request: `Aula de hoje às ${aula.time} com ${aula.name}. Continue de onde a última aula parou: revise o que foi trabalhado, retome os pontos de atenção e os erros recorrentes, defina o objetivo desta aula e traga um roteiro com pergunta de abertura, conversação nos interesses do aluno, exercícios para os pontos fracos e uma atividade final que mostre a evolução.`,
+                            request: PLANNER_REQUEST(aula.time, aula.name),
                             autoGenerate: true,
                           });
                           onNavigate?.('lesson-planner-ai');
