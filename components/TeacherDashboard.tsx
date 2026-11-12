@@ -16,6 +16,7 @@ import { WolfieAssignButton } from './WolfieAssignButton';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
+import TeacherMonthAbsencesCard from './TeacherMonthAbsencesCard';
 import TeacherPunctualityCard from './TeacherPunctualityCard';
 import TeacherContractAccept from './TeacherContractAccept';
 import { useTeacherHandbookAck } from '../lib/useTeacherHandbookAck';
@@ -532,6 +533,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         </div>
       )}
 
+      {user?.id && <TeacherMonthAbsencesCard teacherId={user.id} onOpen={() => onNavigate?.('reschedules')} />}
       {user?.id && <TeacherTurboCard teacherId={user.id} />}
 
       {/* Aceite de contrato PJ pendente — banner de regularização */}

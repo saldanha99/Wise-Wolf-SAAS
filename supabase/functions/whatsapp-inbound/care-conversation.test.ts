@@ -113,7 +113,7 @@ Deno.test("resposta do modelo: sem reply é nada; wants_slot só com data e hora
   );
 });
 
-Deno.test("prompt leva o direito, os horários e a regra dura de dinheiro", () => {
+Deno.test("prompt não fala de cota nem oferece horário, e mantém a regra dura de dinheiro", () => {
   const system = buildCareSystemPrompt({
     agentName: "Bia",
     schoolName: "Wise Wolf",
@@ -130,8 +130,11 @@ Deno.test("prompt leva o direito, os horários e a regra dura de dinheiro", () =
     offeredSlots: slots,
     todayIso: "2026-09-17",
   });
-  assert(system.includes("ainda tem 3"), system);
-  assert(system.includes("Sexta 18/09 às 09:00 (2026-09-18 09:00)"), system);
+  assert(!system.includes("ainda tem"), system);
+  assert(!system.includes("(2026-09-18 09:00)"), system);
+  assert(system.includes("wants_slot = null"), system);
+  assert(system.includes("NUNCA diga quantas reposições"), system);
+  assert(system.includes("combinada diretamente com o professor"), system);
   assert(system.includes("NUNCA fale de cobrança"), system);
   assert(system.includes("Teacher Lais"), system);
 });

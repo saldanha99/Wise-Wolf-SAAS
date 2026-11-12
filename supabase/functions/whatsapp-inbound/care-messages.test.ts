@@ -17,58 +17,21 @@ const slots = [
   { date: "2026-09-18", day: "Sexta", time: "10:30", label: "18/09 às 10:30" },
 ];
 
-Deno.test("falta de ontem: acolhe, diz o direito (4 por mês) e oferece horário", () => {
-  const msg = absenceFollowupMessage({
-    studentName: "Mariana Pastro Morais",
-    teacherName: "Lais Sampaio Conde",
-    classDate: "2026-09-16",
-    quota: { limit: 4, used: 1 },
-    freeSlots: slots,
-  });
-  assert(
-    msg.startsWith(
-      "Oi, Mariana! Sentimos sua falta na aula de 16/09 com a teacher Lais",
-    ),
-    msg,
-  );
-  assert(
-    msg.includes("direito a 4 reposições por mês — este mês ainda sobram 3"),
-    msg,
-  );
-  assert(msg.includes("• Sexta 18/09 às 09:00"), msg);
-  assert(msg.includes("Quer um desses, ou prefere outro dia?"), msg);
-});
-
-Deno.test("acima das 4 por direito: reposição vira combinação com a teacher, sem obrigação", () => {
-  const msg = absenceFollowupMessage({
-    studentName: "Anderson",
-    teacherName: "Lais",
-    classDate: "2026-09-16",
-    quota: { limit: 4, used: 5 },
-    freeSlots: slots,
-  });
-  assert(msg.includes("já usou as 4 reposições por direito"), msg);
-  assert(msg.includes("sem obrigação"), msg);
-  assert(
-    !msg.includes("• Sexta"),
-    "acima do direito não lista horário como se fosse garantido",
-  );
-});
-
-Deno.test("sem horário livre: pergunta em vez de listar", () => {
-  const msg = absenceFollowupMessage({
-    studentName: "Ana",
-    teacherName: null,
-    classDate: "2026-09-16",
-    quota: { limit: 4, used: 0 },
-    freeSlots: [],
-  });
-  assert(
-    msg.includes(
-      "Quer que eu veja um horário para repor, com a teacher ou com outro professor?",
-    ),
-    msg,
-  );
+Deno.test("falta: mensagem curta, sem cota, sem horários (direção, 12/11/2026)", () => {
+  for (const used of [1, 5]) {
+    const msg = absenceFollowupMessage({
+      studentName: "Mariana Pastro Morais",
+      teacherName: "Lais Sampaio Conde",
+      classDate: "2026-09-16",
+      quota: { limit: 4, used },
+      freeSlots: slots,
+    });
+    assertEquals(
+      msg,
+      "Oi, Mariana! Não conseguiu comparecer? Combine sua reposição diretamente com seu professor.",
+    );
+    assert(!/reposições por|usou as|• Sexta|horário livre/.test(msg), msg);
+  }
 });
 
 Deno.test("semanal e mensal: uma pergunta, sem questionário e sem nota", () => {

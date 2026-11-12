@@ -1602,8 +1602,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261112160000_falta_de_mes_anterior_nao_gera_reposicao.sql"
   "supabase/migrations/20261112170000_reativar_aluno_sem_asaas.sql"
   "supabase/migrations/20261112180000_sugestao_de_plano_antes_da_aula.sql"
+  "supabase/migrations/20261112190000_notificacao_de_reposicao_pela_data_real.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"
   "supabase/tests/sugestao_de_plano_antes_da_aula.sql"
   "supabase/tests/reativar_aluno_sem_asaas.sql"
   "supabase/tests/falta_de_mes_anterior_nao_gera_reposicao.sql"

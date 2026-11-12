@@ -1,3 +1,4 @@
+begin;
 -- Reativação sem Asaas: só service_role, só aluno pausado e sem vínculo no Asaas.
 do $test$
 begin
@@ -32,3 +33,4 @@ begin
   end if;
 end;
 $test$;
+rollback;

@@ -52,33 +52,23 @@ export function slotsSentence(slots: CareSlot[]): string {
   return list.map((s) => `• ${s.day} ${s.label}`).join("\n");
 }
 
-/** Faltou ontem: acolhe, dá o direito e já oferece horário. */
+/**
+ * Faltou: mensagem curta e única (decisão da direção, 12/11/2026). Sem cota de
+ * reposições, sem horários livres e sem resumo de faltas — quem combina a
+ * reposição é o próprio professor. `quota` e `freeSlots` ficam na assinatura
+ * só por compatibilidade com quem chama.
+ */
 export function absenceFollowupMessage(input: {
   studentName: string | null;
   teacherName: string | null;
   classDate: string;
-  quota: CareQuota | null;
-  freeSlots: CareSlot[];
+  quota?: CareQuota | null;
+  freeSlots?: CareSlot[];
 }): string {
   const lead = firstName(input.studentName);
-  const teacher = teacherLabel(input.teacherName);
-  const [y, m, d] = String(input.classDate || "").split("-");
-  const when = y && m && d ? `${d}/${m}` : "ontem";
-  const quota = quotaSentence(input.quota).replace("a teacher", teacher);
-  const slots = slotsSentence(input.freeSlots);
-  const remaining = input.quota
-    ? Number(input.quota.limit) - Number(input.quota.used || 0)
-    : 1;
-  const offer = remaining > 0
-    ? (slots
-      ? `${
-        teacher.charAt(0).toUpperCase() + teacher.slice(1)
-      } tem horário livre em:\n${slots}\n\nQuer um desses, ou prefere outro dia?`
-      : `Quer que eu veja um horário para repor, com ${teacher} ou com outro professor?`)
-    : `Se quiser tentar repor mesmo assim, me diz um dia e horário que eu vejo com ${teacher}.`;
   return `Oi${
     lead ? ", " + lead : ""
-  }! Sentimos sua falta na aula de ${when} com ${teacher} 😊 Tudo bem por aí?\n\n${quota}\n\n${offer}`;
+  }! Não conseguiu comparecer? Combine sua reposição diretamente com seu professor.`;
 }
 
 /** Sexta: como foi a semana. Uma pergunta, resposta livre. */

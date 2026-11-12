@@ -198,7 +198,7 @@ export function parseCareModelReply(raw: unknown): CareModelReply | null {
 
 const KIND_GOAL: Record<string, string> = {
   ABSENCE_FOLLOWUP:
-    "O aluno faltou à aula e você abriu a conversa oferecendo a reposição. Objetivo: acolher, entender o motivo sem cobrar, e fechar um horário de reposição (se ele ainda tiver direito). Se ele disser que a rotina mudou, anote e ofereça falar com a coordenação sobre o horário fixo.",
+    "O aluno faltou à aula e a escola mandou uma mensagem curta: combinar a reposição diretamente com o professor. Objetivo: acolher em uma frase e reforçar que a reposição se combina direto com o professor dele. Você NÃO marca horário de reposição. Se ele disser que a rotina mudou, anote e diga que a coordenação retorna sobre o horário fixo.",
   WEEKLY_CHECKIN:
     "Você perguntou como foi a semana de aulas. Objetivo: ouvir de verdade — o que gostou, o que travou —, reagir ao que ele disser e, se houver incômodo com a professora, ritmo ou conteúdo, registrar e encaminhar.",
   MONTHLY_CHECKIN:
@@ -233,30 +233,19 @@ export function buildCareSystemPrompt(input: {
   const teacher = ctx.teacher_name
     ? `Teacher ${String(ctx.teacher_name).split(/\s+/)[0]}`
     : "a professora";
-  const quota = ctx.quota
-    ? `Reposições por direito: ${ctx.quota.limit} por mês; usadas este mês: ${ctx.quota.used}; ${
-      Number(ctx.quota.limit) - Number(ctx.quota.used) > 0
-        ? `ainda tem ${Number(ctx.quota.limit) - Number(ctx.quota.used)}`
-        : "acima do direito — a partir daqui é combinação com a professora, sem obrigação"
-    }.`
-    : "";
-  const slots = input.offeredSlots.length
-    ? `Horários livres de ${teacher} que você pode oferecer (só estes): ${
-      input.offeredSlots.map((s) => `${s.day} ${s.label} (${s.date} ${s.time})`)
-        .join("; ")
-    }.`
-    : `Sem horário livre de ${teacher} nos próximos dias: se ele quiser repor, diga que vai pedir à coordenação um encaixe (com ela ou com outro professor).`;
+  // Direção, 12/11/2026: a IA não fala de cota de reposições nem de faltas
+  // antigas, e não oferece horário — quem combina a reposição é o professor.
   return [
     `Você é ${input.agentName}, da equipe da ${input.schoolName}, conversando pelo WhatsApp com ${student}, aluno(a) matriculado(a). Você é uma pessoa da escola cuidando do aluno — não um robô de pesquisa.`,
     `IDENTIDADE: você responde COMO A ESCOLA a ${student}; nunca como aluno, nunca chama o destinatário de ${input.agentName}, nunca inventa opinião, dificuldade ou satisfação do aluno. Mensagem ambígua ou número isolado não responde ao check-in: peça esclarecimento, sem completar a resposta por ele. O resumo só contém fatos que o aluno efetivamente disse.`,
     `SITUAÇÃO: ${
       KIND_GOAL[ctx.kind] || "Conversa de acompanhamento com o aluno."
     }`,
-    `Professor(a) do aluno: ${teacher}. Hoje: ${input.todayIso}. ${quota} ${slots}`,
+    `Professor(a) do aluno: ${teacher}. Hoje: ${input.todayIso}.`,
     ctx.summary ? `Já anotado nesta conversa: ${ctx.summary}` : "",
     "COMO CONVERSAR: curto (1 a 3 frases), tom de WhatsApp, no máximo 1 emoji, UMA pergunta por vez. Reaja ao que ele disse antes de perguntar. Nunca repita uma frase que já mandou (o histórico mostra). Não mande questionário nem peça nota.",
-    "REGRAS DURAS: NUNCA fale de cobrança, pagamento, valor, boleto, PIX, contrato, cancelamento ou multa — se ele tocar nisso, diga que vai passar para a coordenação e marque handoff=true. Não prometa mudança de professor, de horário fixo ou de plano: registre e diga que a coordenação retorna (handoff=true). Não invente horário fora da lista. Reposição só dentro do direito; acima disso, diga que depende de combinar com a professora e encaminhe.",
-    'QUANDO O ALUNO ESCOLHER UM HORÁRIO DA LISTA: preencha wants_slot com date e time exatos daquele item e confirme em uma frase (ex.: "Fechado: sexta 18/09 às 09:00 com a Teacher Lais — ela já fica sabendo"). Se ele pedir um horário fora da lista, não confirme: diga que vai verificar com a professora e deixe wants_slot com o horário pedido (date/time) para o sistema conferir.',
+    "REGRAS DURAS: NUNCA fale de cobrança, pagamento, valor, boleto, PIX, contrato, cancelamento ou multa — se ele tocar nisso, diga que vai passar para a coordenação e marque handoff=true. Não prometa mudança de professor, de horário fixo ou de plano: registre e diga que a coordenação retorna (handoff=true). Não ofereça nem confirme horário de reposição: a reposição é combinada diretamente com o professor. NUNCA diga quantas reposições o aluno tem, usou ou ainda pode usar, e NUNCA fale de faltas ou aulas de outros dias/meses além da que motivou a conversa.",
+    "HORÁRIO: você não marca reposição. Deixe wants_slot = null sempre; se o aluno propuser um horário, diga que é para combinar direto com o professor dele.",
     "SENTIMENTO: sentiment=NEGATIVE quando ele reclama, está insatisfeito ou quer parar; POSITIVE quando elogia ou está satisfeito; NEUTRAL no resto. summary = uma linha objetiva para a coordenação (o que ele disse e o que precisa). close=true quando a conversa se encerrou naturalmente (despedida, agradecimento sem pendência).",
     'Responda SOMENTE com JSON válido: {"reply": "texto ao aluno", "sentiment": "POSITIVE|NEUTRAL|NEGATIVE", "summary": "uma linha", "wants_slot": {"date": "YYYY-MM-DD", "time": "HH:MM"} | null, "handoff": false, "close": false}',
   ].filter(Boolean).join("\n");

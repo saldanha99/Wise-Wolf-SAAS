@@ -1,3 +1,4 @@
+begin;
 -- Preferência do pop-up do plano: cada professor lê e grava só a própria linha.
 do $test$
 declare
@@ -31,3 +32,4 @@ begin
   delete from public.teacher_lesson_plan_prompt_prefs where user_id in (v_a, v_b);
 end;
 $test$;
+rollback;

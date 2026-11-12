@@ -1085,6 +1085,7 @@ export const FEATURE_TOURS: FeatureTour[] = [
     steps:[
       {target:'lesson-plan-ai',view:'dashboard',title:'Preparar aula ✨',text:'Em cada aula de hoje há o botão Preparar aula. Um toque abre o Planner IA com o aluno já escolhido e o plano já sendo gerado: revisão da última aula, pontos de atenção, objetivo de hoje, roteiro com pergunta de abertura e exercícios, e próximos passos. A base são as aulas que você lançou: lançar a aula com o resumo do Meet é o que alimenta o próximo plano.'},
       {target:'plan-suggestion-toggle',view:'lesson-planner-ai',title:'Sugestão antes de cada aula',text:'Entre 1 hora e 10 minutos antes de cada aula aparece a sugestão do plano daquele aluno, com o próximo passo da última aula. Ver o plano abre tudo pronto; Agora não fecha só aquela aula; Não mostrar mais desliga. Para ligar ou desligar de novo, use esta opção aqui no Planner.'},
+      {target:'teacher-month-absences',view:'dashboard',title:'Reposições do mês, com você',text:'Quando um aluno falta, ele recebe só: "Não conseguiu comparecer? Combine sua reposição diretamente com seu professor." Este cartão lista as faltas do mês que ainda pedem reposição para você organizar. Falta de mês anterior lançada depois não gera reposição nem aviso.'},
     ],
   },
 ];

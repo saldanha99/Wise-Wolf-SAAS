@@ -1,3 +1,4 @@
+begin;
 -- Falta lançada de um mês já encerrado não gera reposição (12/11/2026).
 -- A trava vive dentro de private.log_teacher_classes_engine, junto da regra
 -- que cria a reposição: se alguém recriar a função sem ela, este teste reprova.
@@ -19,3 +20,4 @@ begin
   end if;
 end;
 $test$;
+rollback;
