@@ -1607,6 +1607,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261112180000_sugestao_de_plano_antes_da_aula.sql"
   "supabase/migrations/20261112190000_notificacao_de_reposicao_pela_data_real.sql"
   "supabase/migrations/20261112200000_frequencia_pretendida_do_lead.sql"
+  "supabase/migrations/20261116200000_troca_de_horario_sem_termo_para_aluno_antigo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/frequencia_pretendida_do_lead.sql"
