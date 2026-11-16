@@ -23,7 +23,7 @@ describe('mês inicial padrão da mensalidade', () => {
 });
 
 describe('matrícula autoritativa', () => {
-    it('calcula o pró-rata entre o início e o primeiro vencimento, não até o fim do mês atual', () => {
+    it('cobra no pró-rata só as aulas antes do mês da 1ª mensalidade', () => {
         const quote = calculateEnrollmentProRataPreview({
             enabled: true,
             monthlyFee: 160,
@@ -39,8 +39,30 @@ describe('matrícula autoritativa', () => {
         });
 
         expect(quote.firstBillingDate).toBe('2026-09-10');
-        expect(quote.classCount).toBe(4);
+        expect(quote.periodEndDate).toBe('2026-08-31');
+        expect(quote.classCount).toBe(1);
         expect(quote.pricePerClass).toBe(20);
+        expect(quote.value).toBe(20);
+    });
+
+    it('caso Miguel: início 17/11 ter/sex, vencimento 05/12 cobra só as 4 aulas de novembro', () => {
+        const quote = calculateEnrollmentProRataPreview({
+            enabled: true,
+            monthlyFee: 160,
+            classesPerWeek: 2,
+            dueDay: 5,
+            billingStartMonth: '2026-12',
+            startDate: '2026-11-17',
+            schedule: [
+                { day: 'Terça', time: '21:00' },
+                { day: 'Sexta', time: '21:00' },
+            ],
+            now: new Date('2026-11-16T18:00:00-03:00'),
+        });
+
+        expect(quote.firstBillingDate).toBe('2026-12-05');
+        expect(quote.periodEndDate).toBe('2026-11-30');
+        expect(quote.classCount).toBe(4);
         expect(quote.value).toBe(80);
     });
 
@@ -61,6 +83,7 @@ describe('matrícula autoritativa', () => {
 
         expect(quote).toEqual({
             firstBillingDate: '2026-09-10',
+            periodEndDate: '2026-08-31',
             classCount: 0,
             pricePerClass: 0,
             value: 0,
@@ -83,8 +106,8 @@ describe('matrícula autoritativa', () => {
             now: new Date('2026-08-28T15:00:00-03:00'),
         });
 
-        expect(quote.classCount).toBe(5);
-        expect(quote.value).toBe(100);
+        expect(quote.classCount).toBe(2);
+        expect(quote.value).toBe(40);
     });
 
     it('não cobra proporcional quando o serviço começa no primeiro vencimento', () => {
@@ -115,8 +138,9 @@ describe('matrícula autoritativa', () => {
         });
 
         expect(quote.firstBillingDate).toBe('2027-02-28');
-        expect(quote.classCount).toBe(4);
-        expect(quote.value).toBe(160);
+        // Fevereiro inteiro está na mensalidade de 28/02.
+        expect(quote.classCount).toBe(0);
+        expect(quote.value).toBe(0);
     });
 
     it('avança para o mês seguinte quando o vencimento escolhido já passou', () => {
@@ -135,8 +159,8 @@ describe('matrícula autoritativa', () => {
         });
 
         expect(quote.firstBillingDate).toBe('2026-09-10');
-        expect(quote.classCount).toBe(4);
-        expect(quote.value).toBe(100);
+        expect(quote.classCount).toBe(1);
+        expect(quote.value).toBe(25);
     });
 
     it('usa no total o mesmo valor por aula arredondado que a tela informa', () => {
@@ -155,9 +179,9 @@ describe('matrícula autoritativa', () => {
             now: new Date('2026-08-20T12:00:00-03:00'),
         });
 
-        expect(quote.classCount).toBe(6);
+        expect(quote.classCount).toBe(4);
         expect(quote.pricePerClass).toBe(8.33);
-        expect(quote.value).toBe(49.98);
+        expect(quote.value).toBe(33.32);
     });
 
     it('normaliza dias e horários usados pela grade', () => {

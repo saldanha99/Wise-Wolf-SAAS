@@ -1088,6 +1088,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'teacher-month-absences',view:'dashboard',title:'Reposições do mês, com você',text:'Quando um aluno falta, ele recebe só: "Não conseguiu comparecer? Combine sua reposição diretamente com seu professor." Este cartão lista as faltas do mês que ainda pedem reposição para você organizar. Falta de mês anterior lançada depois não gera reposição nem aviso.'},
     ],
   },
+  {
+    id:'2026-11-16-prorata-so-ate-o-fim-do-mes',title:'Pró-rata só até o fim do mês',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'trial-funnel',view:'trials',title:'Pró-rata mais justo',text:'Ao gerar o link de matrícula com pró-rata, a cobrança proporcional agora vai do início das aulas até o fim do mês anterior ao da 1ª mensalidade. Exemplo: início 17/11 e vencimento dia 05/12 cobra só as aulas de novembro, porque a mensalidade de 05/12 já paga dezembro inteiro. Quem começa no mesmo mês da 1ª mensalidade não paga pró-rata. Links já gerados mantêm o valor que mostraram.'},
+    ],
+  },
 ];
 
 /**

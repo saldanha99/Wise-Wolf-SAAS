@@ -825,7 +825,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             {proRataEnabled && monthlyFee > 0 && (
                                 <div className="ml-13 pl-14 text-xs font-black text-amber-600 dark:text-amber-400">
                                     R$ {proRataPreview.pricePerClass.toFixed(2)}/aula × {proRataPreview.classCount} aulas
-                                    {' = '}R$ {proRataPreview.value.toFixed(2)} até {proRataPreview.firstBillingDate.split('-').reverse().join('/')}
+                                    {' = '}R$ {proRataPreview.value.toFixed(2)} (aulas até {proRataPreview.periodEndDate.split('-').reverse().join('/')}; a mensalidade de {proRataPreview.firstBillingDate.split('-').reverse().join('/')} paga o mês dela)
                                     <p className="mt-1 text-[9px] font-semibold text-amber-700/70 dark:text-amber-300/70">
                                         O banco recalcula e trava esse valor; a tela é apenas uma prévia.
                                     </p>

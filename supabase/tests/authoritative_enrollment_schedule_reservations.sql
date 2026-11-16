@@ -45,7 +45,7 @@ grant execute on function pg_temp.enrollment_schedule(text,text,uuid,text,text,u
 create or replace function pg_temp.enrollment_payload(
   p_schedule jsonb,
   p_start_date date default '2099-01-05'::date,
-  p_billing_month text default '2099-02',
+  p_billing_month text default '2099-03',
   p_enable_pro_rata boolean default true,
   p_forged_pro_rata numeric default 9999
 )
@@ -523,7 +523,7 @@ select pg_temp.assert_true(
           'dueDay', 10,
           'planDuration', 1,
           'classesPerWeek', 3,
-          'startDate', '2099-01-01',
+          'startDate', '2098-12-19',
           'billingStartMonth', '2099-01',
           'enableProRata', true,
           'proRataValue', 9999,
@@ -567,7 +567,7 @@ select pg_temp.assert_true(
           'dueDay', 10,
           'planDuration', 1,
           'classesPerWeek', 3,
-          'startDate', '2099-01-01',
+          'startDate', '2098-12-19',
           'billingStartMonth', '2099-01',
           'enableProRata', false,
           'proRataValue', 9999,
@@ -656,14 +656,14 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   (
     select
-      (payload ->> 'proRataValue')::numeric = 220
+      (payload ->> 'proRataValue')::numeric = 320
       and (payload ->> 'proRataValue')::numeric <> 9999
-      and (payload ->> 'proRataClassCount')::integer = 11
+      and (payload ->> 'proRataClassCount')::integer = 16
       and (payload ->> 'pricePerClass')::numeric = 20
       and payload ->> 'proRataFormulaVersion'
           = 'weekly-frequency-times-4-v1'
       and payload ->> 'proRataIntervalStartInclusive' = '2099-01-05'
-      and payload ->> 'proRataIntervalEndExclusive' = '2099-02-10'
+      and payload ->> 'proRataIntervalEndExclusive' = '2099-03-10'
       and metadata ->> 'pro_rata_formula_version'
           = 'weekly-frequency-times-4-v1'
       and metadata -> 'pro_rata_value' = payload -> 'proRataValue'
@@ -983,7 +983,7 @@ set enrollment_fee = 30,
 where id = :'main_offer_id'::uuid;
 
 -- Reproduz localmente o evento liquidado do pro-rata. A mensalidade da oferta
--- vale R$ 160, enquanto o valor proporcional autoritativo vale R$ 220; assim o
+-- vale R$ 160, enquanto o valor proporcional autoritativo vale R$ 320; assim o
 -- teste prova que a matricula nao exige nem antecipa a mensalidade cheia.
 insert into public.student_payments (
   student_id,
@@ -1007,8 +1007,8 @@ values (
   'pay_enrollment_main_prorata',
   'pay_enrollment_main_prorata',
   'cus_enrollment_main',
-  220,
-  22000,
+  320,
+  32000,
   'RECEIVED',
   'RECEIVED',
   current_date,
@@ -1051,7 +1051,7 @@ select public.apply_enrollment_payment_observation(
   null,
   'PRO_RATA',
   'SETTLED',
-  220,
+  320,
   'enrollment:' || :'main_offer_id' || ':pro-rata',
   'RECEIVED',
   current_date,
@@ -1161,7 +1161,7 @@ select public.apply_enrollment_payment_observation(
   null,
   'PRO_RATA',
   'UNSETTLED',
-  220,
+  320,
   'enrollment:' || :'main_offer_id' || ':pro-rata',
   'REFUNDED',
   current_date,
@@ -1190,7 +1190,7 @@ select public.apply_enrollment_payment_observation(
   null,
   'PRO_RATA',
   'UNSETTLED',
-  220,
+  320,
   'enrollment:' || :'main_offer_id' || ':pro-rata',
   'REFUNDED',
   current_date,

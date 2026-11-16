@@ -9,6 +9,8 @@ export type EnrollmentScheduleSlot = {
 
 export type ProRataPreview = {
     firstBillingDate: string;
+    /** Último dia cobrado no pró-rata: o fim do mês anterior ao da 1ª mensalidade. */
+    periodEndDate: string;
     classCount: number;
     pricePerClass: number;
     value: number;
@@ -135,11 +137,17 @@ export function calculateEnrollmentProRataPreview(params: {
         params.billingStartMonth,
         params.now,
     );
-    const empty = { firstBillingDate, classCount: 0, pricePerClass: 0, value: 0 };
+    // A 1ª mensalidade paga o mês dela inteiro (vencimento 05/12 = dezembro).
+    // O pró-rata cobre só as aulas do início até o fim do mês anterior; aula de
+    // 01/12 a 04/12 já está na mensalidade de dezembro (decisão da direção, 16/11/2026).
+    const [billingYear, billingMonth] = firstBillingDate.split('-').map(Number);
+    const endExclusive = new Date(Date.UTC(billingYear, billingMonth - 1, 1));
+    const periodEndDate = new Date(endExclusive.getTime() - 86_400_000).toISOString().slice(0, 10);
+    const empty = { firstBillingDate, periodEndDate, classCount: 0, pricePerClass: 0, value: 0 };
     if (!params.enabled || params.monthlyFee <= 0 || params.classesPerWeek <= 0) return empty;
 
     const start = parseIsoDateUtc(params.startDate);
-    const end = parseIsoDateUtc(firstBillingDate);
+    const end = endExclusive;
     if (!start || !end || start >= end) return empty;
 
     const weekdays = params.schedule
@@ -161,6 +169,7 @@ export function calculateEnrollmentProRataPreview(params: {
     const pricePerClass = roundMoney(params.monthlyFee / (params.classesPerWeek * 4));
     return {
         firstBillingDate,
+        periodEndDate,
         classCount,
         pricePerClass,
         value: roundMoney(pricePerClass * classCount),

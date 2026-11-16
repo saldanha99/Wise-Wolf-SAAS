@@ -1743,7 +1743,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 {duration === 0
                                                     ? 'Não se aplica ao plano de aula avulsa.'
                                                     : proRataEnabled
-                                                        ? `Ativado: cálculo por aula entre o início e ${proRataPreview.firstBillingDate.split('-').reverse().join('/')}.`
+                                                        ? `Ativado: aulas do início até ${proRataPreview.periodEndDate.split('-').reverse().join('/')}. A 1ª mensalidade (${proRataPreview.firstBillingDate.split('-').reverse().join('/')}) paga o mês dela inteiro.`
                                                         : 'Desativado: não haverá cobrança proporcional antes da primeira mensalidade.'}
                                             </p>
                                             {proRataEnabled && monthlyFee > 0 && (
