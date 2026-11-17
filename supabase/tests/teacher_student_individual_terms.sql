@@ -2,7 +2,7 @@
 begin;
 create or replace function pg_temp.term_assert(v boolean,m text) returns void language plpgsql as $$begin if not coalesce(v,false) then raise exception 'individual term: %',m;end if;end$$;
 do $test$
-declare tenant text:='individual-term-fixture-'||gen_random_uuid();teacher uuid:=gen_random_uuid();student uuid:=gen_random_uuid();director uuid:=gen_random_uuid();coordinator uuid:=gen_random_uuid();other_teacher uuid:=gen_random_uuid();unsigned_teacher uuid:=gen_random_uuid();other_student uuid:=gen_random_uuid();term uuid;term2 uuid;source uuid:=gen_random_uuid();booking uuid:=gen_random_uuid();r jsonb;old_hash text;old_body text;offer uuid;enrollment_term uuid;new_term uuid;coverage_term uuid;coverage uuid:=gen_random_uuid();absence uuid:=gen_random_uuid();request uuid:=gen_random_uuid();original_eligibility text;signature text;today date:=(now() at time zone 'America/Sao_Paulo')::date;coverage_date date:=today+14+((5-extract(dow from today+14)::int+7)%7);change_booking uuid;staged_term uuid;transfer_result jsonb;identity jsonb:='{"companyName":"Empresa Fixture Ltda","cnpj":"12.ABC.345/01DE-35","companyAddress":"Rua Fixture, 1","representativeCpf":"52998224725","representativeHasAuthority":true}';
+declare tenant text:='individual-term-fixture-'||gen_random_uuid();teacher uuid:=gen_random_uuid();student uuid:=gen_random_uuid();director uuid:=gen_random_uuid();coordinator uuid:=gen_random_uuid();other_teacher uuid:=gen_random_uuid();unsigned_teacher uuid:=gen_random_uuid();other_student uuid:=gen_random_uuid();term uuid;term2 uuid;source uuid:=gen_random_uuid();booking uuid:=gen_random_uuid();r jsonb;old_hash text;old_body text;offer uuid;enrollment_term uuid;new_term uuid;coverage_term uuid;coverage uuid:=gen_random_uuid();absence uuid:=gen_random_uuid();request uuid:=gen_random_uuid();original_eligibility text;signature text;today date:=(now() at time zone 'America/Sao_Paulo')::date;coverage_date date:=today+14+((5-extract(dow from today+14)::int+7)%7);change_booking uuid;staged_term uuid;term_count bigint;transfer_result jsonb;identity jsonb:='{"companyName":"Empresa Fixture Ltda","cnpj":"12.ABC.345/01DE-35","companyAddress":"Rua Fixture, 1","representativeCpf":"52998224725","representativeHasAuthority":true}';
 begin
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
  perform pg_temp.term_assert(not has_function_privilege('anon','public.teacher_student_terms(text,uuid,jsonb)','EXECUTE'),'anonymous signature API');
@@ -122,24 +122,15 @@ begin
  r:=public.teacher_student_terms('identity',null,identity);
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
 
- -- A alteração direta vira proposta persistente, sem perder a grade atual.
+ -- Decisão de 17/11/2026: troca de horário com o mesmo professor e termo já
+ -- assinado aplica direto, sem termo novo nem confirmação da família.
  select id into change_booking from public.bookings where enrollment_offer_id=offer and day_of_week='Sexta';
  insert into public.teacher_availability(tenant_id,teacher_id,day_of_week,start_time,end_time) values(tenant,teacher,4,'20:00','21:00');
+ select count(*) into term_count from private.teacher_student_terms where student_id=other_student and teacher_id=teacher and status='PROPOSED';
  perform set_config('request.jwt.claims',jsonb_build_object('sub',teacher,'role','authenticated')::text,true);
  r:=public.teacher_apply_student_schedule_change(other_student,jsonb_build_array(jsonb_build_object('booking_id',change_booking,'new_day','Quinta','new_time','20:00')),today+30,'Mudança de agenda fixture solicitada');
- perform pg_temp.term_assert(r->>'pending_terms'='true' and(select day_of_week='Sexta' from public.bookings where id=change_booking),'schedule proposal changed booking prematurely');
- staged_term:=(r->'term_ids'->>0)::uuid;
- select content_hash into old_hash from private.teacher_student_terms where id=staged_term;
- perform set_config('request.jwt.claims',jsonb_build_object('sub',director,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('sign',staged_term,jsonb_build_object('content_hash',old_hash,'typed_name','Diretor Fixture','accepted',true,'has_authority',true));
- perform set_config('request.jwt.claims',jsonb_build_object('sub',teacher,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('sign',staged_term,jsonb_build_object('content_hash',old_hash,'typed_name','Professor Fixture','accepted',true,'has_authority',true));
- perform set_config('request.jwt.claims',jsonb_build_object('sub',other_student,'role','authenticated')::text,true);
- r:=public.teacher_student_terms('list');select value->>'schedule_hash' into old_hash from jsonb_array_elements(r->'terms') where value->>'id'=staged_term::text;
- r:=public.teacher_student_terms('family_confirm',staged_term,jsonb_build_object('confirmed',true,'schedule_hash',old_hash));
- perform set_config('request.jwt.claims',jsonb_build_object('sub',teacher,'role','authenticated')::text,true);
- r:=public.teacher_apply_student_schedule_change(other_student,jsonb_build_array(jsonb_build_object('booking_id',change_booking,'new_day','Quinta','new_time','20:00')),today+30,'Mudança de agenda fixture solicitada');
- perform pg_temp.term_assert(r->>'changed'='1' and(select day_of_week='Quinta' from public.bookings where id=change_booking),'signed schedule failed to apply: '||r::text);
+ perform pg_temp.term_assert(r->>'pending_terms' is null and r->>'changed'='1' and(select day_of_week='Quinta' from public.bookings where id=change_booking),'schedule change with executed term not applied: '||r::text);
+ perform pg_temp.term_assert((select count(*) from private.teacher_student_terms where student_id=other_student and teacher_id=teacher and status='PROPOSED')=term_count,'schedule change opened a new term');
 
  -- Transferência futura persiste pendente sem declarar o novo titular aceito.
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);

@@ -1612,8 +1612,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261112200000_frequencia_pretendida_do_lead.sql"
   "supabase/migrations/20261116200000_troca_de_horario_sem_termo_para_aluno_antigo.sql"
   "supabase/migrations/20261116210000_prorata_ate_o_fim_do_mes_anterior.sql"
+  "supabase/migrations/20261117200000_troca_de_horario_com_termo_vigente.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/troca_de_horario_com_termo_vigente.sql"
   "supabase/tests/frequencia_pretendida_do_lead.sql"
   "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"
   "supabase/tests/sugestao_de_plano_antes_da_aula.sql"
