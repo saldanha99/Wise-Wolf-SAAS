@@ -1,3 +1,13 @@
+### 16/11/2026 — Número de outra instância do servidor não fala com a IA
+
+O Evolution é compartilhado com a MotoFix. Um vigia do Nacional Hidro mandou
+alerta pela `prof-diretorww-d6bg` ao número da `motofix-master`; a atendente da
+MotoFix e a Michelle conversaram sozinhas (19 mensagens) e a MotoFix abriu um
+lead "Wise Wolf". `whatsapp-inbound/internal-numbers.ts`: DM vinda do número de
+qualquer OUTRA instância do servidor (lista de `fetchInstances`, cache 10 min)
+fica na inbox e nenhum agente responde; servidor fora não bloqueia ninguém.
+⚠️ Nunca use a instância da Wise Wolf para avisos de outro projeto.
+
 ## 02/10/2026 — Retomada das cobranças diárias adiadas por cadência
 
 A rotina diária tem um cron privado de retomada a cada dois minutos entre 09h

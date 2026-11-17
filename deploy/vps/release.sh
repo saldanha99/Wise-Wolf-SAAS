@@ -735,6 +735,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
   supabase/functions/whatsapp-inbound/lead-age.ts \
   supabase/functions/whatsapp-inbound/lead-age.test.ts \
+  supabase/functions/whatsapp-inbound/internal-numbers.ts \
+  supabase/functions/whatsapp-inbound/internal-numbers.test.ts \
   supabase/functions/whatsapp-inbound/lead-frequency.ts \
   supabase/functions/whatsapp-inbound/lead-frequency.test.ts \
   supabase/functions/whatsapp-inbound/trial-access.test.ts \
@@ -831,6 +833,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/whatsapp-inbound/ai-outage.test.ts \
   supabase/functions/whatsapp-inbound/lead-frequency.test.ts \
   supabase/functions/whatsapp-inbound/lead-age.test.ts \
+  supabase/functions/whatsapp-inbound/internal-numbers.test.ts \
   supabase/functions/whatsapp-inbound/trial-no-show.test.ts \
   supabase/functions/whatsapp-inbound/renewal-negotiation.test.ts \
   supabase/functions/whatsapp-inbound/renewal-bot.test.ts \

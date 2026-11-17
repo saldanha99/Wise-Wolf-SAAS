@@ -3,6 +3,10 @@ import { teacherMayReceiveOpportunity } from "../_shared/opportunity-dispatch.ts
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  isInternalNumber,
+  loadInternalNumberKeys,
+} from "./internal-numbers.ts";
+import {
   quotedLessonMessageId,
   routeLessonQualityReply,
 } from "../_shared/lesson-quality-reply.ts";
@@ -9762,6 +9766,29 @@ serve(async (req) => {
       if (!remoteJid.endsWith("@s.whatsapp.net")) continue;
       const phone = remoteJid.split("@")[0].replace(/\D/g, "");
       if (phone.length < 10) continue;
+
+      // NÚMERO DE OUTRA INSTÂNCIA DO SERVIDOR (MotoFix, oficinas): é máquina,
+      // não gente. Sem isto a atendente da MotoFix e a Michelle conversaram
+      // sozinhas em 16/11/2026. Fica na inbox; nenhum agente responde.
+      // Ver internal-numbers.ts.
+      {
+        const internalKeys = await loadInternalNumberKeys(
+          currentTransport.integration.baseUrl,
+          currentTransport.integration.apiKey,
+          instance,
+        );
+        if (isInternalNumber(phone, internalKeys)) {
+          console.warn(
+            "[WA Inbound] número de outra instância do servidor ignorado",
+            {
+              tenantId,
+              instance,
+              final: phone.slice(-4),
+            },
+          );
+          continue;
+        }
+      }
 
       // DEDUP ATÔMICO: PK em wa_inbound_seen. Se a linha já existe (conflito), outra
       // execução concorrente já pegou esta mensagem → pula (mata duplicação).
