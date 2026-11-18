@@ -24,14 +24,37 @@ interface SignInCard2Props {
     onLogin: (e: React.FormEvent, data: { email: string, password: string }) => void;
     isLoading: boolean;
     error?: string;
+    /** Envia o e-mail de redefinição de senha para o endereço digitado. */
+    onForgotPassword?: (email: string) => Promise<void>;
 }
 
-export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
+export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: SignInCard2Props) {
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [focusedInput, setFocusedInput] = useState<string | null>(null);
     const [rememberMe, setRememberMe] = useState(false);
+    const [recoveryNotice, setRecoveryNotice] = useState<{ ok: boolean; text: string } | null>(null);
+    const [recoverySending, setRecoverySending] = useState(false);
+
+    // Recuperar senha: usa o e-mail já digitado no campo de cima.
+    const handleForgotPassword = async () => {
+        if (!onForgotPassword || recoverySending) return;
+        const typed = email.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed)) {
+            setRecoveryNotice({ ok: false, text: 'Digite seu e-mail no campo acima e toque de novo em "Recuperar senha".' });
+            return;
+        }
+        setRecoverySending(true);
+        try {
+            await onForgotPassword(typed);
+            setRecoveryNotice({ ok: true, text: `Se ${typed} tiver acesso, enviamos um link para criar uma nova senha. Confira a caixa de entrada e o spam.` });
+        } catch {
+            setRecoveryNotice({ ok: false, text: 'Não foi possível enviar agora. Se você já pediu há pouco, espere um minuto e tente de novo.' });
+        } finally {
+            setRecoverySending(false);
+        }
+    };
 
     // For 3D card effect
     const mouseX = useMotionValue(0);
@@ -268,8 +291,20 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                         />
                                         Manter conectado
                                     </label>
-                                    <a href="#" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">Recuperar senha?</a>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleForgotPassword()}
+                                        disabled={recoverySending}
+                                        className="text-blue-400 hover:text-blue-300 font-medium transition-colors disabled:opacity-60"
+                                    >
+                                        {recoverySending ? 'Enviando…' : 'Recuperar senha?'}
+                                    </button>
                                 </div>
+                                {recoveryNotice && (
+                                    <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', recoveryNotice.ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300')}>
+                                        {recoveryNotice.text}
+                                    </p>
+                                )}
 
                                 {/* Submit Button */}
                                 <motion.button

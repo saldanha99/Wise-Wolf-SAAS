@@ -89,6 +89,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         onLogin={handleLogin}
         isLoading={loading}
         error={error}
+        onForgotPassword={async (email) => {
+          // A resposta não revela se o e-mail existe; a página /reset-password define a senha nova.
+          const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/reset-password`,
+          });
+          if (recoveryError) throw recoveryError;
+        }}
     />
     <a href="/historico-prestacao" className="fixed bottom-3 left-1/2 -translate-x-1/2 text-xs text-slate-600 bg-white rounded-xl px-3 py-2 underline text-center">Teacher: consultar histórico após encerramento</a>
     </>

@@ -15,7 +15,7 @@ const ResetPassword: React.FC = () => {
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setReady(Boolean(data.session));
-      if (!data.session) setError('Este link é inválido ou expirou. Solicite um novo convite.');
+      if (!data.session) setError('Este link é inválido ou expirou. Peça um novo em "Recuperar senha?", na tela de login.');
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted && session) {
@@ -43,7 +43,7 @@ const ResetPassword: React.FC = () => {
     setSaving(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
-      setError('Não foi possível salvar a senha. Solicite um novo convite.');
+      setError('Não foi possível salvar a senha. Peça um novo link em "Recuperar senha?", na tela de login.');
       setSaving(false);
       return;
     }
