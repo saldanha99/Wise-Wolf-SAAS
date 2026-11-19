@@ -1881,6 +1881,9 @@ SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-
 SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
 SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider-operations.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
+SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
+SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
+SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 SHARED_PAYROLL_MESSAGE_RELATIVE="supabase/functions/_shared/payroll-message.ts"
 SHARED_RESCHEDULE_MESSAGES_RELATIVE="supabase/functions/_shared/reschedule-messages.ts"
@@ -2053,6 +2056,9 @@ done
 [[ -s "$SHARED_AI_USAGE_RELATIVE" ]] || die "telemetria compartilhada de IA ausente"
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
+[[ -s "$SHARED_PAYMENT_EMAIL_RELATIVE" ]] || die "envio de e-mail dos avisos de cobrança ausente"
+[[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
+[[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 [[ -s "$SHARED_PAYROLL_MESSAGE_RELATIVE" ]] || die "compositor da folha ausente"
 [[ -s "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" ]] || die "compositor das reposições ausente"
@@ -2178,6 +2184,9 @@ append_release_input_checksum() {
     "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
     "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
+    "$SHARED_PAYMENT_EMAIL_RELATIVE" \
+    "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
+    "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
     "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
     "$SHARED_RESCHEDULE_MESSAGES_RELATIVE" \
@@ -2357,6 +2366,12 @@ rsync -a -- "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-provider-operations.ts"
 rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
+rsync -a -- "$SHARED_PAYMENT_EMAIL_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-email.ts"
+rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
+rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice.ts"
 rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 rsync -a -- "$SHARED_PAYROLL_MESSAGE_RELATIVE" \
@@ -2557,6 +2572,9 @@ ai_usage_shared_swapped=0
 global_meeting_policy_shared_swapped=0
 hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
+payment_email_shared_swapped=0
+payment_notice_core_shared_swapped=0
+payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
 payroll_message_shared_swapped=0
 reschedule_messages_shared_swapped=0
@@ -2732,6 +2750,9 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
 [[ -s "$release_dir/functions/_shared/hub-provider-operations.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
+[[ -s "$release_dir/functions/_shared/payment-email.ts" ]]
+[[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
+[[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 [[ -s "$release_dir/functions/_shared/payroll-message.ts" ]]
 [[ -s "$release_dir/functions/_shared/reschedule-messages.ts" ]]
@@ -3009,6 +3030,30 @@ restore_previous_release() {
         "$functions_dir/_shared/wolfie-product-access.ts"
     else
       rm -f -- "$functions_dir/_shared/wolfie-product-access.ts"
+    fi
+  fi
+  if [[ "$payment_email_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/payment-email.ts" ]]; then
+      cp -a -- "$backup_dir/payment-email.ts" \
+        "$functions_dir/_shared/payment-email.ts"
+    else
+      rm -f -- "$functions_dir/_shared/payment-email.ts"
+    fi
+  fi
+  if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/payment-notice-core.ts" ]]; then
+      cp -a -- "$backup_dir/payment-notice-core.ts" \
+        "$functions_dir/_shared/payment-notice-core.ts"
+    else
+      rm -f -- "$functions_dir/_shared/payment-notice-core.ts"
+    fi
+  fi
+  if [[ "$payment_notice_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/payment-notice.ts" ]]; then
+      cp -a -- "$backup_dir/payment-notice.ts" \
+        "$functions_dir/_shared/payment-notice.ts"
+    else
+      rm -f -- "$functions_dir/_shared/payment-notice.ts"
     fi
   fi
   if [[ "$lead_contact_shared_swapped" = "1" ]]; then
@@ -4379,6 +4424,30 @@ fi
 wolfie_product_access_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/wolfie-product-access.ts" \
   "$functions_dir/_shared/wolfie-product-access.ts"
+
+if [[ -f "$functions_dir/_shared/payment-email.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/payment-email.ts" \
+    "$backup_dir/payment-email.ts"
+fi
+payment_email_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/payment-email.ts" \
+  "$functions_dir/_shared/payment-email.ts"
+
+if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \
+    "$backup_dir/payment-notice-core.ts"
+fi
+payment_notice_core_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/payment-notice-core.ts" \
+  "$functions_dir/_shared/payment-notice-core.ts"
+
+if [[ -f "$functions_dir/_shared/payment-notice.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/payment-notice.ts" \
+    "$backup_dir/payment-notice.ts"
+fi
+payment_notice_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/payment-notice.ts" \
+  "$functions_dir/_shared/payment-notice.ts"
 
 if [[ -f "$functions_dir/_shared/lead-contact.ts" ]]; then
   cp -a -- "$functions_dir/_shared/lead-contact.ts" \

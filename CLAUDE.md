@@ -12,6 +12,7 @@ durável com nomes datados pelo vencimento (`PAYMENT_UPDATED_WHATSAPP_YYYYMMDD`,
 Asaas; e-mail em `payment_notification_email_attempts`. Cartão não recebe
 "pague pelo link". Vencidas seguem na régua/cobrança diária. Migration
 `20261119120000` (aplicar antes das funções).
+**Publicado em 19/11/2026 como hotfix de edge function** (migração aplicada à parte, 6 funções + 3 `_shared` copiados, sem frontend). Backup e passo a passo para desfazer em `/opt/wisewolf/backups/hotfix-avisos-escola-20261119/`. Os 71 clientes do Asaas da escola já estão com `notificationDisabled=true` (registro em `/root/asaas-avisos-desligados-20261119.log`). Os 3 `_shared` novos estão nos cinco pontos do `release.sh`. No próximo release completo o drift guard acusa as 6 funções: é este hotfix, já integrado; use `DEPLOY_ALLOW_FUNCTION_DRIFT=1` só depois de conferir que o diff é este.
 
 ### 16/11/2026 — Número de outra instância do servidor não fala com a IA
 
