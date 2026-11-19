@@ -33,6 +33,10 @@ import {
 } from "../_shared/saas-owner-activation.ts";
 import { classifyStudentPaymentType } from "./payment-classification.ts";
 import {
+  paymentNoticeEnqueueDecision,
+  receiptSuffix,
+} from "../_shared/payment-notice-core.ts";
+import {
   actualCreditAt,
   asaasDateToIso,
   completedRefundAmount,
@@ -116,6 +120,7 @@ type AsaasWebhookPayment = {
   subscription?: string | null;
   bankSlipUrl?: string | null;
   invoiceUrl?: string | null;
+  transactionReceiptUrl?: string | null;
   refundedValue?: number | null;
   refunds?: Array<{ value?: number | null; status?: string | null }> | null;
   deleted?: boolean | null;
@@ -2246,6 +2251,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     let creditedAt: string | null = null;
     let estimatedCreditAt: string | null = null;
     let inactiveSettlementUpdateOnly = false;
+    // Status local devolvido pela RPC do caminho ativo; só ele autoriza o aviso
+    // de nova cobrança/cobrança alterada (substitui a notificação do Asaas).
+    let activeEventLocalStatus: string | null = null;
     let legacyRecurringSettlementUpdateOnly = false;
     let providerDeletionUpdateOnly = false;
     const refundedAmount = historicalReversalAmount;
@@ -3203,6 +3211,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         : null;
       inactiveSettlementUpdateOnly =
         activePaymentResult.inactive_update_only === true;
+      activeEventLocalStatus = typeof activePaymentResult.status === "string"
+        ? activePaymentResult.status
+        : null;
       persistedPayment = {
         id: activePaymentResult.id,
         due_date: activePaymentResult.due_date || dueDate,
@@ -3412,9 +3423,13 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
           const valorFormatado = payment.value
             ? `R$ ${Number(payment.value).toFixed(2).replace(".", ",")}`
             : "";
+          // Comprovante do Asaas (só host asaas.com): o Asaas não envia mais
+          // o aviso de pagamento recebido ao aluno (19/11/2026).
           const confirmationMessage = `✅ *Pagamento confirmado${
             valorFormatado ? `, ${valorFormatado}` : ""
-          }!*\nObrigado, ${payerName}. O acesso do aluno segue ativo.`;
+          }!*\nObrigado, ${payerName}. O acesso do aluno segue ativo.${
+            receiptSuffix(payment.transactionReceiptUrl)
+          }`;
           const classDate = String(
             persistedPayment.due_date ||
               payment.dueDate ||
@@ -3440,6 +3455,34 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
             });
           if (queueError && queueError.code !== "23505") throw queueError;
         }
+
+        // Recibo por e-mail (substitui o PAYMENT_RECEIVED do Asaas). O worker
+        // da fila confere status liquidado e e-mail verificado antes do POST.
+        if (profileData.is_test_account !== true) {
+          const { error: receiptQueueError } = await supabase
+            .from("notification_queue")
+            .insert({
+              tenant_id: studentTenantId,
+              teacher_id: null,
+              student_id: studentId,
+              student_name: financialName || profileData.full_name,
+              student_phone: String(financialPhone || ""),
+              message_body: "Recibo de pagamento por e-mail",
+              scheduled_for: new Date().toISOString(),
+              status: "pending",
+              attempts: 0,
+              source_id: persistedPayment.id,
+              source_type: "ASAAS_PAYMENT",
+              class_date: String(persistedPayment.due_date || "").slice(0, 10) ||
+                null,
+              notification_kind: "PAYMENT_RECEIVED_EMAIL",
+              idempotency_key:
+                `payment-notice:received-email:${persistedPayment.id}`,
+            });
+          if (receiptQueueError && receiptQueueError.code !== "23505") {
+            throw receiptQueueError;
+          }
+        }
       }
 
       // Ledger movements remain exclusively database-triggered from the
@@ -3450,6 +3493,20 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
       );
     } else {
       console.log(`[Webhook] Provider snapshot applied: ${event}`);
+      await enqueuePaymentNotice(supabase, {
+        event,
+        payment,
+        providerStatus,
+        localStatus: activeEventLocalStatus,
+        previousDueDate: existingPayment?.due_date
+          ? String(existingPayment.due_date).slice(0, 10)
+          : null,
+        tenantId: studentTenantId,
+        studentId,
+        localPaymentId: persistedPayment.id,
+        dueDate: String(persistedPayment.due_date || payment.dueDate || "")
+          .slice(0, 10),
+      });
     }
   } catch (err: unknown) {
     console.error("[Webhook] Durable payment processing failed", {
@@ -3457,6 +3514,118 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     });
     throw err;
   }
+}
+
+/**
+ * Nova cobrança / vencimento alterado: enfileira o aviso que o Asaas deixou de
+ * mandar (notificações do Asaas desligadas em 19/11/2026). Só fatura de aluno
+ * em PENDING, mensalidade/pro-rata, não cartão, não fixture. A fila usa a
+ * chave (fatura, tipo, vencimento): reentrega do webhook não duplica e um
+ * vencimento novo gera aviso novo. O envio revalida tudo no worker.
+ */
+async function enqueuePaymentNotice(
+  supabase: SupabaseClient,
+  input: {
+    event: string;
+    payment: AsaasWebhookPayment;
+    providerStatus: string;
+    localStatus: string | null;
+    previousDueDate: string | null;
+    tenantId: string;
+    studentId: string;
+    localPaymentId: string;
+    dueDate: string;
+  },
+): Promise<void> {
+  if (input.event !== "PAYMENT_CREATED" && input.event !== "PAYMENT_UPDATED") {
+    return;
+  }
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select(
+      "full_name,phone,guardian_id,guardian_cpf,guardian_name,guardian_phone,is_test_account",
+    )
+    .eq("id", input.studentId)
+    .eq("tenant_id", input.tenantId)
+    .eq("role", "STUDENT")
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) return;
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const decision = paymentNoticeEnqueueDecision({
+    event: input.event,
+    paymentId: input.localPaymentId,
+    providerStatus: input.providerStatus,
+    localStatus: input.localStatus,
+    paymentType: classifyStudentPaymentType(
+      input.payment.description,
+      input.payment.externalReference,
+    ),
+    billingType: input.payment.billingType || null,
+    dueDate: input.dueDate,
+    previousDueDate: input.previousDueDate,
+    today,
+    value: Number(input.payment.value),
+    deleted: input.payment.deleted === true,
+    isTestAccount: profile.is_test_account === true,
+  });
+  if (!decision.enqueue) {
+    console.info("[Webhook] Payment notice not enqueued", {
+      event: input.event,
+      reason: decision.reason,
+    });
+    return;
+  }
+  const hasFinancialGuardian = Boolean(
+    profile.guardian_id || profile.guardian_cpf,
+  );
+  if (decision.dueDateChanged) {
+    // Vencimento novo: o lembrete D-3 volta a valer para a nova data.
+    const { error: reminderResetError } = await supabase
+      .from("student_payments")
+      .update({ due_reminder_sent_at: null })
+      .eq("id", input.localPaymentId)
+      .eq("tenant_id", input.tenantId)
+      .eq("student_id", input.studentId)
+      .eq("status", "PENDING")
+      .eq("due_date", input.dueDate);
+    if (reminderResetError) {
+      console.warn("[Webhook] Due reminder marker not reset", {
+        code: reminderResetError.code,
+      });
+    }
+  }
+  const { error: queueError } = await supabase
+    .from("notification_queue")
+    .insert({
+      tenant_id: input.tenantId,
+      teacher_id: null,
+      student_id: input.studentId,
+      student_name: (hasFinancialGuardian
+        ? profile.guardian_name
+        : profile.full_name) || profile.full_name,
+      student_phone: String(
+        (hasFinancialGuardian ? profile.guardian_phone : profile.phone) || "",
+      ),
+      // O texto definitivo é montado pelo worker a partir do Asaas relido.
+      message_body: decision.kind === "PAYMENT_CREATED"
+        ? "Aviso de nova cobrança"
+        : "Aviso de cobrança alterada",
+      scheduled_for: new Date().toISOString(),
+      status: "pending",
+      attempts: 0,
+      source_id: input.localPaymentId,
+      source_type: "ASAAS_PAYMENT",
+      class_date: input.dueDate,
+      notification_kind: decision.kind,
+      idempotency_key: decision.idempotencyKey,
+    });
+  if (queueError && queueError.code !== "23505") throw queueError;
 }
 
 type DurableInboxClaim = {

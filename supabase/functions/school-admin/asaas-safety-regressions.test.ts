@@ -485,3 +485,22 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "student and payer customers never enable paid Asaas notifications (school notifies by itself)",
+  permissions: { read: true },
+  async fn() {
+    const files = [
+      "../sync-student-asaas/index.ts",
+      "../student-renewal-billing/upfront.ts",
+      "../generate-student-manual-pix/index.ts",
+    ];
+    for (const file of files) {
+      const code = await source(file);
+      assertStringIncludes(code, "notificationDisabled: true");
+      assert(!code.includes("notificationDisabled: false"), file);
+      assert(!code.includes("notificationDisabled: offerPayload.testMode"), file);
+    }
+  },
+});

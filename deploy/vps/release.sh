@@ -660,6 +660,14 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/notify-payment-due/daily.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
   supabase/functions/notify-payment-due/index.ts \
+  supabase/functions/_shared/payment-notice-core.ts \
+  supabase/functions/_shared/payment-notice-core.test.ts \
+  supabase/functions/_shared/payment-notice.ts \
+  supabase/functions/_shared/payment-notice-static.test.ts \
+  supabase/functions/_shared/payment-email.ts \
+  supabase/functions/_shared/payment-email.test.ts \
+  supabase/functions/process-notification-queue/payment-notice.ts \
+  supabase/functions/process-notification-queue/payment-notice.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/safety.test.ts \
@@ -865,6 +873,9 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/notify-payment-due/daily.test.ts \
+  supabase/functions/_shared/payment-notice-core.test.ts \
+  supabase/functions/_shared/payment-email.test.ts \
+  supabase/functions/process-notification-queue/payment-notice.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-reserve-notify/worker.test.ts \
@@ -930,6 +941,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/process-notification-queue/safety.test.ts \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
+  supabase/functions/_shared/payment-notice-static.test.ts \
   supabase/functions/payment-split-notify/safety.test.ts \
   supabase/functions/dre-report/safety.test.ts \
   supabase/functions/weekly-director-digest/safety.test.ts \
@@ -1613,6 +1625,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261116200000_troca_de_horario_sem_termo_para_aluno_antigo.sql"
   "supabase/migrations/20261116210000_prorata_ate_o_fim_do_mes_anterior.sql"
   "supabase/migrations/20261117200000_troca_de_horario_com_termo_vigente.sql"
+  "supabase/migrations/20261119120000_avisos_da_escola_no_lugar_do_asaas.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

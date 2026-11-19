@@ -1,3 +1,18 @@
+### 19/11/2026 — Avisos de cobrança da escola no lugar dos avisos pagos do Asaas
+
+A escola desligou todas as notificações do Asaas (custavam por e-mail/SMS) e os
+clientes novos nascem com `notificationDisabled: true`. O sistema cobre por
+WhatsApp (instância central) + e-mail (Resend, `_shared/payment-email.ts`):
+nova cobrança e vencimento alterado (webhook → `notification_queue` kinds
+`PAYMENT_CREATED`/`PAYMENT_UPDATED` → `process-notification-queue/payment-notice.ts`),
+lembretes D-10 e D0 com linha digitável/Pix (cron das 09h, `lembretesD10D0`) e
+comprovante do Asaas na confirmação + recibo `PAYMENT_RECEIVED_EMAIL`. Cerca
+durável com nomes datados pelo vencimento (`PAYMENT_UPDATED_WHATSAPP_YYYYMMDD`,
+`PAYMENT_DUE_REMINDER_D10_/D0_YYYYMMDD`), exige fatura PENDING e releitura do
+Asaas; e-mail em `payment_notification_email_attempts`. Cartão não recebe
+"pague pelo link". Vencidas seguem na régua/cobrança diária. Migration
+`20261119120000` (aplicar antes das funções).
+
 ### 16/11/2026 — Número de outra instância do servidor não fala com a IA
 
 O Evolution é compartilhado com a MotoFix. Um vigia do Nacional Hidro mandou

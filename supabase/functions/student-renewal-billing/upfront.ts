@@ -245,6 +245,8 @@ async function ensureCustomer(
     cpfCnpj: s.billingCpf,
     mobilePhone: s.billingPhone,
     externalReference: s.studentId,
+    // Sem avisos pagos do Asaas: a escola notifica pela própria régua.
+    notificationDisabled: true,
     ...(s.billingEmail ? { email: s.billingEmail } : {}),
     ...(s.postalCode ? { postalCode: s.postalCode } : {}),
     ...(s.address ? { address: s.address } : {}),
