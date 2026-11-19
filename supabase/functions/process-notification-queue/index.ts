@@ -10,6 +10,10 @@ import {
   sendWhatsTextToResolvedDestinationDetailed,
 } from "../_shared/evolution-send.ts";
 import { claimOutboundMessage } from "../_shared/student-billing-period-guard.ts";
+import {
+  isPaymentNoticeQueueKind,
+  processPaymentNoticeQueueItem,
+} from "./payment-notice.ts";
 import { resolveEvolutionIntegration } from "../_shared/tenant-integration-broker.ts";
 import {
   loadTenantCentralWhatsAppInstance,
@@ -1190,6 +1194,36 @@ serve(async (req) => {
           id,
           status: marked ? "failed" : "marker_failed",
           error: "tenant_mismatch",
+        });
+        continue;
+      }
+
+      // Avisos que substituem o Asaas (nova cobrança, vencimento alterado,
+      // recibo por e-mail): envio pela cerca financeira própria, nunca pelo
+      // caminho genérico da fila. Ver ./payment-notice.ts.
+      if (isPaymentNoticeQueueKind(notificationKind)) {
+        const notice = await processPaymentNoticeQueueItem(
+          supabaseClient,
+          item,
+        );
+        const ok = notice.queueStatus === "deferred"
+          ? await deferClaim(
+            supabaseClient,
+            item,
+            notice.deferSeconds,
+            notice.reason,
+          )
+          : await markClaim(
+            supabaseClient,
+            item,
+            notice.queueStatus,
+            notice.reason,
+          );
+        persistenceFailed ||= !ok;
+        results.push({
+          id,
+          status: ok ? notice.queueStatus : "marker_failed",
+          error: notice.reason,
         });
         continue;
       }

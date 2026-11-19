@@ -37,6 +37,26 @@ import {
   runDailyCollections,
   schoolDate,
 } from "./daily.ts";
+import {
+  addDaysISO,
+  buildPaymentNoticeMessage,
+  d0ExtrasToRead,
+  dueReminderStage,
+  noticeProviderEligible,
+  payerFirstName,
+  paymentMessagedToday,
+  paymentNoticeEmailKind,
+  paymentNoticeWhatsAppKind,
+  readAsaasNoticePayment,
+  readBoletoDigitableLine,
+  readPixCopyPaste,
+  studentNotificationsEnabled,
+  tenantBrandName,
+} from "../_shared/payment-notice.ts";
+import {
+  deliverPaymentNoticeEmail,
+  resolveVerifiedPaymentEmail,
+} from "../_shared/payment-email.ts";
 
 // Cron diário: avisa o aluno X dias antes do vencimento da mensalidade (WhatsApp).
 // Envia pela instância central da escola (admin do tenant). Idempotente via due_reminder_sent_at.
@@ -223,6 +243,15 @@ serve(async (req) => {
       }
     }
 
+    // Lembretes D-10 e D0 (substituem os avisos pagos do Asaas). Rodam depois
+    // do D-3 para não somar dois WhatsApps de cobrança no mesmo dia.
+    const lembretes = await lembretesD10D0(
+      supabase,
+      todayISO,
+      instCache,
+      integrationCache,
+    );
+
     // Segunda passada: faturas que JÁ venceram (a régua). Roda sempre, mesmo
     // quando não há nada a vencer — são fluxos independentes.
     const regua = await reguaVencidas(
@@ -235,10 +264,15 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         sent,
+        due_reminders: lembretes,
         overdue_sent: regua.enviados,
-        suppressed: suprimidas + regua.suprimidas,
-        failures: failures.length + regua.motivos.length,
-        reasons: [...failures, ...regua.motivos].slice(0, 10),
+        suppressed: suprimidas + regua.suprimidas + lembretes.suprimidas,
+        failures: failures.length + regua.motivos.length +
+          lembretes.motivos.length,
+        reasons: [...failures, ...lembretes.motivos, ...regua.motivos].slice(
+          0,
+          10,
+        ),
         daily: dailyResult,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -849,6 +883,212 @@ async function reguaVencidas(
   }
 
   return { enviados, motivos, suprimidas };
+}
+
+/**
+ * Lembretes D-10 e D0 (19/11/2026): o Asaas avisava 10 dias antes e no dia do
+ * vencimento (com linha digitável); as notificações dele foram desligadas.
+ *
+ * Mesmas travas do D-3 (estado do Asaas no banco, aluno ainda estuda,
+ * destinatário financeiro, cerca durável) + releitura do Asaas antes de
+ * enviar. Idempotência por `automation_sent` (tipo, fatura, vencimento) e pelo
+ * nome do envio com o vencimento: vencimento alterado gera lembrete novo.
+ * WhatsApp e e-mail são independentes.
+ */
+async function lembretesD10D0(
+  supabase: any,
+  todayISO: string,
+  instCache: Record<string, TenantCentralWhatsAppContext | null>,
+  integrationCache: Record<string, ResolvedEvolutionIntegration>,
+) {
+  const resultado = {
+    whatsapp_enviados: 0,
+    emails_enviados: 0,
+    suprimidas: 0,
+    motivos: [] as string[],
+  };
+  const { data: cobrancas, error } = await supabase
+    .from("student_payments")
+    .select(
+      "id, student_id, tenant_id, value, due_date, invoice_url, asaas_payment_id, exclusion_reason, refunded_amount",
+    )
+    .eq("status", "PENDING")
+    .in("due_date", [todayISO, addDaysISO(todayISO, 10)])
+    .limit(200);
+  if (error) {
+    resultado.motivos.push("consulta de lembretes D-10/D0 indisponível");
+    return resultado;
+  }
+  const blocos = await loadCollectionBlocks(
+    supabase,
+    (cobrancas || []).map((c: { id: string }) => c.id),
+  );
+  const asaasCache: Record<string, ResolvedAsaasIntegration> = {};
+  const avisosLigados: Record<string, boolean> = {};
+  for (const c of cobrancas || []) {
+    try {
+      const stage = dueReminderStage(todayISO, c.due_date);
+      if (!stage) continue;
+      const marcador = stage === "D10"
+        ? "PAYMENT_DUE_REMINDER_D10"
+        : "PAYMENT_DUE_REMINDER_D0";
+      const bloqueio = collectionBlockReason(c.id, blocos);
+      if (bloqueio) {
+        resultado.suprimidas++;
+        registrarSupressao(c.id, bloqueio);
+        resultado.motivos.push(`${c.id}: lembrete suprimido (${bloqueio})`);
+        continue;
+      }
+      const { data: jaEnviado, error: markerError } = await supabase.from(
+        "automation_sent",
+      )
+        .select("id").eq("kind", marcador).eq("subject_id", c.id)
+        .eq("ref_date", c.due_date).maybeSingle();
+      if (markerError) {
+        resultado.motivos.push(`${c.id}: marcador indisponível`);
+        continue;
+      }
+      if (jaEnviado) continue;
+      if (
+        !c.asaas_payment_id || c.exclusion_reason ||
+        Number(c.refunded_amount || 0) > 0
+      ) {
+        resultado.motivos.push(`${c.id}: fatura sem vínculo Asaas cobrável`);
+        continue;
+      }
+      if (!(await aindaEstuda(supabase, c.tenant_id, c.student_id))) {
+        resultado.motivos.push(
+          `${c.id}: aluno sem agenda/aula 30d (decisão do diretor)`,
+        );
+        continue;
+      }
+      if (!asaasCache[c.tenant_id]) {
+        asaasCache[c.tenant_id] = await resolveAsaasIntegration(
+          supabase,
+          c.tenant_id,
+          "payment.read",
+        );
+      }
+      const asaas = asaasCache[c.tenant_id];
+      if (asaas.baseUrl.includes("sandbox")) {
+        resultado.motivos.push(`${c.id}: integração Asaas de teste`);
+        continue;
+      }
+      const provider = await readAsaasNoticePayment(asaas, c.asaas_payment_id);
+      const elegivel = noticeProviderEligible(c, provider);
+      if (!elegivel.ok) {
+        resultado.motivos.push(`${c.id}: ${elegivel.reason}`);
+        continue;
+      }
+      // D0: linha digitável e Pix são extras; falha na leitura = só o link.
+      let digitableLine: string | null = null;
+      let pixCopyPaste: string | null = null;
+      if (stage === "D0") {
+        const extras = d0ExtrasToRead(provider.billingType);
+        if (extras.boleto) {
+          digitableLine = await readBoletoDigitableLine(asaas, provider.id);
+        }
+        if (extras.pix) pixCopyPaste = await readPixCopyPaste(asaas, provider.id);
+      }
+
+      const dest = await resolveRecipient(supabase, c, instCache);
+      const brandName = dest.ok
+        ? dest.brandName
+        : await tenantBrandName(supabase, c.tenant_id);
+      const nome = dest.ok
+        ? dest.nome
+        : await payerFirstName(supabase, c.tenant_id, c.student_id);
+      const mensagem = buildPaymentNoticeMessage({
+        stage,
+        name: nome,
+        brandName,
+        value: provider.value,
+        dueDate: provider.dueDate,
+        invoiceUrl: elegivel.invoiceUrl,
+        digitableLine,
+        pixCopyPaste,
+      });
+
+      let whatsappTentado = false;
+      if (!dest.ok) {
+        resultado.motivos.push(`${c.id}: WhatsApp ${dest.motivo}`);
+      } else if (
+        await paymentMessagedToday(supabase, c.tenant_id, c.id, todayISO)
+      ) {
+        resultado.motivos.push(`${c.id}: já avisado hoje (WhatsApp)`);
+      } else {
+        whatsappTentado = true;
+        const integration = await resolveTenantEvolutionIntegration(
+          supabase,
+          c.tenant_id,
+          integrationCache,
+        );
+        const noticeKind = paymentNoticeWhatsAppKind(stage, c.due_date);
+        const delivery = await deliverPaymentNotification(supabase, {
+          tenantId: c.tenant_id,
+          studentId: c.student_id,
+          paymentId: c.id,
+          notificationKind: noticeKind,
+          integration,
+          instance: dest.instance,
+          phone: dest.phone,
+          text: mensagem.whatsapp,
+        });
+        if (delivery.status === "SENT") {
+          await recordAutomationSent(supabase, marcador, c.id, c.due_date);
+          if (delivery.sentNow) resultado.whatsapp_enviados++;
+        } else {
+          resultado.motivos.push(`${c.id}: WhatsApp ${delivery.reason}`);
+        }
+      }
+
+      if (!(c.tenant_id in avisosLigados)) {
+        avisosLigados[c.tenant_id] = await studentNotificationsEnabled(
+          supabase,
+          c.tenant_id,
+        );
+      }
+      if (!avisosLigados[c.tenant_id]) continue;
+      const destinatario = await resolveVerifiedPaymentEmail(
+        supabase,
+        c.student_id,
+        c.tenant_id,
+      );
+      if (!destinatario) {
+        resultado.motivos.push(`${c.id}: e-mail financeiro não verificado`);
+        continue;
+      }
+      // Releitura do Asaas depois do WhatsApp, antes da intenção de e-mail.
+      const atual = whatsappTentado
+        ? await readAsaasNoticePayment(asaas, c.asaas_payment_id)
+        : provider;
+      const aindaElegivel = noticeProviderEligible(c, atual);
+      if (
+        !aindaElegivel.ok || atual.value !== provider.value ||
+        aindaElegivel.invoiceUrl !== elegivel.invoiceUrl
+      ) {
+        resultado.motivos.push(`${c.id}: e-mail suprimido (Asaas mudou)`);
+        continue;
+      }
+      const email = await deliverPaymentNoticeEmail(supabase, {
+        kind: paymentNoticeEmailKind(stage),
+        tenantId: c.tenant_id,
+        paymentId: c.id,
+        studentId: c.student_id,
+        refDate: c.due_date,
+        email: destinatario.email,
+        subject: mensagem.subject,
+        text: mensagem.email,
+      });
+      if (email === "SENT") resultado.emails_enviados++;
+      else if (email !== "ALREADY_ATTEMPTED") {
+        resultado.motivos.push(`${c.id}: e-mail ${email}`);
+      }
+    } catch (e) {
+      resultado.motivos.push(`${c.id}: ${(e as Error).message}`);
+    }
+  }
+  return resultado;
 }
 
 type ThirtyDayCharge = SecondWavePayment & {

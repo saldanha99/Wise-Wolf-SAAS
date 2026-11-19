@@ -244,8 +244,9 @@ serve(async (req) => {
       email: billingEmail,
       mobilePhone: billingPhone,
       externalReference,
-      // Fixtures E2E autorizadas nunca disparam comunicações do Asaas.
-      notificationDisabled: offerPayload.testMode === true,
+      // Fixtures E2E e alunos reais: o Asaas nunca dispara comunicações pagas.
+      // A escola notifica pela própria régua (notify-payment-due + cobrança diária).
+      notificationDisabled: true,
       postalCode: text(profile.postal_code || body.postalCode),
       address: text(profile.address || body.address),
       addressNumber: text(

@@ -47,7 +47,8 @@ Deno.test("payment reminder scope is exact and test accounts are suppressed", ()
   assert(source.includes("resolvePaymentRecipient(student)"));
   assert(source.includes('notificationKind: "PAYMENT_DUE_REMINDER"'));
   assert(source.includes("notificationKind: kind"));
-  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 3);
+  // D-3, régua de vencidas, segunda onda e lembretes D-10/D0.
+  assertEquals((source.match(/await aindaEstuda\(/g) || []).length, 4);
   assert(source.includes("ACTIVE_STUDENT_WINDOW_DAYS = 30"));
   assert(source.includes("stillStudies: (charge) =>"));
 });

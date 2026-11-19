@@ -331,6 +331,8 @@ serve(async (req) => {
       cpfCnpj: billingCpf,
       mobilePhone: billingPhone,
       externalReference: studentId,
+      // Sem avisos pagos do Asaas: a escola notifica pela própria régua.
+      notificationDisabled: true,
       ...(billingEmail ? { email: billingEmail } : {}),
       ...(text(profile.postal_code)
         ? { postalCode: text(profile.postal_code) }
