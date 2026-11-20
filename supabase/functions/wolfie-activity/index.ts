@@ -1,4 +1,6 @@
 /// <reference lib="deno.ns" />
+// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
+import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";

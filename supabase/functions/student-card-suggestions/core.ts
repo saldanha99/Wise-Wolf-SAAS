@@ -1,3 +1,5 @@
+// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
+import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
 // Sugestões da IA para o cartão do aluno — regras puras (sem rede, sem banco).
 //
 // A IA lê uma aula cujo resumo o professor APROVOU e propõe itens para o cartão
