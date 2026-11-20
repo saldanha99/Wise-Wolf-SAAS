@@ -70,6 +70,7 @@ import {
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
+import { classicReplyCaption, wolfieVisualState } from "../lib/wolfieVisualStatus";
 import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
 import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
 import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
@@ -570,6 +571,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     hubModeRequested ? initialHubMessage : "",
   );
   const [error, setError] = useState<string | null>(null);
+  // Aviso informativo (ex.: voz ao vivo sem crédito no provedor). Não é erro da resposta: a prática por texto segue.
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
   const [conversationId, setConversationId] = useState<string | null>(() =>
     hubModeRequested ? crypto.randomUUID() : null
@@ -1181,7 +1184,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setState("IDLE");
       if (reason === "provider_billing_blocked") {
         setAutoSpeakEnabled(false);
-        setError(message);
+        setVoiceNotice(message);
       } else {
         setError(`${message} O Wolfie ativou o modo clássico (você pode falar ou digitar).`);
         window.setTimeout(() => {
@@ -2818,7 +2821,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const startRecording = () => {
     if (realtime.fallbackReason === "provider_billing_blocked") {
       setShowTextInput(true);
-      setError("A conversa por voz está indisponível no momento. Você ainda pode praticar digitando.");
+      setVoiceNotice("A conversa por voz está indisponível no momento. Você ainda pode praticar digitando.");
       return;
     }
     if (hubModeRequested) {
@@ -3639,6 +3642,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           bilingualSegments,
         );
       } else {
+        // Sem voz (desligada pelo aluno ou indisponível), a resposta vai direto para a legenda.
+        const caption = classicReplyCaption(autoSpeakEnabled, chatText ?? "");
+        if (caption) setSubtitle(caption);
         stopIOSKeepAlive();
         setState("IDLE");
       }
@@ -4072,7 +4078,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       scenarioStatus: current.retryRequired ? "awaiting_retry" : "active",
     }));
   }, []);
-  const visualCharacterState = error ? "ERROR" : state;
+  const visualCharacterState = wolfieVisualState(error, state);
   const visualPressureLabel = resolveVisualPressureLabel(difficulty);
   const showSessionScore = turnGuidance.sessionScore !== null &&
     (normalizedStage === "report" || normalizedStage === "completed");
@@ -4500,6 +4506,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             className="rounded-2xl border border-red-300/30 bg-red-950/70 p-4 text-sm font-semibold leading-6 text-red-100"
           >
             {error}
+          </div>
+        )}
+        {voiceNotice && !error && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-300/30 bg-amber-950/60 p-4 text-sm font-semibold leading-6 text-amber-100"
+          >
+            {voiceNotice}
           </div>
         )}
 
@@ -5378,6 +5392,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           </div>
         )}
       </div>
+
+      {/* VOICE NOTICE (informativo, não é erro) */}
+      {voiceNotice && !error && (
+        <div role="status" className="absolute top-32 z-50 rounded-2xl border border-amber-400/40 bg-amber-950/80 px-6 py-3 text-xs font-bold text-amber-100 backdrop-blur-2xl">
+          {voiceNotice}
+        </div>
+      )}
 
       {/* ERROR FEEDBACK */}
       {error && (
