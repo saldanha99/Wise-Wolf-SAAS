@@ -4880,7 +4880,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     );
 
     const shouldShowVisualContext = Boolean(
-      error || meetingVisualState || translation || correction ||
+      error || voiceNotice || meetingVisualState || translation || correction ||
         turnGuidance.strengths.length > 0 ||
         turnGuidance.priorities.length > 0 || turnGuidance.nextAction ||
         turnGuidance.needsExternalVerification || showSessionScore ||
