@@ -70,7 +70,11 @@ import {
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
-import { classicReplyCaption, wolfieVisualState } from "../lib/wolfieVisualStatus";
+import {
+  classicReplyCaption,
+  realtimeFallbackPresentation,
+  wolfieVisualState,
+} from "../lib/wolfieVisualStatus";
 import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
 import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
 import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
@@ -573,6 +577,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [error, setError] = useState<string | null>(null);
   // Aviso informativo (ex.: voz ao vivo sem crédito no provedor). Não é erro da resposta: a prática por texto segue.
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  // Falha de microfone não é falha da resposta: avisa, abre o teclado e segue.
+  const showMicrophoneNotice = useCallback((text: string) => {
+    setShowTextInput(true);
+    setVoiceNotice(`${text} Você pode continuar digitando.`);
+    window.setTimeout(() => {
+      setVoiceNotice((current) => (current?.startsWith(text) ? null : current));
+    }, 6000);
+  }, []);
   const [turnCount, setTurnCount] = useState(0);
   const [conversationId, setConversationId] = useState<string | null>(() =>
     hubModeRequested ? crypto.randomUUID() : null
@@ -1182,14 +1194,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setVoiceTransport("classic");
       setShowTextInput(true);
       setState("IDLE");
-      if (reason === "provider_billing_blocked") {
-        setAutoSpeakEnabled(false);
-        setVoiceNotice(message);
-      } else {
-        setError(`${message} O Wolfie ativou o modo clássico (você pode falar ou digitar).`);
+      const shown = realtimeFallbackPresentation(reason, message);
+      if (shown.disableAutoSpeak) setAutoSpeakEnabled(false);
+      if (shown.kind === "error") {
+        setError(shown.text);
         window.setTimeout(() => {
           if (isMountedRef.current) setError(null);
         }, 6000);
+        return;
+      }
+      setVoiceNotice(shown.text);
+      if (!shown.persistent) {
+        window.setTimeout(() => {
+          if (isMountedRef.current) {
+            setVoiceNotice((current) => (current === shown.text ? null : current));
+          }
+        }, 8000);
       }
     },
     [detachTransportSession, resetRealtimeGate],
@@ -2923,8 +2943,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               stopIOSKeepAlive();
               setState("IDLE");
               setSubtitle("");
-              setError("O microfone falhou. Tente novamente.");
-              setTimeout(() => setError(null), 4000);
+              showMicrophoneNotice("O microfone falhou.");
             };
             recorder.onstop = () => {
               if (recordingMaxDurationRef.current) {
@@ -3032,11 +3051,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               "not-allowed": "Permissão do microfone negada",
               "network": "Erro de rede no reconhecimento de voz",
             };
-            setError(
-              messagesByError[event.error] ??
-                "O microfone falhou. Tente novamente.",
-            );
-            setTimeout(() => setError(null), 4000);
+            const micText = messagesByError[event.error] ??
+              "O microfone falhou.";
+            if (event.error === "no-speech") {
+              setError(micText);
+              setTimeout(() => setError(null), 4000);
+            } else {
+              showMicrophoneNotice(`${micText}.`);
+            }
           }
           setState("IDLE");
           setSubtitle("");
@@ -3081,8 +3103,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           recognitionRef.current = null;
           stopIOSKeepAlive();
           setState("IDLE");
-          setError("Não foi possível iniciar o microfone. Tente novamente.");
-          setTimeout(() => setError(null), 4000);
+          showMicrophoneNotice("Não foi possível iniciar o microfone.");
         }
       })();
     }, 400);

@@ -67,7 +67,11 @@ import {
   WolfieDiscoveryHome,
 } from "./WolfieDiscoveryHome";
 import { WolfieQuickStartCard } from "./WolfieQuickStartCard";
-import { buildQuickStartPlan, type WolfieAssignment } from "./quickStart";
+import {
+  buildQuickStartPlan,
+  quickStartRoute,
+  type WolfieAssignment,
+} from "./quickStart";
 import { supabase } from "../../../lib/supabase";
 
 const WolfieConversationTutor = React.lazy(
@@ -763,6 +767,19 @@ export function WolfiePracticeFlow({
     setView("conversation_setup");
   };
 
+  // Início em um toque: conversa abre direto o tutor (wolfie-brain); o fluxo
+  // de atividades não gera "conversation".
+  const startQuickPractice = (nextSelection: WolfieSelection) => {
+    if (quickStartRoute(nextSelection) === "activity") {
+      void startActivity(nextSelection);
+      return;
+    }
+    setSelectedSubject(nextSelection.subject);
+    setSelectedLevel(nextSelection.level);
+    setSelectedSector(nextSelection.sector ?? "");
+    setConversationBrief(buildConversationBrief(nextSelection));
+  };
+
   const beginSessionConversation = (session: WolfieActivitySession) => {
     const experience = session.activity_content.experience;
     const base = buildConversationBrief({
@@ -1137,7 +1154,7 @@ export function WolfiePracticeFlow({
                         p_status: "STARTED",
                       });
                     }
-                    void startActivity(quickStartPlan.selection);
+                    startQuickPractice(quickStartPlan.selection);
                   }}
                   onBrowse={() =>
                     document

@@ -22,3 +22,30 @@ export function classicReplyCaption(autoSpeakEnabled: boolean, replyText: string
   if (!text || autoSpeakEnabled) return null;
   return text;
 }
+
+/**
+ * How a live-voice fallback is shown. Every fallback hands the conversation to the classic mode, where the learner
+ * can still type (and, when the microphone works, speak), so the answer is not lost: it is a notice, not an error.
+ * Only an expired sign-in is a real error, because the classic mode would fail too.
+ */
+export type RealtimeFallbackPresentation = {
+  kind: 'notice' | 'error';
+  text: string;
+  /** Voice replies stay off only when the voice provider itself is blocked. */
+  disableAutoSpeak: boolean;
+  /** Billing stays on screen; other notices fade after a few seconds. */
+  persistent: boolean;
+};
+
+export function realtimeFallbackPresentation(reason: string, message: string): RealtimeFallbackPresentation {
+  if (reason === 'authentication_required') {
+    return { kind: 'error', text: message, disableAutoSpeak: false, persistent: false };
+  }
+  if (reason === 'provider_billing_blocked') {
+    return { kind: 'notice', text: message, disableAutoSpeak: true, persistent: true };
+  }
+  const text = reason === 'microphone_unavailable'
+    ? `${message} Você pode continuar digitando.`
+    : `${message} O Wolfie seguiu no modo clássico: você pode digitar ou segurar para falar.`;
+  return { kind: 'notice', text, disableAutoSpeak: false, persistent: false };
+}

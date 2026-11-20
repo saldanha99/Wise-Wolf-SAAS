@@ -106,7 +106,11 @@ export function buildQuickStartPlan(
       selection: {
         subject: FALLBACK_SUBJECT,
         level: previous?.cefr_level ?? level,
-        sector: assignment.topic,
+        experienceTitle: assignment.topic.trim().slice(0, 120),
+        experienceContext: [
+          `Tarefa do professor: ${assignment.topic.trim()}.`,
+          assignment.note?.trim() ? `Orientação: ${assignment.note.trim()}.` : "",
+        ].filter(Boolean).join(" ").slice(0, 1_200),
       },
       label: "Fazer a tarefa",
       reason: assignment.teacher_name
@@ -141,6 +145,18 @@ export function buildQuickStartPlan(
       : "Conversa livre. Ajustamos o nível conforme você fala.",
     levelKnown: known,
   };
+}
+
+/**
+ * Para onde o início rápido leva. "conversation" não é gerável pelo fluxo de
+ * atividades (o wolfie-activity recusa com CONVERSATION_USES_WOLFIE_BRAIN):
+ * conversa abre o tutor de conversa (wolfie-brain); o resto gera atividade.
+ */
+export function quickStartRoute(
+  selection: WolfieSelection,
+): "conversation" | "activity" {
+  const subject: string = selection.subject;
+  return subject === "conversation" ? "conversation" : "activity";
 }
 
 /**

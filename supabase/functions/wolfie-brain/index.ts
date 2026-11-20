@@ -68,6 +68,7 @@ import {
   resolveRealtimeAnalysisCommitDisposition,
   shouldRecordConfirmedRealtimeFacts,
 } from "./realtime-post-turn.ts";
+import { canReuseSessionForRealtime } from "./realtime-transport.ts";
 import { integrateClassicGlobalMeetingTurn } from "./classic-global-meeting.ts";
 
 const corsHeaders = {
@@ -5293,7 +5294,7 @@ serve(async (req) => {
         const { data: ownedSession, error: ownedSessionError } = await supabase
           .from("wolfie_sessions")
           .select(
-            "id,current_stage,scenario_status,retry_count,finished_at,classic_handoff_at",
+            "id,current_stage,scenario_status,retry_count,finished_at,classic_handoff_at,realtime_first_client_turn_id,classic_first_client_turn_id",
           )
           .eq("id", input.conversationId)
           .eq("student_id", profile.id)
@@ -5309,7 +5310,11 @@ serve(async (req) => {
         if (!ownedSession) {
           throw new HttpError(404, "CONVERSATION_NOT_FOUND");
         }
-        return preparedSessionResponse(ownedSession, true);
+        // Conversa clássica não aceita turnos ao vivo (o banco recusa): a voz
+        // ao vivo abre uma conversa nova abaixo, e a clássica fica no histórico.
+        if (canReuseSessionForRealtime(ownedSession)) {
+          return preparedSessionResponse(ownedSession, true);
+        }
       }
 
       // A client-generated UUID is persisted under the existing unique
