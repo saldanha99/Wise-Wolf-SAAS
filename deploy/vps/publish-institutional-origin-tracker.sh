@@ -21,7 +21,8 @@ assert not stage.exists()
 stage.mkdir(mode=0o700)
 shutil.copytree(base/'src/dist',stage/'site',symlinks=True)
 shutil.copy2(base/'nginx.conf',stage/'nginx.conf');shutil.copy2(base/'docker-compose.yml',stage/'docker-compose.yml')
-script='<script data-ww-origin="1" src="https://system.wisewolflanguage.com.br/school-origin-tracking.js?v='+checksum[:12]+'"></script>'
+# defer: não bloqueia a primeira pintura; como fica logo após <head>, ainda executa antes do bundle (scripts defer/module rodam em ordem).
+script='<script data-ww-origin="1" defer src="https://system.wisewolflanguage.com.br/school-origin-tracking.js?v='+checksum[:12]+'"></script>'
 files=list((stage/'site').rglob('*.html'));assert len(files)>=3000
 before={};changed=0
 for p in files:

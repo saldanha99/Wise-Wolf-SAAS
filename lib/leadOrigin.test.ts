@@ -23,4 +23,26 @@ describe('first-party lead origin capture',()=>{
   await window.fetch('https://api.wisewolflanguage.com.br/rest/v1/profiles',{method:'POST',body:'{"name":"Fixture"}'});
   expect((calls[1][1] as {body:string}).body).toBe('{"name":"Fixture"}');
  });
+ const captureFrom=async(landing:string,current:string)=>{
+  const storage=new Map<string,string>();const calls:unknown[][]=[];
+  const location={hostname:'wisewolflanguage.com.br',origin:'https://wisewolflanguage.com.br',href:landing};
+  const window:{fetch:(...args:unknown[])=>Promise<unknown>}={fetch:async(...args)=>{calls.push(args);return {};}};
+  const context={window,location,document:{referrer:''},URL,sessionStorage:{getItem:(key:string)=>storage.get(key),setItem:(key:string,value:string)=>storage.set(key,value)}};
+  runInNewContext(readFileSync(join(__dirname,'../public/school-origin-tracking.js'),'utf8'),context);
+  location.href=current;
+  await window.fetch('https://api.wisewolflanguage.com.br/rest/v1/crm_leads',{method:'POST',body:JSON.stringify({name:'Fixture',notes:''})});
+  const notes=JSON.parse((calls[0][1] as {body:string}).body).notes as string;
+  return JSON.parse(notes.slice(notes.indexOf('Origem: ')+8)) as Record<string,string>;
+ };
+ it('records the real landing page for every public route, such as /precos and /aula-experimental-gratis',async()=>{
+  const origin=await captureFrom('https://wisewolflanguage.com.br/precos?utm_source=ig&utm_campaign=precos','https://wisewolflanguage.com.br/aula-experimental-gratis?plano=12m&aulas=3');
+  expect(origin.first_landing_path).toBe('/precos');expect(origin.landing_path).toBe('/aula-experimental-gratis');expect(origin.last_landing_path).toBe('/aula-experimental-gratis');expect(origin.utm_source).toBe('ig');
+  expect((await captureFrom('https://wisewolflanguage.com.br/matricule-se','https://wisewolflanguage.com.br/teste-nivel')).first_landing_path).toBe('/matricule-se');
+ });
+ it('falls back to "/" for paths that could carry private data',async()=>{
+  for(const path of ['/convite/abc','/reset-senha','/login','/x/0123456789abcdef0123','/caminho%20com%20espaco']){
+   const origin=await captureFrom(`https://wisewolflanguage.com.br${path}`,'https://wisewolflanguage.com.br/');
+   expect(origin.first_landing_path).toBe('/');expect(origin.landing_path).toBe('/');
+  }
+ });
 });

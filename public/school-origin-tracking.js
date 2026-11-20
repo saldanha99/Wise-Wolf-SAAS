@@ -4,7 +4,9 @@
   'use strict';
   if (!/(^|\.)wisewolflanguage\.com\.br$/.test(location.hostname) || /^(system|app|api|hub|wolfie)\./.test(location.hostname)) return;
   var keys = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'];
-  var cleanPath = function (value) { try { var p = new URL(value,location.origin).pathname; return /^\/(?:blog|glossario|ingles|aulas|preparacao|sobre|lp|business|conversacao|curso|programas|escola|toefl|ielts|entrevista|viagem|infantil|crianca|adolescente|executivo|empresas|$)/i.test(p) && !/(token|convite|senha|auth|matricula|confirmar)/i.test(p) ? p.slice(0,240) : '/'; } catch (_) { return '/'; } };
+  // Any public slug path of the institutional site (/precos, /aula-experimental-gratis, /blog/x...).
+  // Paths with characters outside slugs or with account/token words fall back to "/" so nothing private is stored.
+  var cleanPath = function (value) { try { var p = new URL(value,location.origin).pathname; return p.length <= 240 && /^\/[a-z0-9\-\/]*$/i.test(p) && !/(token|convite|senha|auth|matricula|confirmar|reset|login|[0-9a-f]{16,})/i.test(p) ? p : '/'; } catch (_) { return '/'; } };
   var observed = function () {
     var u = new URL(location.href), result = { landing_path: cleanPath(u.href), last_landing_path: cleanPath(u.href) };
     keys.forEach(function (key) { var v = u.searchParams.get(key); if (v) result[key] = v.replace(/[\r\n]/g,' ').slice(0,180); });
