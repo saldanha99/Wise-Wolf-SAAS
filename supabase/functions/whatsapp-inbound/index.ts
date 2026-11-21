@@ -135,7 +135,10 @@ import {
   rescheduleMoveConfirmationMessage,
   type RescheduleProposalItem,
 } from "./teacher-reschedule-move.ts";
-import { loadTenantNoticeDestination } from "../_shared/tenant-communication.ts";
+import {
+  isFinanceWhatsAppInstance,
+  loadTenantNoticeDestination,
+} from "../_shared/tenant-communication.ts";
 import {
   handleRenewalManagementCommand,
   handleRenewalStudentMessage,
@@ -9684,6 +9687,16 @@ serve(async (req) => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    // Número só do financeiro (FINANCE_WHATSAPP_INSTANCE): a resposta do
+    // responsável fica na caixa de entrada da direção e nenhum agente de IA
+    // responde nem lê eco (fromMe) como assumir o contato. Env vazia = desligado.
+    if (isFinanceWhatsAppInstance(instance)) {
+      await markWebhookProcessed(sb, webhookLedgerId);
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "finance_inbox_only" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
     const cfg: any = {
       ...inboundTenant.aiTeamConfig,

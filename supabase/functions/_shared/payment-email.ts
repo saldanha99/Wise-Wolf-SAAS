@@ -32,6 +32,88 @@ export type PaymentEmailResult =
   | "CLAIM_FAILED"
   | "RESULT_NOT_PERSISTED";
 
+/** Tenant canônico da Wise Wolf: só ele recebe o logo da Wise Wolf no e-mail. */
+export const WISE_WOLF_TENANT_ID = "school-wise-wolf";
+/**
+ * `public/assets/brand/wise-wolf-logo.png`, servido pelo site da escola
+ * (conferido em 21/11/2026: 200 image/png). Sobrescrevível por
+ * `PAYMENT_EMAIL_LOGO_URL` (somente https).
+ */
+export const DEFAULT_PAYMENT_EMAIL_LOGO_URL =
+  "https://system.wisewolflanguage.com.br/assets/brand/wise-wolf-logo.png";
+
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/**
+ * Logo do cabeçalho. Outras escolas não recebem a marca da Wise Wolf: sem
+ * logo próprio, o cabeçalho mostra só o nome da escola.
+ */
+export function paymentEmailLogoUrl(
+  tenantId: string,
+  getEnv: (key: string) => string | undefined = (key) => Deno.env.get(key),
+): string | null {
+  if (tenantId !== WISE_WOLF_TENANT_ID) return null;
+  const candidate = getEnv("PAYMENT_EMAIL_LOGO_URL")?.trim() ||
+    DEFAULT_PAYMENT_EMAIL_LOGO_URL;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Versão HTML do mesmo texto do e-mail: cabeçalho com a marca e os parágrafos
+ * do texto, tudo escapado. O `text` continua indo como parte alternativa.
+ * Só links do Asaas viram clicáveis (o texto já é escapado antes).
+ */
+export function renderPaymentEmailHtml(input: {
+  text: string;
+  brandName: string;
+  logoUrl: string | null;
+}): string {
+  const brand = escapeHtml(input.brandName.replace(/[\r\n]/g, " ").trim());
+  const header = input.logoUrl
+    ? `<img src="${
+      escapeHtml(input.logoUrl)
+    }" alt="${brand}" width="160" style="display:block;border:0;max-width:160px;height:auto">`
+    : `<strong style="font-size:20px;color:#1F2937">${brand}</strong>`;
+  const paragraphs = input.text.replace(/\r\n?/g, "\n").split(/\n{2,}/)
+    .map((block) => block.trim()).filter(Boolean)
+    .map((block) =>
+      `<p style="margin:0 0 16px">${
+        escapeHtml(block)
+          .replace(
+            /https:\/\/(?:www\.)?asaas\.com\/[^\s<]*/g,
+            (url) => `<a href="${url}" style="color:#0F766E">${url}</a>`,
+          )
+          .replaceAll("\n", "<br>")
+      }</p>`
+    ).join("\n");
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F3F4F6">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border-radius:8px">
+<tr><td style="padding:24px 24px 8px">${header}</td></tr>
+<tr><td style="padding:16px 24px 8px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#111827;word-break:break-word">
+${paragraphs}
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
 export function paymentEmailIdempotencyKey(input: {
   kind: string;
   tenantId: string;
@@ -96,6 +178,7 @@ export async function deliverPaymentNoticeEmail(
     email: string;
     subject: string;
     text: string;
+    brandName: string;
   },
   transport: typeof fetch = fetch,
   getEnv: (key: string) => string | undefined = (key) => Deno.env.get(key),
@@ -141,6 +224,11 @@ export async function deliverPaymentNoticeEmail(
         to: [input.email],
         subject: input.subject.replace(/[\r\n]/g, " ").slice(0, 200),
         text: input.text,
+        html: renderPaymentEmailHtml({
+          text: input.text,
+          brandName: input.brandName,
+          logoUrl: paymentEmailLogoUrl(input.tenantId, getEnv),
+        }),
       }),
       signal: AbortSignal.timeout(15_000),
     });

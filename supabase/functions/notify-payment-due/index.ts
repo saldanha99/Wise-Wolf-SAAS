@@ -16,6 +16,7 @@ import {
 } from "../_shared/student-billing-period-guard.ts";
 import {
   loadTenantCentralWhatsAppContext,
+  resolveFinanceWhatsAppInstance,
   type TenantCentralWhatsAppContext,
 } from "../_shared/tenant-communication.ts";
 import {
@@ -55,6 +56,8 @@ import {
 } from "../_shared/payment-notice.ts";
 import {
   deliverPaymentNoticeEmail,
+  paymentEmailLogoUrl,
+  renderPaymentEmailHtml,
   resolveVerifiedPaymentEmail,
 } from "../_shared/payment-email.ts";
 
@@ -615,13 +618,24 @@ async function resolveRecipient(
 
   const tk = charge.tenant_id || "_";
   if (!(tk in instCache)) {
-    instCache[tk] = charge.tenant_id
+    const central = charge.tenant_id
       ? await loadTenantCentralWhatsAppContext(
         supabase,
         charge.tenant_id,
         "student",
       )
       : null;
+    // Avisos de cobrança saem pela instância financeira, quando configurada.
+    instCache[tk] = central && charge.tenant_id
+      ? {
+        ...central,
+        instanceName: await resolveFinanceWhatsAppInstance(
+          supabase,
+          charge.tenant_id,
+          central.instanceName,
+        ),
+      }
+      : central;
   }
   const context = instCache[tk];
   if (!context) {
@@ -988,7 +1002,9 @@ async function lembretesD10D0(
         if (extras.boleto) {
           digitableLine = await readBoletoDigitableLine(asaas, provider.id);
         }
-        if (extras.pix) pixCopyPaste = await readPixCopyPaste(asaas, provider.id);
+        if (extras.pix) {
+          pixCopyPaste = await readPixCopyPaste(asaas, provider.id);
+        }
       }
 
       const dest = await resolveRecipient(supabase, c, instCache);
@@ -1079,6 +1095,7 @@ async function lembretesD10D0(
         email: destinatario.email,
         subject: mensagem.subject,
         text: mensagem.email,
+        brandName,
       });
       if (email === "SENT") resultado.emails_enviados++;
       else if (email !== "ALREADY_ATTEMPTED") {
@@ -1262,6 +1279,11 @@ async function deliverThirtyDayEmail(
           input.brandName.replace(/[\r\n]/g, " ")
         }`,
         text: body,
+        html: renderPaymentEmailHtml({
+          text: body,
+          brandName: input.brandName,
+          logoUrl: paymentEmailLogoUrl(charge.tenant_id),
+        }),
       }),
       signal: AbortSignal.timeout(15_000),
     });

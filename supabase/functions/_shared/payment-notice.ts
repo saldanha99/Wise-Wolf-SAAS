@@ -17,7 +17,10 @@ import {
   finishOutboundMessage,
   markOutboundMessageSubmittingDecision,
 } from "./student-billing-period-guard.ts";
-import { loadTenantCentralWhatsAppContext } from "./tenant-communication.ts";
+import {
+  loadTenantCentralWhatsAppContext,
+  resolveFinanceWhatsAppInstance,
+} from "./tenant-communication.ts";
 import {
   type AsaasNoticePayment,
   ISO_DATE,
@@ -223,7 +226,11 @@ export async function resolvePaymentNoticeRecipient(
   return {
     ok: true,
     phone: recipient.phone,
-    instance: context.instanceName,
+    instance: await resolveFinanceWhatsAppInstance(
+      supabase,
+      tenantId,
+      context.instanceName,
+    ),
     nome: recipient.firstName,
     brandName: context.identity.brandName,
     motivo: "",

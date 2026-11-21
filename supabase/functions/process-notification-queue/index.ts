@@ -19,6 +19,7 @@ import {
   loadTenantCentralWhatsAppInstance,
   loadTenantWhatsAppInstance,
   loadTenantWhatsAppRoute,
+  resolveFinanceWhatsAppInstance,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
@@ -1561,6 +1562,27 @@ serve(async (req) => {
           route.audience,
           centralCache,
         );
+      }
+      // Confirmação de pagamento é aviso financeiro: sai pela instância
+      // financeira quando configurada (env vazia = a mesma de antes).
+      if (instanceId && isPaymentConfirmation && tenant_id) {
+        try {
+          instanceId = await resolveFinanceWhatsAppInstance(
+            supabaseClient,
+            tenant_id,
+            instanceId,
+          );
+        } catch {
+          const marked = await markClaim(
+            supabaseClient,
+            item,
+            "pending",
+            "finance_whatsapp_route_unavailable",
+          );
+          persistenceFailed ||= !marked;
+          results.push({ id, status: marked ? "pending" : "marker_failed" });
+          continue;
+        }
       }
       if (!instanceId) {
         const marked = await markClaim(

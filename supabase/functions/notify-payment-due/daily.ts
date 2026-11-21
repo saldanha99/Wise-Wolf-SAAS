@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  paymentEmailLogoUrl,
+  renderPaymentEmailHtml,
+} from "../_shared/payment-email.ts";
 
 export type DailyCharge = {
   id: string;
@@ -199,6 +203,11 @@ export async function deliverDailyEmail(
         to: [email],
         subject: `Pagamento pendente — ${brand.replace(/[\r\n]/g, " ")}`,
         text: body,
+        html: renderPaymentEmailHtml({
+          text: body,
+          brandName: brand,
+          logoUrl: paymentEmailLogoUrl(charge.tenant_id, getEnv),
+        }),
       }),
       signal: AbortSignal.timeout(15_000),
     });

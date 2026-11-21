@@ -369,6 +369,64 @@ async function loadActiveTenantAdminUserIds(
   ];
 }
 
+function readEnv(key: string): string | undefined {
+  try {
+    return Deno.env.get(key);
+  } catch {
+    // Sem permissão de env (testes): comporta-se como variável vazia.
+    return undefined;
+  }
+}
+
+/**
+ * Instância dedicada aos avisos financeiros (`FINANCE_WHATSAPP_INSTANCE`).
+ * Vazia ou inválida = "" e tudo segue pela instância central, como antes.
+ */
+export function financeWhatsAppInstanceName(
+  getEnv: (key: string) => string | undefined = readEnv,
+): string {
+  const raw = getEnv("FINANCE_WHATSAPP_INSTANCE")?.trim() || "";
+  return /^[A-Za-z0-9._-]{3,120}$/.test(raw) ? raw : "";
+}
+
+export function isFinanceWhatsAppInstance(
+  instanceName: unknown,
+  getEnv: (key: string) => string | undefined = readEnv,
+): boolean {
+  const finance = financeWhatsAppInstanceName(getEnv);
+  return Boolean(finance) && typeof instanceName === "string" &&
+    instanceName.trim().toLowerCase() === finance.toLowerCase();
+}
+
+/**
+ * Instância de um aviso financeiro (cobrança, lembrete, nova cobrança,
+ * confirmação). Usa a instância financeira só quando ela está cadastrada e
+ * conectada NESTA escola; senão (env vazia, outra escola, desconectada) volta
+ * à central. A cerca durável e o "já avisado hoje" são por fatura e tipo,
+ * nunca por instância: trocar de instância não libera um segundo envio.
+ */
+export async function resolveFinanceWhatsAppInstance(
+  admin: any,
+  tenantId: string,
+  centralInstance: string,
+  getEnv: (key: string) => string | undefined = readEnv,
+): Promise<string> {
+  const finance = financeWhatsAppInstanceName(getEnv);
+  if (!finance) return centralInstance;
+  const { data, error } = await admin
+    .from("whatsapp_instances")
+    .select("instance_name")
+    .eq("tenant_id", tenantId)
+    .eq("instance_name", finance)
+    .in("status", ["connected", "open"])
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error("finance_whatsapp_route_lookup_failed");
+  return safeCommunicationText(data?.instance_name, 120) === finance
+    ? finance
+    : centralInstance;
+}
+
 async function loadTenantAdminWhatsAppInstance(
   admin: any,
   tenantId: string,
@@ -382,6 +440,10 @@ async function loadTenantAdminWhatsAppInstance(
     .eq("tenant_id", tenantId)
     .in("user_id", adminUserIds)
     .in("status", ["connected", "open"]);
+  // A instância financeira nunca vira a "central": com o número do diretor
+  // atualizado depois, o order by updated_at a escolheria para tudo.
+  const finance = financeWhatsAppInstanceName();
+  if (finance) query = query.neq("instance_name", finance);
   if (options.requireDeliveryReceipts === true) {
     query = query
       .eq("inbox_enabled", true)

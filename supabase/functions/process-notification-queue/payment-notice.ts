@@ -279,6 +279,7 @@ async function processChargeNotice(
           email: to.email,
           subject: message.subject,
           text: message.email,
+          brandName,
         });
       }
     }
@@ -324,9 +325,10 @@ async function processReceiptEmail(
     provider.deleted ||
     !["RECEIVED", "RECEIVED_IN_CASH"].includes(provider.status)
   ) return outcome("skipped", "payment_receipt_provider_unsettled");
+  const brandName = await tenantBrandName(supabase, input.tenantId);
   const receipt = buildPaymentReceiptEmail({
     name: await payerFirstName(supabase, input.tenantId, input.studentId),
-    brandName: await tenantBrandName(supabase, input.tenantId),
+    brandName,
     value: provider.value,
     dueDate: local.due_date,
     receiptUrl: provider.transactionReceiptUrl,
@@ -340,6 +342,7 @@ async function processReceiptEmail(
     email: to.email,
     subject: receipt.subject,
     text: receipt.text,
+    brandName,
   });
   return paymentNoticeQueueOutcome(null, "email_only", email);
 }

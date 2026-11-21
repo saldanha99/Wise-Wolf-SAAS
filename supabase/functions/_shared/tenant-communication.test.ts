@@ -2,9 +2,12 @@
 
 import {
   escapePostgresLikePattern,
+  financeWhatsAppInstanceName,
+  isFinanceWhatsAppInstance,
   loadTenantCentralWhatsAppInstance,
   loadTenantWhatsAppInstance,
   loadTenantWhatsAppRoute,
+  resolveFinanceWhatsAppInstance,
   resolveOwnedTenantWhatsAppDestination,
   resolveTenantCommunicationIdentity,
   resolveTenantConfiguredWhatsAppDestination,
@@ -650,5 +653,104 @@ Deno.test("audience switches suppress student and teacher notifications independ
   assert(
     await loadTenantWhatsAppRoute(studentAdmin, "school-a", "teacher") !== null,
     "enabled teacher audience was suppressed",
+  );
+});
+
+function financeRouteAdmin(
+  row: { instance_name: string } | null,
+  calls: QueryCall[],
+  error: unknown = null,
+) {
+  const chain = {
+    select: (...args: unknown[]) => record("select", args),
+    eq: (...args: unknown[]) => record("eq", args),
+    in: (...args: unknown[]) => record("in", args),
+    limit: (...args: unknown[]) => record("limit", args),
+    maybeSingle: () => Promise.resolve({ data: row, error }),
+  };
+  function record(method: string, args: unknown[]) {
+    calls.push({ table: "whatsapp_instances", method, args });
+    return chain;
+  }
+  return { from: () => chain };
+}
+
+const financeEnv = (value: string | undefined) => (key: string) =>
+  key === "FINANCE_WHATSAPP_INSTANCE" ? value : undefined;
+
+Deno.test("empty FINANCE_WHATSAPP_INSTANCE keeps the central instance without any lookup", async () => {
+  for (const value of [undefined, "", "   ", "bad name%"]) {
+    const calls: QueryCall[] = [];
+    assert(
+      financeWhatsAppInstanceName(financeEnv(value)) === "",
+      "invalid env must disable the finance route",
+    );
+    const instance = await resolveFinanceWhatsAppInstance(
+      financeRouteAdmin({ instance_name: "financeiro-ww" }, calls),
+      "school-a",
+      "school-a-central",
+      financeEnv(value),
+    );
+    assert(instance === "school-a-central", "empty env must stay central");
+    assert(calls.length === 0, "empty env must not query instances");
+    assert(
+      !isFinanceWhatsAppInstance("school-a-central", financeEnv(value)),
+      "nothing is a finance instance with empty env",
+    );
+  }
+});
+
+Deno.test("configured finance instance is used only when connected in this tenant", async () => {
+  const calls: QueryCall[] = [];
+  const env = financeEnv(" financeiro-ww ");
+  assert(
+    await resolveFinanceWhatsAppInstance(
+      financeRouteAdmin({ instance_name: "financeiro-ww" }, calls),
+      "school-a",
+      "school-a-central",
+      env,
+    ) === "financeiro-ww",
+    "connected finance instance of this tenant must be used",
+  );
+  assert(
+    calls.some((call) =>
+      call.method === "eq" && call.args[0] === "tenant_id" &&
+      call.args[1] === "school-a"
+    ),
+    "lookup must be scoped to the tenant",
+  );
+  assert(
+    calls.some((call) =>
+      call.method === "in" && call.args[0] === "status" &&
+      JSON.stringify(call.args[1]) === JSON.stringify(["connected", "open"])
+    ),
+    "lookup must require a connected instance",
+  );
+  assert(
+    await resolveFinanceWhatsAppInstance(
+      financeRouteAdmin(null, []),
+      "other-school",
+      "other-central",
+      env,
+    ) === "other-central",
+    "another school never borrows the finance instance",
+  );
+  let failed = false;
+  await resolveFinanceWhatsAppInstance(
+    financeRouteAdmin(null, [], { message: "fixture" }),
+    "school-a",
+    "school-a-central",
+    env,
+  ).catch(() => {
+    failed = true;
+  });
+  assert(failed, "lookup failure must fail closed instead of guessing");
+  assert(
+    isFinanceWhatsAppInstance("FINANCEIRO-WW", env),
+    "inbound match is case-insensitive",
+  );
+  assert(
+    !isFinanceWhatsAppInstance("school-a-central", env),
+    "central instance is not the finance instance",
   );
 });
