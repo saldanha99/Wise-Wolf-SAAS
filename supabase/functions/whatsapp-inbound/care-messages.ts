@@ -53,10 +53,9 @@ export function slotsSentence(slots: CareSlot[]): string {
 }
 
 /**
- * Faltou: mensagem curta e única (decisão da direção, 12/11/2026). Sem cota de
- * reposições, sem horários livres e sem resumo de faltas — quem combina a
- * reposição é o próprio professor. `quota` e `freeSlots` ficam na assinatura
- * só por compatibilidade com quem chama.
+ * Faltou: só um lembrete (decisão da direção, 21/11/2026). A reposição é um ACORDO entre aluno e
+ * professor: a escola não oferece, não sugere, não lista e não marca horário, nem manda link.
+ * `quota` e `freeSlots` ficam na assinatura só por compatibilidade; não entram no texto.
  */
 export function absenceFollowupMessage(input: {
   studentName: string | null;
@@ -66,9 +65,59 @@ export function absenceFollowupMessage(input: {
   freeSlots?: CareSlot[];
 }): string {
   const lead = firstName(input.studentName);
-  return `Oi${
-    lead ? ", " + lead : ""
-  }! Não conseguiu comparecer? Combine sua reposição diretamente com seu professor.`;
+  const [y, m, d] = String(input.classDate || "").split("-");
+  const aula = y && m && d ? `na aula de ${d}/${m}` : "na sua aula";
+  return `Oi${lead ? ", " + lead : ""}! Sentimos sua falta ${aula}. Lembre de combinar a reposição dessa aula diretamente com ${
+    withTeacher(input.teacherName)
+  } antes do fim do mês 😉`;
+}
+
+/** "a teacher Debora" ou, sem professor conhecido, "seu professor". */
+export function withTeacher(teacherName: string | null | undefined): string {
+  const first = firstName(teacherName);
+  return first ? `a teacher ${first}` : "seu professor";
+}
+
+/**
+ * Resposta fixa (sem IA) quando o aluno fala de reposição, remarcação ou propõe dia/horário:
+ * a escola não marca nem sugere horário de reposição.
+ */
+export function makeupWithTeacherReply(
+  studentName: string | null,
+  teacherName: string | null,
+): string {
+  const lead = firstName(studentName);
+  return `${lead ? lead + ", a" : "A"} reposição é combinada diretamente com ${
+    withTeacher(teacherName)
+  }, antes do fim do mês 😉 É só falar com ela(e) e escolher juntos o melhor horário.`;
+}
+
+const MAKEUP_TOPIC =
+  /\b(repo[rs]|reposi[cç][aã]o|reposi[cç][oõ]es|remarc|reagend|desmarc|outro (dia|hor[aá]rio)|nova data|marcar (a |uma )?aula|aula extra|encaixe?)\w*/i;
+const WEEKDAY = /\b(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)(-feira)?\b/i;
+const TIME_OR_DATE = /\b([01]?\d|2[0-3])\s?(h|hs|hrs|:[0-5]\d)\b|\b\d{1,2}\/\d{1,2}\b|\bamanh[aã]\b/i;
+
+/** O aluno trouxe reposição, remarcação ou um dia/horário: a resposta é fixa. */
+export function isMakeupOrSlotMessage(text: string): boolean {
+  const value = String(text || "");
+  return MAKEUP_TOPIC.test(value) || (TIME_OR_DATE.test(value) && /\b(pode|posso|consigo|d[aá]|fica|serve|quero|marca|vaga|livre|dispon)/i.test(value)) ||
+    (WEEKDAY.test(value) && TIME_OR_DATE.test(value));
+}
+
+/**
+ * Trava final de qualquer texto da IA para o aluno: se ele citar horário/dia junto de
+ * disponibilidade ou reposição, não sai. Volta a resposta fixa.
+ */
+export function replyOffersSlot(reply: string): boolean {
+  const value = String(reply || "");
+  const temHorario = TIME_OR_DATE.test(value) || WEEKDAY.test(value);
+  const temOferta = /\b(livre|dispon[ií]vel|disponibilidade|tem (hor[aá]rio|vaga)|vagas?|hor[aá]rios?|encaix|marquei|marcad[ao]|agend|reserv|serve|prefere)/i
+    .test(value);
+  // Dia (ou data) + hora juntos já é um horário concreto: não vai para o aluno.
+  const horarioConcreto = (WEEKDAY.test(value) || /\b\d{1,2}\/\d{1,2}\b/.test(value)) &&
+    /\b([01]?\d|2[0-3])\s?(h|:[0-5]\d)/i.test(value);
+  return horarioConcreto || (temHorario && (temOferta || MAKEUP_TOPIC.test(value))) ||
+    /\bhor[aá]rios? livres?\b/i.test(value);
 }
 
 /** Sexta: como foi a semana. Uma pergunta, resposta livre. */

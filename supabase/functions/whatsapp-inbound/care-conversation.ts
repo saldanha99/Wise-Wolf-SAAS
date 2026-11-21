@@ -198,7 +198,7 @@ export function parseCareModelReply(raw: unknown): CareModelReply | null {
 
 const KIND_GOAL: Record<string, string> = {
   ABSENCE_FOLLOWUP:
-    "O aluno faltou à aula e a escola mandou uma mensagem curta: combinar a reposição diretamente com o professor. Objetivo: acolher em uma frase e reforçar que a reposição se combina direto com o professor dele. Você NÃO marca horário de reposição. Se ele disser que a rotina mudou, anote e diga que a coordenação retorna sobre o horário fixo.",
+    "O aluno faltou à aula e a escola mandou só um lembrete: combinar a reposição diretamente com o professor, antes do fim do mês. Objetivo: acolher em uma frase e reforçar que a reposição é um acordo entre ele e o professor, combinado direto com o professor antes do fim do mês. Você NÃO oferece, NÃO sugere, NÃO lista e NÃO marca horário de reposição, nem manda link. Se ele disser que a rotina mudou, anote e diga que a coordenação retorna sobre o horário fixo.",
   WEEKLY_CHECKIN:
     "Você perguntou como foi a semana de aulas. Objetivo: ouvir de verdade — o que gostou, o que travou —, reagir ao que ele disser e, se houver incômodo com a professora, ritmo ou conteúdo, registrar e encaminhar.",
   MONTHLY_CHECKIN:
@@ -225,7 +225,6 @@ export function buildCareSystemPrompt(input: {
   agentName: string;
   schoolName: string;
   ctx: CareContext;
-  offeredSlots: CareSlot[];
   todayIso: string;
 }): string {
   const { ctx } = input;
@@ -244,10 +243,10 @@ export function buildCareSystemPrompt(input: {
     `Professor(a) do aluno: ${teacher}. Hoje: ${input.todayIso}.`,
     ctx.summary ? `Já anotado nesta conversa: ${ctx.summary}` : "",
     "COMO CONVERSAR: curto (1 a 3 frases), tom de WhatsApp, no máximo 1 emoji, UMA pergunta por vez. Reaja ao que ele disse antes de perguntar. Nunca repita uma frase que já mandou (o histórico mostra). Não mande questionário nem peça nota.",
-    "REGRAS DURAS: NUNCA fale de cobrança, pagamento, valor, boleto, PIX, contrato, cancelamento ou multa — se ele tocar nisso, diga que vai passar para a coordenação e marque handoff=true. Não prometa mudança de professor, de horário fixo ou de plano: registre e diga que a coordenação retorna (handoff=true). Não ofereça nem confirme horário de reposição: a reposição é combinada diretamente com o professor. NUNCA diga quantas reposições o aluno tem, usou ou ainda pode usar, e NUNCA fale de faltas ou aulas de outros dias/meses além da que motivou a conversa.",
-    "HORÁRIO: você não marca reposição. Deixe wants_slot = null sempre; se o aluno propuser um horário, diga que é para combinar direto com o professor dele.",
+    "REGRAS DURAS: NUNCA fale de cobrança, pagamento, valor, boleto, PIX, contrato, cancelamento ou multa — se ele tocar nisso, diga que vai passar para a coordenação e marque handoff=true. Não prometa mudança de professor, de horário fixo ou de plano: registre e diga que a coordenação retorna (handoff=true). Não ofereça, sugira, liste, confirme nem marque horário ou dia de reposição, e não mande link: a reposição é um acordo entre o aluno e o professor, combinada diretamente com o professor antes do fim do mês. NUNCA diga quantas reposições o aluno tem, usou ou ainda pode usar, e NUNCA fale de faltas ou aulas de outros dias/meses além da que motivou a conversa.",
+    "HORÁRIO: você nunca fala de horário livre ou disponibilidade de professor. Se o aluno propuser ou pedir um horário, diga que é para combinar direto com o professor dele, antes do fim do mês.",
     "SENTIMENTO: sentiment=NEGATIVE quando ele reclama, está insatisfeito ou quer parar; POSITIVE quando elogia ou está satisfeito; NEUTRAL no resto. summary = uma linha objetiva para a coordenação (o que ele disse e o que precisa). close=true quando a conversa se encerrou naturalmente (despedida, agradecimento sem pendência).",
-    'Responda SOMENTE com JSON válido: {"reply": "texto ao aluno", "sentiment": "POSITIVE|NEUTRAL|NEGATIVE", "summary": "uma linha", "wants_slot": {"date": "YYYY-MM-DD", "time": "HH:MM"} | null, "handoff": false, "close": false}',
+    'Responda SOMENTE com JSON válido: {"reply": "texto ao aluno", "sentiment": "POSITIVE|NEUTRAL|NEGATIVE", "summary": "uma linha", "handoff": false, "close": false}',
   ].filter(Boolean).join("\n");
 }
 

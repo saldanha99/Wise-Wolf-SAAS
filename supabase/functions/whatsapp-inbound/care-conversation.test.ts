@@ -127,12 +127,13 @@ Deno.test("prompt não fala de cota nem oferece horário, e mantém a regra dura
       teacher_name: "Lais Sampaio",
       quota: { limit: 4, used: 1 },
     },
-    offeredSlots: slots,
     todayIso: "2026-09-17",
   });
   assert(!system.includes("ainda tem"), system);
   assert(!system.includes("(2026-09-18 09:00)"), system);
-  assert(system.includes("wants_slot = null"), system);
+  assert(system.includes("nunca fala de horário livre"), system);
+  assert(system.includes("antes do fim do mês"), system);
+  assert(!system.includes("wants_slot"), system);
   assert(system.includes("NUNCA diga quantas reposições"), system);
   assert(system.includes("combinada diretamente com o professor"), system);
   assert(system.includes("NUNCA fale de cobrança"), system);
