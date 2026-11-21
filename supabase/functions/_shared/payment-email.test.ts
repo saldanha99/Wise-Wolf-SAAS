@@ -368,3 +368,25 @@ Deno.test("payment notice e-mail sends HTML plus the unchanged text alternative 
   assert(html.includes("Oi &lt;Ana&gt;!"));
   assert(!html.includes("<Ana>"));
 });
+
+Deno.test("remetente da cobrança: PAYMENT_RESEND_FROM_EMAIL tem prioridade e o geral é o padrão", async () => {
+  const { paymentFromEmail } = await import("./payment-email.ts");
+  const env = (values: Record<string, string>) => (key: string) => values[key];
+  if (
+    paymentFromEmail(env({
+      PAYMENT_RESEND_FROM_EMAIL:
+        " Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br> ",
+      RESEND_FROM_EMAIL: "naoresponder@wisewolflanguage.com.br",
+    })) !== "Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br>"
+  ) throw new Error("prioridade do remetente da cobrança");
+  if (
+    paymentFromEmail(
+      env({
+        PAYMENT_RESEND_FROM_EMAIL: "  ",
+        RESEND_FROM_EMAIL: "naoresponder@wisewolflanguage.com.br",
+      }),
+    ) !==
+      "naoresponder@wisewolflanguage.com.br"
+  ) throw new Error("vazio cai no remetente geral");
+  if (paymentFromEmail(env({})) !== undefined) throw new Error("sem remetente");
+});

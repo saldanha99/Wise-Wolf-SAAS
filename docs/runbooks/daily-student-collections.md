@@ -51,8 +51,10 @@ incerto. Desabilitar o opt-in preserva o histórico e devolve a escola à régua
 normal. Não editar mensagens ou pagamentos antigos para disparar de novo.
 
 E-mail sai com versão HTML (cabeçalho com o logo público da escola, texto
-escapado) e o mesmo `text` como alternativa. Remetente vem de
-`RESEND_FROM_EMAIL` e aceita nome de exibição
-(`Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br>`).
+escapado) e o mesmo `text` como alternativa. Remetente da cobrança vem de
+`PAYMENT_RESEND_FROM_EMAIL` (aceita nome de exibição, ex.:
+`Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br>`); vazio, usa o
+`RESEND_FROM_EMAIL` geral. Não pôr "Financeiro" no geral: ele assina convites,
+recusas, contrato de boas-vindas e entregas do Hub.
 A trava "outro aviso no dia" e a cerca durável são por fatura e tipo, nunca por
 instância: trocar o número do financeiro não libera um segundo envio.

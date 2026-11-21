@@ -128,6 +128,19 @@ export function paymentEmailIdempotencyKey(input: {
  * o responsável financeiro vinculado com o mesmo endereço do contato
  * financeiro. Mesma regra do fluxo diário (`verifiedEmail`).
  */
+/**
+ * Remetente dos e-mails de cobrança. `PAYMENT_RESEND_FROM_EMAIL` (ex.:
+ * "Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br>") vale só para a
+ * cobrança; vazio, usa o `RESEND_FROM_EMAIL` geral, que também assina convites,
+ * recusas, contratos e entregas do Hub e por isso não deve levar "Financeiro".
+ */
+export function paymentFromEmail(
+  getEnv: (key: string) => string | undefined = (key) => Deno.env.get(key),
+): string | undefined {
+  return getEnv("PAYMENT_RESEND_FROM_EMAIL")?.trim() ||
+    getEnv("RESEND_FROM_EMAIL")?.trim() || undefined;
+}
+
 export async function resolveVerifiedPaymentEmail(
   client: EmailAdminClient,
   studentId: string,
@@ -188,7 +201,7 @@ export async function deliverPaymentNoticeEmail(
     !/^\d{4}-\d{2}-\d{2}$/.test(input.refDate)
   ) return "CLAIM_FAILED";
   const apiKey = getEnv("RESEND_API_KEY")?.trim();
-  const from = getEnv("RESEND_FROM_EMAIL")?.trim();
+  const from = paymentFromEmail(getEnv);
   if (!apiKey || !from) return "PROVIDER_UNAVAILABLE";
   const key = paymentEmailIdempotencyKey(input);
   const { data: attempt, error } = await client.from(

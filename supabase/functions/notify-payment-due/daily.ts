@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   paymentEmailLogoUrl,
+  paymentFromEmail,
   renderPaymentEmailHtml,
 } from "../_shared/payment-email.ts";
 
@@ -171,7 +172,7 @@ export async function deliverDailyEmail(
 ): Promise<string> {
   const key = `daily-payment-${charge.tenant_id}-${charge.id}-${date}`;
   const apiKey = getEnv("RESEND_API_KEY");
-  const from = getEnv("RESEND_FROM_EMAIL");
+  const from = paymentFromEmail(getEnv);
   if (!apiKey || !from) return "PROVIDER_UNAVAILABLE";
   const { data: attempt, error } = await client.from(
     "daily_payment_email_attempts",

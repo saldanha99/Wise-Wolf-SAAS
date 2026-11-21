@@ -57,6 +57,7 @@ import {
 import {
   deliverPaymentNoticeEmail,
   paymentEmailLogoUrl,
+  paymentFromEmail,
   renderPaymentEmailHtml,
   resolveVerifiedPaymentEmail,
 } from "../_shared/payment-email.ts";
@@ -1232,7 +1233,7 @@ async function deliverThirtyDayEmail(
   },
 ): Promise<string> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
-  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
+  const fromEmail = paymentFromEmail();
   if (!apiKey || !fromEmail) return "PROVIDER_UNAVAILABLE";
   const key = `wise-wolf-overdue-30-${charge.id}`;
   const { data: attempt, error: insertError } = await supabase
