@@ -89,10 +89,12 @@ import {
   isMoneyOrContractTopic,
   moneyHandoffReply,
   parseCareModelReply,
-  parseRequestedSlot,
-  pickOfferedSlot,
 } from "./care-conversation.ts";
-import type { CareSlot } from "./care-messages.ts";
+import {
+  isMakeupOrSlotMessage,
+  makeupWithTeacherReply,
+  replyOffersSlot,
+} from "./care-messages.ts";
 import { loadCareTurn } from "./care-turn.ts";
 import {
   annotateConflicts,
@@ -7364,82 +7366,30 @@ async function handleCareStudent(
     return true;
   }
 
-  const offered = Array.isArray(ctx.context?.free_slots)
-    ? (ctx.context!.free_slots as CareSlot[])
-    : [];
-  const teacherId = ctx.teacher_id ? String(ctx.teacher_id) : null;
-  const quotaRemaining = ctx.quota
-    ? Number(ctx.quota.limit) - Number(ctx.quota.used || 0)
-    : 0;
-
-  // Marca a reposição e avisa a professora; devolve o texto para o aluno.
-  const bookSlot = async (
-    slot: { date: string; time: string; day?: string },
-  ): Promise<string | null> => {
-    if (!ctx.reschedule_id || quotaRemaining <= 0) return null;
-    if (!await mayReply()) return null;
-    const { data, error: bookError } = await sb.rpc(
-      "care_set_reschedule_slot",
-      {
-        p_tenant: tenantId,
-        p_student: profile.id,
-        p_reschedule: ctx.reschedule_id,
-        p_date: slot.date,
-        p_time: slot.time,
-      },
-    );
-    if (bookError || !data || data.ok !== true) {
-      if (data?.error === "professor_ocupado") {
-        const free = Array.isArray(data.free_slots)
-          ? (data.free_slots as CareSlot[]).slice(0, 3)
-          : [];
-        return free.length
-          ? `Nesse horário a teacher já tem aula. Ela tem livre:\n${
-            free.map((f) => `• ${f.day} ${f.label}`).join("\n")
-          }\n\nAlgum desses serve?`
-          : "Nesse horário a teacher já tem aula. Me diz outra opção que eu confiro na hora 😊";
-      }
-      return null;
-    }
-    const [y, m, d] = String(data.date).split("-");
-    const teacherFirst = String(data.teacher_name || "").split(/\s+/)[0];
-    if (data.teacher_phone) {
-      await sendWhats(
-        instance,
-        String(data.teacher_phone),
-        `🗓️ Reposição marcada pelo aluno: *${
-          studentName || "aluno"
-        }* em ${data.day} ${d}/${m} às ${data.time}. Ela já aparece em Lançar Aula no dia.`,
-      );
-    }
+  // Direção, 21/11/2026: reposição é ACORDO entre aluno e professor. A IA nunca oferece,
+  // sugere, lista nem marca horário de reposição para o aluno, nem manda link. Se o aluno
+  // fala de reposição/remarcação ou propõe dia/horário, a resposta é fixa: combinar direto
+  // com o professor, antes do fim do mês. (Antes, este caminho listava os horários livres
+  // da professora e marcava a reposição sozinho; caso real em 21/11/2026.)
+  const teacherName = ctx.teacher_name ? String(ctx.teacher_name) : null;
+  const makeupReply = makeupWithTeacherReply(studentName, teacherName);
+  if (isMakeupOrSlotMessage(text)) {
+    if (!await mayReply()) return true;
+    const entregue = await sendWhats(instance, phone, makeupReply, {
+      simulateTyping: true,
+    });
+    await logMsg(sb, tenantId, phone, "care", "out", makeupReply, {
+      touchpoint_id: ctx.id,
+      kind: "makeup_with_teacher",
+      entregue,
+    });
     await sb.rpc("care_touchpoint_reply", {
       p_id: ctx.id,
-      p_status: "CLOSED",
-      p_sentiment: "POSITIVE",
-      p_summary: `Reposição marcada: ${data.day} ${d}/${m} às ${data.time}`,
+      p_status: "REPLIED",
+      p_sentiment: "NEUTRAL",
+      p_summary: `Falou de reposição/horário; orientado a combinar com o professor: "${text.slice(0, 120)}"`,
     });
-    return `Fechado: ${data.day} ${d}/${m} às ${data.time}${
-      teacherFirst ? ` com a Teacher ${teacherFirst}` : ""
-    } — ela já ficou sabendo 😊 Até lá!`;
-  };
-
-  // 2) Escolheu um horário da lista, ou pediu um específico: marca sem IA.
-  const chosen = pickOfferedSlot(text, offered) ||
-    parseRequestedSlot(text, todayBRT());
-  if (chosen && ctx.reschedule_id && quotaRemaining > 0) {
-    const reply = await bookSlot(chosen);
-    if (reply) {
-      const entregue = await sendWhats(instance, phone, reply, {
-        simulateTyping: true,
-      });
-      await logMsg(sb, tenantId, phone, "care", "out", reply, {
-        touchpoint_id: ctx.id,
-        kind: "reschedule_slot",
-        entregue,
-      });
-      return true;
-    }
-    if (!await mayReply()) return true;
+    return true;
   }
 
   // Número sem uma escolha aplicável não é opinião sobre a semana. Não deixe
@@ -7468,7 +7418,6 @@ async function handleCareStudent(
     agentName,
     schoolName: safeIdentityPart(cfg?.tenantIdentity?.name, "escola"),
     ctx,
-    offeredSlots: quotaRemaining > 0 ? offered : [],
     todayIso: todayBRT(),
   });
   const diag: string[] = [];
@@ -7513,13 +7462,8 @@ async function handleCareStudent(
     : ai.close
     ? "CLOSED"
     : "REPLIED";
-  if (ai.wants_slot && ctx.reschedule_id && quotaRemaining > 0) {
-    const booked = await bookSlot(ai.wants_slot);
-    if (booked) {
-      reply = booked;
-      status = "CLOSED";
-    }
-  }
+  // Trava final: texto da IA que cite dia/horário de reposição não sai para o aluno.
+  if (replyOffersSlot(reply)) reply = makeupReply;
   if (ai.sentiment === "NEGATIVE" && status !== "HANDOFF") status = "HANDOFF";
   if (!await mayReply()) return true;
   if (
@@ -7537,7 +7481,7 @@ async function handleCareStudent(
   });
   if (
     status !== "HANDOFF" &&
-    (status !== "CLOSED" || !reply.startsWith("Fechado:"))
+    true
   ) {
     await sb.rpc("care_touchpoint_reply", {
       p_id: ctx.id,

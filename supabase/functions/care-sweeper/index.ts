@@ -231,16 +231,14 @@ serve(async (req) => {
             class_date: row.class_date,
             teacher_id: row.teacher_id,
             teacher_name: row.teacher_name,
-            reschedule_id: row.reschedule_id,
+            // Sem horários livres nem id de reposição no contexto do aluno (direção, 21/11/2026):
+            // a reposição é combinada entre aluno e professor; a IA não oferece horário.
             quota: row.quota,
-            free_slots: row.free_slots,
           },
           message: absenceFollowupMessage({
             studentName: row.student_name,
             teacherName: row.teacher_name,
             classDate: String(row.class_date),
-            quota: row.quota as CareQuota | null,
-            freeSlots: (row.free_slots || []) as CareSlot[],
           }),
           instance: route.studentInstance,
         });
