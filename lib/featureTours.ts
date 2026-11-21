@@ -1094,6 +1094,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'trial-funnel',view:'trials',title:'Pró-rata mais justo',text:'Ao gerar o link de matrícula com pró-rata, a cobrança proporcional agora vai do início das aulas até o fim do mês anterior ao da 1ª mensalidade. Exemplo: início 17/11 e vencimento dia 05/12 cobra só as aulas de novembro, porque a mensalidade de 05/12 já paga dezembro inteiro. Quem começa no mesmo mês da 1ª mensalidade não paga pró-rata. Links já gerados mantêm o valor que mostraram.'},
     ],
   },
+  {
+    id:'2026-11-21-cobranca-visualizada',title:'Quem abriu a cobrança',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'payments-view-signal',view:'student-payments',title:'Cobrança visualizada',text:'Em Mensalidades, abaixo do status, aparece "Visualizada em" quando o aluno ou responsável abre a fatura ou o boleto no Asaas, pelo link do WhatsApp ou do e-mail. No mesmo dia, o grupo do Financeiro recebe um aviso por fatura. "E-mail aberto (provável)" é só um indício: alguns aplicativos de e-mail abrem a mensagem sozinhos.'},
+    ],
+  },
 ];
 
 /**

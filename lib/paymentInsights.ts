@@ -105,3 +105,33 @@ export const billingLabel = (billingType: string | null | undefined): string => 
     default: return String(billingType);
   }
 };
+
+const viewStamp = (iso: unknown): string | null => {
+  if (typeof iso !== 'string' || !iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }).format(at).replace(',', '');
+};
+
+/**
+ * Sinais de que a cobrança foi aberta. "Visualizada" vem do Asaas (fatura ou
+ * boleto aberto) e é confiável; abertura de e-mail é só provável, porque o
+ * Apple Mail baixa as imagens sozinho.
+ */
+export const paymentViewSignals = (p: {
+  provider_viewed_at?: unknown;
+  email_opened_at?: unknown;
+  email_clicked_at?: unknown;
+}): string[] => {
+  const signals: string[] = [];
+  const viewed = viewStamp(p.provider_viewed_at);
+  if (viewed) signals.push(`Visualizada em ${viewed}`);
+  const clicked = viewStamp(p.email_clicked_at);
+  const opened = viewStamp(p.email_opened_at);
+  if (clicked) signals.push(`Link do e-mail aberto em ${clicked}`);
+  else if (opened) signals.push(`E-mail aberto (provável) em ${opened}`);
+  return signals;
+};

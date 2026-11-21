@@ -44,6 +44,7 @@ import {
   financialReviewReason,
   isProvenHistoricalReversalEvent,
   isSettledPaymentEvent,
+  isValidAsaasWebhookToken,
   legacyRecurringProviderEvidenceMatches,
   paymentCustomerMatchesCanonicalBinding,
   providerEventRank,
@@ -65,7 +66,15 @@ import {
   replacementProviderSubscriptionId,
 } from "../_shared/hub-billing-safety.ts";
 import { cancelHubProviderSubscriptionOnce } from "../_shared/hub-provider-operations.ts";
-import { safeCommunicationText } from "../_shared/tenant-communication.ts";
+import {
+  loadTenantNoticeDestination,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
+import {
+  asaasViewedAtIso,
+  isPaymentViewEvent,
+  processPaymentViewEvent,
+} from "./payment-view-alert.ts";
 import {
   authorizeAsaasHistoricalReversal,
   resolveAsaasIntegration,
@@ -4026,6 +4035,26 @@ async function processStudentSubscriptionLifecycleEvent(
 async function dispatchPersistedAsaasEvent(
   body: AsaasWebhookBody,
 ): Promise<void> {
+  // Fatura/boleto visualizado: só registra e avisa a escola. Nunca passa pelo
+  // processamento de status de pagamento abaixo.
+  if (isPaymentViewEvent(body.event)) {
+    const providerPaymentId = body.payment?.id?.trim() || "";
+    if (!providerPaymentId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new AsaasTriageError("payment_view_payload_missing");
+    }
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await processPaymentViewEvent(
+      admin,
+      {
+        eventId: typeof body.id === "string" ? body.id.trim() : "",
+        event: body.event,
+        providerPaymentId,
+        viewedAtIso: asaasViewedAtIso(body.dateCreated),
+      },
+      (tenantId) => loadTenantNoticeDestination(admin, tenantId, "financeiro"),
+    );
+    return;
+  }
   const paymentReference = body.payment?.externalReference ?? "";
   if (
     paymentReference.startsWith("wolfie-topup-order:") ||
@@ -4216,7 +4245,7 @@ serve(async (req) => {
   // Provider route: authentication and body validation happen before durable
   // persistence. HTTP 200 is emitted only after the database confirms enqueue.
   const requestToken = req.headers.get("asaas-access-token");
-  if (!ASAAS_WEBHOOK_TOKEN || requestToken !== ASAAS_WEBHOOK_TOKEN) {
+  if (!isValidAsaasWebhookToken(ASAAS_WEBHOOK_TOKEN, requestToken)) {
     console.warn("[Webhook] Token ausente ou inválido.");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,

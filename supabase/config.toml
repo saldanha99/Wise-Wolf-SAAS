@@ -20,6 +20,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/kiwify-webhook/index.ts"
 
+[functions.resend-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/resend-webhook/index.ts"
+
 [functions.generate-student-manual-pix]
 enabled = true
 verify_jwt = true

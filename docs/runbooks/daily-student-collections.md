@@ -16,7 +16,8 @@ confere ID, cliente, assinatura, `OVERDUE`, vencimento e cobrança não excluíd
 Link pertence ao Asaas. Quem quitou ou teve fatura excluída sai da rotina.
 Não se atualiza o financeiro para fabricar elegibilidade.
 
-WhatsApp usa a instância central e a cerca durável existente, com uma intenção
+WhatsApp usa a instância central (ou a de `FINANCE_WHATSAPP_INSTANCE`, quando
+configurada e conectada nesta escola) e a cerca durável existente, com uma intenção
 `PAYMENT_OVERDUE_DAILY_YYYYMMDD` por fatura. Outro aviso de cobrança aceito ou
 incerto naquele dia evita novo WhatsApp. O e-mail tem intenção própria em
 `daily_payment_email_attempts`, com chave única por escola/fatura/dia e chave de
@@ -48,3 +49,10 @@ Monitorar as intenções dos dois canais, falhas do cron e resultados dos
 provedores. Reexecutar a mesma intenção não autoriza um segundo POST aceito ou
 incerto. Desabilitar o opt-in preserva o histórico e devolve a escola à régua
 normal. Não editar mensagens ou pagamentos antigos para disparar de novo.
+
+E-mail sai com versão HTML (cabeçalho com o logo público da escola, texto
+escapado) e o mesmo `text` como alternativa. Remetente vem de
+`RESEND_FROM_EMAIL` e aceita nome de exibição
+(`Wise Wolf Financeiro <naoresponder@wisewolflanguage.com.br>`).
+A trava "outro aviso no dia" e a cerca durável são por fatura e tipo, nunca por
+instância: trocar o número do financeiro não libera um segundo envio.

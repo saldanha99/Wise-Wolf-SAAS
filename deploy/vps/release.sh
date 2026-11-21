@@ -630,6 +630,13 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
+  supabase/functions/asaas-webhook/payment-view-alert.ts \
+  supabase/functions/asaas-webhook/payment-view-alert.test.ts \
+  supabase/functions/resend-webhook/index.ts \
+  supabase/functions/resend-webhook/signature.ts \
+  supabase/functions/resend-webhook/signature.test.ts \
+  supabase/functions/resend-webhook/engagement.ts \
+  supabase/functions/resend-webhook/engagement.test.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
   supabase/functions/asaas-reconcile/diff.ts \
   supabase/functions/asaas-reconcile/diff.test.ts \
@@ -873,6 +880,9 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/notify-payment-due/daily.test.ts \
+  supabase/functions/asaas-webhook/payment-view-alert.test.ts \
+  supabase/functions/resend-webhook/signature.test.ts \
+  supabase/functions/resend-webhook/engagement.test.ts \
   supabase/functions/_shared/payment-notice-core.test.ts \
   supabase/functions/_shared/payment-email.test.ts \
   supabase/functions/process-notification-queue/payment-notice.test.ts \
@@ -1136,6 +1146,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/teacher-daily-agenda/index.ts \
   supabase/functions/sign-offer/index.ts \
   supabase/functions/kiwify-webhook/index.ts \
+  supabase/functions/resend-webhook/index.ts \
   supabase/functions/whatsapp-notificacao-matricula/index.ts \
   supabase/functions/wolfie-healthcheck/index.ts
 if [[ "$VITE_HUB_PUBLIC_VIDEOS" = "true" ]]; then
@@ -1626,6 +1637,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261116210000_prorata_ate_o_fim_do_mes_anterior.sql"
   "supabase/migrations/20261117200000_troca_de_horario_com_termo_vigente.sql"
   "supabase/migrations/20261119120000_avisos_da_escola_no_lugar_do_asaas.sql"
+  "supabase/migrations/20261121120000_cobranca_visualizada_e_email_aberto.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1962,6 +1974,7 @@ HARDENED_FUNCTIONS=(
   delete-student-account
   generate-student-insights
   kiwify-webhook
+  resend-webhook
   manage-hub-account-status
   cancel-hub-subscription
   expire-hub-abandoned-checkouts
@@ -4793,6 +4806,10 @@ wait_for_http_status 401 "token do webhook Asaas" \
   --data '{}'
 wait_for_http_status 410 "desativação do webhook legado Kiwify" \
   -X POST "$api_url/functions/v1/kiwify-webhook" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 401 "assinatura do webhook Resend" \
+  -X POST "$api_url/functions/v1/resend-webhook" \
   -H 'Content-Type: application/json' \
   --data '{}'
 for protected_function in \

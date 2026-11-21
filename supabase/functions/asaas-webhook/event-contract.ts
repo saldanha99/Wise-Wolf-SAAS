@@ -506,3 +506,20 @@ export function actualCreditAt(
   return asaasDateToIso(payment.creditDate);
 }
 import { parseCanonicalAsaasReference } from "../_shared/asaas-mutation-guard.ts";
+
+/**
+ * Token do webhook do Asaas (`asaas-access-token`). Sem token configurado,
+ * nada passa. Comparação em tempo constante.
+ */
+export function isValidAsaasWebhookToken(
+  expected: string | undefined | null,
+  received: string | null,
+): boolean {
+  if (!expected || received === null) return false;
+  if (expected.length !== received.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ received.charCodeAt(i);
+  }
+  return diff === 0;
+}

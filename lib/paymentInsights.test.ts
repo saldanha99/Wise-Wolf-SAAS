@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { billingLabel, dueHint, paymentBucket, summarizePayments } from './paymentInsights';
+import { billingLabel, dueHint, paymentBucket, paymentViewSignals, summarizePayments } from './paymentInsights';
 
 describe('summarizePayments', () => {
   const payments = [
@@ -54,5 +54,22 @@ describe('paymentBucket e billingLabel', () => {
     expect(paymentBucket('REFUNDED')).toBe('OTHER');
     expect(billingLabel('CREDIT_CARD')).toBe('Cartão');
     expect(billingLabel(null)).toBe('A definir');
+  });
+});
+
+describe('paymentViewSignals', () => {
+  it('mostra a visualização do Asaas no horário de Brasília', () => {
+    expect(paymentViewSignals({ provider_viewed_at: '2026-11-21T17:05:00Z' })).toEqual(['Visualizada em 21/11 14:05']);
+  });
+
+  it('abertura de e-mail é provável e o clique tem prioridade', () => {
+    expect(paymentViewSignals({ email_opened_at: '2026-11-21T12:00:00Z' })).toEqual(['E-mail aberto (provável) em 21/11 09:00']);
+    expect(paymentViewSignals({ email_opened_at: '2026-11-21T12:00:00Z', email_clicked_at: '2026-11-21T12:01:00Z' }))
+      .toEqual(['Link do e-mail aberto em 21/11 09:01']);
+  });
+
+  it('sem sinal não mostra nada', () => {
+    expect(paymentViewSignals({})).toEqual([]);
+    expect(paymentViewSignals({ provider_viewed_at: 'lixo' })).toEqual([]);
   });
 });

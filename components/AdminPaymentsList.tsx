@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { formatLocalDateBr, localMonth, localYMD, monthRange } from '../lib/dateUtils';
 import { Download, Search, RefreshCw, CheckCircle, AlertCircle, Clock, Wallet, TrendingUp, CreditCard, CalendarClock, Layers } from 'lucide-react';
 import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
-import { billingLabel, dueHint, paymentBucket, summarizePayments, type PaymentBucket } from '../lib/paymentInsights';
+import { billingLabel, dueHint, paymentBucket, paymentViewSignals, summarizePayments, type PaymentBucket } from '../lib/paymentInsights';
 import { Kpi3D, PageHero3D, type Tone } from './depth/Depth3D';
 
 const PrepaymentManager = lazy(() => import('./PrepaymentManager'));
@@ -121,6 +121,15 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         { id: 'OVERDUE', label: 'Atrasados', count: summary.byBucket.OVERDUE.count, tone: 'rose' },
         { id: 'CANCELLED', label: 'Cancelados', count: summary.byBucket.CANCELLED.count, tone: 'slate' },
     ];
+
+    const viewSignals = (p: any) => {
+        const signals = paymentViewSignals(p);
+        return signals.length ? (
+            <span className="mt-1 flex flex-col gap-0.5">
+                {signals.map(text => <span key={text} className="text-[10px] font-bold text-sky-700 dark:text-sky-300">{text}</span>)}
+            </span>
+        ) : null;
+    };
 
     const initials = (name?: string) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 
@@ -306,6 +315,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                             {hint && <span className={`text-[11px] font-black ${bucket === 'OVERDUE' ? 'text-rose-500' : 'text-amber-600 dark:text-amber-400'}`}>· {hint}</span>}
                                             <span className="ml-auto flex items-center gap-2">{actionsFor(p)}</span>
                                         </div>
+                                        {viewSignals(p)}
                                     </article>
                                 );
                             })}
@@ -320,7 +330,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                         <th className="px-6 py-3">Vencimento</th>
                                         <th className="px-6 py-3">Pagamento</th>
                                         <th className="px-6 py-3">Forma</th>
-                                        <th className="px-6 py-3">Status</th>
+                                        <th className="px-6 py-3" data-tour="payments-view-signal">Status</th>
                                         <th className="px-6 py-3 text-right">Valor</th>
                                         <th className="px-6 py-3 text-center">Ações</th>
                                     </tr>
@@ -358,6 +368,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                                 </td>
                                                 <td className="px-6 py-3.5">
                                                     {getStatusBadge(p.status)}
+                                                    {viewSignals(p)}
                                                 </td>
                                                 <td className="px-6 py-3.5 text-right font-black text-brand-text whitespace-nowrap">
                                                     {money(Number(p.value))}
