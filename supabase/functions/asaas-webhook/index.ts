@@ -3482,7 +3482,8 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
               attempts: 0,
               source_id: persistedPayment.id,
               source_type: "ASAAS_PAYMENT",
-              class_date: String(persistedPayment.due_date || "").slice(0, 10) ||
+              class_date:
+                String(persistedPayment.due_date || "").slice(0, 10) ||
                 null,
               notification_kind: "PAYMENT_RECEIVED_EMAIL",
               idempotency_key:
@@ -3615,9 +3616,9 @@ async function enqueuePaymentNotice(
       tenant_id: input.tenantId,
       teacher_id: null,
       student_id: input.studentId,
-      student_name: (hasFinancialGuardian
-        ? profile.guardian_name
-        : profile.full_name) || profile.full_name,
+      student_name:
+        (hasFinancialGuardian ? profile.guardian_name : profile.full_name) ||
+        profile.full_name,
       student_phone: String(
         (hasFinancialGuardian ? profile.guardian_phone : profile.phone) || "",
       ),

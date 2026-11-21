@@ -500,7 +500,10 @@ Deno.test({
       const code = await source(file);
       assertStringIncludes(code, "notificationDisabled: true");
       assert(!code.includes("notificationDisabled: false"), file);
-      assert(!code.includes("notificationDisabled: offerPayload.testMode"), file);
+      assert(
+        !code.includes("notificationDisabled: offerPayload.testMode"),
+        file,
+      );
     }
   },
 });
