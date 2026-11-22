@@ -190,3 +190,9 @@ export function hasCardOutside(body: Record<string, unknown>): boolean {
     key !== "card" && CARD_KEYS.has(key.toLowerCase().replace(/[^a-z]/g, ""))
   );
 }
+
+/** IP privado/loopback: sinal de que a cadeia de proxies mudou (todos dividiriam o mesmo teto). */
+export function isPrivateIp(ip: string): boolean {
+  return /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(ip) || ip === "::1" ||
+    /^f[cd][0-9a-f]{2}:/i.test(ip);
+}

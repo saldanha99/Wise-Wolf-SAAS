@@ -37,7 +37,7 @@ afterEach(async () => {
 });
 
 describe('Hub static HTML generation', () => {
-  it('renders specific metadata while consolidating both hosts on the Hub canonical', () => {
+  it('página de venda do Hub fica fora do índice e aponta para o site principal (22/11/2026)', () => {
     const metadata = {
       segment: 'professores',
       title: 'Professores | Wise Wolf',
@@ -49,9 +49,10 @@ describe('Hub static HTML generation', () => {
     const dedicatedHtml = renderHubMarketingHtml(TEMPLATE, metadata);
 
     expect(systemHtml).toContain('<title>Professores | Wise Wolf</title>');
-    expect(systemHtml).toContain('href="https://hub.wisewolflanguage.com.br/professores"');
+    expect(systemHtml).toContain('href="https://wisewolflanguage.com.br/para-professores"');
+    expect(systemHtml).toContain('content="noindex, follow"');
     expect(systemHtml).toContain('content="https://hub.wisewolflanguage.com.br/assets/hub/marketing/hub-overview-og.webp"');
-    expect(dedicatedHtml).toContain('href="https://hub.wisewolflanguage.com.br/professores"');
+    expect(dedicatedHtml).toContain('href="https://wisewolflanguage.com.br/para-professores"');
     expect(dedicatedHtml).toContain('content="https://hub.wisewolflanguage.com.br/assets/hub/marketing/hub-overview-og.webp"');
   });
 
@@ -101,8 +102,8 @@ describe('Hub static HTML generation', () => {
     expect(enrollmentHtml).toContain('Sua matrícula | Wise Wolf Languages');
     expect(enrollmentHtml).toContain('content="noindex, nofollow"');
     expect(enrollmentHtml).not.toContain('hub-overview-og');
-    expect(teacherSystemHtml).toContain('https://hub.wisewolflanguage.com.br/professores');
-    expect(schoolDedicatedHtml).toContain('https://hub.wisewolflanguage.com.br/escolas');
+    expect(teacherSystemHtml).toContain('https://wisewolflanguage.com.br/para-professores');
+    expect(schoolDedicatedHtml).toContain('https://wisewolflanguage.com.br/para-escolas');
     expect(dedicatedNotFoundHtml).toContain('content="noindex, nofollow"');
     expect(dedicatedNotFoundHtml).toContain('href="/"');
     expect(teacherBusinessHtml).toContain('https://system.wisewolflanguage.com.br/seja-professor');
@@ -111,14 +112,15 @@ describe('Hub static HTML generation', () => {
 
   it('separa as URLs canônicas nos sitemaps de cada host', () => {
     const hubXml = renderHubSitemapXml(
-      { overview: { segment: '' }, 'school-os': { segment: 'saas-escolar' } },
+      { overview: { segment: '' }, 'school-os': { segment: 'saas-escolar' }, terms: { segment: 'termos' } },
     );
     const systemXml = renderSystemSitemapXml(
       { 'teacher-business': { path: '/seja-professor' } },
     );
 
-    expect(hubXml).toContain('<loc>https://hub.wisewolflanguage.com.br/</loc>');
-    expect(hubXml).toContain('<loc>https://hub.wisewolflanguage.com.br/saas-escolar</loc>');
+    // Hub logado: só as páginas legais seguem no sitemap; as de venda moram no site principal.
+    expect(hubXml).toContain('<loc>https://hub.wisewolflanguage.com.br/termos</loc>');
+    expect(hubXml).not.toContain('<loc>https://hub.wisewolflanguage.com.br/saas-escolar</loc>');
     expect(hubXml).not.toContain('system.wisewolflanguage.com.br');
     expect(systemXml).toContain('<loc>https://system.wisewolflanguage.com.br/seja-professor</loc>');
     expect(systemXml).not.toContain('hub.wisewolflanguage.com.br');
@@ -146,7 +148,7 @@ describe('Hub static HTML generation', () => {
 
     expect(systemSitemap).toContain('<loc>https://system.wisewolflanguage.com.br/new-saas</loc>');
     expect(systemSitemap).not.toContain('hub.wisewolflanguage.com.br');
-    expect(dedicatedSitemap).toContain('<loc>https://hub.wisewolflanguage.com.br/saas-escolar</loc>');
+    expect(dedicatedSitemap).toContain('<loc>https://hub.wisewolflanguage.com.br/termos</loc>');
     expect(dedicatedSitemap).not.toContain('system.wisewolflanguage.com.br');
     expect(dedicatedRobots).toContain('Sitemap: https://hub.wisewolflanguage.com.br/sitemap.xml');
   });

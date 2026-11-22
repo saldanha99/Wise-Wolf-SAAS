@@ -31,6 +31,7 @@ import {
   type CardInput,
   declineMessage,
   hasCardOutside,
+  isPrivateIp,
   type HolderInput,
   paymentApproved,
 } from "./core.ts";
@@ -110,6 +111,7 @@ serve(async (req) => {
   if (fieldError) return json(400, { code: fieldError });
   const ip = buyerIp(req.headers);
   if (!ip) return json(400, { code: "BUYER_IP_UNAVAILABLE" });
+  if (isPrivateIp(ip)) console.warn("[hub-card-payment] IP do comprador chegou privado: conferir a cadeia Caddy/Kong");
 
   const admin = auth.context.admin;
   const { data: checkout, error: checkoutError } = await admin

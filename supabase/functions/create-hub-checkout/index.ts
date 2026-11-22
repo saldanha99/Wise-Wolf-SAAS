@@ -334,9 +334,21 @@ serve(async (req) => {
     // Cartão (22/11/2026): aqui só se escolhe a forma de cobrança. O cartão em si vai
     // direto para a hub-card-payment, que paga a 1ª cobrança criada aqui sem cartão.
     // Corpo com dado de cartão é recusado: esta função grava o payload em auditoria.
+    const cardKeys = new Set([
+      "card",
+      "creditcard",
+      "creditcardholderinfo",
+      "cvv",
+      "ccv",
+      "cardnumber",
+      "number",
+      "expiry",
+      "expirymonth",
+      "expiryyear",
+    ]);
     if (
-      ["card", "creditCard", "creditCardHolderInfo", "cvv", "ccv"].some((key) =>
-        key in body
+      Object.keys(body).some((key) =>
+        cardKeys.has(key.toLowerCase().replace(/[^a-z]/g, ""))
       )
     ) {
       return json(400, {

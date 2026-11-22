@@ -50,6 +50,8 @@ declare
   v_ip_hour integer;
   v_declines integer;
   v_open integer;
+  v_approved integer;
+  v_unknown integer;
 begin
   if p_checkout is null or p_user is null or coalesce(p_ip_hash, '') !~ '^[a-f0-9]{64}$' then
     return pg_catalog.jsonb_build_object('allowed', false, 'reason', 'invalid');
@@ -64,11 +66,19 @@ begin
   select count(*) into v_ip_hour from public.hub_card_payment_attempts
    where ip_hash = p_ip_hash and created_at > pg_catalog.now() - interval '1 hour';
   select count(*) filter (where outcome = 'DECLINED'),
-         count(*) filter (where outcome = 'STARTED' and created_at > pg_catalog.now() - interval '2 minutes')
-    into v_declines, v_open
+         count(*) filter (where outcome = 'STARTED' and created_at > pg_catalog.now() - interval '2 minutes'),
+         count(*) filter (where outcome = 'APPROVED'),
+         count(*) filter (where outcome = 'ERROR' and reason = 'provider_no_response'
+                            and coalesce(finished_at, created_at) > pg_catalog.now() - interval '60 seconds')
+    into v_declines, v_open, v_approved, v_unknown
     from public.hub_card_payment_attempts where checkout_id = p_checkout;
 
-  if v_open > 0 then
+  -- Aprovado nesta cobrança: nada de 2ª tentativa enquanto o webhook não marca PAID.
+  if v_approved > 0 then
+    return pg_catalog.jsonb_build_object('allowed', false, 'reason', 'already_approved');
+  end if;
+  -- O Asaas não respondeu há menos de 60 s: pode estar processando; segura nova tentativa.
+  if v_open > 0 or v_unknown > 0 then
     return pg_catalog.jsonb_build_object('allowed', false, 'reason', 'in_progress');
   end if;
   if v_declines >= 3 then

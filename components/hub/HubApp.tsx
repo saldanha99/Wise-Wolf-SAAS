@@ -2,12 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Bot, Building2, Compass, Loader2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import HubAuthDialog from './HubAuthDialog';
-import HubAudienceLanding from './HubAudienceLanding';
-import HubLanding from './HubLanding';
 import HubLegalPage from './HubLegalPage';
 import HubMarketingShell from './HubMarketingShell';
 import HubPortal, { type HubTab } from './HubPortal';
-import HubSolutionLanding from './HubSolutionLanding';
 import {
   clearStoredHubCheckoutIntent,
   createHubCheckoutIntent,
@@ -209,6 +206,17 @@ const INVITE_ERRORS: Record<string, string> = {
   SEATS_EXHAUSTED: 'O professor não tem mais vagas de aluno no plano dele. Avise-o.',
 };
 
+/** Páginas de venda no site principal (Fase 1 do Hub, 22/11/2026). */
+const HUB_SALES_PAGE: Partial<Record<string, string>> = {
+  overview: 'https://wisewolflanguage.com.br/para-professores',
+  teachers: 'https://wisewolflanguage.com.br/para-professores',
+  library: 'https://wisewolflanguage.com.br/para-professores',
+  'educator-ai': 'https://wisewolflanguage.com.br/para-professores',
+  schools: 'https://wisewolflanguage.com.br/para-escolas',
+  'school-os': 'https://wisewolflanguage.com.br/para-escolas',
+  wolfie: 'https://wisewolflanguage.com.br/wolfie',
+};
+
 const HubApp: React.FC = () => {
   const marketingPage = resolveHubMarketingPage();
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']>(null);
@@ -303,7 +311,7 @@ const HubApp: React.FC = () => {
       : new URL(window.location.pathname, window.location.origin).toString();
     const restoreMeta = [
       syncMetaTag('name', 'description', metadata.description),
-      syncMetaTag('name', 'robots', marketingPage ? 'index, follow' : 'noindex, nofollow'),
+      syncMetaTag('name', 'robots', marketingPage === 'terms' || marketingPage === 'privacy' ? 'index, follow' : 'noindex, follow'),
       syncMetaTag('name', 'theme-color', '#070d1a'),
       syncMetaTag('property', 'og:type', 'website'),
       syncMetaTag('property', 'og:url', canonicalUrl),
@@ -624,18 +632,35 @@ const HubApp: React.FC = () => {
     );
   }
 
+  // 22/11/2026 (Fase 1 do Hub): o Hub é área logada. As páginas de venda moram no site principal
+  // (wisewolflanguage.com.br/para-professores, /para-escolas, /wolfie); deslogado numa página de venda
+  // daqui vai para lá (com as UTMs), e a raiz mostra só o login.
+  const salesPage = HUB_SALES_PAGE[marketingPage];
+  if (salesPage && marketingPage !== 'overview') {
+    window.location.replace(`${salesPage}${window.location.search}`);
+    return <HubLoading />;
+  }
+
   return (
-    <>
-      {marketingPage === 'overview' ? (
-        <HubLanding plans={plans} settings={settings} content={content} catalogReady={isHubCatalogReady(settings, content)} onAuthenticate={(mode, audience = 'EDUCATOR') => setAuthDialog({ mode, audience })} onPlanSelect={rememberPlanIntent} />
-      ) : marketingPage === 'teachers' || marketingPage === 'schools' ? (
-        <HubAudienceLanding audience={marketingPage} plans={plans} settings={settings} catalogReady={isHubCatalogReady(settings, content)} onAuthenticate={(mode, audience = 'EDUCATOR') => setAuthDialog({ mode, audience })} onPlanSelect={rememberPlanIntent} />
-      ) : (
-        <HubSolutionLanding page={marketingPage} plans={plans} settings={settings} catalogReady={isHubCatalogReady(settings, content)} onAuthenticate={(mode, audience = 'EDUCATOR') => setAuthDialog({ mode, audience })} onPlanSelect={rememberPlanIntent} />
-      )}
+    <div className="grid min-h-screen place-items-center bg-brand-bg p-5 text-brand-text">
+      <section className="w-full max-w-xl rounded-[2.5rem] border border-brand-border bg-brand-surface p-7 text-center shadow-xl sm:p-12">
+        <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-tenant-primary text-3xl shadow-lg shadow-tenant-primary/20">🐺</div>
+        <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-tenant-primary">Wise Wolf Hub</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-tight">Entre na sua área do professor</h1>
+        <p className="mt-4 leading-7 text-brand-muted">Biblioteca de materiais, Educador IA e seus alunos num só lugar. Ainda não tem conta? Comece grátis, sem cartão.</p>
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <button type="button" onClick={() => setAuthDialog({ mode: 'login', audience: 'EDUCATOR' })} className="rounded-2xl bg-tenant-primary px-6 py-3.5 text-sm font-black text-white">Entrar</button>
+          <button type="button" onClick={() => setAuthDialog({ mode: 'signup', audience: 'EDUCATOR' })} className="rounded-2xl border border-brand-border bg-brand-surface-2 px-6 py-3.5 text-sm font-black text-brand-text">Criar conta grátis</button>
+        </div>
+        <nav aria-label="Conheça as soluções" className="mt-8 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-bold text-brand-muted">
+          <a href={HUB_SALES_PAGE.teachers} className="hover:text-brand-text">Planos para professores</a>
+          <a href={HUB_SALES_PAGE.schools} className="hover:text-brand-text">Para escolas</a>
+          <a href={HUB_SALES_PAGE.wolfie} className="hover:text-brand-text">Praticar inglês com o Wolfie</a>
+        </nav>
+      </section>
       {error && <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center text-sm font-bold text-amber-900 shadow-xl">{error}</div>}
       {authDialog && <HubAuthDialog initialMode={authDialog.mode} initialAudience={authDialog.audience} checkoutIntent={planIntent} onClose={() => setAuthDialog(null)} onAuthenticated={activateTrial} />}
-    </>
+    </div>
   );
 };
 
