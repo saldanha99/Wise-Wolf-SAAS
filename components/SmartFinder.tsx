@@ -276,15 +276,15 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             <button
                 data-tour="smart-finder-launch"
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-6 right-6 z-50 bg-linear-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
+                className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:right-6 lg:bottom-6 z-50 bg-linear-to-r from-orange-500 to-red-600 text-white p-3 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
                 title="Lançar Vaga"
             >
                 <Zap size={28} fill="currentColor" className="group-hover:animate-pulse" />
             </button>
 
-            {/* Modal Drawer: acima da barra de navegação de baixo (z-[70]) e em tela cheia no celular */}
+            {/* Modal Drawer: acima da barra de navegação de baixo (z-[80] no ModernSidebar) e em tela cheia no celular */}
             {isOpen && (
-                <div className="fixed inset-0 z-[70] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
+                <div className="fixed inset-0 z-[90] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
                     <div className="flex h-full w-full max-w-md flex-col overflow-x-hidden overflow-y-auto bg-brand-surface px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl animate-in slide-in-from-right duration-300 sm:px-6">
 
                         {/* Header */}
