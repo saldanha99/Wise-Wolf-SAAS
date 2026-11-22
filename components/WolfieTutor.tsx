@@ -76,6 +76,10 @@ import {
   wolfieVisualState,
 } from "../lib/wolfieVisualStatus";
 import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
+import {
+  type RoleplayCast,
+  RoleplayCounterpart,
+} from "../src/components/wolfie/visuals/RoleplayCounterpart";
 import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
 import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
 import { WOLFIE_SCENARIO_UI_V2_ENABLED } from "../src/components/wolfie/visuals/featureFlags";
@@ -116,6 +120,8 @@ interface WolfieTutorProps {
   experienceUniverse?: string;
   experienceAudiences?: string[];
   hubContext?: WolfieHubContext;
+  /** Roleplay da trilha da aula: troca o lobo por uma cena de chamada com o interlocutor. */
+  roleplayCast?: RoleplayCast;
   onClose?: (summary: WolfieTutorSessionSummary) => void;
 }
 
@@ -549,6 +555,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   experienceUniverse,
   experienceAudiences,
   hubContext,
+  roleplayCast,
   onClose,
 }) => {
   const hubModeRequested = typeof hubContext !== "undefined";
@@ -4991,6 +4998,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             </button>
           </div>
         )}
+        {isRealtimeMode && realtime.connected && !realtime.muted && (
+          // "Terminei de falar": quem está aprendendo pensa no meio da frase;
+          // o corte por silêncio ficou paciente e este botão fecha o turno na hora.
+          <button
+            type="button"
+            data-testid="wolfie-finish-speaking"
+            onClick={() => realtime.finishSpeaking()}
+            disabled={!realtime.isUserSpeaking}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-4 text-sm font-black text-emerald-50 shadow-xl backdrop-blur-2xl transition hover:bg-emerald-400/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-default disabled:opacity-45"
+          >
+            <CheckCircle2 size={17} aria-hidden="true" />
+            {realtime.isUserSpeaking ? "Terminei de falar" : "Fale no seu ritmo — o Wolfie espera"}
+          </button>
+        )}
         <div className="flex min-h-16 items-center gap-2 rounded-[1.35rem] border border-white/12 bg-slate-950/82 p-2 shadow-2xl backdrop-blur-2xl">
           {primaryCallControl}
           <div
@@ -5119,23 +5140,39 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               onClose={onClose ? handleClose : undefined}
             />
           }
-          character={
-            <WolfieCharacter
-              profile={visualSceneProfile}
-              state={visualCharacterState}
-              inputLevel={avatarInputLevel}
-              outputLevel={avatarOutputLevel}
-              fallbackImageSrc={null}
-              framing="ugc"
-              className="pt-1 sm:pt-2"
-            />
-          }
+          character={roleplayCast
+            ? (
+              <RoleplayCounterpart
+                cast={roleplayCast}
+                speaker={state === "LISTENING" || realtime.isUserSpeaking
+                  ? "learner"
+                  : state === "SPEAKING" || realtime.isAssistantSpeaking
+                  ? "counterpart"
+                  : "idle"}
+                inputLevel={avatarInputLevel}
+                outputLevel={avatarOutputLevel}
+              />
+            )
+            : (
+              <WolfieCharacter
+                profile={visualSceneProfile}
+                state={visualCharacterState}
+                inputLevel={avatarInputLevel}
+                outputLevel={avatarOutputLevel}
+                fallbackImageSrc={null}
+                framing="ugc"
+                className="pt-1 sm:pt-2"
+              />
+            )}
           sceneContent={visualInteraction}
           context={shouldShowVisualContext ? visualContext : undefined}
           caption={
             <WolfieCaptionBar
               text={displaySubtitle}
-              speaker={state === "LISTENING" ? "Você" : "Wolfie Tutor"}
+              speaker={state === "LISTENING" ||
+                  (isRealtimeMode && realtime.isUserSpeaking && !realtime.isAssistantSpeaking)
+                ? "Você"
+                : roleplayCast?.name || "Wolfie Tutor"}
               language={assistantLanguage}
               state={visualCharacterState}
               isFinal={state !== "LISTENING"}

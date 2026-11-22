@@ -1106,6 +1106,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'wolfie-lesson-track',view:'ai-tutor',title:'Novidade: a trilha da sua aula',text:'Depois de cada aula que o seu professor registrar, o Wolfie monta uma prática de 12 a 15 minutos com o que vocês viram: as palavras da aula, as frases que você errou para você mesmo corrigir, exercícios do tema no contexto da sua rotina e uma conversa com o Wolfie com 3 objetivos. Nos dias seguintes aparecem revisões curtas de 3 minutos. Ninguém além de você vê os seus erros.'},
     ],
   },
+  {
+    id:'2026-11-22-wolfie-trilha-professor-checkin',title:'Check-in do Wolfie antes da aula',roles:['TEACHER'],
+    steps:[
+      {target:'wolfie-checkin-note',view:'dashboard',title:'Novidade: o check-in do aluno',text:'Na véspera da aula, o aluno faz um check-in de 3 minutos no Wolfie sobre a aula anterior. Em Aulas de Hoje aparece o resultado: quanto acertou, o que ainda errou e a prioridade que o Wolfie percebeu na conversa. É só leitura e aparece apenas para os seus alunos.'},
+    ],
+  },
 ];
 
 /**

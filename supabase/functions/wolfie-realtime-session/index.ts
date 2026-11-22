@@ -1046,8 +1046,11 @@ function openAiSession(
         turn_detection: {
           type: "semantic_vad",
           // "high" respondia a quase qualquer ruído e gerava turnos pagos que
-          // o aluno nunca pediu. "medium" ainda deixa a conversa fluida.
-          eagerness: "medium",
+          // o aluno nunca pediu. "medium" cortava quem pensa no meio da frase
+          // (aluno aprendendo). 22/11/2026: "low" espera a pausa de pensamento,
+          // e o botão "Terminei de falar" (input_audio_buffer.commit) fecha o
+          // turno na hora quando o aluno quiser.
+          eagerness: "low",
           create_response: true,
           interrupt_response: true,
         },

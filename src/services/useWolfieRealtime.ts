@@ -148,6 +148,12 @@ export interface WolfieRealtimeController {
   connect: () => Promise<WolfieRealtimeConnectResult>;
   disconnect: (forgetPreparedSession?: boolean) => void;
   interrupt: () => boolean;
+  /**
+   * "Terminei de falar": fecha o turno do aluno na hora, sem esperar o
+   * silêncio. Só age enquanto o detector ainda acha que o aluno está falando
+   * (senão o turno já foi fechado e a resposta já está a caminho).
+   */
+  finishSpeaking: () => boolean;
   sendText: (text: string) => boolean;
   applyServerGuidance: (
     guidance: WolfieRealtimeServerGuidance,
@@ -1536,6 +1542,18 @@ export function useWolfieRealtime(
     }
   }, []);
 
+  const finishSpeaking = useCallback((): boolean => {
+    if (!protocol.isUserSpeaking) return false;
+    if (protocol.responseId || protocol.isAssistantSpeaking) return false;
+    if (!sendEvent("input_audio_buffer.commit")) return false;
+    return sendEvent("response.create");
+  }, [
+    protocol.isAssistantSpeaking,
+    protocol.isUserSpeaking,
+    protocol.responseId,
+    sendEvent,
+  ]);
+
   const interrupt = useCallback((): boolean => {
     if (!protocol.responseId && !protocol.isAssistantSpeaking) return false;
     const cancelled = protocol.responseId
@@ -1695,6 +1713,7 @@ export function useWolfieRealtime(
     connect,
     disconnect,
     interrupt,
+    finishSpeaking,
     sendText,
     applyServerGuidance,
     setMuted,

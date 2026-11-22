@@ -10,6 +10,7 @@ import {
   itemOrder,
   normalizeAnswer,
   normalizeTrackContent,
+  parseLearnerFacts,
   parseRoleplayFeedback,
   publicTrack,
   reviewUnlocked,
@@ -284,4 +285,29 @@ Deno.test("'Você mandou bem' descarta elogio que cita frase errada", () => {
   assertEquals(feedback?.strengths, [
     'Você explicou o motivo: "because the tests failed".',
   ]);
+});
+
+Deno.test("memória: só fatos do próprio aluno, sem dado sensível", () => {
+  const facts = parseLearnerFacts([
+    {
+      kind: "professional_scenario",
+      key: "IT analyst",
+      text: "Works as an IT analyst",
+      quote: "I work with IT",
+    },
+    {
+      kind: "preferred_topic",
+      key: "gym",
+      text: "Goes to the gym at night",
+      quote: "I go to the gym at night",
+    },
+    {
+      kind: "goal",
+      key: "health",
+      text: "Wants to treat anxiety",
+      quote: "my anxiety",
+    },
+    { kind: "personal_story", key: "x", text: "x", quote: "x" },
+  ]);
+  assertEquals(facts.map((f) => f.key), ["it-analyst", "gym"]);
 });

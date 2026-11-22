@@ -28,6 +28,7 @@ const realtimeController = vi.hoisted(() => ({
   connect: vi.fn(async () => ({ ok: false, fallback: true })),
   disconnect: vi.fn(),
   interrupt: vi.fn(() => false),
+  finishSpeaking: vi.fn(() => false),
   sendText: vi.fn(() => false),
   applyServerGuidance: vi.fn(async () => true),
   setMuted: vi.fn(),

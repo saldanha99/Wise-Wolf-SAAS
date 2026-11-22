@@ -1,6 +1,7 @@
 import TeacherStudentTerms from './TeacherStudentTerms';
 
 import React, { useEffect, useState } from 'react';
+import { useWolfieCheckins, WolfieCheckinNote } from './WolfieCheckinNote';
 import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw, Sparkles } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -59,6 +60,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
     completionRate: 100
   });
   const [upcomingLessons, setUpcomingLessons] = useState<any[]>([]);
+  // Check-in do Wolfie na véspera da aula (só leitura, só alunos deste professor).
+  const wolfieCheckins = useWolfieCheckins(
+    upcomingLessons.map((aula) => aula.studentId).filter(Boolean),
+  );
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sentReminders, setSentReminders] = useState<Set<string>>(new Set());
@@ -779,6 +784,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                         <span className="truncate">{aula.module}</span>
                       )}
                     </div>
+                    {aula.studentId && wolfieCheckins[aula.studentId] && (
+                      <WolfieCheckinNote checkin={wolfieCheckins[aula.studentId]} />
+                    )}
                     {aula.type === 'TRIAL' && !aula.meet && (
                       <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300" role="alert">
                         Sem link de acesso cadastrado. Confirme a sala com a coordenação e envie o link real ao aluno antes da experimental.

@@ -779,7 +779,7 @@ Corrections already detected during the conversation: ${
   }
 Write feedback cards in the style of Loora. Only use sentences the learner really said. If the learner said little, say so honestly with fewer cards.
 "strengths" must praise real achievements and may only quote sentences (or parts) that are fully correct; never quote a sentence that appears in "corrections".
-Return JSON: {"objectives_done": [true|false, true|false, true|false], "strengths": ["up to 3 things done well, pt-BR, quote the learner"], "corrections": [{"said": "learner sentence", "correct": "corrected", "rule_pt": "rule in 1 line", "native": "how a native would say it", "on_topic": true|false}] (up to 3, lesson-topic errors first), "model_sentence": "one model sentence using the lesson structure in the learner's context", "priority_pt": "ONE priority for the next class, pt-BR, 1 sentence"}</task>`;
+Return JSON: {"objectives_done": [true|false, true|false, true|false], "strengths": ["up to 3 things done well, pt-BR, quote the learner"], "corrections": [{"said": "learner sentence", "correct": "corrected", "rule_pt": "rule in 1 line", "native": "how a native would say it", "on_topic": true|false}] (up to 3, lesson-topic errors first), "model_sentence": "one model sentence using the lesson structure in the learner's context", "priority_pt": "ONE priority for the next class, pt-BR, 1 sentence", "facts": [{"kind": "goal|professional_scenario|preferred_topic", "key": "short-english-slug", "text": "fact in English, third person, max 120 chars", "quote": "the learner's own words"}] (0 to 5 facts the learner clearly said about THEMSELVES: job, work routine, goals, hobbies, daily routine; never health, religion, politics, money amounts, family conflicts, addresses or other people's names; never facts invented by the roleplay scenario)}</task>`;
 }
 
 export interface RoleplayFeedback {
@@ -794,6 +794,44 @@ export interface RoleplayFeedback {
   }[];
   modelSentence: string;
   priorityPt: string;
+  facts: LearnerFact[];
+}
+
+export interface LearnerFact {
+  kind: "goal" | "professional_scenario" | "preferred_topic";
+  key: string;
+  text: string;
+  quote: string;
+}
+
+const FACT_KINDS = new Set([
+  "goal",
+  "professional_scenario",
+  "preferred_topic",
+]);
+// Dado sensível nunca vira memória (mesma régua do Wolfie: só o que é útil para praticar).
+const SENSITIVE_FACT =
+  /(health|sick|illness|disease|doctor|hospital|pregnan|religio|church|god|politic|vote|salary|money|debt|\$|r\$|address|street|divorc|depress|anxiety|medic|therapy)/i;
+
+export function parseLearnerFacts(raw: unknown): LearnerFact[] {
+  const seen = new Set<string>();
+  const facts: LearnerFact[] = [];
+  for (const item of arr(raw).slice(0, 8)) {
+    const fact = obj(item);
+    const kind = String(fact.kind ?? "");
+    const text = cleanText(fact.text, 120);
+    const quote = cleanText(fact.quote, 200);
+    const key = cleanText(fact.key, 60).toLowerCase().replace(
+      /[^a-z0-9]+/g,
+      "-",
+    ).replace(/^-|-$/g, "");
+    if (!FACT_KINDS.has(kind) || !text || !quote || !key) continue;
+    if (SENSITIVE_FACT.test(`${text} ${quote}`)) continue;
+    if (seen.has(`${kind}:${key}`)) continue;
+    seen.add(`${kind}:${key}`);
+    facts.push({ kind: kind as LearnerFact["kind"], key, text, quote });
+  }
+  return facts.slice(0, 5);
 }
 
 export function parseRoleplayFeedback(raw: unknown): RoleplayFeedback | null {
@@ -829,6 +867,7 @@ export function parseRoleplayFeedback(raw: unknown): RoleplayFeedback | null {
     corrections,
     modelSentence,
     priorityPt: cleanText(root.priority_pt, 240),
+    facts: parseLearnerFacts(root.facts),
   };
 }
 

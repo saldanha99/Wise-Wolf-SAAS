@@ -26,6 +26,7 @@ import {
 } from "../../../services/wolfieLessonTrackService";
 import type { WolfieTutorSessionSummary } from "../../../../components/wolfieTutorSession";
 import type { WolfieUserSummary } from "../types";
+import { parseRoleplayCharacter } from "../visuals/RoleplayCounterpart";
 
 const WolfieConversationTutor = React.lazy(
   () => import("../../../../components/WolfieTutor"),
@@ -308,6 +309,10 @@ export const WolfieLessonTrackSession: React.FC<SessionProps> = ({ trackId, user
           scenario={track.roleplay.scenario}
           studentGoal={track.roleplay.studentGoal}
           targetSkill={track.roleplay.targetSkill}
+          roleplayCast={{
+            ...parseRoleplayCharacter(content.roleplay.character),
+            objectives: content.roleplay.objectives,
+          }}
           onClose={(summary) => void finishRoleplay(summary)}
         />
       </React.Suspense>

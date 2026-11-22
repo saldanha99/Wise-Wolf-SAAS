@@ -39,6 +39,7 @@ import {
   itemOrder,
   type JsonObject,
   type LearnerContext,
+  type LearnerFact,
   type LessonInput,
   lessonInputIsUsable,
   normalizeTrackContent,
@@ -199,12 +200,116 @@ async function loadStudent(
         str(profile.module, 40) || "A2",
       goal,
       occupation: str(profile.occupation, 120) || str(intel?.profession, 120),
-      // Rotina: não há coluna própria; usamos o que o aluno contou de si.
-      routine: listOf(profile.preferred_topics),
+      // Rotina: não há coluna própria; usamos o que o aluno contou de si
+      // (perfil + até 10 fatos da memória do Wolfie que ele mesmo informou).
+      routine: [
+        ...listOf(profile.preferred_topics),
+        ...(await learnerMemoryFacts(admin, userId, tenantId)),
+      ].slice(0, 10),
       interests: listOf(profile.interests),
       isKids: profile.is_kids === true,
     },
   };
+}
+
+const FACT_MEMORY_KINDS = ["goal", "professional_scenario", "preferred_topic"];
+const MAX_ACTIVE_FACTS = 10;
+
+async function learnerMemoryFacts(
+  admin: Db,
+  studentId: string,
+  tenantId: string,
+): Promise<string[]> {
+  const { data } = await admin
+    .from("wolfie_memory_items")
+    .select("content")
+    .eq("student_id", studentId)
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .eq("sensitive", false)
+    .in("kind", FACT_MEMORY_KINDS)
+    .order("last_seen_at", { ascending: false })
+    .limit(MAX_ACTIVE_FACTS);
+  return (data ?? []).map((row: JsonObject) => str(row.content, 120)).filter(
+    Boolean,
+  );
+}
+
+/**
+ * Memória de fatos (22/11/2026): o que o aluno disse de si no roleplay vai para
+ * wolfie_memory_items (a mesma tabela que o realtime já lê). Fato repetido
+ * soma ocorrência; acima de 10 ativos, os mais antigos saem (dismissed).
+ */
+async function saveLearnerFacts(
+  admin: Db,
+  student: Student,
+  facts: LearnerFact[],
+  conversationId: string,
+): Promise<number> {
+  let saved = 0;
+  const now = new Date().toISOString();
+  for (const fact of facts) {
+    const memoryKey = `fact:${fact.key}`.slice(0, 160);
+    const { data: existing } = await admin
+      .from("wolfie_memory_items")
+      .select("id, occurrence_count, evidence, status")
+      .eq("tenant_id", student.tenantId)
+      .eq("student_id", student.id)
+      .eq("kind", fact.kind)
+      .eq("memory_key", memoryKey)
+      .maybeSingle();
+    const evidence = {
+      quote: fact.quote,
+      source: "lesson_track_roleplay",
+      at: now,
+    };
+    if (existing) {
+      if (existing.status === "dismissed") continue;
+      const previous = Array.isArray(existing.evidence)
+        ? existing.evidence.slice(-19)
+        : [];
+      const { error } = await admin.from("wolfie_memory_items").update({
+        content: fact.text,
+        occurrence_count: Number(existing.occurrence_count || 1) + 1,
+        evidence: [...previous, evidence],
+        last_seen_at: now,
+        source_conversation_session_id: conversationId,
+        source_activity_session_id: null,
+      }).eq("id", existing.id);
+      if (!error) saved += 1;
+      continue;
+    }
+    const { error } = await admin.from("wolfie_memory_items").insert({
+      tenant_id: student.tenantId,
+      student_id: student.id,
+      kind: fact.kind,
+      memory_key: memoryKey,
+      content: fact.text,
+      status: "active",
+      confidence: 0.8,
+      evidence: [evidence],
+      sensitive: false,
+      source_conversation_session_id: conversationId,
+    });
+    if (!error) saved += 1;
+  }
+  const { data: active } = await admin
+    .from("wolfie_memory_items")
+    .select("id")
+    .eq("tenant_id", student.tenantId)
+    .eq("student_id", student.id)
+    .eq("status", "active")
+    .in("kind", FACT_MEMORY_KINDS)
+    .like("memory_key", "fact:%")
+    .order("last_seen_at", { ascending: false });
+  const overflow = (active ?? []).slice(MAX_ACTIVE_FACTS).map((
+    row: JsonObject,
+  ) => row.id);
+  if (overflow.length) {
+    await admin.from("wolfie_memory_items").update({ status: "dismissed" })
+      .in("id", overflow);
+  }
+  return saved;
 }
 
 async function latestApprovedClass(
@@ -996,11 +1101,19 @@ async function handleRoleplayFeedback(
     await release();
     throw new HttpError(503, "FEEDBACK_UNAVAILABLE");
   }
+  const { facts, ...cards } = feedback;
   await admin.from("wolfie_lesson_tracks").update({
-    roleplay_feedback: { ...feedback, conversationId },
+    roleplay_feedback: { ...cards, conversationId },
     updated_at: new Date().toISOString(),
   }).eq("id", track.id);
-  return json({ feedback });
+  const factsSaved = await saveLearnerFacts(
+    admin,
+    student,
+    facts,
+    conversationId,
+  )
+    .catch(() => 0);
+  return json({ feedback: cards, factsSaved });
 }
 
 // ── Revisões ────────────────────────────────────────────────────────────────
