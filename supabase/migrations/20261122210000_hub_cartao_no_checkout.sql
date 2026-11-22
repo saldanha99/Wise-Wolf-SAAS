@@ -1,8 +1,7 @@
 -- Cartão no checkout do Hub e do Wolfie (decisão do Vinícius, 22/11/2026).
 --
--- 1) Anual do Wolfie, só à vista (aprovado pelo Chefe de Gabinete em 22/11/2026): Foco R$ 399,90;
---    Ritmo R$ 965,90 e Performance R$ 1.913,90 = maior desconto com margem >= 60% no cartão à vista,
---    usando o P90 proporcional à franquia (26 de 45 min = 58%: Ritmo 69 min, Performance 139 min).
+-- 1) Anual do Wolfie: 2 meses grátis, só à vista (PIX ou cartão em 1x), aprovado pelo Chefe de
+--    Gabinete em 22/11/2026 (msg 12b1a60a): Foco R$ 499, Ritmo R$ 999, Performance R$ 1.799.
 -- 2) Controle de tentativas de cartão (anti "card testing") para a edge function
 --    hub-card-payment, que é a ÚNICA que recebe dados de cartão. Aqui não entra
 --    número, validade nem CVV: só os 4 últimos dígitos e a bandeira devolvidos pelo
@@ -12,7 +11,7 @@
 
 update public.hub_plans
    set price_yearly = v.yearly, updated_at = pg_catalog.now()
-  from (values ('WOLFIE_FOCO', 399.90::numeric), ('WOLFIE_RITMO', 965.90), ('WOLFIE_PERFORMANCE', 1913.90)) as v(code, yearly)
+  from (values ('WOLFIE_FOCO', 499.00::numeric), ('WOLFIE_RITMO', 999.00), ('WOLFIE_PERFORMANCE', 1799.00)) as v(code, yearly)
  where hub_plans.code = v.code
    and hub_plans.price_yearly is distinct from v.yearly;
 
