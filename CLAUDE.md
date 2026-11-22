@@ -1,21 +1,3 @@
-### 22/11/2026 (noite, 12) — Atividades complementares do aluno usam a última aula e a memória do Wolfie
-
-- **O que mudou (`pedagogical-content`, action `student_complementary_pack`, commits `0f65334` + `f251d80`):** o pacote
-  de 4 atividades lê a última aula aprovada (14 dias, mesmo critério da trilha da aula), a memória verificada daquela
-  sessão (`student_learning_memories`) e os fatos ativos não sensíveis do Wolfie (`wolfie_memory_items`). Sem aula
-  útil (menos de 20 letras), o prompt é o de antes; leitura falhou = segue sem a aula (log `memoryCode/classCode/factsCode`).
-  Prompt e schema em `pedagogical-content/student-pack.ts` (puro, com testes). Só o slug do Haiku (vira Haiku 5.5 na ponte).
-- ⚠️ **Bug corrigido:** a Anthropic recusa json_schema com `minItems` > 1 (e `minLength/maxLength/maxItems/minimum`):
-  400 em toda geração do pacote desde a troca para a Anthropic. O provedor recebe `providerSafeSchema(...)`; o contrato
-  continua validado no `normalizeStudentGeneratedActivities` e no `save_student_generated_activities`. Outra função
-  que mandar schema com esses limites falha igual.
-- **Custo:** ~6 mil tokens, ~US$ 0,0015 por pacote (Haiku 5.5). Dry-runs com 2 alunos reais, nada gravado: 4/4 citam a aula.
-- **No ar (22:23 UTC):** `index.ts` + `student-pack.ts` copiados (uid 1000), `functions` reiniciado, linha
-  `pedagogical-content` do `.published-functions.md5` atualizada (`1373a6d6…`). Conferência: 401 sem login, `hello` 200, sem erro no log.
-- **Rollback:** `/opt/wisewolf/backup-atividades-aula-20261122T222321Z/` (`pedagogical-content/` anterior e
-  `published-functions.md5`): apagar `volumes/functions/pedagogical-content/student-pack.ts`, devolver o `index.ts`,
-  devolver o `.published-functions.md5` e `docker restart supabase-edge-functions`.
-
 ### 22/11/2026 (noite, 11) — Teto de US$ 50/mês da Anthropic e Lançador (escolher professor / só gerar link)
 
 - **Teto da Anthropic (decisão do Vinícius):** a chave é a mesma do Lei Prova (que tem contador próprio de US$ 50). O
