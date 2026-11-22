@@ -90,6 +90,7 @@ type Db = any;
 interface Student {
   id: string;
   tenantId: string;
+  isTestAccount: boolean;
   learner: LearnerContext;
 }
 
@@ -170,7 +171,7 @@ async function loadStudent(
   const { data: profile, error } = await admin
     .from("profiles")
     .select(
-      "id, full_name, module, occupation, english_for, short_term_goal, interests, preferred_topics, wolfie_settings, is_kids",
+      "id, full_name, module, occupation, english_for, short_term_goal, interests, preferred_topics, wolfie_settings, is_kids, is_test_account",
     )
     .eq("id", userId)
     .eq("role", "STUDENT")
@@ -189,6 +190,7 @@ async function loadStudent(
   return {
     id: profile.id,
     tenantId,
+    isTestAccount: profile.is_test_account === true,
     learner: {
       firstName: str(String(profile.full_name ?? "").split(" ")[0], 40),
       level: str(settings.level, 20) || str(intel?.estimated_level, 20) ||
@@ -412,6 +414,16 @@ async function handleHome(admin: Db, student: Student): Promise<Response> {
       .eq("student_id", student.id)
       .maybeSingle();
     track = data as TrackRow | null;
+  } else if (student.isTestAccount) {
+    // QA: conta de teste usa a trilha-fixture montada para ela (sem aula falsa).
+    const { data } = await admin
+      .from("wolfie_lesson_tracks")
+      .select("*")
+      .eq("student_id", student.id)
+      .eq("test_fixture", true)
+      .order("class_date", { ascending: false })
+      .limit(1);
+    track = (data?.[0] as TrackRow | undefined) ?? null;
   }
   const today = todayInSaoPaulo();
   const { data: reviews } = await admin

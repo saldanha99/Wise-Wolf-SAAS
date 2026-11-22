@@ -23,7 +23,10 @@ create table if not exists public.wolfie_lesson_tracks (
   id uuid primary key default gen_random_uuid(),
   tenant_id text not null,
   student_id uuid not null references public.profiles (id) on delete cascade,
-  class_log_id uuid not null references public.class_logs (id) on delete cascade,
+  -- Nulo só em trilha de teste (test_fixture), para QA sem lançar aula falsa:
+  -- class_logs mexe em repasse do professor.
+  class_log_id uuid references public.class_logs (id) on delete cascade,
+  test_fixture boolean not null default false,
   lesson_session_id uuid,
   class_date date not null,
   topic text not null default '',
@@ -49,7 +52,8 @@ create table if not exists public.wolfie_lesson_tracks (
   roleplay_feedback jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (class_log_id)
+  unique (class_log_id),
+  check (class_log_id is not null or test_fixture)
 );
 
 create index if not exists wolfie_lesson_tracks_student_idx
