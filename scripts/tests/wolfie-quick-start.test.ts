@@ -88,7 +88,8 @@ Deno.test("sessão inacabada é detectada para o atalho de retomada", () => {
     "lista vazia não retoma",
   );
   assert(
-    resumableSession({ resumableSessions: [{ id: "s1" }] } as never)?.id === "s1",
+    resumableSession({ resumableSessions: [{ id: "s1" }] } as never)?.id ===
+      "s1",
     "a primeira sessão retomável deve ser oferecida",
   );
 });
@@ -112,11 +113,23 @@ Deno.test("tarefa do professor vira o ponto de partida, acima do histórico", as
     { module: "B1" },
     { recentSessions: [{ subject: "vocabulary", cefr_level: "B1" }] } as never,
     null,
-    { id: "a1", topic: "Falar sobre o fim de semana", teacher_name: "Mateus Silva" },
+    {
+      id: "a1",
+      topic: "Falar sobre o fim de semana",
+      teacher_name: "Mateus Silva",
+    },
   );
-  assert(plano.assignmentId === "a1", "precisa carregar o id para fechar o laço");
   assert(
-    plano.selection.sector === "Falar sobre o fim de semana",
+    plano.assignmentId === "a1",
+    "precisa carregar o id para fechar o laço",
+  );
+  assert(
+    // Desde 4067410 a tarefa abre o tutor de conversa: o tema vai como
+    // experiência (título + contexto), não mais como setor.
+    plano.selection.experienceTitle === "Falar sobre o fim de semana" &&
+      String(plano.selection.experienceContext).includes(
+        "Falar sobre o fim de semana",
+      ),
     "o tema pedido pelo professor precisa chegar à prática",
   );
   assert(
