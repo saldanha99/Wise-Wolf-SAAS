@@ -1,3 +1,25 @@
+### 22/11/2026 (noite, 8) — White label: a escola escolhe a voz do tutor (`tenants.branding.tutorVoice`)
+
+- **O quê (decisão do Vinícius):** Configurações da escola → Marca → "Voz do tutor" (`components/settings/TutorVoicePicker.tsx`):
+  femininas marin/coral/shimmer, masculinas cedar/ash/echo, prévia ~5 s de cada (gpt-4o-mini-tts, base64 em
+  `lib/tutorVoicePreviews.ts`, import dinâmico: mídia não vai como arquivo ao GitHub). Catálogo único em
+  `supabase/functions/_shared/tutor-voice.ts` (também importado pelo front). Tour `2026-11-23-voz-do-tutor`.
+- **Onde vale:** `wolfie-realtime-session` (voz da sessão + identidade de voz feminina nas instruções,
+  `applyVoiceGender`) e `wolfie-tts` (voz clássica, mesmas vozes/gênero). Sem `tutorVoice` = cedar masculina, texto
+  idêntico (Wise Wolf não muda). Demo: `demo-escola` com `tutorVoice = marin` (Luna).
+- ⚠️ **Salvar Configurações da escola estava quebrado** para quem tem chave de marca fora do formulário
+  (Wise Wolf com `gamma*`, demo com `tutorName`): o front mandava o branding inteiro e o `hasOnlyKeys` recusava; e a
+  RPC `apply_tenant_admin_settings` grava o branding INTEIRO. Agora o front manda só as chaves do formulário
+  (`brandingFormPayload`) e o `tenant-settings-admin` preserva as outras do banco. ⚠️ A `demo-escola` ainda não
+  salva: o `school_info` dela tem chaves `demo`/`nome` (one-shot do white label) fora da lista aceita.
+- **Backup/rollback:** `/opt/wisewolf/backup-voz-do-tutor-20261122T185759Z/` (`functions/` das 3 funções, `.published-functions.md5`, `frontend-dist`,
+  `branding-antes.txt`). Front anterior em `src/dist.prev11-voz`. Funções: devolver as 3 pastas + o md5, apagar
+  `volumes/functions/_shared/tutor-voice.ts`, `docker restart supabase-edge-functions`. Demo:
+  `update tenants set branding = branding - 'tutorVoice' where id = 'demo-escola';`.
+- ⚠️ **Incidente da publicação "noite, 7":** o front subiu de `vite build` puro (sem `generate-hub-static-html`) e o hub
+  e as rotas públicas estáticas do system deram 404 das 17:58 às 18:50 UTC (sem aluno afetado pelos logs). **Front
+  só com `npm run build`** e compare a lista de arquivos fora de `assets/` com o dist no ar antes de trocar.
+
 ### 22/11/2026 (noite, 7) — Wolfie realtime: handoff sem turno ao vivo, clássico sem minutos, memória 23514, voz com o nome do tutor
 
 - **Handoff ao vivo → clássico:** sessão que nunca teve turno ao vivo (só âncora do clássico) levava 55000
