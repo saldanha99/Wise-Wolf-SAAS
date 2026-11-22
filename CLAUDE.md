@@ -16,6 +16,11 @@ Backups: `/opt/wisewolf/backups/numero-financeiro-20261122/` (wisewolf-vps) e
 `/root/backups/numero-financeiro-wisewolf-20261122/` (motofix-vps). O número
 continua em 35 grupos antigos (W-Tech, MotoFix, cursos): sair deles é decisão
 da direção. Desfazer: remover a env e recriar `functions`, apagar a linha.
+⚠️ **Às 05:07 UTC de 22/11 o WhatsApp deslogou o aparelho (código 401).** O Evolution segue
+dizendo `open`, mas todo envio dá `Connection Closed` (restart e connect não resolvem). Marquei a
+linha de `whatsapp_instances` como `disconnected`: a cobrança volta à central até alguém parear o
+celular do 6468 de novo (QR/código). Depois de parear: `status = 'open'` na linha e sair dos 35
+grupos (lista em backup, autorizado pela direção). Sem parear, `FINANCE_WHATSAPP_INSTANCE` é inofensiva.
 
 ### 21/11/2026 — E-mail de cobrança com a marca, número só do financeiro e "quem abriu a cobrança"
 
