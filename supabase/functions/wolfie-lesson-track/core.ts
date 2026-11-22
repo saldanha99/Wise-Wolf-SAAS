@@ -805,8 +805,19 @@ export function parseRoleplayFeedback(raw: unknown): RoleplayFeedback | null {
     native: cleanText(obj(c).native, 300),
     onTopic: obj(c).on_topic === true,
   })).filter((c) => c.said && c.correct);
+  // "Você mandou bem" nunca cita frase com erro nem traz a IA se corrigindo no meio.
+  const wrongSentences = corrections.map((c) => normalizeAnswer(c.said)).filter(
+    (t) => t.length > 8,
+  );
   const strengths = arr(root.strengths).map((s) => cleanText(s, 240)).filter(
-    Boolean,
+    (text) => {
+      if (!text) return false;
+      const normalized = normalizeAnswer(text);
+      if (wrongSentences.some((wrong) => normalized.includes(wrong))) {
+        return false;
+      }
+      return !/(\bnão, ess|\bessa frase tem erro|\.\.\. não\b)/i.test(text);
+    },
   ).slice(0, 3);
   const modelSentence = cleanText(root.model_sentence, 300);
   if (!modelSentence && !corrections.length && !strengths.length) return null;

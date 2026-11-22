@@ -10,6 +10,7 @@ import {
   itemOrder,
   normalizeAnswer,
   normalizeTrackContent,
+  parseRoleplayFeedback,
   publicTrack,
   reviewUnlocked,
   roleplayBrief,
@@ -260,4 +261,27 @@ Deno.test("roleplay respeita o limite do realtime e a política de correção", 
 Deno.test("forma certa do Mistake Repair vem com maiúscula e ponto", () => {
   const content = normalizeTrackContent(sampleRaw());
   assertEquals(content.keys.m1.modelAnswer, "Yesterday I went to the beach.");
+});
+
+Deno.test("'Você mandou bem' descarta elogio que cita frase errada", () => {
+  const feedback = parseRoleplayFeedback({
+    objectives_done: [true, false, true],
+    strengths: [
+      'Você contou o que fez: "Yesterday I send the report to the client".',
+      "Você usou did... não, essa frase tem erro.",
+      'Você explicou o motivo: "because the tests failed".',
+    ],
+    corrections: [{
+      said: "Yesterday I send the report to the client",
+      correct: "Yesterday I sent the report to the client",
+      rule_pt: "send → sent",
+      native: "I sent the report yesterday.",
+      on_topic: true,
+    }],
+    model_sentence: "Yesterday I sent the report.",
+    priority_pt: "Forma base depois de did.",
+  });
+  assertEquals(feedback?.strengths, [
+    'Você explicou o motivo: "because the tests failed".',
+  ]);
 });
