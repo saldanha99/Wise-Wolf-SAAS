@@ -296,8 +296,11 @@ async function startGeneration(
       tone: "clear, warm, rigorous, practical, motivating",
       audience: schoolBookAudience(spec),
     },
+    // Unsplash: licença comercial sem marca d'água. A busca "webFreeToUse
+    // Commercially" trouxe prévia de banco de imagem com marca d'água (teste de
+    // 22/11). Imagem gerada por IA fica fora (regra: imagem gerada só pelo Codex).
     imageOptions: {
-      source: "webFreeToUseCommercially",
+      source: "unsplash",
     },
     cardOptions: {
       dimensions: "a4",
