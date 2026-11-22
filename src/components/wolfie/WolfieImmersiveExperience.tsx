@@ -1,3 +1,4 @@
+import { brandText } from '../../../lib/tutorBrand';
 import React, { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
@@ -295,7 +296,7 @@ export function PremiumImmersionHero({
                   aria-hidden="true"
                 />
                 <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-100">
-                  Wolfie Core
+                  {brandText("Wolfie Core")}
                 </p>
                 <p className="mt-1 text-[10px] text-blue-100">
                   adaptação em tempo real
@@ -525,7 +526,7 @@ export function KidsAdventureZone({ onChoose }: KidsAdventureZoneProps) {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-700 backdrop-blur-xl dark:border-fuchsia-300/20 dark:bg-white/5 dark:text-fuchsia-200">
             <Gamepad2 size={14} aria-hidden="true" />
-            Wolfie Kids Adventure Zone
+            {brandText("Wolfie Kids Adventure Zone")}
           </div>
           <h2
             id="kids-adventure-title"

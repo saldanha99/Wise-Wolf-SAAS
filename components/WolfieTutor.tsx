@@ -4541,7 +4541,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70 motion-reduce:animate-none" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-400" />
             </span>
-            Wolfie · conversa pessoal
+            {brandText("Wolfie · conversa pessoal")}
           </span>
           <span className="hidden rounded-full border border-white/15 bg-slate-950/72 px-3 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/90 shadow-2xl backdrop-blur-xl sm:inline-flex">
             {getStatusLabel()}

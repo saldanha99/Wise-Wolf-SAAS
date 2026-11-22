@@ -1,3 +1,4 @@
+import { brandText } from '../../../lib/tutorBrand';
 import React, { type RefObject, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -962,7 +963,7 @@ export function WolfieDiscoveryHome({
       >
         <div className="max-w-3xl">
           <p className="text-xs font-black uppercase tracking-[0.15em] text-brand-accent">
-            Explore o que existe dentro do Wolfie
+            {brandText("Explore o que existe dentro do Wolfie")}
           </p>
           <h2
             id="universes-title"

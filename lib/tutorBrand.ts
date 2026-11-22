@@ -21,10 +21,20 @@ export function setTutorName(value: unknown): void {
 
 export const getTutorName = (): string => tutorName;
 
+let schoolName = '';
+/** Nome da escola cliente (vazio = Wise Wolf). Troca "Wise Wolf" nos textos embrulhados. */
+export function setSchoolName(value: unknown): void {
+  const next = clean(value).slice(0, 60);
+  if (next === schoolName) return;
+  schoolName = next;
+  listeners.forEach((listener) => listener());
+}
+
 /** Troca a palavra "Wolfie" (só a palavra inteira) pelo nome do tutor da escola. */
 const ARTICLE: Record<string, string> = { o: '', no: 'em ', do: 'de ', ao: 'a ', pelo: 'por ' };
 
 export function brandText(text: string): string {
+  if (schoolName) text = text.replace(/\bWise Wolf\b/g, schoolName);
   if (tutorName === DEFAULT_TUTOR_NAME) return text;
   // Nome próprio de escola cliente vai sem artigo ("com o Wolfie" → "com Luna").
   return text

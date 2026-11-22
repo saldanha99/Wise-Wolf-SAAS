@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { brandText } from '../../lib/tutorBrand';
 import { X, ArrowLeft, ArrowRight, CheckCircle2, Compass } from 'lucide-react';
 import { FlatStep } from '../../lib/tours';
 
@@ -100,7 +101,7 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
       className="fixed inset-0 z-300 print:hidden"
       role="dialog"
       aria-modal="true"
-      aria-label={`Tour guiado: ${step.title}`}
+      aria-label={`Tour guiado: ${brandText(step.title)}`}
     >
       <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
         <defs>
@@ -140,8 +141,8 @@ const TourOverlay: React.FC<Props> = ({ step, rect, index, total, onNext, onPrev
             </button>
           </div>
 
-          <h3 className="text-base font-bold text-brand-text leading-snug">{step.title}</h3>
-          <p className="text-sm text-brand-muted leading-relaxed mt-1.5">{step.text}</p>
+          <h3 className="text-base font-bold text-brand-text leading-snug">{brandText(step.title)}</h3>
+          <p className="text-sm text-brand-muted leading-relaxed mt-1.5">{brandText(step.text)}</p>
 
           <div className="flex items-center gap-2 mt-4">
             <div className="flex items-center gap-1 mr-auto" aria-hidden="true">

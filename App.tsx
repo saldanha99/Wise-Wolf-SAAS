@@ -28,7 +28,7 @@ import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loa
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
-import { brandText, setTutorName } from './lib/tutorBrand';
+import { brandText, setSchoolName, setTutorName } from './lib/tutorBrand';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
 import { useStudentDossierLink } from './lib/studentDossierLink';
@@ -631,6 +631,7 @@ const App: React.FC = () => {
     resolveTenantFromHostname().then(tenant => {
       setHostnameTenant(tenant);
       setTutorName((tenant?.branding as { tutorName?: unknown } | null | undefined)?.tutorName);
+      setSchoolName(tenant && tenant.id !== 'school-wise-wolf' && (tenant.branding as { tutorName?: unknown } | null)?.tutorName ? tenant.name : '');
       if (tenant?.branding) {
         // Aplica branding do tenant na tela de login
         applyTenantBranding(tenant.branding.primaryColor, tenant.branding.secondaryColor);
@@ -671,6 +672,7 @@ const App: React.FC = () => {
             resolvedTenantData.branding?.secondaryColor,
           );
           setTutorName(resolvedTenantData.branding?.tutorName);
+          setSchoolName(resolvedTenantData.id !== 'school-wise-wolf' && resolvedTenantData.branding?.tutorName ? resolvedTenantData.name : '');
           setCurrentTenant({
             id: resolvedTenantData.id,
             name: resolvedTenantData.name,
