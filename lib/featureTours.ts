@@ -1135,6 +1135,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'settings-branding',view:'settings_school',title:'Novidade: voz do tutor',text:'Em Configurações da escola → Marca, a escola escolhe a voz do tutor entre vozes femininas e masculinas, com uma prévia de 5 segundos de cada. A voz escolhida vale para a conversa ao vivo e para as respostas faladas, depois de salvar. Sem escolha, fica a voz de sempre.'},
     ],
   },
+  {
+    id:'2026-11-24-lancador-escolher-professor',title:'Lançador: escolher o professor ou só gerar o link',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'smart-finder-launch',view:'dashboard',title:'Novidade no Lançador',text:'No botão laranja do raio, em Aula experimental → Como disparar, agora há três jeitos: convite para todos os professores ativos, convite só para o professor que você escolher (com busca) ou só gerar o link, sem mandar nada, para você copiar e colar na conversa com um professor. Em todos, só professor ativo e logado aceita, e o primeiro que aceitar leva a aula.'},
+    ],
+  },
 ];
 
 /**
