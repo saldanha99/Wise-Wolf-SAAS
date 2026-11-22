@@ -98,22 +98,34 @@ const DreGerencialPanel: React.FC<Props> = () => {
 
   // Tendência: resultado dos 6 meses que terminam no mês escolhido. Carrega à
   // parte — o demonstrativo do mês não espera por ela.
-  const [trend, setTrend] = useState<{ month: string; resultado: number; receita: number }[] | null>(null);
+  // Mês que falha (rede, 500 passageiro) NÃO vira R$ 0 no gráfico: tenta de novo uma
+  // vez e, se ainda falhar, sai do gráfico com aviso — zero falso parece mês sem receita.
+  const [trend, setTrend] = useState<{ month: string; resultado: number; receita: number; failed: boolean }[] | null>(null);
   useEffect(() => {
     let cancelled = false;
     const months = recentMonths(12).filter(m => m <= month).sort().slice(-6);
     setTrend(null);
-    void Promise.all(months.map(m => supabase.rpc('dre_gerencial', { p_month: m })))
-      .then(results => {
-        if (cancelled) return;
-        setTrend(results.map((r, i) => {
+    const loadMonth = async (m: string) => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await supabase.rpc('dre_gerencial', { p_month: m });
           const d = r.data as Dre | null;
-          return { month: months[i], resultado: d && !d.error ? Number(d.resultado || 0) : 0, receita: d && !d.error ? Number(d.receita_liquida || 0) : 0 };
-        }));
-      })
+          if (!r.error && d && !d.error) {
+            return { month: m, resultado: Number(d.resultado || 0), receita: Number(d.receita_liquida || 0), failed: false };
+          }
+        } catch {
+          // tenta de novo abaixo
+        }
+      }
+      return { month: m, resultado: 0, receita: 0, failed: true };
+    };
+    void Promise.all(months.map(loadMonth))
+      .then(results => { if (!cancelled) setTrend(results); })
       .catch(() => { if (!cancelled) setTrend([]); });
     return () => { cancelled = true; };
   }, [month]);
+  const trendOk = (trend || []).filter(t => !t.failed);
+  const trendFailed = (trend || []).filter(t => t.failed);
 
   const monthOpts = recentMonths(12);
   const linhas = dre?.linhas || [];
@@ -224,14 +236,15 @@ const DreGerencialPanel: React.FC<Props> = () => {
               <p className="text-[11px] text-brand-muted">Mesma conta do mês, mês a mês. Torre vermelha = mês no prejuízo.</p>
               {trend === null ? (
                 <div className="h-[190px] grid place-items-center text-brand-muted"><RefreshCw size={18} className="animate-spin" /></div>
-              ) : trend.length === 0 ? (
+              ) : trendOk.length === 0 ? (
                 <p className="py-16 text-center text-xs text-brand-muted">Não foi possível montar a tendência.</p>
               ) : (
+                <>
                 <Towers3D
                   height={130}
                   ariaLabel="Resultado dos últimos seis meses"
                   format={v => money(v).replace(',00', '')}
-                  data={trend.map(t => ({
+                  data={trendOk.map(t => ({
                     key: t.month,
                     label: monthShort(t.month),
                     sublabel: `receita ${money(t.receita).replace(',00', '')}`,
@@ -241,6 +254,12 @@ const DreGerencialPanel: React.FC<Props> = () => {
                     caption: `${monthLabel(t.month)}: resultado ${money(t.resultado)}`,
                   }))}
                 />
+                {trendFailed.length > 0 && (
+                  <p role="status" className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                    Não carregou: {trendFailed.map(t => monthLabel(t.month)).join(', ')}. Toque em atualizar para tentar de novo.
+                  </p>
+                )}
+                </>
               )}
             </div>
           </div>

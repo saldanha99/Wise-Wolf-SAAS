@@ -283,15 +283,17 @@ const RecurringExpensesManager: React.FC<Props> = ({ month, onChanged }) => {
                     is_active: d.is_active,
                   });
                 }}
-                className="p-1.5 rounded-lg text-brand-muted hover:text-brand-text hover:bg-brand-surface"
+                className="grid h-11 w-11 sm:h-auto sm:w-auto place-items-center p-1.5 rounded-lg text-brand-muted hover:text-brand-text hover:bg-brand-surface"
                 title="Editar"
+                aria-label={`Editar ${d.label}`}
               >
                 <Pencil size={14} />
               </button>
               <button
                 onClick={() => void remover(d)}
-                className="p-1.5 rounded-lg text-brand-muted hover:text-red-600 hover:bg-red-500/10"
+                className="grid h-11 w-11 sm:h-auto sm:w-auto place-items-center p-1.5 rounded-lg text-brand-muted hover:text-red-600 hover:bg-red-500/10"
                 title="Excluir"
+                aria-label={`Excluir ${d.label}`}
               >
                 <Trash2 size={14} />
               </button>
