@@ -1,3 +1,22 @@
+### 22/11/2026 — Número só do financeiro no ar (ex-suporte W-Tech)
+
+O número do antigo "Suporte W-Tech Brasil" (final 6468) já estava no MESMO
+Evolution da Wise Wolf (`api.2b.app.br`, motofix-vps) como
+`saldanha-tenant-06d8fb73-…` (tenant de teste do MotoFix, bloqueado). Soltei do
+MotoFix (`tenants.whatsapp_instance = null`, webhook do MotoFix desligado),
+renomeei para "Wise Wolf Financeiro" com o logo e recado novo, e publiquei o lote
+de 21/11 (release `20261122T052732Z`, com migration `20261121120000`). Na VPS:
+`FINANCE_WHATSAPP_INSTANCE` em `.env.functions`, linha em `whatsapp_instances`
+(dono = diretor, inbox v3, `updated_at` anterior à central) e aquecimento em
+`whatsapp_outbound_policy` desde 22/11. Toda a régua de cobrança (diária, D-3,
+D-10/D0, vencidas, nova cobrança, vencimento alterado, confirmação de pagamento)
+sai por ele; resposta do aluno fica na Inbox, sem IA. Pix manual da direção
+(`generate-student-manual-pix`) ainda sai pelo número de quem gerou/central.
+Backups: `/opt/wisewolf/backups/numero-financeiro-20261122/` (wisewolf-vps) e
+`/root/backups/numero-financeiro-wisewolf-20261122/` (motofix-vps). O número
+continua em 35 grupos antigos (W-Tech, MotoFix, cursos): sair deles é decisão
+da direção. Desfazer: remover a env e recriar `functions`, apagar a linha.
+
 ### 21/11/2026 — E-mail de cobrança com a marca, número só do financeiro e "quem abriu a cobrança"
 
 - **E-mail com HTML:** `_shared/payment-email.ts` (`renderPaymentEmailHtml`) é o único renderizador, usado pela diária (`notify-payment-due/daily.ts`), marco de 30 dias (`index.ts`) e avisos/lembretes/recibo. Tudo escapado; só link do Asaas vira clicável; `text` continua como alternativa. Logo só para `school-wise-wolf`: `https://system.wisewolflanguage.com.br/assets/brand/wise-wolf-logo.png` (conferido 200 image/png), sobrescrevível por `PAYMENT_EMAIL_LOGO_URL`. Outras escolas: só o nome.
