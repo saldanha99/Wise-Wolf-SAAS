@@ -57,6 +57,9 @@ declare
   v_saidas numeric;
   v_saidas_feitas numeric;
   v_cash jsonb;
+  v_outras_feitas numeric;
+  v_repasse_feito numeric;
+  v_desp_falta numeric;
 begin
   if not private.prepayment_caller_can_read(v_tenant) then
     raise exception 'Sem permissão para consultar o financeiro' using errcode = '42501';
@@ -86,8 +89,8 @@ begin
      and ft.category is distinct from 'estorno_aporte_ou_movimentacao'
      and ft.refund_student_payment_id is null
      and coalesce(a.code, '6.9.99') <> '5.1.01'
-     and coalesce(ft.occurred_at, ft.created_at) >= v_base_start
-     and coalesce(ft.occurred_at, ft.created_at) < v_cur;
+     and (coalesce(ft.occurred_at, ft.created_at) at time zone 'America/Sao_Paulo')::date >= v_base_start
+     and (coalesce(ft.occurred_at, ft.created_at) at time zone 'America/Sao_Paulo')::date < v_cur;
 
   select coalesce(sum(e.ia), 0) / 3.0
     into v_ia_mes
@@ -104,18 +107,17 @@ begin
     into v_fech_pendente, v_fech_antigo
     from public.teacher_closings tc
    where tc.tenant_id = v_tenant
-     and tc.status in ('PENDENTE', 'UNDER_REVIEW')
+     and tc.status not in ('PAGO', 'PAID', 'PAID_WAITING_NF', 'COMPLETED', 'REJECTED')
      and tc.paid_at is null
      and tc.month_year < to_char(v_cur, 'YYYY-MM');
 
   -- get_cashflow_unchecked deriva a escola do auth.uid(): só serve quando a
   -- escola pedida é a de quem consulta (super admin olhando outra escola não
   -- pode receber o caixa da própria).
-  if v_tenant is not distinct from (select p.tenant_id from public.profiles p where p.id = auth.uid()) then
-    v_cash := public.get_cashflow_unchecked(to_char(v_cur, 'YYYY-MM'));
-  else
-    v_cash := jsonb_build_object('entradas', null, 'saidas', jsonb_build_object('total', null, 'professores', null, 'despesas', null), 'inadimplencia', null);
+  if v_tenant is distinct from (select p.tenant_id from public.profiles p where p.id = auth.uid()) then
+    raise exception 'Caixa projetado só está disponível para a escola de quem consulta' using errcode = '42501';
   end if;
+  v_cash := public.get_cashflow_unchecked(to_char(v_cur, 'YYYY-MM'));
 
   for i in 0 .. v_n - 1 loop
     m := (v_cur + make_interval(months => i))::date;
@@ -145,28 +147,42 @@ begin
           where sp.student_id = p.id and sp.tenant_id = v_tenant
             and sp.due_date >= m and sp.due_date < (m + interval '1 month')::date
             and sp.status not in ('DELETED', 'CANCELLED', 'REFUNDED'))
+       -- Plano adiantado: a competência coberta vem de student_payment_allocations
+       -- (exato para 3, 6 e 12 meses). Sem alocação (legado), cai na heurística
+       -- de recebimento ≥ 3 mensalidades nos últimos 12 meses.
        and not exists (
-         select 1 from public.student_payments sp
-          where sp.student_id = p.id and sp.tenant_id = v_tenant
-            and sp.status in ('RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED')
-            and sp.value >= 3 * p.monthly_fee
-            and coalesce(sp.paid_at::date, sp.payment_date, sp.due_date) > (m - interval '12 months')::date);
+         select 1 from public.student_payment_allocations al
+          where al.student_id = p.id and al.tenant_id = v_tenant
+            and al.status = 'ACTIVE' and al.competencia = m)
+       and (exists (
+              select 1 from public.student_payment_allocations al
+               where al.student_id = p.id and al.tenant_id = v_tenant and al.status = 'ACTIVE')
+            or not exists (
+              select 1 from public.student_payments sp
+               where sp.student_id = p.id and sp.tenant_id = v_tenant
+                 and sp.status in ('RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED')
+                 and sp.value >= 3 * p.monthly_fee
+                 and coalesce((sp.paid_at at time zone 'America/Sao_Paulo')::date, sp.payment_date, sp.due_date)
+                     > (m - interval '12 months')::date));
 
     if i = 0 then
       v_recebido := coalesce((v_cash ->> 'entradas')::numeric, 0);
+      v_outras_feitas := coalesce((v_cash -> 'saidas' ->> 'total')::numeric, 0)
+        - coalesce((v_cash -> 'saidas' ->> 'professores')::numeric, 0);
       -- get_cashflow só conta repasse com status PAGO; fechamento com paid_at em
       -- PAID_WAITING_NF/UNDER_REVIEW/COMPLETED também já saiu do caixa.
-      v_saidas_feitas := coalesce((v_cash -> 'saidas' ->> 'total')::numeric, 0)
-        - coalesce((v_cash -> 'saidas' ->> 'professores')::numeric, 0)
-        + coalesce((select sum(tc.total_amount)
+      v_repasse_feito := coalesce((select sum(tc.total_amount)
                       from public.teacher_closings tc
                      where tc.tenant_id = v_tenant
                        and tc.status <> 'REJECTED'
                        and tc.paid_at is not null
                        and (tc.paid_at at time zone 'America/Sao_Paulo')::date >= v_cur
                        and (tc.paid_at at time zone 'America/Sao_Paulo')::date < (v_cur + interval '1 month')::date), 0);
+      v_saidas_feitas := v_outras_feitas + v_repasse_feito;
     else
       v_recebido := 0;
+      v_outras_feitas := 0;
+      v_repasse_feito := 0;
       v_saidas_feitas := 0;
     end if;
 
@@ -175,10 +191,12 @@ begin
     v_asaas := round((v_n_geradas + v_n_assin) * v_fee, 2);
     -- No mês corrente, o que já saiu (get_cashflow) entra como realizado e o
     -- previsto do mês só completa o que falta (nunca negativo).
+    v_desp_falta := case when i = 0
+      then greatest(v_despesas_mes + v_extra - coalesce((v_cash -> 'saidas' ->> 'despesas')::numeric, 0), 0)
+      else 0 end;
     v_saidas := round(
       case when i = 0
-        then v_saidas_feitas + v_fech_pendente
-             + greatest(v_despesas_mes + v_extra - coalesce((v_cash -> 'saidas' ->> 'despesas')::numeric, 0), 0)
+        then v_saidas_feitas + v_fech_pendente + v_desp_falta
         else v_repasse_mes + v_despesas_mes + v_extra
       end + v_imposto + v_asaas + v_ia_mes, 2);
     v_acum := v_acum + v_entradas - v_saidas;
@@ -194,8 +212,10 @@ begin
       'assinaturas_previstas_qtd', v_n_assin,
       'saidas', v_saidas,
       'saidas_realizadas', round(v_saidas_feitas, 2),
-      'repasse', round(case when i = 0 then v_fech_pendente else v_repasse_mes end, 2),
-      'despesas_fixas', round(v_despesas_mes + v_extra, 2),
+      'repasse_realizado', round(v_repasse_feito, 2),
+      -- Colunas somam "saidas": professores + despesas + imposto + asaas + ia.
+      'repasse', round(case when i = 0 then v_repasse_feito + v_fech_pendente else v_repasse_mes end, 2),
+      'despesas_fixas', round(case when i = 0 then v_outras_feitas + v_desp_falta else v_despesas_mes + v_extra end, 2),
       'imposto', v_imposto,
       'asaas', v_asaas,
       'ia', round(v_ia_mes, 2),
@@ -284,9 +304,8 @@ begin
 
     -- Mesmo corte de mês e mesmos status da receita do dre_gerencial.
     select coalesce(sum(case
-             when sp.raw_payload -> 'payment' ? 'netValue'
-              and (sp.raw_payload -> 'payment' ->> 'netValue')::numeric < sp.value
-             then sp.value - (sp.raw_payload -> 'payment' ->> 'netValue')::numeric
+             when nullif(sp.raw_payload -> 'payment' ->> 'netValue', '')::numeric < sp.value
+             then sp.value - nullif(sp.raw_payload -> 'payment' ->> 'netValue', '')::numeric
              when sp.status = 'RECEIVED_IN_CASH' then 0
              else (v_cfg ->> 'asaas_fee_per_charge')::numeric
            end), 0)
@@ -296,7 +315,14 @@ begin
        and not private.is_unclassified_operator_receipt(sp.payment_type, sp.student_id, sp.raw_payload)
        and to_char(coalesce(sp.credited_at, sp.paid_at, sp.payment_date, sp.due_date), 'YYYY-MM') = v_mes;
 
-    select coalesce(sum(e.ia), 0) into v_ia
+    -- finance_student_economics projeta o mês corrente (× dias do mês ÷ dias
+    -- decorridos); o DRE é realizado, então desfaz o fator.
+    select coalesce(sum(e.ia), 0)
+           / case when m = date_trunc('month', (now() at time zone 'America/Sao_Paulo'))::date
+                  then (((m + interval '1 month')::date - m)::numeric
+                        / greatest(((now() at time zone 'America/Sao_Paulo')::date - m) + 1, 1))
+                  else 1 end
+      into v_ia
       from private.finance_student_economics(v_tenant, v_mes) e;
     -- IA sem aluno (crons, gestão) também é custo da escola.
     select v_ia + coalesce(sum((greatest(ev.input_tokens - coalesce(ev.cached_tokens, 0), 0) * coalesce(pr.input_usd_per_1m, 0)
@@ -311,7 +337,7 @@ begin
     v_imp_lancado := coalesce((
       select sum((l ->> 'valor')::numeric) from jsonb_array_elements(v_d -> 'linhas') l
        where l ->> 'code' = '4.1.01'), 0);
-    v_imp_est := case when v_imp_lancado > 0 then 0
+    v_imp_est := case when abs(v_imp_lancado) > 0 then 0
                       else round((v_d ->> 'receita_bruta')::numeric * v_tax_pct / 100.0
                                  + case when (v_d ->> 'receita_bruta')::numeric > 0 then v_tax_fixed else 0 end, 2) end;
 

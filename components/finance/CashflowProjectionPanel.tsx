@@ -10,7 +10,7 @@ import { Alerts, FinanceAlert, Kpi, money } from './financeUi';
 interface MesProj {
   mes: string; corrente: boolean; entradas: number; entradas_recebidas: number; cobrancas_geradas: number;
   cobrancas_geradas_qtd: number; assinaturas_previstas: number; assinaturas_previstas_qtd: number;
-  saidas: number; saidas_realizadas: number; repasse: number; despesas_fixas: number; imposto: number;
+  saidas: number; saidas_realizadas: number; repasse_realizado: number; repasse: number; despesas_fixas: number; imposto: number;
   asaas: number; ia: number; saldo_mes: number; saldo_acumulado: number;
 }
 interface Projection {
@@ -116,7 +116,7 @@ const CashflowProjectionPanel: React.FC = () => {
                     <td className="px-3 py-2 text-right">{money(m.cobrancas_geradas + m.entradas_recebidas)}</td>
                     <td className="px-3 py-2 text-right">{money(m.assinaturas_previstas)}</td>
                     <td className="px-3 py-2 text-right font-bold text-emerald-600">{money(m.entradas)}</td>
-                    <td className="px-3 py-2 text-right">{m.corrente ? money(m.saidas_realizadas) : money(m.repasse)}</td>
+                    <td className="px-3 py-2 text-right">{money(m.repasse)}</td>
                     <td className="px-3 py-2 text-right">{money(m.despesas_fixas)}</td>
                     <td className="px-3 py-2 text-right">{money(m.imposto + m.asaas + m.ia)}</td>
                     <td className="px-3 py-2 text-right font-bold text-amber-600">{money(m.saidas)}</td>
