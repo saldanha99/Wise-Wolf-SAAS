@@ -1,3 +1,29 @@
+### 22/11/2026 (noite) — Decisões do Vinícius: lançar aula aprova resumo, OpenRouter fora, compra de minutos
+
+- **Lançar a aula APROVA o resumo** (substitui 28/09). `private.approve_proposed_summary` (migration
+  `20261122190000`): o último PROPOSED da aula vira VERIFIED (HUMAN_REVIEW, `created_by` = professor que
+  lançou), com objetivo/próximo passo/lição do lançamento por cima, e entra em `student_learning_memories`
+  como no `summary_save`. Dois gatilhos: `class_logs` (APPROVED + COMPLETED) e `lesson_summary_versions`
+  (rascunho que nasce depois do lançamento). Não age se já houve decisão humana (VERIFIED/REJECTED), aula
+  SUPERSEDED, termo revogado ou documentação bloqueada. Exceção vira WARNING: o lançamento nunca falha.
+  Lote de 22/11: 265 aulas aprovadas pelo sistema (`created_by` nulo, `review_reason` com a decisão); 14
+  puladas por falta de objetivo/próximo passo. Backup: `private.bkp_lesson_summary_versions_20261122` e
+  `private.bkp_student_learning_memories_20261122`.
+- **OpenRouter fora da Wise Wolf.** `_shared/ai-gateway.ts`: chat só Anthropic (sem reserva; erro volta no
+  status da Anthropic), embeddings direto na OpenAI (mesmo modelo, `OPENAI_API_KEY`), outros endereços do
+  openrouter.ai → 410. Funções checam `textAiKey()` (= `ANTHROPIC_API_KEY`). `OPENROUTER_API_KEY` comentada
+  no `.env.functions`; `GOOGLE_MEET_SUMMARY_MODEL=anthropic/claude-haiku-4.5` (preço cadastrado). Bases de RAG
+  existentes seguem com rótulo OPENROUTER (imutável por `guard_ai_knowledge_embedding_config`; o rótulo só diz
+  a origem dos vetores); novas nascem OPENAI. **`.env.functions` só vale com `docker compose up -d --no-deps
+  --force-recreate functions`** — `restart` não relê variáveis.
+- **Compra de minutos no app:** `WolfieTopupModal` (PIX do `create-wolfie-topup`, QR + copia-e-cola,
+  polling do pedido até PAID), no medidor de saldo e aberto sozinho em `quota_exceeded`. Preços continuam os
+  da tabela `wolfie_topup_packages` até o Vinícius decidir.
+- **Backup/rollback:** `/opt/wisewolf/backup-ww-decisoes-20261122T145138Z/` (banco, `env.functions`, funções, md5,
+  front). Rollback das funções: copiar `functions/*` de volta + md5 e recriar o container com o
+  `env.functions` antigo; aprovação: `drop trigger zz_class_log_approves_summary on public.class_logs;
+  drop trigger zz_summary_draft_after_class_log on private.lesson_summary_versions;`.
+
 ### 22/11/2026 (tarde, 2) — Resumos: falha por crédito, reprocessamento e contador do professor
 
 - **Causa dos ~65% de SUMMARY_AI_FAILED:** não era código. De 19/10 a 11/11 o OpenRouter
@@ -3784,7 +3810,7 @@ resultado. Atualizar resumos remove sugestões que deixaram de valer sem apagar
 edições humanas. Não inventa “sem tarefa”/“nenhuma dificuldade”: botões registram
 essas declarações somente por clique. Motivo retroativo continua humano, com
 atalhos de preenchimento. Aprovação da memória continua no fluxo de revisão de
-resumos; salvar lançamento não aprova automaticamente um rascunho. Testes SQL
+resumos; salvar lançamento não aprova automaticamente um rascunho. **SUBSTITUÍDO em 22/11/2026: lançar a aula agora aprova o resumo — veja a entrada do topo.** Testes SQL
 `meet_class_log_suggestions.sql`, UI e tour `2026-09-30-meet-preenche-lancamento`.
 
 ### 28/09/2026 — Bloqueio do release por renovação no fim do mês
