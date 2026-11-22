@@ -327,6 +327,23 @@ function summaryBackend(
     return isRecord(data) ? data : {};
   };
 }
+/** Marca o claim como reprocessamento de falha por crédito (só a ação de serviço usa). */
+function retryDeps(
+  deps: ReturnType<typeof summaryDeps>,
+): ReturnType<typeof summaryDeps> {
+  return {
+    ...deps,
+    backend: (action, sessionId, payload) =>
+      deps.backend(
+        action,
+        sessionId,
+        action === "claim"
+          ? { ...(payload ?? {}), retry_failed: true }
+          : payload,
+      ),
+  };
+}
+
 function summaryDeps(
   db: SupabaseClient,
   cfg: Config,
@@ -1637,15 +1654,18 @@ serve(async (req: Request) => {
                 ? source.source_text
                 : "",
             })).filter((source) => source.id && source.source_text);
-        const outcome = await runSummaryGeneration({
-          trigger: "AUTOMATIC",
-          sessionId,
-          sources,
-          key: cfg.aiKey,
-          model: cfg.aiModel,
-          pricing,
-          deadline: Date.now() + 60_000,
-        }, summaryDeps(db, cfg, text(candidate.tenant_id, 100), null));
+        const outcome = await runSummaryGeneration(
+          {
+            trigger: "AUTOMATIC",
+            sessionId,
+            sources,
+            key: cfg.aiKey,
+            model: cfg.aiModel,
+            pricing,
+            deadline: Date.now() + 60_000,
+          },
+          retryDeps(summaryDeps(db, cfg, text(candidate.tenant_id, 100), null)),
+        );
         const cost = "cost_usd" in outcome ? Number(outcome.cost_usd) || 0 : 0;
         spentUsd += cost;
         // Só estado e custo: o texto da aula não sai daqui.
