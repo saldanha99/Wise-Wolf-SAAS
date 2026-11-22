@@ -181,6 +181,66 @@ export function parseSchoolBookSpec(body: JsonObject): BookSpecParse {
   };
 }
 
+export type BookBrand = "school" | "neutral";
+export type BookDestination = "SCHOOL" | "HUB";
+
+export interface BookBranding {
+  brand: BookBrand;
+  destination: BookDestination;
+  footerText: string | null;
+}
+
+export type BookBrandingParse =
+  | { ok: true; branding: BookBranding }
+  | { ok: false; code: string };
+
+// brand=school: tema da escola (GAMMA_THEME_ID). brand=neutral: tema sem marca
+// (GAMMA_THEME_ID_NEUTRAL) e, se pedido, um rodapé discreto em texto. O Hub só
+// recebe material neutro.
+export function parseBookBranding(body: JsonObject): BookBrandingParse {
+  const brand = typeof body.brand === "string"
+    ? body.brand.trim().toLowerCase()
+    : "school";
+  if (brand !== "school" && brand !== "neutral") {
+    return { ok: false, code: "INVALID_BOOK_BRAND" };
+  }
+  const destination = typeof body.destination === "string"
+    ? body.destination.trim().toUpperCase()
+    : "SCHOOL";
+  if (destination !== "SCHOOL" && destination !== "HUB") {
+    return { ok: false, code: "INVALID_BOOK_DESTINATION" };
+  }
+  if (destination === "HUB" && brand !== "neutral") {
+    return { ok: false, code: "HUB_REQUIRES_NEUTRAL_BRAND" };
+  }
+  let footerText: string | null = null;
+  if (body.footerText !== undefined && body.footerText !== null) {
+    if (typeof body.footerText !== "string") {
+      return { ok: false, code: "INVALID_BOOK_FOOTER" };
+    }
+    const footer = body.footerText.replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (
+      footer.length > 60 || /https?:|www\.|@/i.test(footer) ||
+      /\b[a-z0-9-]+\.(com|br|net|org|io|app|me|co|site|online)\b/i.test(footer)
+    ) {
+      return { ok: false, code: "INVALID_BOOK_FOOTER" };
+    }
+    footerText = footer || null;
+  }
+  if (footerText && brand !== "neutral") {
+    return { ok: false, code: "FOOTER_ONLY_FOR_NEUTRAL" };
+  }
+  return {
+    ok: true,
+    branding: {
+      brand: brand as BookBrand,
+      destination: destination as BookDestination,
+      footerText,
+    },
+  };
+}
+
 const audienceLabel = (audience: BookAudience): string =>
   ({
     kids: "children; playful, safe, short and highly scaffolded tasks",
@@ -351,7 +411,10 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
   return pages.join("\n---\n");
 }
 
-export function buildSchoolBookInstructions(spec: SchoolBookSpec): string {
+export function buildSchoolBookInstructions(
+  spec: SchoolBookSpec,
+  brand: BookBrand = "school",
+): string {
   const languageRule = spec.language === "bilingual"
     ? "Write learning texts, examples and target language in natural English. Write explanations and task instructions in Brazilian Portuguese when that improves clarity. Never translate away the English practice."
     : "Write the complete book in natural English, including explanations and task instructions.";
@@ -366,6 +429,11 @@ export function buildSchoolBookInstructions(spec: SchoolBookSpec): string {
     "Prefer communicative, realistic tasks over generic filler. Build progression and recycle prior vocabulary across units.",
     "All multiple-choice and gap-fill activities must have one defensible answer. The answer-key cards must match the exercises exactly and may never invent missing questions.",
     "Use tables, callouts and visual hierarchy where useful. Never invent external links, audio files, QR codes, citations or research claims.",
+    ...(brand === "neutral"
+      ? [
+        "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
+      ]
+      : []),
   ].join(" ");
 }
 
