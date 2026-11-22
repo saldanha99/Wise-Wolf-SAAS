@@ -353,34 +353,7 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword, brand
                                 </motion.button>
                             </form>
 
-                            {/* Demo Quick Access - REMOVED FOR PRODUCTION
-267:                             {onDemoLogin && (
-268:                                 <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
-269:                                     <p className="text-[10px] uppercase font-black text-brand-muted tracking-widest text-center">Acesso Rápido (Demo)</p>
-270:                                     <div className="grid grid-cols-2 gap-2">
-271:                                         {[
-272:                                             { label: 'Diretor', email: 'diretor@wisewolf.com', pass: '123456' },
-273:                                             { label: 'Professor', email: 'professor.demo@wisewolf.com', pass: '123456' },
-274:                                             { label: 'Aluno', email: 'aluno@wisewolf.com', pass: '123456' },
-275:                                             { label: 'Super Admin', email: 'admin@educore.io', pass: '123456' }
-276:                                         ].map((demo, i) => (
-277:                                             <button
-278:                                                 key={i}
-279:                                                 type="button"
-280:                                                 onClick={() => {
-281:                                                     setEmail(demo.email);
-282:                                                     setPassword(demo.pass);
-283:                                                     // Optional: Auto submit or just fill
-284:                                                 }}
-285:                                                 className="p-2 rounded-lg bg-brand-surface/5 hover:bg-brand-surface/10 border border-white/5 text-[10px] font-bold text-slate-300 hover:text-white transition-all text-center uppercase tracking-wide"
-286:                                             >
-287:                                                 {demo.label}
-288:                                             </button>
-289:                                         ))}
-290:                                     </div>
-291:                                 </div>
-292:                             )}
-*/}
+                            
 
                         </div>
                     </div>
