@@ -1118,6 +1118,15 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'teacher-review-summaries',view:'dashboard',title:'Novidade: lançar a aula aprova o resumo',text:'Novidade: ao lançar a aula, o resumo da aula gravada é aprovado com o que você confirmar no lançamento (objetivo, próximo passo e lição) e passa a alimentar a memória do aluno, o Planner e a trilha do Wolfie. Este botão mostra só o que ainda falta: aulas não lançadas ou rascunhos sem objetivo e próximo passo. Revisar por aqui é opcional.'},
     ],
   },
+  {
+    id:'2026-11-23-margem-precos-equilibrio',title:'Margem por plano, preços e ponto de equilíbrio',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'unit-economics-kpis',view:'unit-economics',title:'Novidade: quanto cada plano deixa',text:'Em Relatórios → Margem por plano, cada mensalidade aparece descontada do professor, da IA do Wolfie, da taxa do Asaas e do imposto. Dá para ver por plano, por professor e por aluno, e achar quem dá prejuízo. No mês em andamento, os custos são projetados pelo ritmo dos dias que já passaram.'},
+      {target:'finance-settings',view:'unit-economics',title:'Informe o imposto',text:'Em Configurar, informe o regime de imposto da escola (DAS fixo do MEI ou % da receita) e os custos fixos pagos por fora do sistema. Enquanto o imposto não for informado, a margem aparece sem ele e o painel avisa.'},
+      {target:'pricing-plans',view:'pricing',title:'Simule um preço novo',text:'Em Preços e equilíbrio, cada plano do catálogo mostra custo, margem e preço mínimo. Digite um preço para ver na hora se dá lucro ou prejuízo. A simulação não muda o preço de verdade.'},
+      {target:'break-even',view:'pricing',title:'Ponto de equilíbrio',text:'Quantos alunos pagantes cobrem os custos fixos do mês e quanto sobra com os alunos de hoje. Os custos fixos saem das despesas lançadas no caixa nos últimos 3 meses, mais os extras informados em Configurar.'},
+    ],
+  },
 ];
 
 /**

@@ -87,6 +87,8 @@ const FinancialReconciliation = lazy(() => import('./components/FinancialReconci
 const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
 const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
+const UnitEconomicsPanel = lazy(() => import('./components/finance/UnitEconomicsPanel'));
+const PricingPanel = lazy(() => import('./components/finance/PricingPanel'));
 const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
 const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
@@ -218,6 +220,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
     { tab: 'payroll-reconciliation', label: 'Caixinha × Folha', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
+    { tab: 'unit-economics', label: 'Margem por plano', group: 'Financeiro', keywords: 'lucro prejuízo margem aluno professor plano imposto asaas' },
+    { tab: 'pricing', label: 'Preços e equilíbrio', group: 'Financeiro', keywords: 'precificação preço mínimo ponto de equilíbrio simular' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
     { tab: 'reconciliation', label: 'Reconciliação Financeira', group: 'Financeiro' },
@@ -1476,6 +1480,8 @@ const App: React.FC = () => {
       'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
       'reconciliation': <FinancialReconciliation user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
+      'unit-economics': <UnitEconomicsPanel user={user} />,
+      'pricing': <PricingPanel user={user} />,
       'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
       'verify-rooms': <MeetingLinkVerifier />,
@@ -1646,6 +1652,8 @@ const App: React.FC = () => {
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'margin': 'Custo e Margem',
+                      'unit-economics': 'Margem por plano',
+                      'pricing': 'Preços e equilíbrio',
                       'coverage': 'Cobertura de Professor',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',

@@ -91,6 +91,8 @@ export const ADMIN_NAV: NavGroup[] = [
       { id: 'payroll-reconciliation', label: 'Caixinha × folha' },
       { id: 'cashflow', label: 'Fluxo de caixa' },
       { id: 'margin', label: 'Custo e margem' },
+      { id: 'unit-economics', label: 'Margem por plano' },
+      { id: 'pricing', label: 'Preços e equilíbrio' },
       { id: 'ai-costs', label: 'Custo de IA' },
     ],
   },
