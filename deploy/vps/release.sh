@@ -1651,6 +1651,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122200000_financeiro_margem_por_aluno_plano_professor.sql"
   "supabase/migrations/20261122201000_financeiro_precificacao_e_equilibrio.sql"
   "supabase/migrations/20261122202000_financeiro_fluxo_projetado_e_dre_completo.sql"
+  "supabase/migrations/20261122203000_conteudo_bot_gamma_marca_e_views.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1864,6 +1865,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/atendente_espera_a_ia_voltar.sql"
   "supabase/tests/guarda_de_agenda.sql"
   "supabase/tests/financeiro_inteligencia.sql"
+  "supabase/tests/conteudo_bot_gamma.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

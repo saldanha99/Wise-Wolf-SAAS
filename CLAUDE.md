@@ -1,3 +1,23 @@
+### 22/11/2026 (noite, 3) — Agente de conteúdo no Gamma: marca neutra, credencial técnica e views (feat/conteudo-bot-gamma)
+
+- **Gerador (`gamma-book-generator`):** novos campos `brand` (`school` | `neutral`), `destination`
+  (`SCHOOL` | `HUB`; Hub exige `neutral`) e `footerText` (≤ 60, texto puro, só no neutro → `bottomLeft`
+  do Gamma). Neutro usa `GAMMA_THEME_ID_NEUTRAL`; **sem ele, recusa** (`GAMMA_NEUTRAL_THEME_NOT_CONFIGURED`)
+  em vez de cair no tema padrão da conta. Action `credits` (admin ou agente) lê `GET /me` → `creditsRemaining`.
+- **Sempre pendente:** material nasce `PRIVATE`/`PENDING` se o criador é TEACHER, o agente
+  (`created_via=CONTENT_BOT`) ou o destino é HUB. Ir para o catálogo do Hub continua o fluxo humano de
+  sempre (opt-in do SCHOOL_ADMIN + prévia + direitos + 2º aprovador SUPER_ADMIN); o gerador nunca liga
+  `hub_catalog_opt_in`.
+- **Acesso do agente:** header `x-content-bot-token` (sem login, sem service key). O banco guarda só o
+  sha256 em `private.content_bot_credentials`; `content_bot_authenticate` (service_role) só aceita conta
+  TEACHER do tenant **sem aluno vinculado**. Conta técnica `conteudo-bot` (banida no Auth, `Inativo`/
+  `offboarded`, `is_test_account`). O PDF sobe como serviço e `content_bot_claim_material_object` grava a
+  conta como dona (procedência do Hub). Revogar: `update private.content_bot_credentials set revoked_at = now();`.
+- **Views (`openbot`, lidas por `openbot_ro`):** `conteudo_materiais` (ESCOLA / HUB_CATALOGO /
+  HUB_PROFESSOR), `conteudo_geracoes_gamma`, `conteudo_creditos_gamma_mes`, `conteudo_resumos_temas`
+  (só itens vistos com 3+ alunos), `conteudo_alunos_perfil` (profissão/finalidade com 2+ alunos). Nenhuma
+  tem nome, contato, título ou id de aluno. Migration `20261122203000`; teste `supabase/tests/conteudo_bot_gamma.sql`.
+
 ### 22/11/2026 (noite, 2) — Inteligência financeira no ar (branch feat/financeiro-inteligencia, de85803)
 
 - **O quê:** Relatórios → Financeiro ganha 4 telas, só SCHOOL_ADMIN/SUPER_ADMIN: **Margem por plano**
