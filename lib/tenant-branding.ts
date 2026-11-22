@@ -44,3 +44,19 @@ export const applyTenantBranding = (
 
 export const resetTenantBranding = () =>
   applyTenantBranding(DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR);
+
+/**
+ * White label: botões e destaques usam --brand-accent (paleta da Wise Wolf).
+ * Para escola cliente, o acento vira a cor da escola; null devolve o padrão.
+ */
+export const applyWhiteLabelAccent = (primaryColor: unknown | null) => {
+  const root = document.documentElement;
+  if (primaryColor == null) {
+    root.style.removeProperty('--brand-accent');
+    root.style.removeProperty('--brand-accent-hover');
+    return;
+  }
+  const primary = normalizeHexColor(primaryColor, DEFAULT_PRIMARY_COLOR);
+  root.style.setProperty('--brand-accent', primary);
+  root.style.setProperty('--brand-accent-hover', primary);
+};

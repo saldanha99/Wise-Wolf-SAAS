@@ -27,7 +27,7 @@ import {
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2, PanelLeft, PanelTop } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
-import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
+import { applyTenantBranding, applyWhiteLabelAccent, resetTenantBranding } from './lib/tenant-branding';
 import { brandText, setSchoolName, setTutorName } from './lib/tutorBrand';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
@@ -631,7 +631,9 @@ const App: React.FC = () => {
     resolveTenantFromHostname().then(tenant => {
       setHostnameTenant(tenant);
       setTutorName((tenant?.branding as { tutorName?: unknown } | null | undefined)?.tutorName);
-      setSchoolName(tenant && tenant.id !== 'school-wise-wolf' && (tenant.branding as { tutorName?: unknown } | null)?.tutorName ? tenant.name : '');
+      const hostWhiteLabel = Boolean(tenant && tenant.id !== 'school-wise-wolf' && (tenant.branding as { tutorName?: unknown } | null)?.tutorName);
+      setSchoolName(hostWhiteLabel && tenant ? tenant.name : '');
+      applyWhiteLabelAccent(hostWhiteLabel ? tenant?.branding?.primaryColor : null);
       if (tenant?.branding) {
         // Aplica branding do tenant na tela de login
         applyTenantBranding(tenant.branding.primaryColor, tenant.branding.secondaryColor);
@@ -672,7 +674,9 @@ const App: React.FC = () => {
             resolvedTenantData.branding?.secondaryColor,
           );
           setTutorName(resolvedTenantData.branding?.tutorName);
-          setSchoolName(resolvedTenantData.id !== 'school-wise-wolf' && resolvedTenantData.branding?.tutorName ? resolvedTenantData.name : '');
+          const tenantWhiteLabel = resolvedTenantData.id !== 'school-wise-wolf' && Boolean(resolvedTenantData.branding?.tutorName);
+          setSchoolName(tenantWhiteLabel ? resolvedTenantData.name : '');
+          applyWhiteLabelAccent(tenantWhiteLabel ? resolvedTenantData.branding?.primaryColor : null);
           setCurrentTenant({
             id: resolvedTenantData.id,
             name: resolvedTenantData.name,
