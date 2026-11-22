@@ -1650,6 +1650,9 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122182000_retry_sources_so_falha_de_credito.sql"
   "supabase/migrations/20261122190000_lancar_aula_aprova_resumo.sql"
   "supabase/migrations/20261122191000_rag_sem_openrouter.sql"
+  "supabase/migrations/20261122200000_financeiro_margem_por_aluno_plano_professor.sql"
+  "supabase/migrations/20261122201000_financeiro_precificacao_e_equilibrio.sql"
+  "supabase/migrations/20261122202000_financeiro_fluxo_projetado_e_dre_completo.sql"
   "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -1863,6 +1866,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/baixa_manual_de_aulas.sql"
   "supabase/tests/atendente_espera_a_ia_voltar.sql"
   "supabase/tests/guarda_de_agenda.sql"
+  "supabase/tests/financeiro_inteligencia.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
