@@ -15,3 +15,11 @@ describe('HubBulkApproval', () => {
     expect(chunk([], SYNC_BATCH_SIZE)).toEqual([]);
   });
 });
+
+describe('HubBulkApproval approve batches', () => {
+  it('splits the approval into calls of at most 200 ids (RPC cap)', async () => {
+    const { APPROVE_BATCH_SIZE } = await import('./HubBulkApproval');
+    expect(APPROVE_BATCH_SIZE).toBe(200);
+    expect(chunk(Array.from({ length: 401 }, (_, i) => i), APPROVE_BATCH_SIZE).map(b => b.length)).toEqual([200, 200, 1]);
+  });
+});

@@ -45,6 +45,7 @@ begin
        and m.hub_preview_source_path is not null
        and m.hub_preview_source_path <> m.storage_object_path
        and m.hub_rights_basis in ('OWNED', 'LICENSED', 'PUBLIC_DOMAIN')
+       and char_length(btrim(coalesce(m.hub_rights_declaration, ''))) between 20 and 2000
        and m.hub_publication_requested_by is not null
        and m.hub_publication_requested_by <> (select auth.uid())
      order by t.name nulls last, m.level_tag nulls last, m.title;
@@ -80,7 +81,12 @@ begin
        and m.hub_catalog_opt_in is true
        and coalesce(m.hub_commercial_approved, false) is false
        and m.approval_status = 'APPROVED'
+       and upper(coalesce(m.type, '')) = 'PDF'
+       and m.storage_object_path is not null
        and m.hub_preview_source_path is not null
+       and m.hub_preview_source_path <> m.storage_object_path
+       and m.hub_rights_basis in ('OWNED', 'LICENSED', 'PUBLIC_DOMAIN')
+       and char_length(btrim(coalesce(m.hub_rights_declaration, ''))) between 20 and 2000
        and m.hub_publication_requested_by is not null
        and m.hub_publication_requested_by <> v_actor
     returning m.id

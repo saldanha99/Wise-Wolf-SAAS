@@ -18,6 +18,7 @@ export interface PendingHubApproval {
 }
 
 export const SYNC_BATCH_SIZE = 5;
+export const APPROVE_BATCH_SIZE = 200;
 
 export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -64,22 +65,31 @@ export default function HubBulkApproval() {
     setRunning(true);
     setRunError('');
     setStep(`Aprovando ${ids.length}…`);
-    const { data, error } = await supabase.rpc('hub_approve_commercial_publications', { p_material_ids: ids });
-    if (error || !data?.ok) {
-      setRunning(false);
-      setStep('');
-      setRunError('A aprovação não foi salva. Nada mudou; tente de novo.');
-      return;
+    // A RPC aceita até 200 ids por chamada.
+    const approvedIds: string[] = [];
+    let skipped = 0;
+    for (const part of chunk(ids, APPROVE_BATCH_SIZE)) {
+      const { data, error } = await supabase.rpc('hub_approve_commercial_publications', { p_material_ids: part });
+      if (error || !data?.ok) {
+        setRunning(false);
+        setStep('');
+        setRunError(approvedIds.length
+          ? `${approvedIds.length} foram aprovados, mas o restante não foi salvo. Atualize a lista e aprove os que faltam.`
+          : 'A aprovação não foi salva. Nada mudou; tente de novo.');
+        await load();
+        return;
+      }
+      if (Array.isArray(data.approved)) approvedIds.push(...data.approved);
+      skipped += Number(data.skipped || 0);
     }
-    const approvedIds: string[] = Array.isArray(data.approved) ? data.approved : [];
     let syncFailedBatches = 0;
     const batches = chunk(approvedIds, SYNC_BATCH_SIZE);
     for (let i = 0; i < batches.length; i += 1) {
       setStep(`Copiando para o Hub: ${Math.min((i + 1) * SYNC_BATCH_SIZE, approvedIds.length)} de ${approvedIds.length}…`);
       const { data: sync, error: syncError } = await supabase.functions.invoke('sync-hub-material', { body: { materialIds: batches[i] } });
-      if (syncError || sync?.failed) syncFailedBatches += 1;
+      if (syncError || !sync?.ok) syncFailedBatches += 1;
     }
-    setResult({ approved: approvedIds.length, skipped: Number(data.skipped || 0), syncFailedBatches });
+    setResult({ approved: approvedIds.length, skipped, syncFailedBatches });
     setRunning(false);
     setStep('');
     setConfirming(false);
