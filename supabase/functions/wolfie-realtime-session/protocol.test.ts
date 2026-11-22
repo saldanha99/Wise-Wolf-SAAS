@@ -422,7 +422,8 @@ Deno.test("usage do response.done separa áudio, texto e cache", () => {
 
 Deno.test("usage ausente ou inválido não quebra nem inventa número", () => {
   assert(
-    extractWolfieRealtimeUsage({ type: "response.done", response: {} }) === null,
+    extractWolfieRealtimeUsage({ type: "response.done", response: {} }) ===
+      null,
     "sem usage deve retornar null, não zero",
   );
   assert(

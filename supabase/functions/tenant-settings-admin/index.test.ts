@@ -248,3 +248,54 @@ Deno.test("utiliza fallback slug seguro quando slug estiver vazio", () => {
     "slug deve usar fallback seguro",
   );
 });
+
+Deno.test("voz do tutor e chaves da marca que a tela não edita", () => {
+  const current = {
+    tutorName: "Luna",
+    appName: "Escola Demo",
+    gammaThemeId: "tema-x",
+    tutorVoice: "marin",
+    logoUrl: "https://old.invalid/logo.png",
+  };
+  const base = settings();
+  const withVoice = normalizeSettings(
+    settings({ branding: { ...base.branding, tutorVoice: "coral" } }),
+    "tenant-a",
+    current,
+  );
+  assert(withVoice.branding.tutorVoice === "coral", "voz escolhida é gravada");
+  assert(withVoice.branding.tutorName === "Luna", "tutorName é preservado");
+  assert(withVoice.branding.appName === "Escola Demo", "appName é preservado");
+  assert(withVoice.branding.gammaThemeId === "tema-x", "gamma* é preservado");
+
+  const cleared = normalizeSettings(settings(), "tenant-a", current);
+  assert(cleared.branding.tutorVoice === undefined, "sem voz no form = padrão");
+  assert(
+    cleared.branding.tutorName === "Luna",
+    "limpar a voz não apaga o nome",
+  );
+
+  let rejected = false;
+  try {
+    normalizeSettings(
+      settings({ branding: { ...base.branding, tutorVoice: "nova" } }),
+      "tenant-a",
+      {},
+    );
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, "voz fora da lista é recusada");
+
+  rejected = false;
+  try {
+    normalizeSettings(
+      settings({ branding: { ...base.branding, tutorName: "Hack" } }),
+      "tenant-a",
+      {},
+    );
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, "a tela não grava tutorName");
+});

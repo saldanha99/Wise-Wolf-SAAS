@@ -5201,6 +5201,19 @@ serve(async (req) => {
         if (handoffMessage.includes("wolfie_session_not_found")) {
           throw new HttpError(404, "CONVERSATION_NOT_FOUND");
         }
+        // Sessão que nunca teve turno ao vivo (ex.: aluno sem minutos que
+        // tocou em "voz clássica"): não há o que passar, o clássico segue na
+        // mesma sessão. A RPC já recusou sessão encerrada antes desta trava.
+        if (handoffMessage.includes("realtime_anchor_required")) {
+          return jsonResponse(200, {
+            success: true,
+            action: "handoff_realtime_to_classic",
+            conversationId: input.conversationId,
+            handedOff: true,
+            reused: true,
+            notNeeded: true,
+          });
+        }
         logDatabaseError("realtime_classic_handoff", error);
         throw new HttpError(503, "SERVICE_UNAVAILABLE");
       }
@@ -8260,6 +8273,10 @@ serve(async (req) => {
               item,
             ]),
         );
+        // first_seen_at explícito: sem ele a linha nova nascia com o now() do
+        // banco, posterior ao `now` do início da requisição (antes da IA), e
+        // last_seen_at < first_seen_at violava wolfie_memory_items_dates_check (23514).
+        const memoryStamp = new Date().toISOString();
         const memoryRows = memoryCandidates.map((candidate) => {
           const existing = existingByKey.get(
             `${candidate.kind}:${candidate.memory_key}`,
@@ -8294,13 +8311,12 @@ serve(async (req) => {
               : null,
             source_conversation_session_id: sessionId,
             source_activity_session_id: null,
-            last_seen_at: now.toISOString(),
+            first_seen_at: existing?.first_seen_at ?? memoryStamp,
+            last_seen_at: memoryStamp,
             next_review_at: new Date(
               now.getTime() + reviewDays * 86_400_000,
             ).toISOString(),
-            mastered_at: candidate.status === "mastered"
-              ? now.toISOString()
-              : null,
+            mastered_at: candidate.status === "mastered" ? memoryStamp : null,
             expires_at: null,
           };
         });

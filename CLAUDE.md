@@ -1,3 +1,43 @@
+### 22/11/2026 (noite, 8) — White label: a escola escolhe a voz do tutor (`tenants.branding.tutorVoice`)
+
+- **O quê (decisão do Vinícius):** Configurações da escola → Marca → "Voz do tutor" (`components/settings/TutorVoicePicker.tsx`):
+  femininas marin/coral/shimmer, masculinas cedar/ash/echo, prévia ~5 s de cada (gpt-4o-mini-tts, base64 em
+  `lib/tutorVoicePreviews.ts`, import dinâmico: mídia não vai como arquivo ao GitHub). Catálogo único em
+  `supabase/functions/_shared/tutor-voice.ts` (também importado pelo front). Tour `2026-11-23-voz-do-tutor`.
+- **Onde vale:** `wolfie-realtime-session` (voz da sessão + identidade de voz feminina nas instruções,
+  `applyVoiceGender`) e `wolfie-tts` (voz clássica, mesmas vozes/gênero). Sem `tutorVoice` = cedar masculina, texto
+  idêntico (Wise Wolf não muda). Demo: `demo-escola` com `tutorVoice = marin` (Luna).
+- ⚠️ **Salvar Configurações da escola estava quebrado** para quem tem chave de marca fora do formulário
+  (Wise Wolf com `gamma*`, demo com `tutorName`): o front mandava o branding inteiro e o `hasOnlyKeys` recusava; e a
+  RPC `apply_tenant_admin_settings` grava o branding INTEIRO. Agora o front manda só as chaves do formulário
+  (`brandingFormPayload`) e o `tenant-settings-admin` preserva as outras do banco. ⚠️ A `demo-escola` ainda não
+  salva: o `school_info` dela tem chaves `demo`/`nome` (one-shot do white label) fora da lista aceita.
+- **Backup/rollback:** `/opt/wisewolf/backup-voz-do-tutor-20261122T185759Z/` (`functions/` das 3 funções, `.published-functions.md5`, `frontend-dist`,
+  `branding-antes.txt`). Front anterior em `src/dist.prev11-voz`. Funções: devolver as 3 pastas + o md5, apagar
+  `volumes/functions/_shared/tutor-voice.ts`, `docker restart supabase-edge-functions`. Demo:
+  `update tenants set branding = branding - 'tutorVoice' where id = 'demo-escola';`.
+- ⚠️ **Incidente da publicação "noite, 7":** o front subiu de `vite build` puro (sem `generate-hub-static-html`) e o hub
+  e as rotas públicas estáticas do system deram 404 das 17:58 às 18:50 UTC (sem aluno afetado pelos logs). **Front
+  só com `npm run build`** e compare a lista de arquivos fora de `assets/` com o dist no ar antes de trocar.
+
+### 22/11/2026 (noite, 7) — Wolfie realtime: handoff sem turno ao vivo, clássico sem minutos, memória 23514, voz com o nome do tutor
+
+- **Handoff ao vivo → clássico:** sessão que nunca teve turno ao vivo (só âncora do clássico) levava 55000
+  `realtime_anchor_required` → 503 e "Não consegui responder agora". O `wolfie-brain` agora devolve 200
+  `notNeeded` nesse caso (a RPC barra dono/encerrada antes dessa trava).
+- **Abre no clássico sem minutos:** `WolfieTutor` lê `my_wolfie_live_balance` 1x ao montar; franquia configurada e
+  zerada → clássico. Erro na leitura não muda nada.
+- **`memory_items_upsert` 23514:** linha nova nascia com `first_seen_at` = `now()` do banco, depois do `now` do
+  início da requisição usado em `last_seen_at` (`wolfie_memory_items_dates_check`). Agora `first_seen_at` explícito.
+- **Voz ao vivo white label:** `wolfie-realtime-session/tutor-brand.ts` aplica `_shared/tutor-persona.ts` (escola com
+  `tutorName` se apresenta com ele; Wise Wolf idêntica). ⚠️ A instrução de voz continua "adult male identity" mesmo
+  com tutor "Luna" (decisão de produto pendente).
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-realtime-fix-20261122T175650Z/` (`functions/wolfie-brain`, `functions/wolfie-realtime-session`,
+  `.published-functions.md5`, `frontend-dist`). Front anterior em `src/dist.prev10-realtime`. Funções: devolver as 2
+  pastas + o md5 e `docker restart supabase-edge-functions`.
+- ⚠️ **Front enviado por tar do servidor do OpenBot chega 700/600:** nginx dá 403. Depois de trocar o `dist`:
+  `find dist -type d -exec chmod 755 {} +; find dist -type f -exec chmod 644 {} +`.
+
 ### 22/11/2026 (noite, 5) — Wolfie: abertura personalizada (nome + último assunto)
 
 - **O quê:** UMA frase com o primeiro nome (grafia do perfil) e o assunto da última aula aprovada; sem aula, o

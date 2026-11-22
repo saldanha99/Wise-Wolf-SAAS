@@ -11,6 +11,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { recordAiUsage } from "../_shared/ai-usage.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
+import {
+  type TutorVoice,
+  tutorVoiceFromBranding,
+  type TutorVoiceGender,
+} from "../_shared/tutor-voice.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,7 +124,31 @@ const voiceDeniedResponse = (
     },
   );
 
-const speakingInstructions = (language: TtsLanguage): string =>
+// Voz feminina escolhida pela escola: só a identidade de voz muda; o resto é igual.
+const feminineInstructions = (text: string): string =>
+  text
+    .replace(
+      "the same warm adult male voice with a medium-low register",
+      "the same warm adult female voice with a natural medium register",
+    )
+    .replace(
+      "voz adulta masculina, acolhedora, natural e segura, em registro médio-grave",
+      "voz adulta feminina, acolhedora, natural e segura, em registro médio",
+    )
+    .replace(
+      "the same warm adult male identity in a natural medium-low register",
+      "the same warm adult female identity in a natural medium register",
+    );
+
+const speakingInstructions = (
+  language: TtsLanguage,
+  gender: TutorVoiceGender = "male",
+): string =>
+  gender === "female"
+    ? feminineInstructions(maleSpeakingInstructions(language))
+    : maleSpeakingInstructions(language);
+
+const maleSpeakingInstructions = (language: TtsLanguage): string =>
   language === "mixed"
     ? "Use the same warm adult male voice with a medium-low register throughout. Speak Português segments in neutral Brazilian Portuguese, never European Portuguese, and English segments in natural American English. Switch smoothly without translating, adding, correcting, or omitting content. Preserve names, cities, states, and numbers exactly."
     : language === "pt"
@@ -159,9 +188,10 @@ serve(async (req) => {
         "tier_indisponivel",
       );
     }
-    const tierSnapshot = tier && typeof tier === "object" && !Array.isArray(tier)
-      ? tier as Record<string, unknown>
-      : null;
+    const tierSnapshot =
+      tier && typeof tier === "object" && !Array.isArray(tier)
+        ? tier as Record<string, unknown>
+        : null;
     if (tierSnapshot?.voice_replies !== true) {
       return voiceDeniedResponse(
         corsHeaders,
@@ -221,7 +251,19 @@ serve(async (req) => {
     }
 
     const language = inferLanguage(body.language, body.voice);
-    const voice = resolveVoice(language);
+    // White label: voz escolhida pela escola (tenants.branding.tutorVoice).
+    // Falha na leitura mantém a voz de sempre (nunca derruba a fala).
+    let schoolVoice: TutorVoice | null = null;
+    const tenantId = auth.context.profile?.tenant_id;
+    if (tenantId) {
+      const { data: tenantBrand } = await auth.context.admin
+        .from("tenants")
+        .select("branding")
+        .eq("id", tenantId)
+        .maybeSingle();
+      schoolVoice = tutorVoiceFromBranding(tenantBrand?.branding);
+    }
+    const voice = schoolVoice?.voice ?? resolveVoice(language);
     const model = Deno.env.get("WOLFIE_TTS_MODEL")?.trim() || DEFAULT_MODEL;
     const speed = normalizeSpeed(body.speed);
     const spokenText = text.slice(0, 4096);
@@ -236,7 +278,10 @@ serve(async (req) => {
         model,
         voice,
         input: spokenText,
-        instructions: speakingInstructions(language),
+        instructions: speakingInstructions(
+          language,
+          schoolVoice?.gender ?? "male",
+        ),
         response_format: "mp3",
         speed,
       }),
