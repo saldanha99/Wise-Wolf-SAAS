@@ -1,3 +1,20 @@
+### 22/11/2026 (noite, 5) — Wolfie: abertura personalizada (nome + último assunto)
+
+- **O quê:** UMA frase com o primeiro nome (grafia do perfil) e o assunto da última aula aprovada; sem aula, o
+  nome e o objetivo. Nunca erro/nota/número. Ação `opener` da `wolfie-lesson-track` (`opener.ts`): IA (Haiku pela
+  ponte) 1x por aula com cache em `public.wolfie_openers` (migration `20261122230000`, só service_role; reserva
+  PENDING: só quem cria gera, os outros usam molde); sem aula ou falha → 6 moldes variados sem IA (tópico
+  sanitizado: instrução/palavra proibida → molde genérico). Conta de teste usa a trilha `test_fixture`.
+- **Onde aparece:** balão na home do Wolfie e no início da trilha (`WolfieOpenerBubble`); legenda da tela da
+  chamada antes de começar e texto da tela inicial (`WolfieTutor`); na voz ao vivo o tutor fala primeiro
+  (`useWolfieRealtime.speakOpening`), fora do roleplay e das reuniões globais. Cache do navegador por usuário e
+  dia de São Paulo (`wolfie.opener.v2:<uid>`).
+- **White label:** nome do tutor em `tenants.branding.tutorName` (padrão "Wolfie"); a frase não cita o tutor.
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-abertura-20261122T171304Z/` (banco, `frontend-dist`,
+  `functions/wolfie-lesson-track`, md5). Front: `mv src/dist src/dist.opener && mv src/dist.prev9-opener src/dist`
+  (+ restart do frontend). Função: devolver a pasta + linha do md5 e `docker restart supabase-edge-functions`.
+  A tabela pode ficar.
+
 ### 22/11/2026 (noite, 4) — Hub: camadas do professor (Gratuito, Pro R$ 59, Escola R$ 199)
 
 - Migration `20261122220000`: `DISCOVERY` vira **Gratuito** (5 gerações/mês, Wolfie texto 1 aluno);
