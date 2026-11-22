@@ -26,6 +26,8 @@ export const TutorVoicePicker: React.FC<TutorVoicePickerProps> = ({ value, onCha
   const [playing, setPlaying] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Cada toque ganha um número; só o último toca (cliques rápidos durante o import).
+  const requestRef = useRef(0);
 
   useEffect(() => () => {
     audioRef.current?.pause();
@@ -33,6 +35,7 @@ export const TutorVoicePicker: React.FC<TutorVoicePickerProps> = ({ value, onCha
   }, []);
 
   const stop = () => {
+    requestRef.current += 1;
     audioRef.current?.pause();
     audioRef.current = null;
     setPlaying(null);
@@ -44,9 +47,11 @@ export const TutorVoicePicker: React.FC<TutorVoicePickerProps> = ({ value, onCha
       return;
     }
     stop();
+    const request = requestRef.current;
     setPreviewError(false);
     try {
       const { TUTOR_VOICE_PREVIEWS } = await import('../../lib/tutorVoicePreviews');
+      if (request !== requestRef.current) return;
       const src = TUTOR_VOICE_PREVIEWS[voice];
       if (!src) throw new Error('preview_missing');
       const audio = new Audio(src);

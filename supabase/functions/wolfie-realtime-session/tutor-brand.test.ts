@@ -53,3 +53,27 @@ Deno.test("voz feminina troca a identidade de voz", () => {
   assert(out.includes("childish, or masculine delivery."));
   assert(!out.includes("adult male identity"));
 });
+
+Deno.test("as frases que a voz feminina troca existem no prompt real", async () => {
+  const realtime = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  assert(realtime.includes(voiceBlock.split("\n")[0].slice(2)));
+  assert(realtime.includes("childish, or feminine delivery."));
+  const tts = await Deno.readTextFile(
+    new URL("../wolfie-tts/index.ts", import.meta.url),
+  );
+  for (
+    const phrase of [
+      "the same warm adult male voice with a medium-low register",
+      "voz adulta masculina, acolhedora, natural e segura, em registro médio-grave",
+      "the same warm adult male identity in a natural medium-low register",
+    ]
+  ) {
+    // aparece 2x: no texto-base e no replace da versão feminina
+    assert(
+      tts.split(phrase).length - 1 >= 2,
+      `frase ausente no wolfie-tts: ${phrase}`,
+    );
+  }
+});
