@@ -194,20 +194,34 @@ export interface WolfieOpener {
   firstName: string;
 }
 
-const OPENER_CACHE_KEY = "wolfie.opener.v1";
+const OPENER_CACHE_PREFIX = "wolfie.opener.v2";
+
+function saoPauloDay(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+}
+
+/** Leitura síncrona do cache da sessão (por usuário e dia de São Paulo), para a 1ª pintura. */
+export function cachedWolfieOpener(userId: string | null | undefined): WolfieOpener | null {
+  if (!userId) return null;
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(`${OPENER_CACHE_PREFIX}:${userId}`) ?? "null") as
+      { day: string; value: WolfieOpener } | null;
+    return cached?.day === saoPauloDay() && cached.value?.opener ? cached.value : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function getWolfieOpener(): Promise<WolfieOpener | null> {
-  const today = new Date().toISOString().slice(0, 10);
-  try {
-    const cached = JSON.parse(sessionStorage.getItem(OPENER_CACHE_KEY) ?? "null") as { day: string; value: WolfieOpener } | null;
-    if (cached?.day === today && cached.value?.opener) return cached.value;
-  } catch {
-    // cache corrompido: busca de novo
-  }
+  const { data } = await supabase.auth.getSession();
+  const userId = data.session?.user.id ?? null;
+  if (!userId) return null;
+  const cached = cachedWolfieOpener(userId);
+  if (cached) return cached;
   try {
     const value = await call<WolfieOpener>({ action: "opener" });
     if (!value?.opener) return null;
-    sessionStorage.setItem(OPENER_CACHE_KEY, JSON.stringify({ day: today, value }));
+    sessionStorage.setItem(`${OPENER_CACHE_PREFIX}:${userId}`, JSON.stringify({ day: saoPauloDay(), value }));
     return value;
   } catch {
     return null;

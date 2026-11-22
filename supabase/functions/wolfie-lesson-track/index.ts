@@ -1371,7 +1371,7 @@ async function handleOpener(admin: Db, student: Student): Promise<Response> {
     }
   }
   await admin.from("wolfie_openers").update({
-    status: "READY", opener, source: origin, model_id: origin === "AI" ? TEXT_MODEL : null,
+    status: "READY", opener: opener.slice(0, 200), source: origin, model_id: origin === "AI" ? TEXT_MODEL : null,
     updated_at: new Date().toISOString(),
   }).eq("student_id", student.id).eq("cache_key", source.cacheKey);
   return json({ opener, source: origin, tutorName, firstName });
