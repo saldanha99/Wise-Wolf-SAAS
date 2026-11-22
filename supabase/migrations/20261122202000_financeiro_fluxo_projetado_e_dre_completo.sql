@@ -108,7 +108,14 @@ begin
      and tc.paid_at is null
      and tc.month_year < to_char(v_cur, 'YYYY-MM');
 
-  v_cash := public.get_cashflow_unchecked(to_char(v_cur, 'YYYY-MM'));
+  -- get_cashflow_unchecked deriva a escola do auth.uid(): só serve quando a
+  -- escola pedida é a de quem consulta (super admin olhando outra escola não
+  -- pode receber o caixa da própria).
+  if v_tenant is not distinct from (select p.tenant_id from public.profiles p where p.id = auth.uid()) then
+    v_cash := public.get_cashflow_unchecked(to_char(v_cur, 'YYYY-MM'));
+  else
+    v_cash := jsonb_build_object('entradas', null, 'saidas', jsonb_build_object('total', null, 'professores', null, 'despesas', null), 'inadimplencia', null);
+  end if;
 
   for i in 0 .. v_n - 1 loop
     m := (v_cur + make_interval(months => i))::date;
