@@ -39,6 +39,7 @@ import {
   itemOrder,
   type JsonObject,
   type LearnerContext,
+  type LessonInput,
   lessonInputIsUsable,
   normalizeTrackContent,
   parseEvaluation,
@@ -484,27 +485,44 @@ async function previousTopics(
 
 async function handlePrepare(admin: Db, student: Student): Promise<Response> {
   const log = await latestApprovedClass(admin, student);
-  if (!log) return json({ track: null });
-
   const now = new Date();
-  // Reserva da geração: a linha única por aula impede gerar duas vezes.
-  await admin.from("wolfie_lesson_tracks").upsert({
-    tenant_id: student.tenantId,
-    student_id: student.id,
-    class_log_id: log.id,
-    lesson_session_id: log.lesson_session_id,
-    class_date: log.class_date,
-  }, { onConflict: "class_log_id", ignoreDuplicates: true });
+  let track: TrackRow;
+  if (log) {
+    // Reserva da geração: a linha única por aula impede gerar duas vezes.
+    await admin.from("wolfie_lesson_tracks").upsert({
+      tenant_id: student.tenantId,
+      student_id: student.id,
+      class_log_id: log.id,
+      lesson_session_id: log.lesson_session_id,
+      class_date: log.class_date,
+    }, { onConflict: "class_log_id", ignoreDuplicates: true });
 
-  const { data: existing, error } = await admin
-    .from("wolfie_lesson_tracks")
-    .select("*")
-    .eq("class_log_id", log.id)
-    .eq("student_id", student.id)
-    .eq("tenant_id", student.tenantId)
-    .maybeSingle();
-  if (error || !existing) throw new HttpError(503, "TRACK_RESERVATION_FAILED");
-  const track = existing as TrackRow;
+    const { data: existing, error } = await admin
+      .from("wolfie_lesson_tracks")
+      .select("*")
+      .eq("class_log_id", log.id)
+      .eq("student_id", student.id)
+      .eq("tenant_id", student.tenantId)
+      .maybeSingle();
+    if (error || !existing) {
+      throw new HttpError(503, "TRACK_RESERVATION_FAILED");
+    }
+    track = existing as TrackRow;
+  } else if (student.isTestAccount) {
+    // QA: a trilha-fixture da conta de teste traz a aula inventada em lesson_input.
+    const { data } = await admin
+      .from("wolfie_lesson_tracks")
+      .select("*")
+      .eq("student_id", student.id)
+      .eq("tenant_id", student.tenantId)
+      .eq("test_fixture", true)
+      .order("class_date", { ascending: false })
+      .limit(1);
+    if (!data?.[0]) return json({ track: null });
+    track = data[0] as TrackRow;
+  } else {
+    return json({ track: null });
+  }
   if (track.status === "READY") return json({ track: trackCard(track, log) });
   if (
     track.generation_attempts >= MAX_GENERATION_ATTEMPTS &&
@@ -533,14 +551,15 @@ async function handlePrepare(admin: Db, student: Student): Promise<Response> {
     return json({ track: { ...trackCard(track, log), status: "GENERATING" } });
   }
 
-  const memory = await approvedMemory(admin, student, log.lesson_session_id);
-  const input = buildLessonInput(
-    log,
-    memory,
-    student.learner,
-    await previousTopics(admin, student, log.id),
-  );
-  if (!lessonInputIsUsable(input)) {
+  const input: LessonInput = log
+    ? buildLessonInput(
+      log,
+      await approvedMemory(admin, student, log.lesson_session_id),
+      student.learner,
+      await previousTopics(admin, student, log.id),
+    )
+    : track.lesson_input as LessonInput;
+  if (!input || !lessonInputIsUsable(input)) {
     await admin.from("wolfie_lesson_tracks").update({
       status: "FAILED",
       error_code: "LESSON_WITHOUT_CONTENT",
