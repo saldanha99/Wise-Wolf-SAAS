@@ -19,15 +19,15 @@ const diag = [
   'meta-llama/llama-3.3-70b-instruct: HTTP 402 {"error":{"message":"This request requires more credits',
 ];
 
-Deno.test("queda de 11/11: Gemini sem cota e OpenRouter sem crédito", () => {
+Deno.test("queda de 11/11: Gemini sem cota e Anthropic sem crédito", () => {
   const f = classifyAiFailure(diag);
   assertEquals(f.causes.sort(), ["cota_excedida", "sem_credito"]);
   assertEquals(
     f.summary,
-    "Gemini (Google): cota excedida · OpenRouter: sem crédito",
+    "Gemini (Google): cota excedida · Anthropic: sem crédito",
   );
   const action = aiFailureAction(f);
-  assert(action.includes("OpenRouter"));
+  assert(action.includes("Anthropic"));
   assert(action.includes("Gemini"));
 });
 

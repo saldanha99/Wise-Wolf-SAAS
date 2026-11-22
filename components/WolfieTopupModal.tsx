@@ -32,6 +32,7 @@ const ERROR_TEXT: Record<string, string> = {
   ASAAS_NOT_CONFIGURED: 'A compra de minutos ainda não está ativa nesta escola.',
   TOPUP_UNAVAILABLE: 'A compra está indisponível agora. Tente de novo em alguns minutos.',
   TOPUP_RECONCILIATION_PENDING: 'Estamos conferindo um pedido anterior. Tente de novo em alguns minutos.',
+  IDEMPOTENCY_KEY_CONFLICT: 'Este pedido mudou de pacote. Feche e abra de novo para gerar o PIX.',
 };
 
 const brl = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -61,14 +62,19 @@ export const WolfieTopupModal: React.FC<{
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [paid, setPaid] = useState(false);
-  const requestKey = useRef<string>('');
+  // Uma chave de idempotência por pacote: trocar de pacote depois de um erro não
+  // pode reaproveitar a chave do pedido anterior (IDEMPOTENCY_KEY_CONFLICT).
+  const requestKeys = useRef<Record<string, string>>({});
+  const onCreditedRef = useRef(onCredited);
+  onCreditedRef.current = onCredited;
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setCharge(null);
     setPaid(false);
     setError('');
-    requestKey.current = crypto.randomUUID();
+    requestKeys.current = {};
     supabase.from('wolfie_topup_packages').select('id,name,minutes,price_brl').eq('active', true)
       .order('minutes', { ascending: true })
       .then(({ data, error: loadError }) => {
@@ -92,12 +98,19 @@ export const WolfieTopupModal: React.FC<{
     if (!charge || paid) return;
     let alive = true;
     const started = Date.now();
+    const waiting = new Set(['PENDING', 'CREATING', 'AWAITING_PAYMENT']);
     const tick = async () => {
       const { data } = await supabase.from('wolfie_topup_orders').select('status').eq('id', charge.orderId).maybeSingle();
       if (!alive) return;
-      if ((data as { status?: string } | null)?.status === 'PAID') {
+      const status = (data as { status?: string } | null)?.status ?? '';
+      if (status === 'PAID') {
         setPaid(true);
-        onCredited?.();
+        onCreditedRef.current?.();
+        return;
+      }
+      if (status && !waiting.has(status)) {
+        setCharge(null);
+        setError('Este PIX não foi concluído. Gere um novo para continuar.');
         return;
       }
       if (Date.now() - started < 30 * 60_000) timer = setTimeout(tick, 4000);
@@ -107,14 +120,28 @@ export const WolfieTopupModal: React.FC<{
       alive = false;
       clearTimeout(timer);
     };
-  }, [charge, paid, onCredited]);
+  }, [charge, paid]);
+
+  // Esc fecha; o foco entra no diálogo ao abrir.
+  useEffect(() => {
+    if (!open) return;
+    dialogRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   const buy = useCallback(async () => {
     if (!selected) return;
     setBusy(true);
     setError('');
     const { data, error: invokeError } = await supabase.functions.invoke('create-wolfie-topup', {
-      body: { packageId: selected, requestKey: requestKey.current },
+      body: {
+        packageId: selected,
+        requestKey: (requestKeys.current[selected] ??= crypto.randomUUID()),
+      },
     });
     setBusy(false);
     if (invokeError || !data || (data as { error?: unknown }).error) {
@@ -139,14 +166,14 @@ export const WolfieTopupModal: React.FC<{
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Comprar minutos de conversa ao vivo">
-      <div className="w-full max-w-md rounded-t-3xl border border-slate-800 bg-slate-950 p-5 text-slate-100 shadow-2xl sm:rounded-3xl sm:p-6">
+    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="wolfie-topup-title">
+      <div ref={dialogRef} tabIndex={-1} className="w-full max-w-md outline-none rounded-t-3xl border border-slate-800 bg-slate-950 p-5 text-slate-100 shadow-2xl sm:rounded-3xl sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-300">
               <Mic size={14} aria-hidden="true" /> Conversa ao vivo
             </p>
-            <h2 className="mt-1 text-xl font-black tracking-tight">
+            <h2 id="wolfie-topup-title" className="mt-1 text-xl font-black tracking-tight">
               {paid ? 'Minutos creditados!' : charge ? 'Pague com PIX' : 'Mais minutos com o Wolfie'}
             </h2>
           </div>
@@ -194,21 +221,26 @@ export const WolfieTopupModal: React.FC<{
             {packages === null ? (
               <p className="mt-4 flex items-center gap-2 text-sm text-slate-300"><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Carregando pacotes…</p>
             ) : (
-              <div className="mt-4 space-y-2" role="radiogroup" aria-label="Pacotes de minutos">
+              <fieldset className="mt-4 space-y-2">
+                <legend className="sr-only">Pacotes de minutos</legend>
                 {packages.map((pkg, index) => {
                   const featured = packages.length === 3 ? index === 1 : pkg.id === selected && index === packages.length - 1;
                   const active = pkg.id === selected;
                   return (
-                    <button
+                    <label
                       key={pkg.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setSelected(pkg.id)}
-                      className={`relative flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
+                      className={`relative flex w-full cursor-pointer items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition focus-within:ring-2 focus-within:ring-emerald-300 ${
                         active ? 'border-emerald-400 bg-emerald-400/10' : 'border-slate-800 bg-slate-900 hover:border-slate-600'
                       }`}
                     >
+                      <input
+                        type="radio"
+                        name="wolfie-topup-package"
+                        value={pkg.id}
+                        checked={active}
+                        onChange={() => setSelected(pkg.id)}
+                        className="sr-only"
+                      />
                       {featured ? (
                         <span className="absolute -top-2.5 right-4 rounded-full bg-emerald-400 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-950">Mais escolhido</span>
                       ) : null}
@@ -217,10 +249,10 @@ export const WolfieTopupModal: React.FC<{
                         <span className="block text-xs text-slate-400">{brl(pkg.price_brl / pkg.minutes)} por minuto</span>
                       </span>
                       <span className="text-lg font-black">{brl(Number(pkg.price_brl))}</span>
-                    </button>
+                    </label>
                   );
                 })}
-              </div>
+              </fieldset>
             )}
             {error ? <p className="mt-3 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
             <button

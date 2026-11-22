@@ -46,7 +46,7 @@ export interface AiFailure {
 const PROVIDER_LABEL = (entry: string) =>
   /^gemini\//i.test(entry) || /GEMINI_API_KEY/.test(entry)
     ? "Gemini (Google)"
-    : "OpenRouter";
+    : "Anthropic";
 
 function causeOf(entry: string): AiFailureCause {
   if (/ausente/i.test(entry)) return "chave_ausente";
@@ -95,7 +95,7 @@ export function classifyAiFailure(diag: readonly string[]): AiFailure {
 export function aiFailureAction(failure: AiFailure): string {
   const steps: string[] = [];
   if (failure.causes.includes("sem_credito")) {
-    steps.push("colocar crédito no OpenRouter (openrouter.ai → Credits)");
+    steps.push("colocar crédito na Anthropic (console.anthropic.com → Billing)");
   }
   if (failure.causes.includes("cota_excedida")) {
     steps.push(

@@ -39,6 +39,11 @@ begin
   select * into s from public.lesson_sessions where id = p_session;
   if s.id is null then return 'no_session'; end if;
   if private.google_meet_session_records_erased(s.id) then return 'erased'; end if;
+  -- Aula substituída, termo revogado ou documentação bloqueada: nada vira memória.
+  if s.status = 'SUPERSEDED' then return 'superseded'; end if;
+  if not s.documentation_consent or private.lesson_session_documentation_blocked(s.id) then
+    return 'no_consent';
+  end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('google-meet-summary:' || s.id::text, 0));
 
   -- Só se a ÚLTIMA versão da aula for rascunho: decisão humana anterior
@@ -47,10 +52,16 @@ begin
    where lesson_session_id = s.id order by version desc limit 1;
   if p.id is null then return 'no_summary'; end if;
   if p.status <> 'PROPOSED' then return 'already_reviewed'; end if;
+  -- Decisão humana em QUALQUER versão (aprovou ou rejeitou) manda: rascunho novo
+  -- depois disso não é aprovado sozinho.
+  if exists (select 1 from private.lesson_summary_versions as decided
+              where decided.lesson_session_id = s.id and decided.status in ('VERIFIED', 'REJECTED')) then
+    return 'human_decision_exists';
+  end if;
 
   v_content := p.content;
   if p_class_log_id is not null then
-    select * into l from public.class_logs where id = p_class_log_id;
+    select * into l from public.class_logs where id = p_class_log_id and tenant_id = s.tenant_id;
     -- O que o professor confirmou no lançamento vale mais que o rascunho.
     if l.id is not null then
       v_content := v_content

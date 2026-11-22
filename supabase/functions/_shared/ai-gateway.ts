@@ -112,13 +112,19 @@ async function embeddingsViaOpenAI(init?: RequestInit): Promise<Response> {
   }
   const model = String(parsed.model ?? "").replace(/^openai\//, "") ||
     "text-embedding-3-small";
+  // Só os campos que a OpenAI aceita: o pedido antigo traz `provider` (do
+  // OpenRouter), que a OpenAI recusa com 400.
+  const clean: Record<string, unknown> = { model, input: parsed.input };
+  for (const field of ["dimensions", "encoding_format", "user"]) {
+    if (parsed[field] !== undefined) clean[field] = parsed[field];
+  }
   return nativeFetch(OPENAI_EMBEDDINGS, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${key}`,
     },
-    body: JSON.stringify({ ...parsed, model }),
+    body: JSON.stringify(clean),
     signal: init.signal,
   });
 }

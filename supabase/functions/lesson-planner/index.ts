@@ -509,7 +509,8 @@ async function retrieveWiseWolfKnowledge(
     return [];
   }
 
-  const apiKey = textAiKey();
+  // Embeddings vão para a OpenAI (a ponte usa a OPENAI_API_KEY dela).
+  const apiKey = (Deno.env.get("OPENAI_API_KEY") ?? "").trim();
   if (!apiKey) return [];
 
   try {
