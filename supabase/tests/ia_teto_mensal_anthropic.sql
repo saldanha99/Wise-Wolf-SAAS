@@ -13,6 +13,7 @@ select pg_temp.assert_true(
   not has_function_privilege('anon', 'public.ai_provider_spend_add(text, numeric)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.ai_provider_spend_add(text, numeric)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.ai_provider_spend_month(text)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.ai_provider_spend_month(text)', 'EXECUTE')
   and has_function_privilege('service_role', 'public.ai_provider_spend_add(text, numeric)', 'EXECUTE')
   and has_function_privilege('service_role', 'public.ai_provider_spend_month(text)', 'EXECUTE'),
   'spend counter grants');

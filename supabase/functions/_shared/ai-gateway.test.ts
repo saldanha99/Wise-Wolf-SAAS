@@ -189,3 +189,29 @@ Deno.test("ANTHROPIC_ROUTING=off é a chave para voltar ao OpenRouter", () => {
     else Deno.env.set("ANTHROPIC_ROUTING", previous);
   }
 });
+
+Deno.test("com ANTHROPIC_ROUTING=off e sem chave da Anthropic, as funções ainda acham a chave do OpenRouter", () => {
+  const saved = {
+    a: Deno.env.get("ANTHROPIC_API_KEY"),
+    r: Deno.env.get("ANTHROPIC_ROUTING"),
+    o: Deno.env.get("OPENROUTER_API_KEY"),
+  };
+  try {
+    Deno.env.delete("ANTHROPIC_API_KEY");
+    Deno.env.set("OPENROUTER_API_KEY", "or-test");
+    Deno.env.set("ANTHROPIC_ROUTING", "on");
+    assertEquals(textAiKey(), "");
+    Deno.env.set("ANTHROPIC_ROUTING", "off");
+    assertEquals(textAiKey(), "or-test");
+  } finally {
+    for (
+      const [name, value] of [["ANTHROPIC_API_KEY", saved.a], [
+        "ANTHROPIC_ROUTING",
+        saved.r,
+      ], ["OPENROUTER_API_KEY", saved.o]] as const
+    ) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+});

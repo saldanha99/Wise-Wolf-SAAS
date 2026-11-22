@@ -3,12 +3,14 @@
  *
  * 19/11/2026: Claude Haiku 5.5 em todas as funções (Sonnet onde o código pede
  * Sonnet), com o OpenRouter como reserva.
- * 22/11/2026 (decisão do Vinícius): o OpenRouter SAIU da Wise Wolf — nem
- * provedor, nem reserva, nem chave no fluxo. As funções continuam montando o
+ * 22/11/2026 (decisão do Vinícius): o OpenRouter saiu como provedor e como
+ * reserva de falha. 22/11/2026, noite: ele volta SÓ acima do teto mensal da
+ * Anthropic (ANTHROPIC_MONTHLY_BUDGET_USD, padrão US$ 50) ou com
+ * ANTHROPIC_ROUTING=off — ver "Teto mensal" abaixo. As funções continuam montando o
  * pedido no formato do chat do OpenRouter (é o formato OpenAI) e importam este
  * módulo como `fetch`:
  *   * chat (openrouter.ai/.../chat/completions) → Anthropic; falhou, volta erro
- *     503 no formato que as funções já tratam (não há mais reserva);
+ *     503 no formato que as funções já tratam (falha não cai no OpenRouter);
  *   * embeddings (openrouter.ai/.../embeddings) → OpenAI direto, mesmo modelo
  *     (text-embedding-3-small), com a OPENAI_API_KEY que o realtime já usa;
  *   * qualquer outro endereço do openrouter.ai → bloqueado (410), sem rede.
@@ -81,7 +83,13 @@ const OPENAI_EMBEDDINGS = "https://api.openai.com/v1/embeddings";
  * Authorization que a função manda e usa a própria chave).
  */
 export function textAiKey(): string {
-  return (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim();
+  const anthropic = (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim();
+  if (anthropic) return anthropic;
+  // Com ANTHROPIC_ROUTING=off a chave da Anthropic pode nem existir: as funções
+  // só checam se há chave antes de chamar, e o chat vai ao OpenRouter.
+  const routingOff = (Deno.env.get("ANTHROPIC_ROUTING") ?? "").trim()
+    .toLowerCase() === "off";
+  return routingOff ? (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim() : "";
 }
 
 function errorResponse(
@@ -159,7 +167,7 @@ const ANTHROPIC_PRICES: Record<
 const LONG_PROMPT_TOKENS = 100_000;
 const DEFAULT_MONTHLY_BUDGET_USD = 50;
 const SPEND_CACHE_MS = 60_000;
-const SPEND_RPC_TIMEOUT_MS = 3_000;
+const SPEND_RPC_TIMEOUT_MS = 1_000;
 
 /** Custo em US$ de uma resposta do chat da Anthropic (formato OpenAI). */
 export function anthropicCostUsd(model: string, usage: unknown): number | null {
@@ -204,6 +212,32 @@ export function overBudget(
 ): boolean {
   return spentUsd !== null && Number.isFinite(budgetUsd) &&
     spentUsd >= budgetUsd;
+}
+
+// EdgeRuntime é injetado pelo runtime do Supabase (sem tipagem padrão).
+declare const EdgeRuntime:
+  | { waitUntil: (promise: Promise<unknown>) => void }
+  | undefined;
+
+/** Gravação do gasto fora do caminho da resposta; sem EdgeRuntime, só dispara. */
+function runInBackground(task: Promise<unknown>): void {
+  const guarded = task.catch(() => undefined);
+  try {
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(guarded);
+    }
+  } catch {
+    // Sem waitUntil a promessa segue sozinha.
+  }
+}
+
+function isStreamBody(body: unknown): boolean {
+  if (typeof body !== "string") return false;
+  try {
+    return JSON.parse(body)?.stream === true;
+  } catch {
+    return false;
+  }
 }
 
 const utcMonth = (d = new Date()) => d.toISOString().slice(0, 7);
@@ -311,7 +345,7 @@ async function chatViaOpenRouter(
     body: init.body,
     signal: init.signal,
   });
-  if (resp.ok) {
+  if (resp.ok && !isStreamBody(init.body)) {
     try {
       const data = await resp.clone().json();
       const cost = Number(data?.usage?.cost);
@@ -383,7 +417,9 @@ export async function aiFetch(
       signal: init.signal,
     });
     if (resp.ok) {
-      if (body.stream !== true) await recordAnthropicSpend(resp, model);
+      if (body.stream !== true) {
+        runInBackground(recordAnthropicSpend(resp, model));
+      }
       console.log(
         `[ai-gateway] anthropic ok model=${model} asked=${parsed.model} ms=${
           Date.now() - started
