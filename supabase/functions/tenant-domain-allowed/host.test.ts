@@ -16,6 +16,6 @@ Deno.test("ask host normalization", () => {
   assert(normalizeAskHost("localhost") === null, "single label");
   assert(normalizeAskHost("a..b.com") === null, "empty label");
   assert(normalizeAskHost("x_y.com") === null, "underscore");
-  assert(normalizeAskHost("1.2.3.4") !== undefined, "ip handled by db");
+  assert(normalizeAskHost("1.2.3.4") === null, "ip refused");
   assert(normalizeAskHost("-bad.com") === null, "leading hyphen");
 });

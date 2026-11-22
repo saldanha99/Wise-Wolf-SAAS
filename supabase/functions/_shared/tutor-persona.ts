@@ -22,6 +22,8 @@ export function tutorPersonaFromTenant(
       ? branding as Record<string, unknown>
       : {};
   const tutorName = clean(record.tutorName, 40);
+  // Nome de pessoa/marca: letras, números, espaço e . ' - (nada de : ; # < >).
+  if (tutorName && !/^[\p{L}\p{N} .'-]{1,40}$/u.test(tutorName)) return null;
   if (!tutorName || tutorName.toLowerCase() === "wolfie") return null;
   const schoolName = clean(record.appName, 80) || clean(tenantName, 80) ||
     "the school";

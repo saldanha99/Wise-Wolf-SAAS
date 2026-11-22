@@ -4246,7 +4246,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 text-left">
               {voiceReplies === true
                 ? "Prática livre · ilimitada"
-                : brandText("Wolfie gratuito · ilimitado")}
+                : (brandText("Wolfie") === "Wolfie" ? "Wolfie gratuito · ilimitado" : `${brandText("Wolfie")} · prática gratuita e ilimitada`)}
             </p>
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {!hubModeRequested && <button
