@@ -1129,6 +1129,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'dre-12-meses',view:'dre-12m',title:'DRE de 12 meses',text:'O DRE 12 meses mostra o resultado de cada mês já descontando as taxas do Asaas, o imposto (estimado pela configuração quando não foi lançado) e o custo de IA do Wolfie. Exporte em CSV para a contabilidade.'},
     ],
   },
+  {
+    id:'2026-11-23-voz-do-tutor',title:'A escola escolhe a voz do tutor',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'settings-branding',view:'settings_school',title:'Novidade: voz do tutor',text:'Em Configurações da escola → Marca, a escola escolhe a voz do tutor entre vozes femininas e masculinas, com uma prévia de 5 segundos de cada. A voz escolhida vale para a conversa ao vivo e para as respostas faladas, depois de salvar. Sem escolha, fica a voz de sempre.'},
+    ],
+  },
 ];
 
 /**

@@ -9,6 +9,7 @@ import {
   legalSignatureLocation,
   materializeLegalSchoolInfo,
 } from "../_shared/tenant-legal-assets.ts";
+import { tutorVoiceOption } from "../_shared/tutor-voice.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -353,6 +354,8 @@ export interface NormalizedSettings {
     faviconPath: string;
     logoUrl: string;
     faviconUrl: string;
+    tutorVoice?: string;
+    [key: string]: unknown;
   };
   schoolInfo: Record<string, string> | null;
   whatsappEnabled: boolean;
@@ -365,6 +368,16 @@ export interface NormalizedSettings {
   studentNotificationsEnabled: boolean;
   teacherNotificationsEnabled: boolean;
 }
+
+const BRANDING_FORM_KEYS: readonly string[] = [
+  "primaryColor",
+  "secondaryColor",
+  "logoPath",
+  "faviconPath",
+  "logoUrl",
+  "faviconUrl",
+  "tutorVoice",
+];
 
 export function normalizeSettings(
   value: unknown,
@@ -400,11 +413,28 @@ export function normalizeSettings(
       "faviconPath",
       "logoUrl",
       "faviconUrl",
+      "tutorVoice",
     ])
   ) {
     throw new ApiError(400, "INVALID_SETTINGS", "Branding payload is invalid");
   }
 
+  // Voz do tutor (white label): vazio = voz padrão; fora da lista = recusa.
+  const tutorVoiceRaw = value.branding.tutorVoice;
+  if (
+    tutorVoiceRaw !== undefined && tutorVoiceRaw !== null &&
+    tutorVoiceRaw !== "" && !tutorVoiceOption(tutorVoiceRaw)
+  ) {
+    throw new ApiError(400, "INVALID_SETTINGS", "tutorVoice is invalid");
+  }
+  const tutorVoice = tutorVoiceOption(tutorVoiceRaw)?.id ?? null;
+  // Chaves da marca que esta tela não edita (tutorName, appName, gamma*…) são
+  // preservadas: a RPC grava o objeto inteiro e, sem isso, salvar a tela as apagava.
+  const preservedBranding = Object.fromEntries(
+    Object.entries(currentBranding).filter(([key]) =>
+      !BRANDING_FORM_KEYS.includes(key)
+    ),
+  );
   const logoPath = assetPath(value.branding.logoPath, tenantId, "logo");
   const faviconPath = assetPath(
     value.branding.faviconPath,
@@ -442,6 +472,8 @@ export function normalizeSettings(
     name: requiredString(value.name, "name", 120, 2),
     slug: normalizedSlug(value.slug, fallbackSlug),
     branding: {
+      ...preservedBranding,
+      ...(tutorVoice ? { tutorVoice } : {}),
       primaryColor: normalizedColor(
         value.branding.primaryColor,
         "primaryColor",

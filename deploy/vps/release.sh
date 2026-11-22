@@ -722,6 +722,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/tenant-domain-allowed/host.test.ts \
   supabase/functions/_shared/tutor-persona.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
+  supabase/functions/_shared/tutor-voice.ts \
+  supabase/functions/_shared/tutor-voice.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -953,6 +955,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/tenant-domain-allowed/host.test.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
+  supabase/functions/_shared/tutor-voice.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1932,6 +1935,7 @@ SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product
 SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
 SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
 SHARED_TUTOR_PERSONA_RELATIVE="supabase/functions/_shared/tutor-persona.ts"
+SHARED_TUTOR_VOICE_RELATIVE="supabase/functions/_shared/tutor-voice.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
 SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
@@ -2112,6 +2116,7 @@ done
 [[ -s "$SHARED_PAYMENT_EMAIL_RELATIVE" ]] || die "envio de e-mail dos avisos de cobrança ausente"
 [[ -s "$SHARED_AI_GATEWAY_RELATIVE" ]] || die "ponte de IA compartilhada ausente"
 [[ -s "$SHARED_TUTOR_PERSONA_RELATIVE" ]] || die "persona do tutor compartilhada ausente"
+[[ -s "$SHARED_TUTOR_VOICE_RELATIVE" ]] || die "voz do tutor compartilhada ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2242,6 +2247,7 @@ append_release_input_checksum() {
     "$SHARED_PAYMENT_EMAIL_RELATIVE" \
     "$SHARED_AI_GATEWAY_RELATIVE" \
     "$SHARED_TUTOR_PERSONA_RELATIVE" \
+    "$SHARED_TUTOR_VOICE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
@@ -2429,6 +2435,8 @@ rsync -a -- "$SHARED_AI_GATEWAY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-gateway.ts"
 rsync -a -- "$SHARED_TUTOR_PERSONA_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-persona.ts"
+rsync -a -- "$SHARED_TUTOR_VOICE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-voice.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
@@ -2636,6 +2644,7 @@ wolfie_product_access_shared_swapped=0
 payment_email_shared_swapped=0
 ai_gateway_shared_swapped=0
 tutor_persona_shared_swapped=0
+tutor_voice_shared_swapped=0
 payment_notice_core_shared_swapped=0
 payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
@@ -2816,6 +2825,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/payment-email.ts" ]]
 [[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
 [[ -s "$release_dir/functions/_shared/tutor-persona.ts" ]]
+[[ -s "$release_dir/functions/_shared/tutor-voice.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
@@ -3119,6 +3129,14 @@ restore_previous_release() {
         "$functions_dir/_shared/tutor-persona.ts"
     else
       rm -f -- "$functions_dir/_shared/tutor-persona.ts"
+    fi
+  fi
+  if [[ "$tutor_voice_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/tutor-voice.ts" ]]; then
+      cp -a -- "$backup_dir/tutor-voice.ts" \
+        "$functions_dir/_shared/tutor-voice.ts"
+    else
+      rm -f -- "$functions_dir/_shared/tutor-voice.ts"
     fi
   fi
   if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
@@ -4529,6 +4547,13 @@ fi
 tutor_persona_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/tutor-persona.ts" \
   "$functions_dir/_shared/tutor-persona.ts"
+if [[ -f "$functions_dir/_shared/tutor-voice.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/tutor-voice.ts" \
+    "$backup_dir/tutor-voice.ts"
+fi
+tutor_voice_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/tutor-voice.ts" \
+  "$functions_dir/_shared/tutor-voice.ts"
 
 if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
   cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \

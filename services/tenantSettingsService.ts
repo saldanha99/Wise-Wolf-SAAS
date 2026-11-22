@@ -47,6 +47,22 @@ export interface TenantBrandingForm {
   faviconUrl: string;
   logoPath: string;
   faviconPath: string;
+  /** Voz do tutor (white label). Vazio = voz padrão do Wolfie. */
+  tutorVoice?: string;
+}
+
+// A tela edita só estas chaves; as outras da marca (tutorName, appName, gamma*…)
+// ficam no servidor, que recusa chave desconhecida e preserva as que não vêm.
+const BRANDING_FORM_KEYS = [
+  'primaryColor', 'secondaryColor', 'logoUrl', 'faviconUrl', 'logoPath', 'faviconPath', 'tutorVoice',
+] as const;
+
+export function brandingFormPayload(branding: TenantBrandingForm): TenantBrandingForm {
+  const payload: Record<string, unknown> = {};
+  for (const key of BRANDING_FORM_KEYS) {
+    if (branding[key] !== undefined) payload[key] = branding[key];
+  }
+  return payload as unknown as TenantBrandingForm;
 }
 
 export interface TenantSettingsForm {
@@ -145,7 +161,11 @@ export const tenantSettingsService = {
   save(version: number, settings: TenantSettingsForm): Promise<{ ok: true; version: number }> {
     const schoolInfo = settings.schoolInfo ? { ...settings.schoolInfo } : null;
     if (schoolInfo) delete schoolInfo.legalRepresentativeSignatureUrl;
-    return invoke({ action: 'save', version, settings: { ...settings, schoolInfo } });
+    return invoke({
+      action: 'save',
+      version,
+      settings: { ...settings, branding: brandingFormPayload(settings.branding), schoolInfo },
+    });
   },
 
   setSecret(
