@@ -350,10 +350,10 @@ async function chatViaOpenRouter(
       const data = await resp.clone().json();
       const cost = Number(data?.usage?.cost);
       if (Number.isFinite(cost) && cost >= 0 && cost <= 100) {
-        await spendRpc("ai_provider_spend_add", {
+        runInBackground(spendRpc("ai_provider_spend_add", {
           p_provider: "openrouter",
           p_usd: Number(cost.toFixed(6)),
-        });
+        }));
       }
     } catch {
       // Medição nunca derruba a resposta.

@@ -57,6 +57,14 @@ const NativePickerField: React.FC<{
                 type={type}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
+                // No desktop o clique no campo só focava o input invisível; showPicker abre o seletor.
+                onClick={(e) => {
+                    try {
+                        (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                    } catch {
+                        // Navegador sem showPicker: o seletor abre pelo próprio input.
+                    }
+                }}
                 aria-label={label}
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
@@ -109,6 +117,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                 .select('id, full_name, status')
                 .eq('role', 'TEACHER')
                 .eq('lifecycle_status', 'active')
+                .not('phone', 'is', null)
                 .order('full_name', { ascending: true });
             if (tenantId) query = query.eq('tenant_id', tenantId);
             const { data, error } = await query;
@@ -246,6 +255,11 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     const close = () => {
         setIsOpen(false);
         setFeedback(null);
+        // Se a lista falhou, reabrir tenta de novo.
+        if (teachersError) {
+            setTeachers(null);
+            setTeachersError('');
+        }
     };
 
     const dispatchOptions: { id: DispatchMode; title: string; hint: string; icon: React.ReactNode }[] = [
