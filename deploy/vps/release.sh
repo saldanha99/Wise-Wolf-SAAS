@@ -919,6 +919,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
   supabase/functions/wolfie-lesson-track/core.test.ts \
+  supabase/functions/hub-card-payment/core.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
   scripts/tests/contract-dates.test.ts \
@@ -1648,6 +1649,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122182000_retry_sources_so_falha_de_credito.sql"
   "supabase/migrations/20261122190000_lancar_aula_aprova_resumo.sql"
   "supabase/migrations/20261122191000_rag_sem_openrouter.sql"
+  "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

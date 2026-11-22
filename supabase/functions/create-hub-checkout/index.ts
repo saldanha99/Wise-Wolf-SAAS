@@ -314,13 +314,26 @@ serve(async (req) => {
       HUB_CORE_PRODUCT_FAMILY;
     const billingCycle = body.billingCycle === "YEARLY" ? "YEARLY" : "MONTHLY";
     const requestedBillingType = String(body.billingType || "PIX");
-    if (!["PIX", "BOLETO"].includes(requestedBillingType)) {
+    // Cartão (22/11/2026): aqui só se escolhe a forma de cobrança. O cartão em si vai
+    // direto para a hub-card-payment, que paga a 1ª cobrança criada aqui sem cartão.
+    // Corpo com dado de cartão é recusado: esta função grava o payload em auditoria.
+    if (
+      ["card", "creditCard", "creditCardHolderInfo", "cvv", "ccv"].some((key) =>
+        key in body
+      )
+    ) {
+      return json(400, {
+        error: "CARD_DATA_NOT_ACCEPTED_HERE",
+        code: "CARD_DATA_NOT_ACCEPTED_HERE",
+      });
+    }
+    if (!["PIX", "BOLETO", "CREDIT_CARD"].includes(requestedBillingType)) {
       return json(400, {
         error: "UNSUPPORTED_BILLING_TYPE",
         code: "UNSUPPORTED_BILLING_TYPE",
       });
     }
-    const billingType = requestedBillingType as "PIX" | "BOLETO";
+    const billingType = requestedBillingType as "PIX" | "BOLETO" | "CREDIT_CARD";
     const customerName = text(body.name, 160);
     const customerEmail = text(auth.context.user?.email || body.email)
       .toLowerCase();
@@ -460,7 +473,9 @@ serve(async (req) => {
           code: "WOLFIE_ACCOUNT_PREPARATION_REQUIRED",
         });
       }
-      if (billingCycle !== "MONTHLY" || termsVersion !== WOLFIE_TERMS_VERSION) {
+      // Anual do Wolfie (2 meses grátis, à vista) aprovado em 22/11/2026: o preço vem de
+      // hub_plans.price_yearly; plano sem preço anual cai em PLAN_PRICE_UNAVAILABLE abaixo.
+      if (termsVersion !== WOLFIE_TERMS_VERSION) {
         return json(400, {
           error: "INVALID_WOLFIE_CHECKOUT_TERMS",
           code: "INVALID_WOLFIE_CHECKOUT_TERMS",

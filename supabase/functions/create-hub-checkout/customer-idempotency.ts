@@ -44,7 +44,7 @@ export function resolveHubAsaasSubscriptionCandidate(
   expected: {
     externalReference: string;
     customerId: string;
-    billingType: "PIX" | "BOLETO";
+    billingType: "PIX" | "BOLETO" | "CREDIT_CARD";
     billingCycle: "MONTHLY" | "YEARLY";
     amount: number;
     nextDueDate: string;
