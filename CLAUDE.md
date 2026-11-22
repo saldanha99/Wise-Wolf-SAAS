@@ -1,3 +1,23 @@
+### 22/11/2026 (tarde, 2) — Resumos: falha por crédito, reprocessamento e contador do professor
+
+- **Causa dos ~65% de SUMMARY_AI_FAILED:** não era código. De 19/10 a 11/11 o OpenRouter
+  devolvia 402 (`google_summary_provider_credits`, 273 falhas). Desde 12/11 a taxa é normal e
+  desde 19/11 o resumo vai pela ponte (Haiku 5.5; OpenRouter de reserva). Se voltar a subir,
+  olhe primeiro `error_code` em `private.google_meet_summary_generations`.
+- **Reprocessamento:** ação só de serviço `retry_failed_summaries` no `google-meet` (limit ≤ 10,
+  `budgetUsd` ≤ 5 por chamada) + RPCs service_role `google_meet_summary_retry_candidates` /
+  `_retry_sources` + `retry_failed=true` aceito no `claim` do `google_meet_summary_backend`
+  (migrations `20261122180000`, `…181000`, `…182000`). Mesma esteira, teto mensal e aceites.
+  Sem limite próprio de novas tentativas: não agende sem pôr um.
+- **Professor:** "Revisar resumos (N)" ao lado de "Lançar Aulas" (`ReviewSummariesButton`, RPC
+  `get_meet_summary_review_queue`); só lembra e leva à fila — **lançar a aula continua NÃO
+  aprovando o resumo** (decisão de 28/09; mudar isso é do Vinícius). Tour
+  `2026-11-22-wolfie-trilha-revisar-resumos`.
+- **Retratos do roleplay:** `public/assets/wolfie/personagens/*.webp` (gerados pelo Codex),
+  escolhidos por papel e, quando o nome é claro, por gênero (`portraitFor`); senão, vetor.
+- **Backup do front antes desta publicação:** `/opt/wisewolf/backup-wolfie-trilha3-20261122T124958Z/frontend-dist`;
+  `google-meet` anterior em `/opt/wisewolf/backup-resumos-retry-20261122T124447Z/`.
+
 ### 22/11/2026 (tarde) — Wolfie: 2ª publicação da trilha
 
 - **Professor:** em "Aulas de Hoje" (`TeacherDashboard`) aparece o check-in do aluno feito na véspera
