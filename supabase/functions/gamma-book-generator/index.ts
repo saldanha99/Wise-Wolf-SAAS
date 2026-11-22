@@ -322,7 +322,7 @@ async function startGeneration(
               type: "image",
               source: "custom",
               src: schoolBrand.logoUrl,
-              size: "sm",
+              size: "md",
             },
           }
           : {}),
@@ -330,7 +330,9 @@ async function startGeneration(
         ...(branding.footerText
           ? { bottomLeft: { type: "text", value: branding.footerText } }
           : {}),
-        hideFromFirstCard: true,
+        // Com logo da escola, o cabeçalho também vai na capa (o Gamma reserva o
+        // espaço; carimbar o PDF cobria o título).
+        hideFromFirstCard: !schoolBrand.logoUrl,
       },
     },
     sharingOptions: {
