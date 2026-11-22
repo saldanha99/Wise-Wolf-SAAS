@@ -5,6 +5,8 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 
 const PURPOSE = "WOLFIE_TUTOR";
+// Rótulo das bases já criadas (imutável no banco: guard_ai_knowledge_embedding_config).
+// Desde 22/11/2026 os embeddings vêm da OpenAI direto, mesmo modelo; o OpenRouter saiu.
 const PROVIDER = "OPENROUTER";
 const DEFAULT_MODEL = "openai/text-embedding-3-small";
 const DEFAULT_CORPORA = [
@@ -35,7 +37,7 @@ Uso:
 Variáveis exigidas com --apply:
   SUPABASE_URL
   SUPABASE_SERVICE_ROLE_KEY
-  OPENROUTER_API_KEY
+  OPENAI_API_KEY
 
 O modo padrão é dry-run. Nenhum fato individual de aluno é enviado ou gravado.
 Corpora customizados nunca podem ser publicados; adicione e revise um corpus
@@ -176,17 +178,15 @@ function supabaseRequestFactory(baseUrl, serviceRoleKey) {
 
 async function createEmbeddings(apiKey, model, inputs) {
   const payload = await requestJson(
-    "https://openrouter.ai/api/v1/embeddings",
+    "https://api.openai.com/v1/embeddings",
     {
       method: "POST",
       expected: [200],
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://system.wisewolflanguage.com.br",
-        "X-Title": "Wise Wolf - Wolfie Tutor RAG",
       },
-      body: { model, input: inputs },
+      body: { model: model.replace(/^openai\//, ""), input: inputs },
     },
   );
   const ordered = [...(payload?.data ?? [])].sort(
@@ -547,8 +547,8 @@ async function main() {
 
   const supabaseUrl = requiredEnvironment("SUPABASE_URL");
   const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
-  const openRouterApiKey = requiredEnvironment("OPENROUTER_API_KEY");
-  const embeddingModel = process.env.OPENROUTER_EMBEDDING_MODEL?.trim() ||
+  const openRouterApiKey = requiredEnvironment("OPENAI_API_KEY");
+  const embeddingModel = process.env.WOLFIE_EMBEDDING_MODEL?.trim() ||
     DEFAULT_MODEL;
   const supabase = supabaseRequestFactory(supabaseUrl, serviceRoleKey);
   const tenants = await supabase("tenants?select=id&order=id.asc");

@@ -15,7 +15,7 @@
  * IA: ponte já existente (_shared/ai-gateway.ts, Haiku), custo em
  * ai_usage_events. Nada de reposição, cobrança ou dado de outro aluno.
  */
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
@@ -398,7 +398,7 @@ async function callJson(
   maxTokens: number,
   timeoutMs: number,
 ): Promise<{ value: unknown; usage: { input: number; output: number } }> {
-  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  const apiKey = textAiKey();
   const response = await fetch(OPENROUTER_CHAT, {
     method: "POST",
     headers: {

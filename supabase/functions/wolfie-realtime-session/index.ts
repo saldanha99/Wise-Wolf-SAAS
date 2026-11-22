@@ -264,7 +264,7 @@ async function loadStudentContext(
       db.from("ai_knowledge_bases").select(
         "id,embedding_model,embedding_dimensions,retrieval_config",
       ).eq("tenant_id", tenantId).eq("purpose", "WOLFIE_TUTOR")
-        .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
+        .in("provider", ["OPENAI", "OPENROUTER"]).eq("status", "ACTIVE")
         .order("version", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
@@ -371,7 +371,7 @@ async function loadStudentContext(
     db.from("ai_knowledge_bases").select(
       "id,embedding_model,embedding_dimensions,retrieval_config",
     ).eq("tenant_id", tenantId).eq("purpose", "WOLFIE_TUTOR")
-      .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
+      .in("provider", ["OPENAI", "OPENROUTER"]).eq("status", "ACTIVE")
       .order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
 

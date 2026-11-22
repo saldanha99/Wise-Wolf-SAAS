@@ -3,13 +3,12 @@ import { ClipboardCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 /**
- * "Revisar resumos (N)" ao lado de "Lançar Aulas" (22/11/2026).
+ * "Resumos para revisar (N)" ao lado de "Lançar Aulas".
  *
- * Desde 28/09 o rascunho da IA preenche o lançamento da aula, mas o lançamento
- * NÃO aprova o resumo (decisão registrada no CLAUDE.md). Os professores pararam
- * de abrir a fila em "Salas e continuidade" e o resumo aprovado — o que vai para a
- * memória do aluno, o Planner e o Wolfie — deixou de existir. O botão só lembra e
- * leva à mesma fila (get_meet_summary_review_queue); não aprova nada.
+ * 22/11/2026 (decisão do Vinícius): lançar a aula APROVA o resumo da aula, com o
+ * que o professor confirmou no lançamento. A fila que sobra é opcional: aulas
+ * ainda não lançadas ou rascunhos sem objetivo/próximo passo. O botão só leva à
+ * fila (get_meet_summary_review_queue); não aprova nada sozinho.
  */
 export const ReviewSummariesButton: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
   const [pending, setPending] = useState<number | null>(null);
@@ -33,10 +32,10 @@ export const ReviewSummariesButton: React.FC<{ onOpen: () => void }> = ({ onOpen
       data-tour="teacher-review-summaries"
       onClick={onOpen}
       className="flex items-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/10 px-5 py-3 text-xs font-bold text-amber-700 transition-all hover:bg-amber-400/20 dark:text-amber-300"
-      title="Resumos das aulas gravadas esperando a sua revisão. O resumo aprovado alimenta a memória do aluno, o Planner e a trilha do Wolfie."
+      title="Resumos de aulas gravadas que ainda não foram aprovados (aula não lançada ou rascunho sem objetivo/próximo passo). Lançar a aula já aprova o resumo."
     >
       <ClipboardCheck size={16} aria-hidden="true" />
-      <span>Revisar resumos ({pending > 99 ? '99+' : pending})</span>
+      <span>Resumos para revisar ({pending > 99 ? '99+' : pending})</span>
     </button>
   );
 };

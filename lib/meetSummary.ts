@@ -84,10 +84,10 @@ export function budgetPercent(spent: number, cap: number): number {
 }
 
 const PAUSE_REASONS: Record<string, string> = {
-  google_summary_ai_not_configured: 'a IA do resumo não está ligada no servidor (GOOGLE_MEET_SUMMARY_AI_ENABLED, chave do OpenRouter ou modelo)',
+  google_summary_ai_not_configured: 'a IA do resumo não está ligada no servidor (GOOGLE_MEET_SUMMARY_AI_ENABLED, chave da Anthropic ou modelo)',
   google_summary_pricing_required: 'o preço do modelo não está cadastrado',
-  google_summary_provider_rejected: 'o OpenRouter recusou a chave ou o modelo',
-  google_summary_provider_credits: 'a conta do OpenRouter está sem créditos',
+  google_summary_provider_rejected: 'o provedor de IA recusou a chave ou o modelo',
+  google_summary_provider_credits: 'a conta do provedor de IA está sem créditos',
 };
 export function pauseReasonText(code: string | null | undefined): string {
   return (code && PAUSE_REASONS[code]) || 'a IA do resumo está indisponível no momento';

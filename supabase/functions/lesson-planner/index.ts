@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
-// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+// Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 
 // deno-lint-ignore no-import-prefix
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -348,7 +348,7 @@ async function loadPlannerContext(
     db.from("ai_knowledge_bases").select(
       "id,embedding_model,embedding_dimensions,version",
     ).eq("tenant_id", tenantId).eq("purpose", "WISE_WOLF_PLANNER")
-      .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
+      .in("provider", ["OPENAI", "OPENROUTER"]).eq("status", "ACTIVE")
       .order("version", { ascending: false }).limit(1).maybeSingle(),
     // Cartão do aluno preenchido pelo professor (migration 20260926220000),
     // pela RPC que já aplica a regra de menor do banco.
@@ -509,7 +509,7 @@ async function retrieveWiseWolfKnowledge(
     return [];
   }
 
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY")?.trim() ?? "";
+  const apiKey = textAiKey();
   if (!apiKey) return [];
 
   try {
@@ -600,7 +600,7 @@ async function callOpenRouter(
   qualityGaps: string[] = [],
   deadlineAt: number = performance.now() + PLANNER_TOTAL_BUDGET_MS,
 ): Promise<OpenRouterCallResult> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY")?.trim() ?? "";
+  const apiKey = textAiKey();
   if (!apiKey) {
     return {
       ok: false,

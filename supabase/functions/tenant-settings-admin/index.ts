@@ -822,9 +822,12 @@ export async function validateProviderCredential(
     url = "https://api.openai.com/v1/models";
     headers = { Authorization: `Bearer ${secret}` };
   } else {
-    environment = "production";
-    url = "https://openrouter.ai/api/v1/key";
-    headers = { Authorization: `Bearer ${secret}` };
+    // 22/11/2026: a Wise Wolf não usa mais o OpenRouter; nada vai à rede.
+    throw new ApiError(
+      410,
+      "PROVIDER_REMOVED",
+      "OpenRouter is no longer used",
+    );
   }
 
   let response: Response;
@@ -855,8 +858,6 @@ export async function validateProviderCredential(
   const data = await safeJson(response);
   const labelCandidate = provider === "asaas"
     ? data.name || data.email || data.id
-    : provider === "openrouter"
-    ? data.label || data.name
     : null;
   const accountLabel = typeof labelCandidate === "string"
     ? labelCandidate.trim().slice(0, 120) || null

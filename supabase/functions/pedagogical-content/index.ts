@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
-// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+// Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
@@ -1225,7 +1225,7 @@ async function handleHubPlannerGenerate(
   if (prompt.length > MAX_PROMPT_LENGTH) {
     throw new HttpError(413, "PLANNER_CONTEXT_TOO_LARGE");
   }
-  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  const apiKey = textAiKey();
   if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
   const usageDb = usageRecorder();
   const recordPlannerUsage = (model: string, payload: unknown) => {
@@ -1514,7 +1514,7 @@ async function handleHubMaterialGenerate(
     return prior;
   }
 
-  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  const apiKey = textAiKey();
   if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
   const usageDb = usageRecorder();
   const recordMaterialUsage = (model: string, payload: unknown) => {
@@ -2121,7 +2121,7 @@ async function handleStudentComplementaryPack(
     throw new HttpError(413, "STUDENT_CONTEXT_TOO_LARGE");
   }
 
-  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  const apiKey = textAiKey();
   if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
   const usageDb = usageRecorder();
   const providerUser = await safetyIdentifier(
@@ -2418,7 +2418,7 @@ serve(async (req) => {
       };
     }
 
-    const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+    const apiKey = textAiKey();
     if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
 
     const usageDb = usageRecorder();

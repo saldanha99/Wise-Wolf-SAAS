@@ -17,7 +17,7 @@
 //   STUDENT_CARD_SUGGESTIONS_ENABLED=true   liga (ausente = desligado)
 //   STUDENT_CARD_SUGGESTIONS_MODEL          fornecedor/modelo; ausente = o do
 //                                           resumo (GOOGLE_MEET_SUMMARY_MODEL)
-//   OPENROUTER_API_KEY                      a mesma do resumo e do Planner
+//   ANTHROPIC_API_KEY                       a mesma do resumo e do Planner (OpenRouter saiu em 22/11/2026)
 // O modelo precisa de preço em ai_model_pricing com o MESMO id.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
@@ -54,7 +54,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function config() {
   const env = (key: string) => Deno.env.get(key)?.trim() || "";
-  const key = env("OPENROUTER_API_KEY");
+  const key = env("ANTHROPIC_API_KEY");
   const model = suggestionsModelId(
     env("STUDENT_CARD_SUGGESTIONS_MODEL"),
     env("GOOGLE_MEET_SUMMARY_MODEL"),

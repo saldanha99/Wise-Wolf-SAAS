@@ -216,7 +216,7 @@ function config(): Config {
   // Resumo por IA pelo OpenRouter (a mesma chave do wolfie-brain e do
   // lesson-planner). Modelo com barra (fornecedor/modelo); padrão
   // google/gemini-3.6-flash, o único com preço cadastrado em 26/09/2026.
-  const aiKey = env("OPENROUTER_API_KEY"),
+  const aiKey = env("ANTHROPIC_API_KEY"),
     aiModel = summaryModelId(env("GOOGLE_MEET_SUMMARY_MODEL"));
   return {
     clientId: env(names[0]),

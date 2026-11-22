@@ -1113,9 +1113,9 @@ export const FEATURE_TOURS: FeatureTour[] = [
     ],
   },
   {
-    id:'2026-11-22-wolfie-trilha-revisar-resumos',title:'Revisar os resumos das aulas',roles:['TEACHER'],
+    id:'2026-11-22-wolfie-trilha-revisar-resumos',title:'Lançar a aula aprova o resumo',roles:['TEACHER'],
     steps:[
-      {target:'teacher-review-summaries',view:'dashboard',title:'Novidade: resumos esperando você',text:'Ao lado de Lançar Aulas aparece quantos resumos de aulas gravadas esperam a sua revisão. Lançar a aula com o rascunho não aprova o resumo: é preciso abrir, conferir e aprovar. O resumo aprovado é o que alimenta a memória do aluno, o Planner e a trilha do Wolfie. O botão leva para Salas e continuidade, em Aulas para revisar.'},
+      {target:'teacher-review-summaries',view:'dashboard',title:'Novidade: lançar a aula aprova o resumo',text:'Novidade: ao lançar a aula, o resumo da aula gravada é aprovado com o que você confirmar no lançamento (objetivo, próximo passo e lição) e passa a alimentar a memória do aluno, o Planner e a trilha do Wolfie. Este botão mostra só o que ainda falta: aulas não lançadas ou rascunhos sem objetivo e próximo passo. Revisar por aqui é opcional.'},
     ],
   },
 ];

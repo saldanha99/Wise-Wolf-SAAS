@@ -42,7 +42,7 @@ const PROVIDER_LABELS: Record<TenantIntegrationProvider, { name: string; descrip
   asaas: { name: 'Asaas', description: 'Prepara e valida a chave própria da escola para futura ativação no runtime.', placeholder: '$aact_...' },
   evolution: { name: 'Evolution WhatsApp', description: 'Prepara a credencial da conta Evolution sem trocar o runtime atual.', placeholder: 'Cole a API key da Evolution' },
   openai: { name: 'OpenAI', description: 'Prepara uma chave própria para futura ativação dos recursos de IA.', placeholder: 'sk-...' },
-  openrouter: { name: 'OpenRouter', description: 'Prepara uma chave própria para futura ativação do catálogo ampliado.', placeholder: 'sk-or-...' },
+  openrouter: { name: 'OpenRouter (desativado)', description: 'Desativado em 22/11/2026: a Wise Wolf não usa mais o OpenRouter. A IA de texto roda pela API da Anthropic.', placeholder: 'sk-or-...' },
 };
 
 const SECTION_ITEMS: Array<{ id: SectionId; label: string; description: string; icon: React.ElementType }> = [

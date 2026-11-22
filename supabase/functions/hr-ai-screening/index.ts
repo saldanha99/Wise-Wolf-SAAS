@@ -1,5 +1,5 @@
-// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+// Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizedResumePath } from "../_shared/authorized-resume-path.ts";
 import {
@@ -57,7 +57,7 @@ async function callAI(system: string, user: string): Promise<string | null> {
     }
   }
   // 2) OpenRouter free
-  const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  const apiKey = textAiKey();
   if (!apiKey) return null;
   for (const model of OR_MODELS) {
     try {

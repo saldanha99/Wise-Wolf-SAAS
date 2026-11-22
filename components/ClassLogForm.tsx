@@ -144,7 +144,7 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                         {draft.type && <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             {draft.type === 'COMPLETED' ? <>
                                 {suggestions[String(item.id)] && <div className="sm:col-span-2 rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950 dark:bg-indigo-950 dark:text-indigo-100">
-                                    <p className="font-bold">{suggestions[String(item.id)].status === 'VERIFIED' ? 'Preenchido pelo resumo aprovado da reunião' : 'Preenchido pelo rascunho da reunião — confira os dados'}</p>
+                                    <p className="font-bold">{suggestions[String(item.id)].status === 'VERIFIED' ? 'Preenchido pelo resumo aprovado da reunião' : 'Preenchido pelo rascunho da reunião — confira: ao lançar, o resumo da aula é aprovado com o que você deixar aqui'}</p>
                                     <dl className="mt-2 grid gap-2 sm:grid-cols-2">{pedagogicalFields.filter(([field]) => draft[field].trim()).map(([field,label]) => <div key={field}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-line">{draft[field]}</dd></div>)}</dl>
                                     {suggestions[String(item.id)].uncertainties.length > 0 && <p className="mt-2 font-semibold">Pontos a conferir: {suggestions[String(item.id)].uncertainties.join('; ')}</p>}
                                     <button type="button" onClick={() => setEditing(current => ({ ...current, [item.id]: !current[String(item.id)] }))} className="mt-3 font-bold underline">{editing[String(item.id)] ? 'Concluir ajustes' : 'Editar dados preenchidos'}</button>

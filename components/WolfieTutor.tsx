@@ -70,6 +70,7 @@ import {
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
+import { WolfieTopupModal } from "./WolfieTopupModal";
 import {
   classicReplyCaption,
   realtimeFallbackPresentation,
@@ -655,6 +656,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     !hubModeRequested,
   );
   const [showTextInput, setShowTextInput] = useState(!voiceMode);
+  // Saldo de voz acabou no meio da conversa: a compra abre por cima, sem fechar nada.
+  const [topupOpen, setTopupOpen] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [restartNonce, setRestartNonce] = useState(0);
   const [isRestarting, setIsRestarting] = useState(false);
@@ -3980,6 +3983,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   // VISUAL HELPERS
   // ============================================================
+  useEffect(() => {
+    if (realtime.fallbackReason === "quota_exceeded") setTopupOpen(true);
+  }, [realtime.fallbackReason]);
+
   const realtimeSubtitle = realtime.isAssistantSpeaking
     ? realtime.assistantTranscript || realtime.lastAssistantTranscript
     : realtime.userTranscript || realtime.lastUserTranscript || subtitle;
@@ -5117,6 +5124,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
     return (
       <div className="fixed inset-0 z-200 overflow-hidden bg-slate-950 font-sans">
+        <WolfieTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} />
         <WolfieScenarioStage
           profile={visualSceneProfile}
           presentation="ugc"
@@ -5196,6 +5204,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   return (
     <div className="fixed inset-0 z-200 bg-slate-950 flex flex-col items-center justify-center overflow-hidden font-sans">
+      <WolfieTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} />
       {/* BACKGROUND EFFECTS */}
       <div
         className={`absolute inset-0 transition-colors duration-1000 ${
