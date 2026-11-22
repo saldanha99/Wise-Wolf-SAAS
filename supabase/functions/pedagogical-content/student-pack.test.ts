@@ -88,3 +88,15 @@ Deno.test("schema enviado à Anthropic não tem limites que ela recusa", () => {
   assert(!/"minItems":([2-9]|\d{2,})/.test(text));
   assert(text.includes('"additionalProperties":false'));
 });
+
+Deno.test("content_covered só com espaços cai no content", () => {
+  const lesson = studentPackLesson(
+    {
+      content_covered: "   ",
+      content: "Comparatives with electronics: cheaper, lighter",
+    },
+    null,
+  );
+  assert(lesson);
+  assert(lesson.content_covered.includes("Comparatives"));
+});

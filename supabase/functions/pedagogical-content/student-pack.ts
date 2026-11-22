@@ -365,10 +365,8 @@ export function studentPackLesson(
 ): StudentPackLesson | null {
   if (!classLog) return null;
   const objective = boundedStudentContextText(classLog.lesson_objective, 400);
-  const covered = boundedStudentContextText(
-    classLog.content_covered || classLog.content,
-    1_200,
-  );
+  const covered = boundedStudentContextText(classLog.content_covered, 1_200) ||
+    boundedStudentContextText(classLog.content, 1_200);
   const memoryObjective = boundedStudentContextText(
     verifiedMemory?.lesson_objective,
     400,
@@ -473,8 +471,8 @@ Regras obrigatórias:
 - Adapte vocabulário, complexidade e situações ao nível CEFR e aos objetivos informados.${lessonRules}${factsRule}
 - Não cite nem tente identificar o aluno. Não peça links, cadastro, pagamento ou contato externo.
 - reading.content: instructions_pt, text em inglês com 100 a 180 palavras, checklist com 3 a 6 itens e reflection_prompt.
-- grammar.content: rule_pt e exatamente 4 exercises; cada exercício tem sentence, 4 options únicas, correct (índice zero-based) e exp em pt-BR. A lacuna ___ é trocada exatamente pela opção: a frase com a opção correta no lugar de ___ precisa ficar gramatical, sem repetir palavra que já está na frase.
-- quiz.content: instructions_pt e exatamente 5 questions; cada pergunta tem q, 4 options únicas, correct (índice zero-based) e exp em pt-BR.
+- grammar.content: rule_pt e exatamente 4 exercises; cada exercício tem sentence, 4 options únicas, correct (inteiro de 0 a 3, índice da opção certa) e exp em pt-BR. A lacuna ___ é trocada exatamente pela opção: a frase com a opção correta no lugar de ___ precisa ficar gramatical, sem repetir palavra que já está na frase.
+- quiz.content: instructions_pt e exatamente 5 questions; cada pergunta tem q, 4 options únicas, correct (inteiro de 0 a 3, índice da opção certa) e exp em pt-BR.
 - conversation.content: scenario, instructions_pt, preparation com 3 a 6 itens, target_phrases com 3 a 8 itens e reflection_prompt.
 - Use títulos de até 60 caracteres e descrições de até 120 caracteres.
 - Retorne somente o objeto JSON exigido pelo schema, sem markdown ou texto adicional.`;

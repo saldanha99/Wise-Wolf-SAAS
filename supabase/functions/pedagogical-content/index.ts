@@ -1778,6 +1778,7 @@ async function loadStudentPackLessonContext(
       ? (classResult.data[0] as JsonObject | undefined) ?? null
       : null;
     let verifiedMemory: JsonObject | null = null;
+    let memoryCode: string | null = null;
     const sessionId = classLog?.lesson_session_id;
     if (typeof sessionId === "string" && sessionId) {
       const { data, error } = await admin
@@ -1791,17 +1792,19 @@ async function loadStudentPackLessonContext(
         .eq("source_ref", sessionId)
         .eq("verification_status", "VERIFIED")
         .maybeSingle();
-      if (!error && isJsonObject(data)) verifiedMemory = data;
+      if (error) memoryCode = error.code ?? "UNKNOWN";
+      else if (isJsonObject(data)) verifiedMemory = data;
     }
     const facts = !factsResult.error && Array.isArray(factsResult.data)
       ? factsResult.data
         .map((row) => isJsonObject(row) ? row.content : null)
         .filter((content): content is string => typeof content === "string")
       : [];
-    if (classResult.error || factsResult.error) {
+    if (classResult.error || factsResult.error || memoryCode) {
       console.warn("Student complementary lesson context partially missing", {
         classCode: classResult.error?.code ?? null,
         factsCode: factsResult.error?.code ?? null,
+        memoryCode,
       });
     }
     return { lesson: studentPackLesson(classLog, verifiedMemory), facts };
