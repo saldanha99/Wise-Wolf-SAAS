@@ -1,3 +1,17 @@
+### 22/11/2026 (noite, 9) — DNS curinga `*.wisewolflanguage.com.br` (escolas clientes sem registro manual)
+
+- **Criado (21:01 UTC, autorizado pelo Vinícius):** Cloudflare, zona `0ee31aac9562bf09783613a7ef0a01fc`, registro
+  `12f824e703ea11797e2e0692bf3ba1c5` = `A * → 179.236.255.4`, DNS only (nuvem cinza), TTL Auto. Nenhum outro registro
+  mudou (40 antes, 41 depois; id, conteúdo e `modified_on` iguais). Nomes explícitos (hub, system, raiz, www, api, app,
+  wolfie, demo-escola, cPanel) têm prioridade sobre o curinga.
+- **Certificado:** o Caddy (`on_demand` + `ask` `tenant-domain-allowed`) só emite para escola cadastrada. Teste: um
+  subdomínio sem escola resolve para a VPS, mas recebe `tlsv1 alert internal error` / `no peer certificate`. Hub,
+  system, raiz e demo-escola seguem 200 com Let's Encrypt. Evidência: `/data/OpenBot/Shared/wisewolf/white-label/curinga/`.
+- **Escola nova:** basta cadastrar o subdomínio no tenant; não precisa mais criar registro na Cloudflare.
+- **Rollback:** apagar só esse registro (painel DNS > `*` > Delete, ou
+  `DELETE /client/v4/zones/0ee31aac9562bf09783613a7ef0a01fc/dns_records/12f824e703ea11797e2e0692bf3ba1c5`). Caddy e sistema
+  não mudaram. Depois do rollback, cada escola nova volta a precisar do seu registro A.
+
 ### 22/11/2026 (noite, 8) — White label: a escola escolhe a voz do tutor (`tenants.branding.tutorVoice`)
 
 - **O quê (decisão do Vinícius):** Configurações da escola → Marca → "Voz do tutor" (`components/settings/TutorVoicePicker.tsx`):
