@@ -1275,6 +1275,9 @@ serve(async (req) => {
         province: text(body.province) || "Centro",
         postalCode: digits(body.postalCode) || "01000000",
         externalReference: customerReference,
+        // Avisos do Asaas são pagos (e-mail/SMS); a escola os desligou em 19/11/2026.
+        // O PIX aparece na tela e a confirmação sai pelo nosso fulfillment.
+        notificationDisabled: true,
       };
       const customerClaim = await claimAsaasCreation(auth.context.admin, {
         tenantId: PLATFORM_ASAAS_TENANT_ID,
