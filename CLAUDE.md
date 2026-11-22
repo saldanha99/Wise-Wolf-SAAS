@@ -1,3 +1,22 @@
+### 22/11/2026 (tarde) — Wolfie: 2ª publicação da trilha
+
+- **Professor:** em "Aulas de Hoje" (`TeacherDashboard`) aparece o check-in do aluno feito na véspera
+  (`WolfieCheckinNote`, RPC `teacher_wolfie_checkins`, migration `20261122160000`): acertos, o que ainda
+  errou e a prioridade do roleplay. Só para quem dá/deu aula ao aluno ou a coordenação. Só leitura.
+- **Realtime:** `semantic_vad` com `eagerness: "low"` (paciência com quem pensa no meio da frase) +
+  botão "Terminei de falar" (`useWolfieRealtime.finishSpeaking` = `input_audio_buffer.commit` +
+  `response.create`, só com o aluno falando e trava de 1,5 s).
+- **Cena do roleplay:** `RoleplayCounterpart` (vetor no código, sem imagem gerada) via prop
+  `roleplayCast` do `WolfieTutor`, só no roleplay da trilha. Fora dele o tutor é o mesmo.
+- **Memória de fatos:** os cartões do roleplay extraem até 5 fatos que o aluno disse de si
+  (sem dado sensível; a citação precisa estar numa fala dele) → `wolfie_memory_items`
+  (`kind` goal/professional_scenario/preferred_topic, `memory_key` `fact:*`), teto de 10 ativos.
+  O realtime já lê essa tabela; a trilha seguinte usa os fatos na rotina.
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-trilha2-20261122T122841Z/` (banco, `frontend-dist`,
+  `functions/wolfie-realtime-session` e `wolfie-lesson-track`, `.published-functions.md5`).
+  Rollback: devolver as duas pastas de função + o md5 e `docker restart supabase-edge-functions`;
+  o front como na entrada de cima, com esta pasta.
+
 ### 22/11/2026 — Wolfie: trilha da aula no ar (branch feat/wolfie-trilha-da-aula)
 
 ⚠️ **Antes do próximo release completo, junte `feat/wolfie-trilha-da-aula`** (é a branch do Mac
