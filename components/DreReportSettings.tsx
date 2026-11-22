@@ -137,7 +137,7 @@ const DreReportSettings: React.FC = () => {
             value={s.destino}
             onChange={e => setS({ ...s, destino: e.target.value })}
             placeholder="1203630...@g.us  ou  12996...."
-            className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+            className="w-full min-h-11 sm:min-h-0 text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
           />
           <span className="text-[10px] text-brand-muted">ID do grupo termina em @g.us</span>
         </div>
@@ -146,7 +146,7 @@ const DreReportSettings: React.FC = () => {
           <select
             value={s.cadencia}
             onChange={e => setS({ ...s, cadencia: e.target.value })}
-            className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+            className="w-full min-h-11 sm:min-h-0 text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
           >
             <option value="diaria">Diária</option>
             <option value="semanal">Semanal</option>
@@ -159,7 +159,7 @@ const DreReportSettings: React.FC = () => {
             value={s.dia_semana}
             onChange={e => setS({ ...s, dia_semana: Number(e.target.value) })}
             disabled={s.cadencia !== 'semanal'}
-            className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border disabled:opacity-40"
+            className="w-full min-h-11 sm:min-h-0 text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border disabled:opacity-40"
           >
             {DIAS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
           </select>

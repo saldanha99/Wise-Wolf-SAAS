@@ -27,7 +27,7 @@ export default function LessonReviewQueue({ tenantId, showTeacher = false }: { t
   return <section data-tour="meet-review-queue" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck size={18}/>Aulas para revisar{items && items.length > 0 ? ` (${items.length})` : ''}</h3>
-      <button type="button" disabled={busy} onClick={() => void load()} aria-label="Atualizar aulas para revisar" className="rounded-lg border px-2 py-1 text-sm"><RefreshCw size={14} className={busy ? 'animate-spin' : ''}/></button>
+      <button type="button" disabled={busy} onClick={() => void load()} aria-label="Atualizar aulas para revisar" className="grid h-11 w-11 place-items-center rounded-lg border text-sm sm:h-auto sm:w-auto sm:px-2 sm:py-1"><RefreshCw size={14} className={busy ? 'animate-spin' : ''}/></button>
     </div>
     <p className="text-sm text-slate-500">Depois da aula chegam as notas do Gemini e o rascunho da IA. Confira com os trechos da transcrição, complete o objetivo e o próximo passo e aprove: só o aprovado vai para a memória do aluno.{stale > 0 ? ` ${stale} ${stale === 1 ? 'está parado' : 'estão parados'} há 3 dias ou mais.` : ''}</p>
     {failed && <p className="text-sm text-slate-500">Não foi possível carregar as aulas para revisar agora.</p>}

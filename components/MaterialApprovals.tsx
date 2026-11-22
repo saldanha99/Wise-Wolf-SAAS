@@ -129,7 +129,7 @@ const MaterialApprovals: React.FC<Props> = () => {
           <h3 className="text-sm font-bold text-brand-text mb-3">Reprovados recentemente</h3>
           <div className="space-y-2">
             {rejected.map((m: any) => (
-              <div key={m.id} className="border border-brand-border rounded-xl p-3 flex items-center justify-between gap-2">
+              <div key={m.id} className="border border-brand-border rounded-xl p-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-brand-text truncate">{m.title}</p>
                   <p className="text-[11px] text-brand-muted">por {m.author || '—'} · {fmt(m.created_at)}</p>

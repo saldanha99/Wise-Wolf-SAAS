@@ -208,8 +208,9 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user, linkedAffiliate =
                         <div className="flex items-center gap-2 shrink-0">
                             <button
                                 onClick={handleShareWhatsApp}
-                                className="w-9 h-9 bg-green-500 hover:bg-green-400 text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-600/30"
+                                className="w-11 h-11 sm:w-9 sm:h-9 bg-green-500 hover:bg-green-400 text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-600/30"
                                 title="Compartilhar no WhatsApp"
+                                aria-label="Compartilhar no WhatsApp"
                             >
                                 <MessageCircle size={16} />
                             </button>
