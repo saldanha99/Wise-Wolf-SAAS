@@ -1,3 +1,24 @@
+### 22/11/2026 (noite, 10) — Hub: "Aprovações do Hub" do Super Admin (aprovação comercial em lote)
+
+- **Por quê:** o `SUPER_ADMIN` só vê o `SuperAdminDashboard` (App.tsx) e a RLS de UPDATE de `pedagogical_materials` exige
+  `tenant_id = _my_tenant_id()` — ele **nunca conseguiu** dar a 2ª aprovação pela tela da Biblioteca. 49 livros neutros
+  pedidos pela diretora (prévia de 3 páginas "AMOSTRA · WISE WOLF HUB" em `/data/OpenBot/Shared/wisewolf/conteudo/lote/previas-hub/`)
+  esperavam isso.
+- **O quê:** aba "Aprovações do Hub" (`components/saas/HubBulkApproval.tsx`): lista, confirmação marcada, aprova em
+  blocos de 200 e copia ao Hub (`sync-hub-material`) em lotes de 5. RPCs `hub_pending_commercial_approvals()` e
+  `hub_approve_commercial_publications(uuid[])` (migration `20261122250000`, SECURITY DEFINER, só `is_super_admin()`);
+  o verificador continua vindo do gatilho `hub_b_guard_material_publication_consent` (`auth.uid()`), e quem pediu não aprova.
+  Teste `supabase/tests/hub_aprovacao_comercial_em_lote.sql`. ⚠️ A tela do Super Admin é só desktop (lateral fixa de 256 px).
+- **Super Admin:** uma conta só, `a***n@educore.io` (tenant `master`); senha esquecida → "Recuperar senha?" no login.
+- **No ar (21:44 UTC):** migration aplicada (supabase_admin, transação única) e marcada; teste OK; front `index-Dsyra5g4.js`
+  (`npm run build` com as `VITE_*` do `.env.production` da VPS + `VITE_HUB_PUBLIC_VIDEOS=true`; 56 arquivos fora de
+  `assets/` iguais ao dist anterior). Inclui o plural "cartões" do Dinheiro.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-aprovacao-20261122T214241Z/` (`postgres.dump`, `frontend-dist.md5`,
+  `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-aprovacao && mv
+  dist.prev12-hub-aprovacao dist && cd .. && docker compose restart frontend`. Banco (aditivo): `drop function
+  public.hub_approve_commercial_publications(uuid[]), public.hub_pending_commercial_approvals();` + apagar o `.sha256` de
+  `20261122250000`. Aprovação já feita se desfaz pela revogação normal (desligar o opt-in na Biblioteca).
+
 ### 22/11/2026 (noite, 9) — DNS curinga `*.wisewolflanguage.com.br` (escolas clientes sem registro manual)
 
 - **Criado (21:01 UTC, autorizado pelo Vinícius):** Cloudflare, zona `0ee31aac9562bf09783613a7ef0a01fc`, registro
