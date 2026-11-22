@@ -1,3 +1,33 @@
+### 22/11/2026 (noite, 11) — Teto de US$ 50/mês da Anthropic e Lançador (escolher professor / só gerar link)
+
+- **Teto da Anthropic (decisão do Vinícius):** a chave é a mesma do Lei Prova (que tem contador próprio de US$ 50). O
+  `_shared/ai-gateway.ts` mede cada chat (usage × preço oficial: Haiku 5.5 0,10/0,50 por 1M, acima de 100K tokens
+  0,50/2,50; Sonnet 5.5 2/10) e soma em `private.ai_provider_monthly_spend` (mês UTC; RPCs `ai_provider_spend_add` /
+  `ai_provider_spend_month`, só service_role; migration `20261122260000`). Até `ANTHROPIC_MONTHLY_BUDGET_USD` (=50 no
+  `.env.functions`) nada muda; acima, o chat vai ao **OpenRouter** até virar o mês (o corpo original da função, como
+  antes de 19/11). `ANTHROPIC_ROUTING=off` manda tudo ao OpenRouter. Contador fora do ar = segue na Anthropic. O
+  Sonnet continua só no comercial (decisão de 22/11). `OPENROUTER_API_KEY` voltou a ser lida pelo functions (linha
+  descomentada); falha da Anthropic abaixo do teto NÃO cai no OpenRouter. Consultar: `select * from
+  private.ai_provider_monthly_spend;`. ⚠️ Antes do teto não havia medição: novembro até 22/11 só tem o registro
+  parcial do `ai_usage_events` (~US$ 0,77 em 299 chamadas registradas).
+- **Lançador → Aula experimental:** "Como disparar" com 3 opções — todos os professores ativos (como antes), escolher
+  professor (`dispatch_mode: "teacher"` + `target_teacher_id`, conferido ANTES de criar a vaga pela mesma régua,
+  `409 target_teacher_not_eligible`) e só gerar o link (`link_only`: cria a vaga, devolve o link, não manda nada).
+  O aceite segue no `accept-opportunity` (professor ativo e logado, o primeiro leva). Data/hora mostradas em pt-BR
+  24 h por cima do seletor nativo (`lib/ptBrDateTime.ts`; no iPhone vazavam e saíam em AM/PM); gaveta `z-[90]`
+  acima da barra de baixo (`z-[80]`, ModernSidebar) e botão do raio acima dela no celular. Tour
+  `2026-11-24-lancador-escolher-professor`. Prints: `/data/OpenBot/Shared/wisewolf/lancador/prints-20261122/`.
+- **No ar (21:59–22:04 UTC):** migration aplicada e marcada; `_shared/ai-gateway.ts` e `broadcast-opportunity`
+  copiados (linha do `broadcast-opportunity` no `.published-functions.md5` atualizada); `functions` recriado; front
+  `index-C_yXf57c.js` (56 arquivos fora de `assets/` iguais).
+- **Backup/rollback:** `/opt/wisewolf/backup-teto-lancador-20261122T215904Z/` (`postgres.dump`, `functions/_shared/ai-gateway.ts`,
+  `functions/broadcast-opportunity/index.ts`, `published-functions.md5`, `env.functions`, `frontend-dist.md5`). Funções:
+  copiar os 2 arquivos de volta + `published-functions.md5` → `releases/.published-functions.md5` + `env.functions` →
+  `.env.functions` e `docker compose up -d --no-deps --force-recreate functions`. Front: `src/dist.prev13-lancador`
+  (antes do Lançador) ou `src/dist.lancador-v1` (Lançador sem o ajuste de camadas). Banco (aditivo): `drop function
+  public.ai_provider_spend_add(text, numeric), public.ai_provider_spend_month(text); drop table
+  private.ai_provider_monthly_spend;` + apagar o `.sha256` de `20261122260000`.
+
 ### 22/11/2026 (noite, 10) — Hub: "Aprovações do Hub" do Super Admin (aprovação comercial em lote)
 
 - **Por quê:** o `SUPER_ADMIN` só vê o `SuperAdminDashboard` (App.tsx) e a RLS de UPDATE de `pedagogical_materials` exige
