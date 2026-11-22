@@ -89,6 +89,8 @@ const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
 const UnitEconomicsPanel = lazy(() => import('./components/finance/UnitEconomicsPanel'));
 const PricingPanel = lazy(() => import('./components/finance/PricingPanel'));
+const CashflowProjectionPanel = lazy(() => import('./components/finance/CashflowProjectionPanel'));
+const DreAnualPanel = lazy(() => import('./components/finance/DreAnualPanel'));
 const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
 const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
@@ -222,6 +224,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'unit-economics', label: 'Margem por plano', group: 'Financeiro', keywords: 'lucro prejuízo margem aluno professor plano imposto asaas' },
     { tab: 'pricing', label: 'Preços e equilíbrio', group: 'Financeiro', keywords: 'precificação preço mínimo ponto de equilíbrio simular' },
+    { tab: 'cashflow-projection', label: 'Caixa projetado', group: 'Financeiro', keywords: 'fluxo de caixa projeção previsão próximos meses' },
+    { tab: 'dre-12m', label: 'DRE 12 meses', group: 'Financeiro', keywords: 'resultado anual demonstrativo asaas imposto ia' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
     { tab: 'reconciliation', label: 'Reconciliação Financeira', group: 'Financeiro' },
@@ -1482,6 +1486,8 @@ const App: React.FC = () => {
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
       'unit-economics': <UnitEconomicsPanel user={user} />,
       'pricing': <PricingPanel user={user} />,
+      'cashflow-projection': <CashflowProjectionPanel />,
+      'dre-12m': <DreAnualPanel />,
       'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
       'verify-rooms': <MeetingLinkVerifier />,
@@ -1654,6 +1660,8 @@ const App: React.FC = () => {
                       'margin': 'Custo e Margem',
                       'unit-economics': 'Margem por plano',
                       'pricing': 'Preços e equilíbrio',
+                      'cashflow-projection': 'Caixa projetado',
+                      'dre-12m': 'DRE 12 meses',
                       'coverage': 'Cobertura de Professor',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',

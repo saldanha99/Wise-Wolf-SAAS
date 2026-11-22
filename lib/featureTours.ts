@@ -1125,6 +1125,8 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'finance-settings',view:'unit-economics',title:'Informe o imposto',text:'Em Configurar, informe o regime de imposto da escola (DAS fixo do MEI ou % da receita) e os custos fixos pagos por fora do sistema. Enquanto o imposto não for informado, a margem aparece sem ele e o painel avisa.'},
       {target:'pricing-plans',view:'pricing',title:'Simule um preço novo',text:'Em Preços e equilíbrio, cada plano do catálogo mostra custo, margem e preço mínimo. Digite um preço para ver na hora se dá lucro ou prejuízo. A simulação não muda o preço de verdade.'},
       {target:'break-even',view:'pricing',title:'Ponto de equilíbrio',text:'Quantos alunos pagantes cobrem os custos fixos do mês e quanto sobra com os alunos de hoje. Os custos fixos saem das despesas lançadas no caixa nos últimos 3 meses, mais os extras informados em Configurar.'},
+      {target:'cashflow-projection',view:'cashflow-projection',title:'Caixa dos próximos meses',text:'Em Caixa projetado, o mês atual soma o que já entrou e saiu com o que ainda falta, e os meses seguintes usam as cobranças já geradas, as assinaturas dos alunos ativos e a média de professores e despesas. Inadimplência vencida fica fora das entradas.'},
+      {target:'dre-12-meses',view:'dre-12m',title:'DRE de 12 meses',text:'O DRE 12 meses mostra o resultado de cada mês já descontando as taxas do Asaas, o imposto (estimado pela configuração quando não foi lançado) e o custo de IA do Wolfie. Exporte em CSV para a contabilidade.'},
     ],
   },
 ];

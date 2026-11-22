@@ -93,6 +93,8 @@ export const ADMIN_NAV: NavGroup[] = [
       { id: 'margin', label: 'Custo e margem' },
       { id: 'unit-economics', label: 'Margem por plano' },
       { id: 'pricing', label: 'Preços e equilíbrio' },
+      { id: 'cashflow-projection', label: 'Caixa projetado' },
+      { id: 'dre-12m', label: 'DRE 12 meses' },
       { id: 'ai-costs', label: 'Custo de IA' },
     ],
   },
