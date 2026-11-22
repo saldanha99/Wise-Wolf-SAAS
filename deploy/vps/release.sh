@@ -1674,6 +1674,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
   "supabase/migrations/20261122230000_wolfie_abertura_personalizada.sql"
   "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
+  "supabase/migrations/20261122250000_hub_aprovacao_comercial_em_lote.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1889,6 +1890,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/financeiro_inteligencia.sql"
   "supabase/tests/conteudo_bot_gamma.sql"
   "supabase/tests/white_label_dominio.sql"
+  "supabase/tests/hub_aprovacao_comercial_em_lote.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
