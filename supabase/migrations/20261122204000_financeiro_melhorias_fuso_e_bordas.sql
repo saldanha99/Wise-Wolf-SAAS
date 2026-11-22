@@ -407,7 +407,8 @@ begin
      -- DAS/imposto lançado no caixa não entra aqui: o imposto já vem de
      -- finance_settings (tax_fixed_monthly) e contaria duas vezes.
      and coalesce(a.code, '') <> '4.1.01'
-     and lower(coalesce(ft.category, '') || ' ' || coalesce(ft.description, '')) !~ '(^|[^a-z])(das|simples nacional|imposto)([^a-z]|$)'
+     and lower(coalesce(ft.category, '')) !~ '(^|[^a-z])(das|simples|imposto|impostos)([^a-z]|$)'
+     and lower(coalesce(ft.description, '')) !~ '(^|[^a-z])(guia (do )?das|das[ /-]?(mei|mensal|simples|[0-9])|simples nacional|imposto)([^a-z]|$)'
      and (coalesce(ft.occurred_at, ft.created_at) at time zone 'America/Sao_Paulo')::date >= v_start
      and (coalesce(ft.occurred_at, ft.created_at) at time zone 'America/Sao_Paulo')::date < v_end;
 

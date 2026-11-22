@@ -121,7 +121,7 @@ export const FinanceSettingsButton: React.FC<{
         tax_fixed_monthly: num(form.tax_fixed_monthly),
         voice_brl_per_minute: num(form.voice_brl_per_minute),
         asaas_fee_per_charge: num(form.asaas_fee_per_charge),
-        usd_brl: num(form.usd_brl),
+        usd_brl: form.usd_brl > 0 ? form.usd_brl : (settings?.usd_brl ?? 5.5),
         extra_fixed_costs_monthly: num(form.extra_fixed_costs_monthly),
       },
     });
