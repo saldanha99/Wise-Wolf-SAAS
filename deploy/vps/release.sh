@@ -1643,6 +1643,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261121120000_cobranca_visualizada_e_email_aberto.sql"
   "supabase/migrations/20261122140000_wolfie_trilha_da_aula.sql"
   "supabase/migrations/20261122160000_wolfie_checkin_para_o_professor.sql"
+  "supabase/migrations/20261122180000_resumos_que_falharam_por_credito.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
