@@ -1,3 +1,21 @@
+### 22/11/2026 (noite, 7) — Wolfie realtime: handoff sem turno ao vivo, clássico sem minutos, memória 23514, voz com o nome do tutor
+
+- **Handoff ao vivo → clássico:** sessão que nunca teve turno ao vivo (só âncora do clássico) levava 55000
+  `realtime_anchor_required` → 503 e "Não consegui responder agora". O `wolfie-brain` agora devolve 200
+  `notNeeded` nesse caso (a RPC barra dono/encerrada antes dessa trava).
+- **Abre no clássico sem minutos:** `WolfieTutor` lê `my_wolfie_live_balance` 1x ao montar; franquia configurada e
+  zerada → clássico. Erro na leitura não muda nada.
+- **`memory_items_upsert` 23514:** linha nova nascia com `first_seen_at` = `now()` do banco, depois do `now` do
+  início da requisição usado em `last_seen_at` (`wolfie_memory_items_dates_check`). Agora `first_seen_at` explícito.
+- **Voz ao vivo white label:** `wolfie-realtime-session/tutor-brand.ts` aplica `_shared/tutor-persona.ts` (escola com
+  `tutorName` se apresenta com ele; Wise Wolf idêntica). ⚠️ A instrução de voz continua "adult male identity" mesmo
+  com tutor "Luna" (decisão de produto pendente).
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-realtime-fix-20261122T175650Z/` (`functions/wolfie-brain`, `functions/wolfie-realtime-session`,
+  `.published-functions.md5`, `frontend-dist`). Front anterior em `src/dist.prev10-realtime`. Funções: devolver as 2
+  pastas + o md5 e `docker restart supabase-edge-functions`.
+- ⚠️ **Front enviado por tar do servidor do OpenBot chega 700/600:** nginx dá 403. Depois de trocar o `dist`:
+  `find dist -type d -exec chmod 755 {} +; find dist -type f -exec chmod 644 {} +`.
+
 ### 22/11/2026 (noite, 5) — Wolfie: abertura personalizada (nome + último assunto)
 
 - **O quê:** UMA frase com o primeiro nome (grafia do perfil) e o assunto da última aula aprovada; sem aula, o
