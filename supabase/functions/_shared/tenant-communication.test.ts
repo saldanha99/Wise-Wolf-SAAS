@@ -657,7 +657,7 @@ Deno.test("audience switches suppress student and teacher notifications independ
 });
 
 function financeRouteAdmin(
-  row: { instance_name: string } | null,
+  row: { instance_name: string; status?: string } | null,
   calls: QueryCall[],
   error: unknown = null,
 ) {
@@ -686,7 +686,10 @@ Deno.test("empty FINANCE_WHATSAPP_INSTANCE keeps the central instance without an
       "invalid env must disable the finance route",
     );
     const instance = await resolveFinanceWhatsAppInstance(
-      financeRouteAdmin({ instance_name: "financeiro-ww" }, calls),
+      financeRouteAdmin(
+        { instance_name: "financeiro-ww", status: "open" },
+        calls,
+      ),
       "school-a",
       "school-a-central",
       financeEnv(value),
@@ -705,7 +708,10 @@ Deno.test("configured finance instance is used only when connected in this tenan
   const env = financeEnv(" financeiro-ww ");
   assert(
     await resolveFinanceWhatsAppInstance(
-      financeRouteAdmin({ instance_name: "financeiro-ww" }, calls),
+      financeRouteAdmin(
+        { instance_name: "financeiro-ww", status: "open" },
+        calls,
+      ),
       "school-a",
       "school-a-central",
       env,
@@ -719,13 +725,21 @@ Deno.test("configured finance instance is used only when connected in this tenan
     ),
     "lookup must be scoped to the tenant",
   );
-  assert(
-    calls.some((call) =>
-      call.method === "in" && call.args[0] === "status" &&
-      JSON.stringify(call.args[1]) === JSON.stringify(["connected", "open"])
-    ),
-    "lookup must require a connected instance",
-  );
+  // Decisão de 22/11/2026: escola com número financeiro nunca cobra pela
+  // central. Desconectado = espera (null), não volta ao número antigo.
+  for (const status of ["disconnected", "close", "connecting", ""]) {
+    assert(
+      await resolveFinanceWhatsAppInstance(
+        financeRouteAdmin({ instance_name: "financeiro-ww", status }, []),
+        "school-a",
+        "school-a-central",
+        env,
+      ) === null,
+      `finance instance ${
+        status || "sem status"
+      } must hold, never fall back to central`,
+    );
+  }
   assert(
     await resolveFinanceWhatsAppInstance(
       financeRouteAdmin(null, []),

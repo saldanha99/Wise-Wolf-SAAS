@@ -22,6 +22,7 @@ import {
 import {
   loadTenantCentralWhatsAppInstance,
   loadTenantWhatsAppInstance,
+  resolveFinanceWhatsAppInstance,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
@@ -2044,6 +2045,21 @@ serve(async (req) => {
         tenantId,
         "student",
       ) || "";
+    }
+
+    // Pix é cobrança: na escola com número financeiro sai SÓ por ele (decisão
+    // de 22/11/2026). Desconectado ou consulta falhou → não envia por WhatsApp
+    // (a tela avisa e a direção manda o código), nunca pelo número de quem gerou.
+    if (directorInstance) {
+      try {
+        directorInstance = await resolveFinanceWhatsAppInstance(
+          authorization.admin,
+          tenantId,
+          directorInstance,
+        ) || "";
+      } catch {
+        directorInstance = "";
+      }
     }
 
     const message = formatManualPixMessage({

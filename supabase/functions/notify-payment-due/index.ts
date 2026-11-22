@@ -541,6 +541,9 @@ interface Recipient {
   motivo: string;
 }
 
+/** Escolas cujo número financeiro está desconectado nesta execução. */
+const financeHeld = new Set<string>();
+
 async function resolveRecipient(
   supabase: any,
   charge: { id: string; student_id: string; tenant_id: string | null },
@@ -626,19 +629,32 @@ async function resolveRecipient(
         "student",
       )
       : null;
-    // Avisos de cobrança saem pela instância financeira, quando configurada.
-    instCache[tk] = central && charge.tenant_id
-      ? {
-        ...central,
-        instanceName: await resolveFinanceWhatsAppInstance(
-          supabase,
-          charge.tenant_id,
-          central.instanceName,
-        ),
-      }
-      : central;
+    // Avisos de cobrança saem SÓ pela instância financeira quando a escola a
+    // tem; desconectada, a cobrança por WhatsApp espera (nunca a central).
+    const financeInstance = central && charge.tenant_id
+      ? await resolveFinanceWhatsAppInstance(
+        supabase,
+        charge.tenant_id,
+        central.instanceName,
+      )
+      : null;
+    instCache[tk] = central && financeInstance
+      ? { ...central, instanceName: financeInstance }
+      : null;
+    if (central && !financeInstance) financeHeld.add(tk);
   }
   const context = instCache[tk];
+  if (!context && financeHeld.has(tk)) {
+    return {
+      ok: false,
+      phone: "",
+      instance: "",
+      nome: "",
+      brandName: "",
+      motivo:
+        "número financeiro desconectado (cobrança por WhatsApp em espera)",
+    };
+  }
   if (!context) {
     return {
       ok: false,

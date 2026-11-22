@@ -1638,6 +1638,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261117200000_troca_de_horario_com_termo_vigente.sql"
   "supabase/migrations/20261119120000_avisos_da_escola_no_lugar_do_asaas.sql"
   "supabase/migrations/20261121120000_cobranca_visualizada_e_email_aberto.sql"
+  "supabase/migrations/20261122120000_aviso_do_numero_financeiro.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1696,6 +1697,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/origem_dos_leads_clara.sql"
   "supabase/tests/reposicao_por_substituto_sem_termo.sql"
   "supabase/tests/feriados_nacionais_sem_aula.sql"
+  "supabase/tests/aviso_do_numero_financeiro.sql"
   "supabase/tests/visao_do_professor_sem_financeiro.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"

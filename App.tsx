@@ -14,6 +14,7 @@ const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
 const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogleConnectionGate'));
 const TeacherStudentTermsGate = lazy(() => import('./components/TeacherStudentTermsGate'));
 const NationalHolidayNotice = lazy(() => import('./components/NationalHolidayNotice'));
+const FinanceNumberNotice = lazy(() => import('./components/FinanceNumberNotice'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
@@ -369,6 +370,7 @@ const App: React.FC = () => {
   const [teacherTermsRequired, setTeacherTermsRequired] = useState(false);
   // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
+  const [financeNoticeActive, setFinanceNoticeActive] = useState(false);
   const [lessonSoonActive, setLessonSoonActive] = useState(false);
   const [planSuggestionActive, setPlanSuggestionActive] = useState(false);
 
@@ -1962,6 +1964,12 @@ const App: React.FC = () => {
           <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
         </Suspense>
       )}
+      {/* Número só do financeiro (22/11/2026): aviso único para o aluno. */}
+      {user.role === UserRole.STUDENT && !tourOpen && !holidayNoticeActive && !lessonSoonActive && !dossierLink.holdsTours && (
+        <Suspense fallback={null}>
+          <FinanceNumberNotice key={user.id} userId={user.id} onActiveChange={setFinanceNoticeActive} />
+        </Suspense>
+      )}
       {/* Aula começando: aviso 10 min antes, com o link da aula (aluno e professor). */}
       {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && (
         <Suspense fallback={null}>
@@ -1974,7 +1982,7 @@ const App: React.FC = () => {
           <LessonPlanSuggestion key={user.id} userId={user.id} onOpenPlanner={() => setActiveTab('lesson-planner-ai')} onActiveChange={setPlanSuggestionActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

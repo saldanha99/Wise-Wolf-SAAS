@@ -400,31 +400,39 @@ export function isFinanceWhatsAppInstance(
 
 /**
  * Instância de um aviso financeiro (cobrança, lembrete, nova cobrança,
- * confirmação). Usa a instância financeira só quando ela está cadastrada e
- * conectada NESTA escola; senão (env vazia, outra escola, desconectada) volta
- * à central. A cerca durável e o "já avisado hoje" são por fatura e tipo,
- * nunca por instância: trocar de instância não libera um segundo envio.
+ * confirmação, Pix manual). Decisão da direção (22/11/2026): na escola que
+ * tem o número financeiro cadastrado, TODA cobrança sai só por ele — nunca
+ * pela central. Desconectado → `null`: quem chama não envia por WhatsApp
+ * agora (fica para a próxima rodada; o e-mail segue). Sem env, ou escola sem
+ * a linha do número financeiro, continua a central de antes. A cerca durável e
+ * o "já avisado hoje" são por fatura e tipo, nunca por instância.
  */
 export async function resolveFinanceWhatsAppInstance(
   admin: any,
   tenantId: string,
   centralInstance: string,
   getEnv: (key: string) => string | undefined = readEnv,
-): Promise<string> {
+): Promise<string | null> {
   const finance = financeWhatsAppInstanceName(getEnv);
   if (!finance) return centralInstance;
   const { data, error } = await admin
     .from("whatsapp_instances")
-    .select("instance_name")
+    .select("instance_name,status")
     .eq("tenant_id", tenantId)
     .eq("instance_name", finance)
-    .in("status", ["connected", "open"])
     .limit(1)
     .maybeSingle();
   if (error) throw new Error("finance_whatsapp_route_lookup_failed");
-  return safeCommunicationText(data?.instance_name, 120) === finance
-    ? finance
-    : centralInstance;
+  if (safeCommunicationText(data?.instance_name, 120) !== finance) {
+    return centralInstance;
+  }
+  const status = String(data?.status || "").trim().toLowerCase();
+  if (status === "connected" || status === "open") return finance;
+  console.error(
+    "[whatsapp] número financeiro desconectado: cobrança por WhatsApp em espera",
+    { tenantId, status: status || "sem status" },
+  );
+  return null;
 }
 
 async function loadTenantAdminWhatsAppInstance(

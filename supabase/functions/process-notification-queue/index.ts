@@ -1572,6 +1572,18 @@ serve(async (req) => {
             tenant_id,
             instanceId,
           );
+          if (!instanceId) {
+            // Número financeiro desconectado: espera, nunca sai pela central.
+            const marked = await markClaim(
+              supabaseClient,
+              item,
+              "pending",
+              "finance_whatsapp_disconnected",
+            );
+            persistenceFailed ||= !marked;
+            results.push({ id, status: marked ? "pending" : "marker_failed" });
+            continue;
+          }
         } catch {
           const marked = await markClaim(
             supabaseClient,

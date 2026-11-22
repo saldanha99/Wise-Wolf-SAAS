@@ -223,14 +223,21 @@ export async function resolvePaymentNoticeRecipient(
     "student",
   );
   if (!context) return no("escola sem WhatsApp central");
+  // Cobrança só pelo número financeiro; desconectado, espera (nunca a central).
+  const instance = await resolveFinanceWhatsAppInstance(
+    supabase,
+    tenantId,
+    context.instanceName,
+  );
+  if (!instance) {
+    return no(
+      "número financeiro desconectado (cobrança por WhatsApp em espera)",
+    );
+  }
   return {
     ok: true,
     phone: recipient.phone,
-    instance: await resolveFinanceWhatsAppInstance(
-      supabase,
-      tenantId,
-      context.instanceName,
-    ),
+    instance,
     nome: recipient.firstName,
     brandName: context.identity.brandName,
     motivo: "",

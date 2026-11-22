@@ -1,3 +1,21 @@
+### 22/11/2026 — Cobrança SÓ pelo número financeiro + aviso aos alunos
+
+Decisão da direção: na escola com o número financeiro (linha em `whatsapp_instances` com
+`FINANCE_WHATSAPP_INSTANCE`), toda cobrança sai só por ele. `resolveFinanceWhatsAppInstance`
+devolve `null` quando ele está desconectado e quem chama ESPERA: régua/lembretes
+(`notify-payment-due`) pulam o WhatsApp (o e-mail segue), aviso de nova cobrança/vencimento
+(`_shared/payment-notice.ts`) recusa, confirmação de pagamento volta para `pending`
+(`finance_whatsapp_disconnected`) e o Pix manual (`generate-student-manual-pix`) não envia
+(a tela avisa; antes saía pelo número de quem gerou). ⚠️ Nunca religue o fallback para a
+central: a direção avisou os alunos que cobrança de outro número não é da escola. Escola sem
+a linha continua na central. Log: `número financeiro desconectado`.
+Pop-up único para aluno (`components/FinanceNumberNotice.tsx`, RPC
+`my_finance_whatsapp_notice`, migration `20261122120000`): foto nova, número, "Abrir no
+WhatsApp" e alerta contra cobrança de outro número; "Entendi" grava
+`feature_tour_views` (`aviso-2026-11-22-numero-financeiro`). O telefone fica SÓ em
+`private.finance_whatsapp_contacts` (preenchida na VPS, nunca no repositório público);
+sem linha = sem pop-up.
+
 ### 22/11/2026 — Primeiro toque não insiste em número sem WhatsApp (hotfix)
 
 O primeiro toque do `funnel-sweeper` (a cada 5 min, horário comercial) desfazia a marca
