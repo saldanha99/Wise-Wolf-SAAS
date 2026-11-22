@@ -1645,6 +1645,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122160000_wolfie_checkin_para_o_professor.sql"
   "supabase/migrations/20261122180000_resumos_que_falharam_por_credito.sql"
   "supabase/migrations/20261122181000_resumo_retry_no_claim.sql"
+  "supabase/migrations/20261122182000_retry_sources_so_falha_de_credito.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

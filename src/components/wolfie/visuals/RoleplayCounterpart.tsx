@@ -41,13 +41,29 @@ const FEMALE_NAMES = new Set([
   "sarah", "rachel", "kate", "emily", "jennifer", "karen", "linda", "susan", "ellen", "megan",
   "lauren", "alison", "rose", "grace", "claire", "amy", "lucy", "chloe", "olivia", "elizabeth",
   "ann", "anne", "jane", "helen", "michelle", "nicole", "kim", "beth", "sophie", "zoe",
+  "alice", "hannah", "catherine", "stephanie", "natalie", "ashley", "heather", "abigail",
+  "evelyn", "diane", "sharon", "isabel", "raquel", "beatriz", "emma", "maria", "laura",
+  "jessica", "anna", "julia", "sofia", "camila", "fernanda", "mariana", "patricia", "carol",
+  "ruth", "mary", "joan", "lily", "ivy", "harper", "madison", "paige", "brooke", "nancy",
+]);
+const MALE_NAMES = new Set([
+  "mark", "john", "james", "robert", "michael", "david", "william", "richard", "thomas",
+  "daniel", "paul", "steven", "kevin", "brian", "george", "edward", "peter", "tom", "jack",
+  "joshua", "luca", "ezra", "andrew", "ryan", "eric", "jason", "matthew", "chris", "carlos",
+  "pedro", "lucas", "rafael", "gabriel", "bruno", "felipe", "henry", "oliver", "ethan", "noah",
+  "liam", "adam", "scott", "greg", "frank", "joe", "mike", "dan", "ben", "nick", "tony",
 ]);
 
+/** Gênero só quando o nome ou o título deixam claro; nome ambíguo (Alex, Taylor) → null. */
 function nameGender(name: string): "f" | "m" | null {
-  const first = name.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-  if (!/^[a-z]{2,}$/.test(first)) return null;
-  if (FEMALE_NAMES.has(first) || /a$/.test(first)) return "f";
-  return "m";
+  const words = name.trim().toLowerCase().replace(/\./g, "").split(/\s+/).filter(Boolean);
+  const title = words[0] ?? "";
+  if (["ms", "mrs", "miss", "madam"].includes(title)) return "f";
+  if (["mr", "sir"].includes(title)) return "m";
+  const first = ["dr", "prof", "professor"].includes(title) ? words[1] ?? "" : title;
+  if (FEMALE_NAMES.has(first)) return "f";
+  if (MALE_NAMES.has(first)) return "m";
+  return null;
 }
 
 /** Foto pelo papel; se o nome indicar outro gênero, a foto do mesmo gênero. Sem papel conhecido: vetor. */
@@ -107,6 +123,7 @@ export const RoleplayCounterpart: React.FC<Props> = ({ cast, speaker, outputLeve
           {portrait
             ? (
               <img
+                key={portrait}
                 src={portrait}
                 alt={`${cast.name}${cast.role ? `, ${cast.role}` : ""}`}
                 width={192}

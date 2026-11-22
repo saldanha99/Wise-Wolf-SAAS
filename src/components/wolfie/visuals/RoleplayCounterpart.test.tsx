@@ -30,5 +30,9 @@ describe("RoleplayCounterpart", () => {
     expect(portraitFor("your client", "John")).toBe("/assets/wolfie/personagens/cliente.webp");
     expect(portraitFor("your colleague", "Lucy")).toBe("/assets/wolfie/personagens/colega.webp");
     expect(portraitFor("the waiter", "Tom")).toBeNull();
+    expect(portraitFor("your manager", "Ms. Smith")).toBe("/assets/wolfie/personagens/recrutadora.webp");
+    expect(portraitFor("your manager", "Dr. Hannah")).toBe("/assets/wolfie/personagens/recrutadora.webp");
+    expect(portraitFor("your client", "Joshua")).toBe("/assets/wolfie/personagens/cliente.webp");
+    expect(portraitFor("your colleague", "Alex")).toBe("/assets/wolfie/personagens/colega.webp");
   });
 });
