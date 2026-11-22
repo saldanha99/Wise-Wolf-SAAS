@@ -1,3 +1,18 @@
+### 22/11/2026 (noite, 14) — Celular, lote 1: telas do diretor
+
+- **Medido em 390 e 360 px** (login da diretora): nenhuma das 7 telas (Início, Mapa de Aulas, Alunos, Dinheiro,
+  WhatsApp, Biblioteca/Aprovar, Relatórios) tem rolagem lateral. Corrigido: toque de 44 px no celular (setas da
+  semana e filtros do Mapa, recibo e filtros do Dinheiro, Editar/Excluir das despesas fixas), busca de Alunos que
+  passava da caixa (`min-w-0`), Aprovar Materiais sem `prompt()`/`alert()` (modal em tela cheia no celular com Esc +
+  aviso curto; o `alert()` travava a tela no iPhone) e a tendência de 6 meses do DRE, que desenhava **R$ 0 falso**
+  quando o `dre_gerencial` de um mês falhava (agora tenta de novo e tira o mês com aviso; o Atualizar refaz).
+  Lista e prints: `/data/OpenBot/Shared/wisewolf/celular/lote1-diretor/`.
+- **Números espaçados ("R$ 5 . 0 7 1")** são da fonte do navegador do servidor (CSS: fonte do aparelho,
+  letter-spacing −0,5 px). Não é defeito do sistema.
+- **No ar (23:44 UTC):** front `index-BNKTiySB.js` (commits `cfff097` + `fd36a00`), 56 arquivos fora de `assets/` iguais.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular1 && mv dist.prev14-celular1 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote1-20261122T234415Z/`.
+
 ### 22/11/2026 (noite, 13) — Teto da Anthropic só avisa; senhas de demo fora do código; 49 do Hub aprovados
 
 - **Teto só avisa (decisão do Vinícius, substitui a "noite, 11"):** acima de `ANTHROPIC_MONTHLY_BUDGET_USD` o chat
