@@ -35,6 +35,46 @@
   `20261122220000`. Site: publicar o commit `58ac6f6` do `wisewolf-institucional`.
 - E2E em produção (22/11): checkout PIX do Pro até o QR pela página `/para-professores`; dados de teste apagados.
 
+### 22/11/2026 (noite, 6) — White label no ar: domínio com certificado sob demanda, tutor com o nome da escola (feat/white-label)
+
+- **Domínio:** Caddy da Everglades com `on_demand_tls { ask http://supabase-kong:8000/functions/v1/tenant-domain-allowed }`
+  e o site curinga `https:// { tls { on_demand } reverse_proxy frontend-frontend-1:80 }` no fim do bloco Wise Wolf.
+  O porteiro (`tenant_domain_allowed`, service_role) só aprova `<slug>.wisewolflanguage.com.br` de escola operacional
+  (fora os reservados: www, app, system, api, hub, blog, wolfie…) ou `custom_domain` verificado fora dos nossos
+  domínios. Porteiro fora do ar = nenhum certificado novo. `/functions/v1/tenant-domain-allowed` dá 404 no
+  `api.` (só o Caddy chama, por dentro). DNS: cada subdomínio precisa de registro A → 179.236.255.4 (nuvem cinza);
+  **não há curinga `*` na Cloudflare** — escola nova = registro novo (ou o Vinícius cria o curinga).
+- **Marca:** `tenants.branding.tutorName` / `appName` (lidos também pela abertura do Wolfie do Dev Next.js).
+  Front: `lib/tutorBrand.ts` (`brandText`: "Wolfie" → nome do tutor sem artigo, "Wise Wolf" → nome da escola,
+  SÓ em escola com `tutorName`), login com a marca pelo endereço, `--brand-accent` = cor da escola
+  (`applyWhiteLabelAccent`). Wise Wolf (sem `tutorName`) fica idêntica. Prompt: `_shared/tutor-persona.ts` no
+  `wolfie-brain` (IDENTITY + troca de WOLFIE). ⚠️ **Voz ao vivo (`wolfie-realtime-session`) ainda se apresenta como
+  Wolfie** — é do Dev Next.js, avisado. ⚠️ O mascote (lobo de camisa vermelha) é o mesmo para todos: mascote por
+  escola = imagem gerada pelo Codex.
+- **Escola demo:** `demo-escola` ("Escola Demo", tutor Luna, #6D28D9), `https://demo-escola.wisewolflanguage.com.br`,
+  certificado Let's Encrypt emitido sozinho na 1ª visita. Diretora, professor e aluno `demo-*@demo-escola.wisewolflanguage.com.br`
+  (one-shot `deploy/vps/one-shots/20261122-white-label-demo-escola.sql`). O aluno NÃO é `is_test_account` (o
+  `wolfie-brain` suprime IA de conta de teste); a escola não tem Asaas, WhatsApp nem mensalidade. **Senhas não
+  guardadas:** para entrar, gere link pelo admin do Auth (`generate_link` magiclink). Desligar: `update tenants set
+  saas_status = 'inactive' where id = 'demo-escola';` (o porteiro e o login param de reconhecer o endereço).
+- **Isolamento conferido (22/11, com o JWT de cada papel do demo):** 0 linhas da Wise Wolf em profiles, class_logs,
+  student_payments, bookings, wolfie_sessions, pedagogical_materials e financial_transactions; `finance_*` e
+  `dre_gerencial` da Wise Wolf → 42501 para a diretora do demo; uso de IA do demo em `ai_usage_events.tenant_id =
+  demo-escola` (4 eventos, 0 fora). Teste `supabase/tests/white_label_dominio.sql`.
+- **Publicação:** migrations `20261122204000` (melhorias do financeiro) e `20261122240000`; funções `wolfie-brain`,
+  `tenant-domain-allowed` (nova), `gamma-book-generator` (só `deno fmt`) + `_shared/tutor-persona.ts`; front
+  `index-CyuKHjLF.js`. Backup `/opt/wisewolf/backup-white-label-20261122T173335Z/` (banco, `frontend-dist` + md5,
+  funções, `.published-functions.md5`, `migration-checksums`, `Caddyfile.before-white-label`); dist anteriores em
+  `src/dist.prev9-white-label` (antes do white label), `dist.white-label-v1`, `dist.white-label-v2`.
+- **Rollback:** Caddy: `cp /opt/wisewolf/backup-white-label-20261122T173335Z/Caddyfile.before-white-label
+  /opt/everglades/Caddyfile && docker exec everglades-proxy caddy validate --config /etc/caddy/Caddyfile --adapter
+  caddyfile && docker exec everglades-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. Front:
+  `cd /opt/wisewolf/frontend/src && mv dist dist.wl && mv dist.prev9-white-label dist && cd .. && docker compose
+  restart frontend`. Funções: copiar `functions/wolfie-brain` e `gamma-book-generator` do backup, apagar
+  `volumes/functions/tenant-domain-allowed` e `_shared/tutor-persona.ts`, devolver o `.published-functions.md5`,
+  `docker restart supabase-edge-functions`. Banco (aditivo): `drop function public.tenant_domain_allowed(text);`
+  (o `resolve_public_tenant` novo só tem chaves a mais).
+
 ### 22/11/2026 (noite, 3) — Agente de conteúdo no Gamma: marca neutra, credencial técnica e views (feat/conteudo-bot-gamma)
 
 - **Gerador (`gamma-book-generator`):** novos campos `brand` (`school` | `neutral`), `destination`
