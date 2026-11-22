@@ -924,6 +924,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
   supabase/functions/wolfie-lesson-track/core.test.ts \
+  supabase/functions/wolfie-lesson-track/opener.test.ts \
   supabase/functions/hub-card-payment/core.test.ts \
   supabase/functions/asaas-webhook/hub-purchase-capi.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
@@ -1665,6 +1666,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122204000_financeiro_melhorias_fuso_e_bordas.sql"
   "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
   "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
+  "supabase/migrations/20261122230000_wolfie_abertura_personalizada.sql"
   "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
 )
 DATABASE_TEST_RELATIVES=(

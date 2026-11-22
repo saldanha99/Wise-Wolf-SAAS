@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { WolfieOpenerBubble } from "../WolfieOpenerBubble";
 import {
   ArrowLeft,
   ArrowRight,
@@ -327,6 +328,7 @@ export const WolfieLessonTrackSession: React.FC<SessionProps> = ({ trackId, user
           Trilha da aula de {lessonDayLabel(track.classDate)}
         </p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">{content.topic}</h1>
+        {stageIndex === 0 && <WolfieOpenerBubble className="mt-3" tone="emerald" />}
         <ol className="mt-4 flex gap-1.5" aria-label="Etapas">
           {STAGES.map((s, index) => (
             <li
