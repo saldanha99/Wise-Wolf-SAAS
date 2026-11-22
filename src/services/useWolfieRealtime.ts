@@ -155,6 +155,8 @@ export interface WolfieRealtimeController {
    */
   finishSpeaking: () => boolean;
   sendText: (text: string) => boolean;
+  /** O tutor fala primeiro: diz exatamente a frase de abertura (1ª frase da conversa) e espera o aluno. */
+  speakOpening: (text: string) => boolean;
   applyServerGuidance: (
     guidance: WolfieRealtimeServerGuidance,
   ) => Promise<boolean>;
@@ -1575,6 +1577,17 @@ export function useWolfieRealtime(
     return cancelled || cleared;
   }, [protocol.isAssistantSpeaking, protocol.responseId, sendEvent]);
 
+  const speakOpening = useCallback((rawText: string): boolean => {
+    const text = rawText.replace(/["\n\r]/g, " ").trim().slice(0, 220);
+    if (!text) return false;
+    return sendEvent("response.create", {
+      response: {
+        instructions:
+          `Start the conversation now. Say exactly this sentence in Brazilian Portuguese, with a warm tone, and nothing else: "${text}" Then stop and wait for the learner to answer.`,
+      },
+    });
+  }, [sendEvent]);
+
   const sendText = useCallback((rawText: string): boolean => {
     const text = rawText.trim().slice(0, MAX_TEXT_INPUT_LENGTH);
     if (!text) return false;
@@ -1722,6 +1735,7 @@ export function useWolfieRealtime(
     interrupt,
     finishSpeaking,
     sendText,
+    speakOpening,
     applyServerGuidance,
     setMuted,
     toggleMuted,

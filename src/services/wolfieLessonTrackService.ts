@@ -185,3 +185,31 @@ export const REVIEW_LABEL: Record<LessonReviewCard["step"], string> = {
   D30: "Revisão de 1 mês",
   CHECKIN: "Check-in antes da aula",
 };
+
+/** Abertura personalizada do tutor (22/11/2026): 1 frase por aula, cache no servidor e na sessão do navegador. */
+export interface WolfieOpener {
+  opener: string;
+  source: "AI" | "CACHE" | "TEMPLATE";
+  tutorName: string;
+  firstName: string;
+}
+
+const OPENER_CACHE_KEY = "wolfie.opener.v1";
+
+export async function getWolfieOpener(): Promise<WolfieOpener | null> {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(OPENER_CACHE_KEY) ?? "null") as { day: string; value: WolfieOpener } | null;
+    if (cached?.day === today && cached.value?.opener) return cached.value;
+  } catch {
+    // cache corrompido: busca de novo
+  }
+  try {
+    const value = await call<WolfieOpener>({ action: "opener" });
+    if (!value?.opener) return null;
+    sessionStorage.setItem(OPENER_CACHE_KEY, JSON.stringify({ day: today, value }));
+    return value;
+  } catch {
+    return null;
+  }
+}

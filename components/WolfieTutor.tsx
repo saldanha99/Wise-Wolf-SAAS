@@ -88,6 +88,7 @@ import { WolfieMeetingHUD } from "../src/components/wolfie/visuals/WolfieMeeting
 import { resolveScene } from "../src/components/wolfie/visuals/resolveScene";
 import { WolfieScenarioStage } from "../src/components/wolfie/visuals/WolfieScenarioStage";
 import { WolfieSessionHUD } from "../src/components/wolfie/visuals/WolfieSessionHUD";
+import { getWolfieOpener, type WolfieOpener } from "../src/services/wolfieLessonTrackService";
 import { resolveMeetingVisualState } from "../src/components/wolfie/visuals/visualStateResolver";
 import {
   isWolfieTutorCloseBlocked,
@@ -582,6 +583,21 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [subtitle, setSubtitle] = useState(
     hubModeRequested ? initialHubMessage : "",
   );
+  // Abertura personalizada (22/11/2026): 1 frase com o primeiro nome e o último assunto da aula.
+  // Chat: vira a 1ª mensagem; voz ao vivo: o tutor fala primeiro (fora do roleplay e das reuniões globais).
+  const [opener, setOpener] = useState<WolfieOpener | null>(null);
+  const openerSpokenRef = useRef(false);
+  useEffect(() => {
+    if (hubModeRequested || roleplayCast) return;
+    let alive = true;
+    void getWolfieOpener().then((value) => {
+      if (!alive || !value) return;
+      setOpener(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hubModeRequested, roleplayCast]);
   const [error, setError] = useState<string | null>(null);
   // Aviso informativo (ex.: voz ao vivo sem crédito no provedor). Não é erro da resposta: a prática por texto segue.
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
@@ -2681,6 +2697,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     const result = await realtime.connect();
     if (result.ok) {
       await realtime.resumeAudio();
+      if (opener && !roleplayCast && !isGlobalMeetingScene && !openerSpokenRef.current) {
+        openerSpokenRef.current = realtime.speakOpening(opener.opener);
+      }
     }
   };
 
@@ -3750,6 +3769,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       state === "IDLE" &&
       !isRealtimeMode
     ) {
+      // A abertura personalizada (PT) vem antes da abertura do cenário que o wolfie-brain gera.
+      if (opener && !roleplayCast) {
+        setMessages([{ id: crypto.randomUUID(), role: "assistant", content: opener.opener, timestamp: new Date() }]);
+      }
       setState("THINKING");
       sendToWolfieBrain({});
     }
@@ -3761,6 +3784,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     isRealtimeMode,
     messages.length,
     restartNonce,
+    opener,
+    roleplayCast,
   ]);
 
   const invalidatePendingRequest = () => {
@@ -4199,7 +4224,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 mb-4 sm:mb-6">
               <BrainCircuit size={14} />
               <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                Wolfie AI · Wise Wolf
+                {opener?.tutorName || "Wolfie"} AI · Wise Wolf
               </span>
             </div>
             <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-linear-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">

@@ -69,6 +69,7 @@ import {
 import { WolfieQuickStartCard } from "./WolfieQuickStartCard";
 import { WolfieLessonTrackCard } from "./lessonTrack/WolfieLessonTrackCard";
 import { WolfieLiveBalance } from "../../../components/WolfieLiveBalance";
+import { WolfieOpenerBubble } from "./WolfieOpenerBubble";
 
 const WolfieLessonTrackSession = React.lazy(
   () => import("./lessonTrack/WolfieLessonTrackSession"),
@@ -1189,6 +1190,8 @@ export function WolfiePracticeFlow({
                 void endSavedConversation(conversationId)}
               quickStart={
                 <>
+                {/* Abertura personalizada: nome do aluno + último assunto da aula (22/11/2026). */}
+                <WolfieOpenerBubble className="mb-4" />
                 <WolfieLessonTrackCard
                   refreshKey={lessonTrackRefresh}
                   onOpenTrack={setLessonTrackId}

@@ -26,6 +26,14 @@ import {
 } from "../_shared/wolfie-product-access.ts";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
+  firstNameOf,
+  type OpenerLesson,
+  OPENER_SYSTEM_PROMPT,
+  openerUserPrompt,
+  templateOpener,
+  validateOpener,
+} from "./opener.ts";
+import {
   addDays,
   answeredCount,
   type ApprovedMemory,
@@ -1257,6 +1265,118 @@ async function handleReviewComplete(
 
 // ── Servidor ────────────────────────────────────────────────────────────────
 
+
+// ── Abertura personalizada (22/11/2026) ─────────────────────────────────────
+// Uma frase com o primeiro nome e o último assunto. 1 geração por aula (cache
+// em wolfie_openers); concorrente ou falha → molde, sem gerar de novo.
+
+const OPENER_PENDING_STALE_MS = 120_000;
+
+async function tutorNameFor(admin: Db, tenantId: string): Promise<string> {
+  const { data } = await admin.from("tenants").select("branding").eq("id", tenantId).maybeSingle();
+  const name = str(asObject(asObject(data).branding).tutorName, 40);
+  return name || "Wolfie";
+}
+
+async function openerSource(
+  admin: Db,
+  student: Student,
+): Promise<{ cacheKey: string; lesson: OpenerLesson } | null> {
+  if (student.isTestAccount) {
+    // Conta de teste não tem aula de verdade: usa a trilha-fixture (lesson_input inventado).
+    const { data } = await admin.from("wolfie_lesson_tracks")
+      .select("id, class_date, topic, lesson_input")
+      .eq("student_id", student.id).eq("tenant_id", student.tenantId).eq("test_fixture", true)
+      .order("created_at", { ascending: false }).limit(1);
+    const track = data?.[0];
+    if (!track) return null;
+    const input = asObject(track.lesson_input);
+    const practiced = Array.isArray(input.content_practiced) ? input.content_practiced.map((x) => str(x, 120)) : [];
+    return {
+      cacheKey: `track:${track.id}`,
+      lesson: {
+        classDate: str(track.class_date, 10) || str(input.class_date, 10) || null,
+        topic: str(track.topic, 160) || str(input.lesson_objective, 160) || practiced[0] || "",
+        context: practiced.slice(0, 3).join("; ") || str(input.objective, 160),
+      },
+    };
+  }
+  const cls = await latestApprovedClass(admin, student);
+  if (!cls) return null;
+  const memory = await approvedMemory(admin, student, cls.lesson_session_id ?? null);
+  const { data: tracks } = await admin.from("wolfie_lesson_tracks").select("topic")
+    .eq("class_log_id", cls.id).eq("student_id", student.id).limit(1);
+  const practiced = Array.isArray(memory?.content_practiced)
+    ? (memory!.content_practiced as unknown[]).map((x) => str(x, 120))
+    : [];
+  return {
+    cacheKey: `class:${cls.id}`,
+    lesson: {
+      classDate: str(cls.class_date, 10) || null,
+      topic: str(tracks?.[0]?.topic, 160) || str(memory?.lesson_objective, 160) ||
+        str(cls.lesson_objective, 160) || str(cls.content_covered, 160),
+      context: practiced.slice(0, 3).join("; ") || str(cls.content_covered, 200),
+    },
+  };
+}
+
+async function handleOpener(admin: Db, student: Student): Promise<Response> {
+  const today = todayInSaoPaulo();
+  const firstName = firstNameOf(student.learner.firstName);
+  const tutorName = await tutorNameFor(admin, student.tenantId);
+  const source = await openerSource(admin, student);
+  const fallback = (seed: string) =>
+    templateOpener({ firstName, lesson: source?.lesson ?? null, goal: student.learner.goal, today, seed });
+  if (!source || !source.lesson.topic) {
+    return json({ opener: fallback(`${student.id}:${today}`), source: "TEMPLATE", tutorName, firstName });
+  }
+
+  const { data: cached } = await admin.from("wolfie_openers").select("id, status, opener, updated_at")
+    .eq("student_id", student.id).eq("cache_key", source.cacheKey).maybeSingle();
+  if (cached?.status === "READY" && cached.opener) {
+    return json({ opener: cached.opener, source: "CACHE", tutorName, firstName });
+  }
+
+  // Reserva: só quem cria (ou retoma uma reserva velha) gera. Os demais usam o molde.
+  let claimed = false;
+  if (!cached) {
+    const { data: inserted } = await admin.from("wolfie_openers")
+      .upsert({ tenant_id: student.tenantId, student_id: student.id, cache_key: source.cacheKey, status: "PENDING" },
+        { onConflict: "student_id,cache_key", ignoreDuplicates: true })
+      .select("id");
+    claimed = (inserted?.length ?? 0) === 1;
+  } else if (cached.status !== "READY" &&
+    Date.now() - Date.parse(String(cached.updated_at)) > OPENER_PENDING_STALE_MS) {
+    const { data: retaken } = await admin.from("wolfie_openers")
+      .update({ status: "PENDING", updated_at: new Date().toISOString() })
+      .eq("id", cached.id).eq("updated_at", cached.updated_at).select("id");
+    claimed = (retaken?.length ?? 0) === 1;
+  }
+  const template = fallback(source.cacheKey);
+  if (!claimed) return json({ opener: template, source: "TEMPLATE", tutorName, firstName });
+
+  let opener = template;
+  let origin: "AI" | "TEMPLATE" = "TEMPLATE";
+  if (firstName) {
+    try {
+      const result = await callJson(admin, student, "wolfie_opener", OPENER_SYSTEM_PROMPT,
+        openerUserPrompt({ firstName, lesson: source.lesson, today }), 200, 15_000);
+      const valid = validateOpener(result.value, firstName);
+      if (valid) {
+        opener = valid;
+        origin = "AI";
+      }
+    } catch {
+      // IA fora: fica o molde (guardado, para não gerar de novo nesta aula).
+    }
+  }
+  await admin.from("wolfie_openers").update({
+    status: "READY", opener, source: origin, model_id: origin === "AI" ? TEXT_MODEL : null,
+    updated_at: new Date().toISOString(),
+  }).eq("student_id", student.id).eq("cache_key", source.cacheKey);
+  return json({ opener, source: origin, tutorName, firstName });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1286,6 +1406,8 @@ serve(async (req) => {
     switch (action) {
       case "home":
         return await handleHome(admin, student);
+      case "opener":
+        return await handleOpener(admin, student);
       case "prepare":
         return await handlePrepare(admin, student);
       case "get":
