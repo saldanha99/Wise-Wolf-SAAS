@@ -5206,11 +5206,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           context={shouldShowVisualContext ? visualContext : undefined}
           caption={
             <WolfieCaptionBar
-              text={displaySubtitle}
+              text={displaySubtitle ||
+                (state === "IDLE" && messages.length === 0 && opener && !roleplayCast ? opener.opener : displaySubtitle)}
               speaker={state === "LISTENING" ||
                   (isRealtimeMode && realtime.isUserSpeaking && !realtime.isAssistantSpeaking)
                 ? "Você"
-                : roleplayCast?.name || "Wolfie Tutor"}
+                : roleplayCast?.name ||
+                  (opener && opener.tutorName !== "Wolfie" ? opener.tutorName : "Wolfie Tutor")}
               language={assistantLanguage}
               state={visualCharacterState}
               isFinal={state !== "LISTENING"}
