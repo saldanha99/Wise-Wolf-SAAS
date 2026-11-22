@@ -444,6 +444,7 @@ node --test scripts/generate-hub-static-html.test.mjs
 node --test scripts/operational-tracking-privacy.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
+  supabase/functions/wolfie-lesson-track \
   supabase/functions/_shared/student-billing-link.ts \
   supabase/functions/_shared/student-billing-link.test.ts \
   supabase/functions/student-card-notify \
@@ -917,6 +918,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
+  supabase/functions/wolfie-lesson-track/core.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
   scripts/tests/contract-dates.test.ts \
@@ -1103,6 +1105,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/sync-payments/index.ts \
   supabase/functions/sync-payments/safety.test.ts \
   supabase/functions/whatsapp-hr-welcome/index.ts \
+  supabase/functions/wolfie-lesson-track/index.ts \
   supabase/functions/generate-student-insights/index.ts \
   supabase/functions/send-rejection-email/index.ts \
   supabase/functions/send-welcome-contract/index.ts \
@@ -1638,6 +1641,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261117200000_troca_de_horario_com_termo_vigente.sql"
   "supabase/migrations/20261119120000_avisos_da_escola_no_lugar_do_asaas.sql"
   "supabase/migrations/20261121120000_cobranca_visualizada_e_email_aberto.sql"
+  "supabase/migrations/20261122140000_wolfie_trilha_da_aula.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -2006,6 +2010,7 @@ HARDENED_FUNCTIONS=(
   weekly-director-digest
   whatsapp-evolution-proxy
   whatsapp-hr-welcome
+  wolfie-lesson-track
   whatsapp-notificacao-matricula
   whatsapp-notificacao-wise
   wolfie-healthcheck
@@ -4872,6 +4877,7 @@ for protected_function in \
   reconcile-whatsapp-webhooks \
   whatsapp-lead-notification \
   whatsapp-hr-welcome \
+  wolfie-lesson-track \
   transfer-teacher-pay \
   update-student-billing-method; do
   wait_for_http_status 401 "autenticação de $protected_function" \

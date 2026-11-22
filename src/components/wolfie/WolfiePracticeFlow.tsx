@@ -67,6 +67,14 @@ import {
   WolfieDiscoveryHome,
 } from "./WolfieDiscoveryHome";
 import { WolfieQuickStartCard } from "./WolfieQuickStartCard";
+import { WolfieLessonTrackCard } from "./lessonTrack/WolfieLessonTrackCard";
+
+const WolfieLessonTrackSession = React.lazy(
+  () => import("./lessonTrack/WolfieLessonTrackSession"),
+);
+const WolfieLessonReview = React.lazy(
+  () => import("./lessonTrack/WolfieLessonReview"),
+);
 import {
   buildQuickStartPlan,
   quickStartRoute,
@@ -452,6 +460,10 @@ export function WolfiePracticeFlow({
       requestKey: string;
     } | null
   >(null);
+  // Trilha da aula: sessão e revisão abrem por cima da home.
+  const [lessonTrackId, setLessonTrackId] = useState<string | null>(null);
+  const [lessonReviewId, setLessonReviewId] = useState<string | null>(null);
+  const [lessonTrackRefresh, setLessonTrackRefresh] = useState(0);
   const wolfieSettings = user.wolfieSettings ?? user.wolfie_settings;
   const profileLevel = useMemo(
     () => wolfieSettings?.level ?? guessProfileLevel(user.module),
@@ -1113,8 +1125,40 @@ export function WolfiePracticeFlow({
     );
   }
 
+  const lessonTrackOverlay = lessonTrackId || lessonReviewId
+    ? (
+      <React.Suspense fallback={null}>
+        {lessonTrackId
+          ? (
+            <WolfieLessonTrackSession
+              trackId={lessonTrackId}
+              user={user}
+              level={profileLevel}
+              onClose={() => {
+                setLessonTrackId(null);
+                setLessonTrackRefresh((value) => value + 1);
+              }}
+            />
+          )
+          : null}
+        {lessonReviewId && !lessonTrackId
+          ? (
+            <WolfieLessonReview
+              reviewId={lessonReviewId}
+              onClose={() => {
+                setLessonReviewId(null);
+                setLessonTrackRefresh((value) => value + 1);
+              }}
+            />
+          )
+          : null}
+      </React.Suspense>
+    )
+    : null;
+
   return (
     <>
+      {lessonTrackOverlay}
       <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-xs">
         <WolfiePracticeHeader
           isSubjectView={view === "subject"}
@@ -1143,6 +1187,12 @@ export function WolfiePracticeFlow({
               onEndConversation={(conversationId) =>
                 void endSavedConversation(conversationId)}
               quickStart={
+                <>
+                <WolfieLessonTrackCard
+                  refreshKey={lessonTrackRefresh}
+                  onOpenTrack={setLessonTrackId}
+                  onOpenReview={setLessonReviewId}
+                />
                 <WolfieQuickStartCard
                   firstName={firstName}
                   plan={quickStartPlan}
@@ -1161,6 +1211,7 @@ export function WolfiePracticeFlow({
                       .getElementById("wolfie-universes")
                       ?.scrollIntoView({ behavior: "smooth", block: "start" })}
                 />
+                </>
               }
             />
           )

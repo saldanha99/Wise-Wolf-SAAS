@@ -1100,6 +1100,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'payments-view-signal',view:'student-payments',title:'Cobrança visualizada',text:'Em Mensalidades, abaixo do status, aparece "Visualizada em" quando o aluno ou responsável abre a fatura ou o boleto no Asaas, pelo link do WhatsApp ou do e-mail. No mesmo dia, o grupo do Financeiro recebe um aviso por fatura. "E-mail aberto (provável)" é só um indício: alguns aplicativos de e-mail abrem a mensagem sozinhos.'},
     ],
   },
+  {
+    id:'2026-11-22-wolfie-trilha-da-aula',title:'Trilha da sua aula no Wolfie',roles:['STUDENT'],
+    steps:[
+      {target:'wolfie-lesson-track',view:'ai-tutor',title:'Novidade: a trilha da sua aula',text:'Depois de cada aula que o seu professor registrar, o Wolfie monta uma prática de 12 a 15 minutos com o que vocês viram: as palavras da aula, as frases que você errou para você mesmo corrigir, exercícios do tema no contexto da sua rotina e uma conversa com o Wolfie com 3 objetivos. Nos dias seguintes aparecem revisões curtas de 3 minutos. Ninguém além de você vê os seus erros.'},
+    ],
+  },
 ];
 
 /**
