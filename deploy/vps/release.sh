@@ -1894,6 +1894,7 @@ SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safet
 SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider-operations.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
+SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
 SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
@@ -2070,6 +2071,7 @@ done
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_PAYMENT_EMAIL_RELATIVE" ]] || die "envio de e-mail dos avisos de cobrança ausente"
+[[ -s "$SHARED_AI_GATEWAY_RELATIVE" ]] || die "ponte de IA compartilhada ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2198,6 +2200,7 @@ append_release_input_checksum() {
     "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_PAYMENT_EMAIL_RELATIVE" \
+    "$SHARED_AI_GATEWAY_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
@@ -2381,6 +2384,8 @@ rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
 rsync -a -- "$SHARED_PAYMENT_EMAIL_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-email.ts"
+rsync -a -- "$SHARED_AI_GATEWAY_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-gateway.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
@@ -2586,6 +2591,7 @@ global_meeting_policy_shared_swapped=0
 hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 payment_email_shared_swapped=0
+ai_gateway_shared_swapped=0
 payment_notice_core_shared_swapped=0
 payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
@@ -2764,6 +2770,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/hub-provider-operations.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-email.ts" ]]
+[[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
@@ -3051,6 +3058,14 @@ restore_previous_release() {
         "$functions_dir/_shared/payment-email.ts"
     else
       rm -f -- "$functions_dir/_shared/payment-email.ts"
+    fi
+  fi
+  if [[ "$ai_gateway_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/ai-gateway.ts" ]]; then
+      cp -a -- "$backup_dir/ai-gateway.ts" \
+        "$functions_dir/_shared/ai-gateway.ts"
+    else
+      rm -f -- "$functions_dir/_shared/ai-gateway.ts"
     fi
   fi
   if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
@@ -4445,6 +4460,14 @@ fi
 payment_email_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/payment-email.ts" \
   "$functions_dir/_shared/payment-email.ts"
+
+if [[ -f "$functions_dir/_shared/ai-gateway.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/ai-gateway.ts" \
+    "$backup_dir/ai-gateway.ts"
+fi
+ai_gateway_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/ai-gateway.ts" \
+  "$functions_dir/_shared/ai-gateway.ts"
 
 if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
   cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \
