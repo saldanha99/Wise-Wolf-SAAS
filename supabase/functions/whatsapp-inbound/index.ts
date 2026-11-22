@@ -7390,7 +7390,10 @@ async function handleCareStudent(
       p_id: ctx.id,
       p_status: "REPLIED",
       p_sentiment: "NEUTRAL",
-      p_summary: `Falou de reposição/horário; orientado a combinar com o professor: "${text.slice(0, 120)}"`,
+      p_summary:
+        `Falou de reposição/horário; orientado a combinar com o professor: "${
+          text.slice(0, 120)
+        }"`,
     });
     return true;
   }

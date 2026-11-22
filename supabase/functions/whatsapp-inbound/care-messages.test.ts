@@ -21,7 +21,8 @@ const slots = [
 ];
 
 // Qualquer dia/horário de reposição num texto para o aluno reprova (direção, 21/11/2026).
-const SEM_HORARIO = /\b([01]?\d|2[0-3])\s?(h|:[0-5]\d)\b|•|hor[aá]rio livre|tem livre|dispon[ií]vel|https?:\/\//i;
+const SEM_HORARIO =
+  /\b([01]?\d|2[0-3])\s?(h|:[0-5]\d)\b|•|hor[aá]rio livre|tem livre|dispon[ií]vel|https?:\/\//i;
 
 Deno.test("falta: só o lembrete de combinar com o professor antes do fim do mês (direção, 21/11/2026)", () => {
   for (const used of [1, 5]) {
@@ -39,8 +40,16 @@ Deno.test("falta: só o lembrete de combinar com o professor antes do fim do mê
     assert(!SEM_HORARIO.test(msg), msg);
     assert(!/reposições por|usou as/.test(msg), msg);
   }
-  const semProfessor = absenceFollowupMessage({ studentName: "Ana", teacherName: null, classDate: "", freeSlots: slots });
-  assertEquals(semProfessor, "Oi, Ana! Sentimos sua falta na sua aula. Lembre de combinar a reposição dessa aula diretamente com seu professor antes do fim do mês 😉");
+  const semProfessor = absenceFollowupMessage({
+    studentName: "Ana",
+    teacherName: null,
+    classDate: "",
+    freeSlots: slots,
+  });
+  assertEquals(
+    semProfessor,
+    "Oi, Ana! Sentimos sua falta na sua aula. Lembre de combinar a reposição dessa aula diretamente com seu professor antes do fim do mês 😉",
+  );
 });
 
 Deno.test("aluno fala de reposição ou propõe horário: resposta fixa, sem horário", () => {
@@ -56,13 +65,26 @@ Deno.test("aluno fala de reposição ou propõe horário: resposta fixa, sem hor
     "Agradeço seu contato, informo que nosso horário de atendimento é de: *Segunda a Quinta de 08:00hs às 18:00hs e Sexta de 08:00hs às 17:00hs*.",
   ];
   for (const pedido of pedidos) assert(isMakeupOrSlotMessage(pedido), pedido);
-  for (const outro of ["a semana foi ótima, obrigada!", "gostei muito da teacher", "ok 😊"]) {
+  for (
+    const outro of [
+      "a semana foi ótima, obrigada!",
+      "gostei muito da teacher",
+      "ok 😊",
+    ]
+  ) {
     assert(!isMakeupOrSlotMessage(outro), outro);
   }
   const reply = makeupWithTeacherReply("Mariana Pastro", "Lais Sampaio");
-  assertEquals(reply, "Mariana, a reposição é combinada diretamente com a teacher Lais, antes do fim do mês 😉 É só falar com ela(e) e escolher juntos o melhor horário.");
+  assertEquals(
+    reply,
+    "Mariana, a reposição é combinada diretamente com a teacher Lais, antes do fim do mês 😉 É só falar com ela(e) e escolher juntos o melhor horário.",
+  );
   assert(!SEM_HORARIO.test(reply), reply);
-  assert(makeupWithTeacherReply(null, null).startsWith("A reposição é combinada diretamente com seu professor"));
+  assert(
+    makeupWithTeacherReply(null, null).startsWith(
+      "A reposição é combinada diretamente com seu professor",
+    ),
+  );
 });
 
 Deno.test("trava final: texto da IA com horário de reposição não sai para o aluno", () => {
@@ -74,11 +96,13 @@ Deno.test("trava final: texto da IA com horário de reposição não sai para o 
     "Posso marcar sua reposição para amanhã 18h?",
   ];
   for (const oferta of ofertas) assert(replyOffersSlot(oferta), oferta);
-  for (const ok of [
-    "Que bom saber! A reposição é combinada direto com a teacher Lais, antes do fim do mês 😉",
-    "Entendi, vou passar para a coordenação.",
-    "Fico feliz que a semana foi boa! O que você mais gostou?",
-  ]) assert(!replyOffersSlot(ok), ok);
+  for (
+    const ok of [
+      "Que bom saber! A reposição é combinada direto com a teacher Lais, antes do fim do mês 😉",
+      "Entendi, vou passar para a coordenação.",
+      "Fico feliz que a semana foi boa! O que você mais gostou?",
+    ]
+  ) assert(!replyOffersSlot(ok), ok);
 });
 
 Deno.test("semanal e mensal: uma pergunta, sem questionário e sem nota", () => {

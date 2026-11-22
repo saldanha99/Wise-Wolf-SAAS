@@ -67,7 +67,9 @@ export function absenceFollowupMessage(input: {
   const lead = firstName(input.studentName);
   const [y, m, d] = String(input.classDate || "").split("-");
   const aula = y && m && d ? `na aula de ${d}/${m}` : "na sua aula";
-  return `Oi${lead ? ", " + lead : ""}! Sentimos sua falta ${aula}. Lembre de combinar a reposição dessa aula diretamente com ${
+  return `Oi${
+    lead ? ", " + lead : ""
+  }! Sentimos sua falta ${aula}. Lembre de combinar a reposição dessa aula diretamente com ${
     withTeacher(input.teacherName)
   } antes do fim do mês 😉`;
 }
@@ -94,13 +96,18 @@ export function makeupWithTeacherReply(
 
 const MAKEUP_TOPIC =
   /\b(repo[rs]|reposi[cç][aã]o|reposi[cç][oõ]es|remarc|reagend|desmarc|outro (dia|hor[aá]rio)|nova data|marcar (a |uma )?aula|aula extra|encaixe?)\w*/i;
-const WEEKDAY = /\b(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)(-feira)?\b/i;
-const TIME_OR_DATE = /\b([01]?\d|2[0-3])\s?(h|hs|hrs|:[0-5]\d)\b|\b\d{1,2}\/\d{1,2}\b|\bamanh[aã]\b/i;
+const WEEKDAY =
+  /\b(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)(-feira)?\b/i;
+const TIME_OR_DATE =
+  /\b([01]?\d|2[0-3])\s?(h|hs|hrs|:[0-5]\d)\b|\b\d{1,2}\/\d{1,2}\b|\bamanh[aã]\b/i;
 
 /** O aluno trouxe reposição, remarcação ou um dia/horário: a resposta é fixa. */
 export function isMakeupOrSlotMessage(text: string): boolean {
   const value = String(text || "");
-  return MAKEUP_TOPIC.test(value) || (TIME_OR_DATE.test(value) && /\b(pode|posso|consigo|d[aá]|fica|serve|quero|marca|vaga|livre|dispon)/i.test(value)) ||
+  return MAKEUP_TOPIC.test(value) ||
+    (TIME_OR_DATE.test(value) &&
+      /\b(pode|posso|consigo|d[aá]|fica|serve|quero|marca|vaga|livre|dispon)/i
+        .test(value)) ||
     (WEEKDAY.test(value) && TIME_OR_DATE.test(value));
 }
 
@@ -111,12 +118,15 @@ export function isMakeupOrSlotMessage(text: string): boolean {
 export function replyOffersSlot(reply: string): boolean {
   const value = String(reply || "");
   const temHorario = TIME_OR_DATE.test(value) || WEEKDAY.test(value);
-  const temOferta = /\b(livre|dispon[ií]vel|disponibilidade|tem (hor[aá]rio|vaga)|vagas?|hor[aá]rios?|encaix|marquei|marcad[ao]|agend|reserv|serve|prefere)/i
-    .test(value);
+  const temOferta =
+    /\b(livre|dispon[ií]vel|disponibilidade|tem (hor[aá]rio|vaga)|vagas?|hor[aá]rios?|encaix|marquei|marcad[ao]|agend|reserv|serve|prefere)/i
+      .test(value);
   // Dia (ou data) + hora juntos já é um horário concreto: não vai para o aluno.
-  const horarioConcreto = (WEEKDAY.test(value) || /\b\d{1,2}\/\d{1,2}\b/.test(value)) &&
+  const horarioConcreto =
+    (WEEKDAY.test(value) || /\b\d{1,2}\/\d{1,2}\b/.test(value)) &&
     /\b([01]?\d|2[0-3])\s?(h|:[0-5]\d)/i.test(value);
-  return horarioConcreto || (temHorario && (temOferta || MAKEUP_TOPIC.test(value))) ||
+  return horarioConcreto ||
+    (temHorario && (temOferta || MAKEUP_TOPIC.test(value))) ||
     /\bhor[aá]rios? livres?\b/i.test(value);
 }
 
