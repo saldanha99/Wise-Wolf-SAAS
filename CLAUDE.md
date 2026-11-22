@@ -1,3 +1,33 @@
+### 22/11/2026 — Wolfie: trilha da aula no ar (branch feat/wolfie-trilha-da-aula)
+
+⚠️ **Antes do próximo release completo, junte `feat/wolfie-trilha-da-aula`** (é a branch do Mac
+mais estes commits, sem reescrever nada). Release de outra branch desfaz o cartão, a função e a
+migration registrada.
+
+- **O quê:** depois de cada aula lançada e APROVADA pelo professor (`class_logs` APPROVED +
+  memória VERIFIED; rascunho PROPOSED nunca entra), o aluno vê como 1º cartão do Wolfie
+  "Sua aula de {dia}: {tema}" e faz 12–15 min: aquecimento → autocorreção das frases que errou
+  (1ª falha só dica) → prática do tema misturada com temas antigos → fala guiada → roleplay no
+  tutor existente com 3 objetivos → cartões de erro + 1 prioridade. Revisões D+1/3/7/14/30
+  (14 e 30 só com ≥70% na anterior) e check-in na véspera da próxima aula.
+- **Onde:** função `wolfie-lesson-track`; tabelas `wolfie_lesson_tracks` / `wolfie_lesson_reviews`
+  (migration `20261122140000`, só service_role: `content`/`items` guardam o GABARITO);
+  `src/components/wolfie/lessonTrack/*`; tour `2026-11-22-wolfie-trilha-da-aula`.
+- **Custo:** geração 1× por aula (unique `class_log_id` + lease), Haiku pela ponte; correção
+  por IA só em resposta livre, teto 24/trilha; cartões do roleplay 1× por trilha (reserva).
+- **QA sem aula falsa:** conta `is_test_account` usa trilha `test_fixture` (class_log nulo) com
+  `lesson_input` inventado. O wolfie-brain suprime IA para conta de teste — o roleplay de teste
+  precisa de sessão-fixture.
+- **Publicação isolada (release 20261122T114628Z):** backup do banco em
+  `/opt/wisewolf/backup-wolfie-trilha-20261122T114628Z/postgres.dump`, front anterior em
+  `.../frontend-dist` e `src/dist.prev-wolfie-trilha`; função copiada para
+  `volumes/functions/wolfie-lesson-track` e registrada em `.published-functions.md5`;
+  migration aplicada e marcada em `.migration-checksums`.
+- **Rollback:** `cd /opt/wisewolf/frontend && docker compose stop frontend && mv src/dist
+  src/dist.trilha && cp -a /opt/wisewolf/backup-wolfie-trilha-20261122T114628Z/frontend-dist src/dist &&
+  docker compose start frontend`; tirar a pasta da função + a linha no `.published-functions.md5`
+  e `docker restart supabase-edge-functions`. As tabelas novas podem ficar (aditivas, sem uso).
+
 ### 22/11/2026 — Número só do financeiro no ar (ex-suporte W-Tech)
 
 O número do antigo "Suporte W-Tech Brasil" (final 6468) já estava no MESMO
