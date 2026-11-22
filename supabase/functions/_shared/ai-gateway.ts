@@ -4,10 +4,9 @@
  * 19/11/2026: Claude Haiku 5.5 em todas as funções (Sonnet onde o código pede
  * Sonnet), com o OpenRouter como reserva.
  * 22/11/2026 (decisão do Vinícius): o OpenRouter saiu como provedor e como
- * reserva de falha. 22/11/2026, noite: o teto mensal da Anthropic
- * (ANTHROPIC_MONTHLY_BUDGET_USD, padrão US$ 50) só AVISA (log + vigia diária),
- * sem mudar a rota (decisão do Vinícius). O OpenRouter só volta com a chave
- * manual de emergência ANTHROPIC_ROUTING=off. As funções continuam montando o
+ * reserva de falha. 22/11/2026, noite: ele volta SÓ acima do teto mensal da
+ * Anthropic (ANTHROPIC_MONTHLY_BUDGET_USD, padrão US$ 50) ou com
+ * ANTHROPIC_ROUTING=off — ver "Teto mensal" abaixo. As funções continuam montando o
  * pedido no formato do chat do OpenRouter (é o formato OpenAI) e importam este
  * módulo como `fetch`:
  *   * chat (openrouter.ai/.../chat/completions) → Anthropic; falhou, volta erro
@@ -167,6 +166,7 @@ const ANTHROPIC_PRICES: Record<
 };
 const LONG_PROMPT_TOKENS = 100_000;
 const DEFAULT_MONTHLY_BUDGET_USD = 50;
+const SPEND_CACHE_MS = 60_000;
 const SPEND_RPC_TIMEOUT_MS = 1_000;
 
 /** Custo em US$ de uma resposta do chat da Anthropic (formato OpenAI). */
@@ -240,6 +240,8 @@ function isStreamBody(body: unknown): boolean {
   }
 }
 
+const utcMonth = (d = new Date()) => d.toISOString().slice(0, 7);
+let spendCache: { month: string; usd: number; at: number } | null = null;
 
 async function spendRpc(
   fn: string,
@@ -277,6 +279,21 @@ async function spendRpc(
   }
 }
 
+async function anthropicSpentThisMonth(): Promise<number | null> {
+  const month = utcMonth();
+  if (
+    spendCache && spendCache.month === month &&
+    Date.now() - spendCache.at < SPEND_CACHE_MS
+  ) {
+    return spendCache.usd;
+  }
+  const usd = await spendRpc("ai_provider_spend_month", {
+    p_provider: "anthropic",
+  });
+  if (usd !== null) spendCache = { month, usd, at: Date.now() };
+  return usd;
+}
+
 async function recordAnthropicSpend(
   resp: Response,
   model: string,
@@ -295,14 +312,7 @@ async function recordAnthropicSpend(
       p_usd: Number(cost.toFixed(6)),
     });
     if (total !== null) {
-      // Acima do teto continua na Anthropic: só avisa (a vigia diária alerta).
-      if (overBudget(total, monthlyBudgetUsd())) {
-        console.warn(
-          `[ai-gateway] teto mensal da Anthropic passou: US$ ${
-            total.toFixed(2)
-          } de ${monthlyBudgetUsd()} (rota mantida)`,
-        );
-      }
+      spendCache = { month: utcMonth(), usd: total, at: Date.now() };
     }
   } catch {
     // Medição nunca derruba a resposta.
@@ -320,9 +330,9 @@ async function chatViaOpenRouter(
       `[ai-gateway] ${reason}: sem OPENROUTER_API_KEY, sem reserva.`,
     );
     return errorResponse(
-      503,
-      "ai_not_configured",
-      "Anthropic routing off and no OpenRouter key configured",
+      reason === "budget" ? 429 : 503,
+      reason === "budget" ? "ai_budget_exceeded" : "ai_not_configured",
+      "Anthropic budget reached and no fallback configured",
     );
   }
   console.log(`[ai-gateway] chat pelo OpenRouter (${reason})`);
@@ -382,6 +392,14 @@ export async function aiFetch(
     parsed = JSON.parse(init.body);
   } catch {
     return errorResponse(400, "invalid_request", "Invalid chat body");
+  }
+
+  const budget = monthlyBudgetUsd();
+  if (
+    Number.isFinite(budget) &&
+    overBudget(await anthropicSpentThisMonth(), budget)
+  ) {
+    return chatViaOpenRouter(init, "budget");
   }
 
   const model = pickModel(parsed.model);
