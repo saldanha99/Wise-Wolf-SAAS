@@ -1,3 +1,23 @@
+### 22/11/2026 (noite, 4) — Hub: camadas do professor (Gratuito, Pro R$ 59, Escola R$ 199)
+
+- Migration `20261122220000`: `DISCOVERY` vira **Gratuito** (5 gerações/mês, Wolfie texto 1 aluno);
+  novos `PROFESSOR_PRO` (R$ 59/590; 100 gerações, 5 assentos, 1.000 turnos do Wolfie) e `PROFESSOR_ESCOLA`
+  (R$ 199/1.990; 300 gerações, 33 assentos = 3 professores + 30 alunos, 6.000 turnos). `LIBRARY_SOLO`,
+  `EDUCATOR_PRO` e `HUB_COMPLETE` desativados, NÃO apagados (0 assinaturas vivas). Voz de teste, professor extra
+  (R$ 39) e voz por aluno (R$ 19) ainda NÃO existem (sem franquia de voz no hub; checkout não cobra por quantidade).
+- ⚠️ `HubPricingSection`/`HubSolutionLanding`/`HubLanding`/`HubAudienceLanding` estão SEM USO (Hub só logado) e
+  ainda citam os códigos antigos. A vitrine real é a do `HubPortal` (lê do banco).
+- `supabase/tests/wolfie_standalone_subscriptions.sql` corrigido: anual do Wolfie = 10x o mensal e os 3 pacotes
+  de minutos aprovados (o teste antigo travaria qualquer release completo).
+- ⚠️ Limpeza de conta de teste do Hub: `hub_core_legal_acceptances` é imutável por gatilho; só com
+  `set local session_replication_role = replica` dentro da transação, restrito às linhas de teste.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-camadas-20261122T170053Z/` (dump + `hub_plans.tsv` +
+  `hub_plan_entitlements.tsv`). Desfazer: `update hub_plans set is_active=true, is_public=true where code in
+  ('LIBRARY_SOLO','EDUCATOR_PRO','HUB_COMPLETE'); update hub_plans set is_active=false, is_public=false where code in
+  ('PROFESSOR_PRO','PROFESSOR_ESCOLA');` + restaurar os limites do DISCOVERY pelo `.tsv` + apagar o `.sha256` de
+  `20261122220000`. Site: publicar o commit `58ac6f6` do `wisewolf-institucional`.
+- E2E em produção (22/11): checkout PIX do Pro até o QR pela página `/para-professores`; dados de teste apagados.
+
 ### 22/11/2026 (noite, 3) — Agente de conteúdo no Gamma: marca neutra, credencial técnica e views (feat/conteudo-bot-gamma)
 
 - **Gerador (`gamma-book-generator`):** novos campos `brand` (`school` | `neutral`), `destination`
