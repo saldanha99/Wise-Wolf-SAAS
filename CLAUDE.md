@@ -17,6 +17,39 @@
   HUB_PROFESSOR), `conteudo_geracoes_gamma`, `conteudo_creditos_gamma_mes`, `conteudo_resumos_temas`
   (só itens vistos com 3+ alunos), `conteudo_alunos_perfil` (profissão/finalidade com 2+ alunos). Nenhuma
   tem nome, contato, título ou id de aluno. Migration `20261122203000`; teste `supabase/tests/conteudo_bot_gamma.sql`.
+### 22/11/2026 (noite, 3) — Hub: checkout com cartão, anual do Wolfie e Hub só logado (branch feat/hub-checkout-cartao)
+
+- **Venda pelo site principal:** `wisewolflanguage.com.br/wolfie`, `/para-professores` e `/para-escolas`
+  (repo `wisewolf-institucional`) vendem com checkout na própria página: PIX com QR na tela e cartão no NOSSO
+  formulário (iframe com sandbox em `/pagamento/cartao.html`, CSP própria, sem Pixel/GTM). Fluxo e proteções:
+  `docs/PAGAMENTOS-CARTAO.md`.
+- **Cartão:** função nova `hub-card-payment` (única que recebe cartão; nunca grava nem loga) paga a 1ª
+  cobrança criada pelo `create-hub-checkout` (`billingType=CREDIT_CARD`, sem cartão) e, no mensal, põe o cartão
+  na assinatura (`updateCreditCard`). Conta Asaas SEM tokenização (medido 22/11). Tetos em
+  `hub_card_payment_attempts` + `hub_card_payment_gate` (migration `20261122210000`).
+- **Anual do Wolfie (2 meses grátis, à vista):** Foco 499, Ritmo 999, Performance 1.799 (`hub_plans.price_yearly`).
+  `WOLFIE_STANDALONE_CHECKOUT_ENABLED=true` no `.env.functions` (venda do Wolfie avulso ligada).
+- ⚠️ **Dois defeitos que impediam QUALQUER venda do Hub desde agosto** (0 checkouts na história):
+  (1) o Asaas avança o `nextDueDate` da assinatura um ciclo quando gera a 1ª cobrança no dia, e a conferência
+  exigia a data enviada → `hub_subscription_post_payload_conflict` sempre (`hubNextDueDateMatches`);
+  (2) cliente do hub nascia com avisos pagos do Asaas → agora `notificationDisabled: true`.
+- **Purchase (LEI 10):** Pixel com `eventID = hub_checkout:<id>` no site; CAPI com o mesmo id no `asaas-webhook`
+  (`hub-purchase-capi.ts`), só na 1ª cobrança. ⚠️ **`FB_CAPI_TOKEN` não existe na VPS**: o CAPI é no-op até o token.
+- **Hub só logado:** deslogado nas páginas de venda do Hub vai para o site principal (com UTMs); a raiz é o login.
+  HTML estático dessas páginas com `noindex` e canonical no site principal; sitemap do hub só com termos/privacidade.
+- **App do Wolfie (`wolfie.wisewolflanguage.com.br`):** estava 403 desde 22/09 (`current` apontava para um build do
+  SaaS). Release nova `20261122T155909Z-hub-checkout` (build de `apps/wolfie-web` desta ponta); `current` → `.../dist`.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-checkout-20261122T155554Z/` (banco, `frontend-dist`, funções
+  `create-hub-checkout`/`asaas-webhook`, `.published-functions.md5`, `env.functions`). Front: `cd /opt/wisewolf/frontend
+  && docker compose stop frontend && mv src/dist src/dist.hub-checkout && mv src/dist.prev8-hub-checkout src/dist &&
+  docker compose start frontend`. Funções: copiar as 2 pastas do backup, apagar `volumes/functions/hub-card-payment`,
+  devolver o `.published-functions.md5` e o `env.functions`, `docker compose up -d --no-deps --force-recreate functions`.
+  Wolfie: `ln -sfn /opt/wisewolf/wolfie-frontend/releases/20260827T131532Z-139d464bd2a3/dist current` (a release de
+  agosto; a de 22/09 dava 403). Banco (só se preciso): `drop function public.hub_card_payment_gate(uuid,uuid,text),
+  public.hub_card_payment_finish(uuid,text,text,text,text); drop table public.hub_card_payment_attempts;` + apagar o
+  `.sha256` de `20261122210000` (o preço anual pode ficar).
+- **E2E em produção (22/11):** PIX até o QR e cartão recusado pelo Asaas com a mensagem certa; sem cartão em log do
+  Kong nem das funções; IP do comprador chegou público. Dados de teste apagados no Asaas e no banco.
 
 ### 22/11/2026 (noite, 2) — Inteligência financeira no ar (branch feat/financeiro-inteligencia, de85803)
 

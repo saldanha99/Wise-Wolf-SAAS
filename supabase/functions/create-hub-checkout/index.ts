@@ -222,6 +222,23 @@ function assertExactHubProviderPayment(
   return payment;
 }
 
+/** _fbp/_fbc/página/navegador do checkout, validados e curtos (Purchase do CAPI). */
+function checkoutMarketing(body: Record<string, unknown>, req: Request) {
+  const raw = (body.marketing && typeof body.marketing === "object"
+    ? body.marketing
+    : {}) as Record<string, unknown>;
+  const pick = (value: unknown, pattern: RegExp, max: number) =>
+    typeof value === "string" && value.length <= max && pattern.test(value)
+      ? value
+      : null;
+  return {
+    fbp: pick(raw.fbp, /^fb\.\d\.\d+\.\d+$/, 200),
+    fbc: pick(raw.fbc, /^fb\.\d\.\d+\.[A-Za-z0-9_-]+$/, 300),
+    page_url: pick(raw.pageUrl, /^https:\/\/wisewolflanguage\.com\.br\/[A-Za-z0-9_\-/]*$/, 200),
+    client_user_agent: (req.headers.get("user-agent") ?? "").slice(0, 400) || null,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -314,13 +331,38 @@ serve(async (req) => {
       HUB_CORE_PRODUCT_FAMILY;
     const billingCycle = body.billingCycle === "YEARLY" ? "YEARLY" : "MONTHLY";
     const requestedBillingType = String(body.billingType || "PIX");
-    if (!["PIX", "BOLETO"].includes(requestedBillingType)) {
+    // Cartão (22/11/2026): aqui só se escolhe a forma de cobrança. O cartão em si vai
+    // direto para a hub-card-payment, que paga a 1ª cobrança criada aqui sem cartão.
+    // Corpo com dado de cartão é recusado: esta função grava o payload em auditoria.
+    const cardKeys = new Set([
+      "card",
+      "creditcard",
+      "creditcardholderinfo",
+      "cvv",
+      "ccv",
+      "cardnumber",
+      "number",
+      "expiry",
+      "expirymonth",
+      "expiryyear",
+    ]);
+    if (
+      Object.keys(body).some((key) =>
+        cardKeys.has(key.toLowerCase().replace(/[^a-z]/g, ""))
+      )
+    ) {
+      return json(400, {
+        error: "CARD_DATA_NOT_ACCEPTED_HERE",
+        code: "CARD_DATA_NOT_ACCEPTED_HERE",
+      });
+    }
+    if (!["PIX", "BOLETO", "CREDIT_CARD"].includes(requestedBillingType)) {
       return json(400, {
         error: "UNSUPPORTED_BILLING_TYPE",
         code: "UNSUPPORTED_BILLING_TYPE",
       });
     }
-    const billingType = requestedBillingType as "PIX" | "BOLETO";
+    const billingType = requestedBillingType as "PIX" | "BOLETO" | "CREDIT_CARD";
     const customerName = text(body.name, 160);
     const customerEmail = text(auth.context.user?.email || body.email)
       .toLowerCase();
@@ -460,7 +502,9 @@ serve(async (req) => {
           code: "WOLFIE_ACCOUNT_PREPARATION_REQUIRED",
         });
       }
-      if (billingCycle !== "MONTHLY" || termsVersion !== WOLFIE_TERMS_VERSION) {
+      // Anual do Wolfie (2 meses grátis, à vista) aprovado em 22/11/2026: o preço vem de
+      // hub_plans.price_yearly; plano sem preço anual cai em PLAN_PRICE_UNAVAILABLE abaixo.
+      if (termsVersion !== WOLFIE_TERMS_VERSION) {
         return json(400, {
           error: "INVALID_WOLFIE_CHECKOUT_TERMS",
           code: "INVALID_WOLFIE_CHECKOUT_TERMS",
@@ -932,6 +976,9 @@ serve(async (req) => {
         : {}),
       ...(isTestFixture ? { test_fixture: true } : {}),
       ...(testMode ? { testMode: true } : {}),
+      // Atribuição para o Purchase do CAPI (asaas-webhook/hub-purchase-capi.ts): só os
+      // identificadores do Meta, a página e o navegador; nada de dado pessoal novo.
+      ...(!resumableCheckout ? { marketing: checkoutMarketing(body, req) } : {}),
       product_family: productFamily,
       provider_subscription_description:
         text(checkoutMetadata.provider_subscription_description, 240) ||
@@ -1228,6 +1275,9 @@ serve(async (req) => {
         province: text(body.province) || "Centro",
         postalCode: digits(body.postalCode) || "01000000",
         externalReference: customerReference,
+        // Avisos do Asaas são pagos (e-mail/SMS); a escola os desligou em 19/11/2026.
+        // O PIX aparece na tela e a confirmação sai pelo nosso fulfillment.
+        notificationDisabled: true,
       };
       const customerClaim = await claimAsaasCreation(auth.context.admin, {
         tenantId: PLATFORM_ASAAS_TENANT_ID,
