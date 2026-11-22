@@ -83,24 +83,26 @@ select pg_temp.assert_true(
   (
     select count(*) = 3
       and bool_and(product_family = 'WOLFIE_STANDALONE')
-      and bool_and(price_yearly is null)
+      -- 22/11/2026: anual à vista aprovado (2 meses grátis = 10x o mensal).
+      and bool_and(price_yearly is null or price_yearly = price_monthly * 10)
     from public.hub_plans
     where code in ('WOLFIE_FOCO', 'WOLFIE_RITMO', 'WOLFIE_PERFORMANCE')
       and is_active
       and is_public
   ),
-  'three monthly-only public Wolfie plans must be available'
+  'three public Wolfie plans must be available (monthly, with the approved annual price)'
 );
 
 select pg_temp.assert_true(
   (
-    select count(*) = 2
-      and bool_and(active)
-      and min(price_brl) = 39.90
-      and max(price_brl) = 99.90
+    -- 22/11/2026: pacotes aprovados (30 min R$ 39,90 · 60 min R$ 69,90 · 120 min R$ 134,90);
+    -- os antigos (60/39,90 e 180/99,90) ficam desativados, sem apagar.
+    select count(*) = 3
+      and pg_catalog.array_agg(minutes::text || ':' || price_brl::text order by minutes)
+        = array['30:39.90', '60:69.90', '120:134.90']
     from public.wolfie_topup_packages
     where tenant_id = 'wolfie-direct'
-      and minutes in (60, 180)
+      and active
   ),
   'standalone top-up packages must be seeded with commercial prices'
 );
