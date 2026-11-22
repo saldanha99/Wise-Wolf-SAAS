@@ -1260,6 +1260,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     [],
   );
 
+  // Sem minutos ao vivo (franquia configurada e zerada), o tutor já abre na
+  // voz clássica: abrir no ao vivo só levava a uma recusa e a uma passagem
+  // para o clássico sem nenhum turno ao vivo. Uma vez por montagem; o aluno
+  // ainda pode escolher o ao vivo (e comprar minutos) pelo botão.
+  const liveBalanceCheckedRef = useRef(false);
+  useEffect(() => {
+    if (liveBalanceCheckedRef.current || hubModeRequested || !isRealtimeMode) return;
+    liveBalanceCheckedRef.current = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("my_wolfie_live_balance");
+      if (!isMountedRef.current || error || !data || typeof data !== "object") return;
+      const balance = data as { enforced?: boolean; allowed?: boolean; remaining?: number };
+      const exhausted = balance.enforced === true &&
+        (balance.allowed === false || (typeof balance.remaining === "number" && balance.remaining <= 0));
+      if (!exhausted) return;
+      // Sessão retomada do ao vivo passa pelo handoff de sempre (no-op se não houve turno ao vivo).
+      if (realtimeConversationIdRef.current) detachTransportSession("handoff_to_classic");
+      setVoiceTransport((current) => (current === "realtime" ? "classic" : current));
+    })();
+  }, [hubModeRequested, isRealtimeMode, detachTransportSession]);
+
   const realtime = useWolfieRealtime({
     enabled: !hubModeRequested && WOLFIE_REALTIME_ENABLED && isRealtimeMode,
     conversationId,

@@ -22,6 +22,8 @@ import {
 } from "../_shared/wolfie-global-meeting-policy.ts";
 import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
 import { buildRealtimeCallForm } from "./realtime-call-form.ts";
+import { brandRealtimeInstructions } from "./tutor-brand.ts";
+import { tutorPersonaFromTenant } from "../_shared/tutor-persona.ts";
 import { realtimeProviderFallback } from "./provider-fallback.ts";
 import { buildSafetyIdentifier } from "./safety-identifier.ts";
 import {
@@ -1685,22 +1687,36 @@ serve(async (req) => {
     req.signal,
     setupDeadlineAt,
   );
-  const instructions = buildInstructions({
-    profile: loadedContext.profile,
-    session: loadedSession.session,
-    pendingRetry: loadedSession.pendingRetry,
-    intelligence: loadedContext.intelligence,
-    facts: loadedContext.facts,
-    memories: loadedContext.memories,
-    globalMeetingMemories: isGlobalMeeting
-      ? selectGlobalMeetingMemories(
-        globalMeetingMemoryRows,
-        tenantId,
-        userId,
-      )
-      : [],
-    knowledge,
-  });
+  // White label: escola com tutorName próprio → a voz ao vivo se apresenta com
+  // esse nome. Falha na leitura mantém o Wolfie (nunca derruba a chamada).
+  const { data: tenantBrand } = await auth.context.admin
+    .from("tenants")
+    .select("name, branding")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const tutorPersona = tutorPersonaFromTenant(
+    tenantBrand?.name,
+    tenantBrand?.branding,
+  );
+  const instructions = brandRealtimeInstructions(
+    buildInstructions({
+      profile: loadedContext.profile,
+      session: loadedSession.session,
+      pendingRetry: loadedSession.pendingRetry,
+      intelligence: loadedContext.intelligence,
+      facts: loadedContext.facts,
+      memories: loadedContext.memories,
+      globalMeetingMemories: isGlobalMeeting
+        ? selectGlobalMeetingMemories(
+          globalMeetingMemoryRows,
+          tenantId,
+          userId,
+        )
+        : [],
+      knowledge,
+    }),
+    tutorPersona,
+  );
 
   const model = configuredIdentifier(
     "OPENAI_REALTIME_MODEL",
