@@ -94,7 +94,7 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-11-22-wolfie-trilha-professor-checkin');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
     expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-11-21-cobranca-visualizada');
     expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-11-22-wolfie-trilha-da-aula');
     expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
@@ -189,8 +189,8 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
 
     // "Novidades" também segue o modo.
-    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-11-22-wolfie-trilha-professor-checkin');
-    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-11-22-wolfie-trilha-professor-checkin');
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
+    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
     expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-11-21-cobranca-visualizada');
     expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-11-21-cobranca-visualizada');
   });

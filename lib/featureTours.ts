@@ -1112,6 +1112,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'wolfie-checkin-note',view:'dashboard',title:'Novidade: o check-in do aluno',text:'Na véspera da aula, o aluno faz um check-in de 3 minutos no Wolfie sobre a aula anterior. Em Aulas de Hoje aparece o resultado: quanto acertou, o que ainda errou e a prioridade que o Wolfie percebeu na conversa. É só leitura e aparece apenas para os seus alunos.'},
     ],
   },
+  {
+    id:'2026-11-22-wolfie-trilha-revisar-resumos',title:'Revisar os resumos das aulas',roles:['TEACHER'],
+    steps:[
+      {target:'teacher-review-summaries',view:'dashboard',title:'Novidade: resumos esperando você',text:'Ao lado de Lançar Aulas aparece quantos resumos de aulas gravadas esperam a sua revisão. Lançar a aula com o rascunho não aprova o resumo: é preciso abrir, conferir e aprovar. O resumo aprovado é o que alimenta a memória do aluno, o Planner e a trilha do Wolfie. O botão leva para Salas e continuidade, em Aulas para revisar.'},
+    ],
+  },
 ];
 
 /**

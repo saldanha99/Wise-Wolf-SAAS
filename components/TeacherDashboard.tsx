@@ -2,6 +2,7 @@ import TeacherStudentTerms from './TeacherStudentTerms';
 
 import React, { useEffect, useState } from 'react';
 import { useWolfieCheckins, WolfieCheckinNote } from './WolfieCheckinNote';
+import { ReviewSummariesButton } from './ReviewSummariesButton';
 import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw, Sparkles } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -590,6 +591,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             <BookOpen size={16} />
             <span>Lançar Aulas</span>
           </button>
+          <ReviewSummariesButton onOpen={() => onNavigate?.('lesson-sessions')} />
           <button
             onClick={() => onNavigate?.('schedule')}
             className="flex items-center gap-2 bg-brand-surface text-brand-muted px-6 py-3 rounded-xl text-xs font-bold border border-brand-border hover:bg-brand-surface-2 transition-all"

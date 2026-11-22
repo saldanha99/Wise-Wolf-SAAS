@@ -28,6 +28,50 @@ export function parseRoleplayCharacter(raw: string): { name: string; role: strin
   return { name: text || "Your counterpart", role: "" };
 }
 
+// Retratos fictícios gerados pelo Codex (22/11/2026), WebP em public/.
+const PORTRAITS = {
+  gerente: { src: "/assets/wolfie/personagens/gerente.webp", gender: "m" },
+  cliente: { src: "/assets/wolfie/personagens/cliente.webp", gender: "m" },
+  recrutadora: { src: "/assets/wolfie/personagens/recrutadora.webp", gender: "f" },
+  colega: { src: "/assets/wolfie/personagens/colega.webp", gender: "f" },
+} as const;
+type PortraitKey = keyof typeof PORTRAITS;
+
+const FEMALE_NAMES = new Set([
+  "sarah", "rachel", "kate", "emily", "jennifer", "karen", "linda", "susan", "ellen", "megan",
+  "lauren", "alison", "rose", "grace", "claire", "amy", "lucy", "chloe", "olivia", "elizabeth",
+  "ann", "anne", "jane", "helen", "michelle", "nicole", "kim", "beth", "sophie", "zoe",
+]);
+
+function nameGender(name: string): "f" | "m" | null {
+  const first = name.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (!/^[a-z]{2,}$/.test(first)) return null;
+  if (FEMALE_NAMES.has(first) || /a$/.test(first)) return "f";
+  return "m";
+}
+
+/** Foto pelo papel; se o nome indicar outro gênero, a foto do mesmo gênero. Sem papel conhecido: vetor. */
+export function portraitFor(role: string, name: string): string | null {
+  const text = `${role} ${name}`.toLowerCase();
+  let key: PortraitKey | null = /manager|boss|lead|director|supervisor|head of|ceo|gerente|chefe/.test(text)
+    ? "gerente"
+    : /recruit|interview|hr\b|hiring|recrutador|entrevistador/.test(text)
+    ? "recrutadora"
+    : /client|customer|buyer|guest|cliente|investor/.test(text)
+    ? "cliente"
+    : /colleague|coworker|co-worker|teammate|partner|friend|peer|colega|developer|analyst/.test(text)
+    ? "colega"
+    : null;
+  if (!key) return null;
+  const gender = nameGender(name);
+  if (gender && PORTRAITS[key].gender !== gender) {
+    key = gender === "f"
+      ? (key === "gerente" || key === "recrutadora" ? "recrutadora" : "colega")
+      : (key === "recrutadora" || key === "gerente" ? "gerente" : "cliente");
+  }
+  return PORTRAITS[key].src;
+}
+
 function initials(name: string): string {
   return name.split(/\s+/).map((part) => part.charAt(0)).join("").slice(0, 2).toUpperCase() || "?";
 }
@@ -42,6 +86,8 @@ interface Props {
 }
 
 export const RoleplayCounterpart: React.FC<Props> = ({ cast, speaker, outputLevel, inputLevel }) => {
+  const [portraitFailed, setPortraitFailed] = React.useState(false);
+  const portrait = portraitFailed ? null : portraitFor(cast.role, cast.name);
   const talking = speaker === "counterpart";
   const listening = speaker === "learner";
   const ring = talking ? 6 + Math.round(Math.min(1, outputLevel) * 18) : 0;
@@ -58,6 +104,18 @@ export const RoleplayCounterpart: React.FC<Props> = ({ cast, speaker, outputLeve
           className="rounded-full transition-[box-shadow] duration-150"
           style={{ boxShadow: talking ? `0 0 0 ${ring}px rgba(52, 211, 153, 0.22)` : "0 0 0 0 transparent" }}
         >
+          {portrait
+            ? (
+              <img
+                src={portrait}
+                alt={`${cast.name}${cast.role ? `, ${cast.role}` : ""}`}
+                width={192}
+                height={192}
+                className={`h-40 w-40 rounded-full border-2 object-cover sm:h-48 sm:w-48 ${talking ? "border-emerald-300" : "border-slate-700"}`}
+                onError={() => setPortraitFailed(true)}
+              />
+            )
+            : (
           <svg
             viewBox="0 0 160 160"
             className={`h-40 w-40 rounded-full border-2 sm:h-48 sm:w-48 ${talking ? "border-emerald-300" : "border-slate-700"}`}
@@ -86,6 +144,7 @@ export const RoleplayCounterpart: React.FC<Props> = ({ cast, speaker, outputLeve
               {initials(cast.name)}
             </text>
           </svg>
+            )}
         </div>
         <span
           className={`absolute bottom-2 right-2 inline-flex h-4 w-4 rounded-full border-2 border-slate-950 ${
