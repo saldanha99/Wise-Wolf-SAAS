@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { Mail, Lock, Eye, EyeClosed, ArrowRight, ShieldCheck } from 'lucide-react';
 import { cn } from "../../lib/utils";
+import { PLATFORM_SIGNATURE } from '../../lib/platformBrand';
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
     return (
@@ -360,9 +361,10 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword, brand
                 </motion.div>
             </motion.div>
 
-            <div className="absolute bottom-6 text-center w-full pointer-events-none">
-                <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50">
-                    {brand ? brand.name : 'Wise Wolf System • v1.0'}
+            {/* Rodapé sobe no celular: o link "Teacher: consultar histórico" do Login fica fixo em bottom-3. */}
+            <div className="absolute bottom-20 sm:bottom-6 text-center w-full pointer-events-none">
+                <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50" data-testid={brand ? undefined : 'platform-signature'}>
+                    {brand ? brand.name : PLATFORM_SIGNATURE}
                 </p>
             </div>
         </div>

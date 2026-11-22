@@ -32,6 +32,7 @@ import { brandText, setSchoolName, setTutorName } from './lib/tutorBrand';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
 import { useStudentDossierLink } from './lib/studentDossierLink';
+import { documentTitleFor, PLATFORM_NAME } from './lib/platformBrand';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -687,7 +688,7 @@ const App: React.FC = () => {
             whatsapp_enabled: resolvedTenantData.whatsapp_enabled,
             school_info: resolvedTenantData.school_info ?? null,
           });
-          document.title = `${resolvedTenantData.name} - Portal EduCore`;
+          document.title = documentTitleFor(resolvedTenantData.name);
         } else {
           // Rede de segurança: se o tenant não vier (RPC indisponível, permissão nova,
           // rede), NUNCA deixe currentTenant nulo — o id do tenant é a chave que as telas
@@ -1622,7 +1623,7 @@ const App: React.FC = () => {
                   <Menu size={22} />
                 </button>
                 <span className="font-bold text-sm text-gray-800 dark:text-white truncate">
-                  {currentTenant?.name || 'EduCore'}
+                  {currentTenant?.name || PLATFORM_NAME}
                 </span>
               </div>
 
