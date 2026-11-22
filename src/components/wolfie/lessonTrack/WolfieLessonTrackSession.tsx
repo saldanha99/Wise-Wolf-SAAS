@@ -76,7 +76,8 @@ function fromAnswered(item: AnsweredItem | undefined): ItemState | undefined {
       expected: item.expected,
       whyPt: item.whyPt,
       native: item.native,
-      canRetry: !item.correct && item.attempts < 2,
+      hintPt: item.hintPt,
+      canRetry: item.canRetry,
     },
   };
 }

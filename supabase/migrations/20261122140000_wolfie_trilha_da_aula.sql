@@ -16,8 +16,8 @@
 -- Revisões, com os itens errados e
 -- os principais da aula, intercalados com itens de trilhas anteriores.
 --
--- LGPD: tudo é do próprio aluno. RLS só deixa o aluno LER as linhas dele;
--- escrita só pela função (service_role). Aditiva e re-executável.
+-- LGPD: tudo é do próprio aluno, e só pela função (service_role), que filtra
+-- aluno + escola e nunca devolve o gabarito. Sem acesso direto do navegador. Aditiva e re-executável.
 
 create table if not exists public.wolfie_lesson_tracks (
   id uuid primary key default gen_random_uuid(),
@@ -87,21 +87,14 @@ comment on table public.wolfie_lesson_reviews is
 alter table public.wolfie_lesson_tracks enable row level security;
 alter table public.wolfie_lesson_reviews enable row level security;
 
+-- Sem policy para o aluno de propósito: content/items guardam o GABARITO.
+-- O aluno só fala com a função wolfie-lesson-track (service_role), que
+-- devolve a parte pública. RLS ligada e nenhum grant = nada direto pelo
+-- PostgREST (revisão do Revisor, 22/11/2026).
 drop policy if exists wolfie_lesson_tracks_own_read on public.wolfie_lesson_tracks;
-create policy wolfie_lesson_tracks_own_read on public.wolfie_lesson_tracks
-  for select to authenticated
-  using (student_id = (select auth.uid()));
-
 drop policy if exists wolfie_lesson_reviews_own_read on public.wolfie_lesson_reviews;
-create policy wolfie_lesson_reviews_own_read on public.wolfie_lesson_reviews
-  for select to authenticated
-  using (student_id = (select auth.uid()));
 
-revoke all on public.wolfie_lesson_tracks from anon;
-revoke all on public.wolfie_lesson_reviews from anon;
-revoke insert, update, delete on public.wolfie_lesson_tracks from authenticated;
-revoke insert, update, delete on public.wolfie_lesson_reviews from authenticated;
-grant select on public.wolfie_lesson_tracks to authenticated;
-grant select on public.wolfie_lesson_reviews to authenticated;
+revoke all on public.wolfie_lesson_tracks from anon, authenticated;
+revoke all on public.wolfie_lesson_reviews from anon, authenticated;
 grant all on public.wolfie_lesson_tracks to service_role;
 grant all on public.wolfie_lesson_reviews to service_role;

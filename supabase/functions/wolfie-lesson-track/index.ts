@@ -182,6 +182,7 @@ async function loadStudent(
     .from("wolf_intelligence")
     .select("primary_goal, profession, estimated_level")
     .eq("student_id", userId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
   const settings = asObject(profile.wolfie_settings);
   const goal = str(profile.english_for, 200) ||
@@ -246,6 +247,7 @@ async function approvedMemory(
     )
     .eq("tenant_id", student.tenantId)
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .eq("source_type", "MEET_SESSION")
     .eq("source_ref", sessionId)
     .eq("verification_status", "VERIFIED")
@@ -347,6 +349,7 @@ interface TrackRow {
   completed_at: string | null;
   roleplay_feedback: unknown;
   error_code: string | null;
+  updated_at: string;
 }
 
 async function loadTrack(
@@ -412,6 +415,7 @@ async function handleHome(admin: Db, student: Student): Promise<Response> {
       .select("*")
       .eq("class_log_id", log.id)
       .eq("student_id", student.id)
+      .eq("tenant_id", student.tenantId)
       .maybeSingle();
     track = data as TrackRow | null;
   } else if (student.isTestAccount) {
@@ -420,6 +424,7 @@ async function handleHome(admin: Db, student: Student): Promise<Response> {
       .from("wolfie_lesson_tracks")
       .select("*")
       .eq("student_id", student.id)
+      .eq("tenant_id", student.tenantId)
       .eq("test_fixture", true)
       .order("class_date", { ascending: false })
       .limit(1);
@@ -435,9 +440,20 @@ async function handleHome(admin: Db, student: Student): Promise<Response> {
     .lte("due_on", today)
     .order("due_on", { ascending: true })
     .limit(3);
+  const unlocked: JsonObject[] = [];
+  for (const review of reviews ?? []) {
+    const scores = await reviewScores(
+      admin,
+      String(review.track_id),
+      student.tenantId,
+    );
+    if (reviewUnlocked(review.step as ReviewStep, scores)) {
+      unlocked.push(review);
+    }
+  }
   return json({
     track: trackCard(track, log),
-    reviews: (reviews ?? []).map((r: JsonObject) => ({
+    reviews: unlocked.map((r: JsonObject) => ({
       id: r.id,
       step: r.step,
       dueOn: r.due_on,
@@ -455,6 +471,7 @@ async function previousTopics(
     .from("wolfie_lesson_tracks")
     .select("topic, class_log_id")
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .eq("status", "READY")
     .order("class_date", { ascending: false })
     .limit(4);
@@ -484,6 +501,7 @@ async function handlePrepare(admin: Db, student: Student): Promise<Response> {
     .select("*")
     .eq("class_log_id", log.id)
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .maybeSingle();
   if (error || !existing) throw new HttpError(503, "TRACK_RESERVATION_FAILED");
   const track = existing as TrackRow;
@@ -616,6 +634,11 @@ async function handleGet(
         ? key?.rulePt || key?.whyPt || ""
         : "",
       native: item.correct || item.attempts >= 2 ? key?.native ?? "" : "",
+      hintPt: !item.correct && item.attempts === 1 && key?.kind !== "recognize"
+        ? key?.hintPt || "Releia a regra e tente de novo."
+        : "",
+      canRetry: !item.correct && item.attempts === 1 &&
+        key?.kind !== "recognize",
     };
   }
   return json({
@@ -628,7 +651,9 @@ async function handleGet(
       content: publicTrack(content),
       answered,
       roleplay: roleplayBrief(content, student.learner.goal),
-      roleplayFeedback: track.roleplay_feedback ?? null,
+      roleplayFeedback: asObject(track.roleplay_feedback).status === "PENDING"
+        ? null
+        : track.roleplay_feedback ?? null,
     },
   });
 }
@@ -677,8 +702,10 @@ async function handleAnswer(
       rawProgress,
     );
     correct = true;
-    corrected = evaluation?.corrected || "";
-    whyPt = evaluation?.whyPt || whyPt;
+    if (evaluation !== "CAPPED") {
+      corrected = evaluation.corrected;
+      whyPt = evaluation.whyPt || whyPt;
+    }
   } else {
     const verdict = checkDeterministic(key, answer);
     if (verdict === "needs_ai") {
@@ -691,9 +718,14 @@ async function handleAnswer(
         answer,
         rawProgress,
       );
-      correct = evaluation?.correct === true;
-      corrected = evaluation?.corrected || "";
-      if (evaluation?.whyPt) whyPt = evaluation.whyPt;
+      if (evaluation === "CAPPED") {
+        // Teto de correções por IA da trilha: mostra a forma certa para o aluno conferir.
+        correct = false;
+      } else {
+        correct = evaluation.correct;
+        corrected = evaluation.corrected;
+        if (evaluation.whyPt) whyPt = evaluation.whyPt;
+      }
     } else {
       correct = verdict === "correct";
     }
@@ -705,14 +737,21 @@ async function handleAnswer(
     answer: answer.slice(0, 400),
     firstTryCorrect: correct && attempts === 1,
   };
-  await admin.from("wolfie_lesson_tracks").update({
-    progress: {
-      ...rawProgress,
-      items: progress,
-      ai_checks: rawProgress.ai_checks ?? 0,
-    },
-    updated_at: new Date().toISOString(),
-  }).eq("id", track.id);
+  // Trava otimista: duas respostas ao mesmo tempo não apagam uma à outra.
+  const { data: savedProgress } = await admin
+    .from("wolfie_lesson_tracks")
+    .update({
+      progress: {
+        ...rawProgress,
+        items: progress,
+        ai_checks: rawProgress.ai_checks ?? 0,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", track.id)
+    .eq("updated_at", track.updated_at)
+    .select("id");
+  if (!savedProgress?.length) throw new HttpError(409, "TRACK_BUSY");
 
   // Mistake Repair: na 1ª falha só a dica; a forma certa vem na 2ª.
   const reveal = correct || attempts >= 2 || key.kind === "recognize";
@@ -740,7 +779,7 @@ async function evaluateWithAi(
   rawProgress: JsonObject,
 ) {
   const used = Number(rawProgress.ai_checks) || 0;
-  if (used >= MAX_AI_CHECKS_PER_TRACK) return null;
+  if (used >= MAX_AI_CHECKS_PER_TRACK) return "CAPPED" as const;
   rawProgress.ai_checks = used + 1;
   try {
     const result = await callJson(
@@ -752,12 +791,15 @@ async function evaluateWithAi(
       400,
       25_000,
     );
-    return parseEvaluation(result.value);
+    const evaluation = parseEvaluation(result.value);
+    if (!evaluation) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
+    return evaluation;
   } catch {
     console.warn("[wolfie-lesson-track] check unavailable", {
       track: track.id,
     });
-    return null;
+    // A tentativa do aluno não é gasta: nada é gravado e ele tenta de novo.
+    throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
   }
 }
 
@@ -770,6 +812,7 @@ async function nextClassDate(
     .from("upcoming_classes")
     .select("class_date")
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .gt("class_date", after)
     .order("class_date", { ascending: true })
     .limit(1);
@@ -785,6 +828,7 @@ async function olderReviewItems(
     .from("wolfie_lesson_tracks")
     .select("id, content")
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .eq("status", "READY")
     .neq("id", exceptTrackId)
     .order("class_date", { ascending: false })
@@ -850,8 +894,12 @@ async function handleRoleplayFeedback(
 ): Promise<Response> {
   const track = await loadTrack(admin, student, body.trackId);
   const content = readyContent(track);
-  if (track.roleplay_feedback) {
+  const existing = asObject(track.roleplay_feedback);
+  if (track.roleplay_feedback && existing.status !== "PENDING") {
     return json({ feedback: track.roleplay_feedback });
+  }
+  if (existing.status === "PENDING") {
+    throw new HttpError(409, "FEEDBACK_IN_PROGRESS");
   }
   const conversationId = uuid(body.conversationId, "INVALID_CONVERSATION_ID");
   const { data: session } = await admin
@@ -859,6 +907,7 @@ async function handleRoleplayFeedback(
     .select("id, student_id, created_at")
     .eq("id", conversationId)
     .eq("student_id", student.id)
+    .eq("tenant_id", student.tenantId)
     .maybeSingle();
   if (!session) throw new HttpError(404, "CONVERSATION_NOT_FOUND");
   const { data: turns } = await admin
@@ -885,29 +934,49 @@ async function handleRoleplayFeedback(
     .select("wrong_sentence, correct_sentence, explanation_pt, status")
     .eq("session_id", conversationId)
     .limit(20);
-  const result = await callJson(
-    admin,
-    student,
-    "wolfie_lesson_track_roleplay_feedback",
-    "You are an honest, encouraging English coach for Brazilian adults. Return only JSON.",
-    roleplayFeedbackPrompt(
-      content,
-      transcript,
-      (corrections ?? [])
-        .filter((c: JsonObject) =>
-          !/INVALID|DISPUT|SUPERSED/i.test(String(c.status ?? ""))
-        )
-        .map((c: JsonObject) => ({
-          wrong: str(c.wrong_sentence, 300),
-          correct: str(c.correct_sentence, 300),
-          explanation: str(c.explanation_pt, 300),
-        })),
-    ),
-    1500,
-    40_000,
-  );
+  // Reserva: dois cliques não chamam a IA duas vezes.
+  const { data: claimed } = await admin
+    .from("wolfie_lesson_tracks")
+    .update({ roleplay_feedback: { status: "PENDING" } })
+    .eq("id", track.id)
+    .is("roleplay_feedback", null)
+    .select("id");
+  if (!claimed?.length) throw new HttpError(409, "FEEDBACK_IN_PROGRESS");
+  const release = () =>
+    admin.from("wolfie_lesson_tracks").update({ roleplay_feedback: null })
+      .eq("id", track.id);
+  let result: Awaited<ReturnType<typeof callJson>>;
+  try {
+    result = await callJson(
+      admin,
+      student,
+      "wolfie_lesson_track_roleplay_feedback",
+      "You are an honest, encouraging English coach for Brazilian adults. Return only JSON.",
+      roleplayFeedbackPrompt(
+        content,
+        transcript,
+        (corrections ?? [])
+          .filter((c: JsonObject) =>
+            !/INVALID|DISPUT|SUPERSED/i.test(String(c.status ?? ""))
+          )
+          .map((c: JsonObject) => ({
+            wrong: str(c.wrong_sentence, 300),
+            correct: str(c.correct_sentence, 300),
+            explanation: str(c.explanation_pt, 300),
+          })),
+      ),
+      1500,
+      40_000,
+    );
+  } catch (error) {
+    await release();
+    throw error;
+  }
   const feedback = parseRoleplayFeedback(result.value);
-  if (!feedback) throw new HttpError(503, "FEEDBACK_UNAVAILABLE");
+  if (!feedback) {
+    await release();
+    throw new HttpError(503, "FEEDBACK_UNAVAILABLE");
+  }
   await admin.from("wolfie_lesson_tracks").update({
     roleplay_feedback: { ...feedback, conversationId },
     updated_at: new Date().toISOString(),
@@ -931,14 +1000,34 @@ async function loadReview(admin: Db, student: Student, reviewId: unknown) {
   return data as JsonObject;
 }
 
+/** D+14/D+30 trancadas não abrem, não recebem resposta e não fecham. */
+async function loadUnlockedReview(
+  admin: Db,
+  student: Student,
+  reviewId: unknown,
+) {
+  const review = await loadReview(admin, student, reviewId);
+  const scores = await reviewScores(
+    admin,
+    String(review.track_id),
+    student.tenantId,
+  );
+  if (!reviewUnlocked(review.step as ReviewStep, scores)) {
+    throw new HttpError(409, "REVIEW_LOCKED");
+  }
+  return review;
+}
+
 async function reviewScores(
   admin: Db,
   trackId: string,
+  tenantId: string,
 ): Promise<Partial<Record<ReviewStep, number | null>>> {
   const { data } = await admin
     .from("wolfie_lesson_reviews")
     .select("step, score")
-    .eq("track_id", trackId);
+    .eq("track_id", trackId)
+    .eq("tenant_id", tenantId);
   const out: Partial<Record<ReviewStep, number | null>> = {};
   for (const row of data ?? []) out[row.step as ReviewStep] = row.score;
   return out;
@@ -949,13 +1038,8 @@ async function handleReviewGet(
   student: Student,
   body: JsonObject,
 ): Promise<Response> {
-  const review = await loadReview(admin, student, body.reviewId);
+  const review = await loadUnlockedReview(admin, student, body.reviewId);
   const step = review.step as ReviewStep;
-  if (
-    !reviewUnlocked(step, await reviewScores(admin, String(review.track_id)))
-  ) {
-    throw new HttpError(409, "REVIEW_LOCKED");
-  }
   const track = asObject(review.wolfie_lesson_tracks);
   return json({
     review: {
@@ -976,7 +1060,7 @@ async function handleReviewAnswer(
   student: Student,
   body: JsonObject,
 ): Promise<Response> {
-  const review = await loadReview(admin, student, body.reviewId);
+  const review = await loadUnlockedReview(admin, student, body.reviewId);
   const items = (review.items as ReviewItem[]) ?? [];
   const item = items.find((candidate) => candidate.id === str(body.itemId, 40));
   if (!item) throw new HttpError(400, "INVALID_ITEM");
@@ -1009,7 +1093,7 @@ async function handleReviewComplete(
   student: Student,
   body: JsonObject,
 ): Promise<Response> {
-  const review = await loadReview(admin, student, body.reviewId);
+  const review = await loadUnlockedReview(admin, student, body.reviewId);
   const items = (review.items as ReviewItem[]) ?? [];
   const answers = asObject(review.answers);
   const right =

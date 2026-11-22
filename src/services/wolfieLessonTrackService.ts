@@ -57,6 +57,8 @@ export interface AnsweredItem {
   expected: string;
   whyPt: string;
   native: string;
+  hintPt: string;
+  canRetry: boolean;
 }
 
 export interface RoleplayFeedback {
@@ -113,6 +115,8 @@ const MESSAGES: Record<string, string> = {
   REVIEW_LOCKED: "Esta revisão abre depois que você for bem na anterior.",
   AI_PROVIDER_UNAVAILABLE: "O Wolfie não conseguiu corrigir agora. Tente de novo em instantes.",
   FEEDBACK_UNAVAILABLE: "Não deu para montar os cartões desta conversa. Tente de novo.",
+  FEEDBACK_IN_PROGRESS: "Os cartões desta conversa já estão sendo montados. Aguarde um instante.",
+  TRACK_BUSY: "Outra resposta estava sendo salva. Toque em Verificar de novo.",
 };
 
 async function errorCode(error: unknown): Promise<string> {
