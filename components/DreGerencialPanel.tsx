@@ -100,6 +100,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
   // parte — o demonstrativo do mês não espera por ela.
   // Mês que falha (rede, 500 passageiro) NÃO vira R$ 0 no gráfico: tenta de novo uma
   // vez e, se ainda falhar, sai do gráfico com aviso — zero falso parece mês sem receita.
+  const [trendTick, setTrendTick] = useState(0);
   const [trend, setTrend] = useState<{ month: string; resultado: number; receita: number; failed: boolean }[] | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +124,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
       .then(results => { if (!cancelled) setTrend(results); })
       .catch(() => { if (!cancelled) setTrend([]); });
     return () => { cancelled = true; };
-  }, [month]);
+  }, [month, trendTick]);
   const trendOk = (trend || []).filter(t => !t.failed);
   const trendFailed = (trend || []).filter(t => t.failed);
 
@@ -154,7 +155,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
               {monthOpts.map(m => <option key={m} value={m}>{monthShort(m)}</option>)}
             </select>
             <button
-              onClick={() => void load(month)}
+              onClick={() => { void load(month); setTrendTick(t => t + 1); }}
               aria-label="Atualizar resultado"
               className="ww-lift p-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-muted hover:text-brand-text shadow-sm"
             >

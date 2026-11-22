@@ -24,6 +24,12 @@ const MaterialApprovals: React.FC<Props> = () => {
     toastTimer.current = window.setTimeout(() => setToast(null), 4000);
   };
   useEffect(() => () => { if (toastTimer.current) window.clearTimeout(toastTimer.current); }, []);
+  useEffect(() => {
+    if (!rejecting) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setRejecting(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [rejecting]);
 
   const openMaterial = async (material: any) => {
     if (!material.file_url) return;
@@ -141,7 +147,7 @@ const MaterialApprovals: React.FC<Props> = () => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="reject-material-title"
-            className="flex h-full w-full flex-col bg-brand-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:h-auto sm:max-w-md sm:rounded-2xl sm:border sm:border-brand-border"
+            className="flex h-full w-full flex-col bg-brand-surface p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pt-5 sm:h-auto sm:max-w-md sm:rounded-2xl sm:border sm:border-brand-border"
             onClick={e => e.stopPropagation()}
           >
             <h3 id="reject-material-title" className="text-lg font-bold text-brand-text">Reprovar material</h3>

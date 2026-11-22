@@ -62,3 +62,13 @@ describe('MaterialApprovals', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível revisar');
   });
 });
+
+describe('MaterialApprovals — teclado', () => {
+  it('Escape closes the reject modal without reviewing', async () => {
+    render(<MaterialApprovals user={user} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Reprovar/ }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(rpc).not.toHaveBeenCalledWith('review_material', expect.anything());
+  });
+});
