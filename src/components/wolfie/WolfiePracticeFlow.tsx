@@ -68,6 +68,7 @@ import {
 } from "./WolfieDiscoveryHome";
 import { WolfieQuickStartCard } from "./WolfieQuickStartCard";
 import { WolfieLessonTrackCard } from "./lessonTrack/WolfieLessonTrackCard";
+import { WolfieLiveBalance } from "../../../components/WolfieLiveBalance";
 
 const WolfieLessonTrackSession = React.lazy(
   () => import("./lessonTrack/WolfieLessonTrackSession"),
@@ -1193,6 +1194,10 @@ export function WolfiePracticeFlow({
                   onOpenTrack={setLessonTrackId}
                   onOpenReview={setLessonReviewId}
                 />
+                {/* Saldo de voz ao vivo: aviso de saldo baixo e compra por PIX antes de a conversa começar. */}
+                <div className="mb-4">
+                  <WolfieLiveBalance compact refreshKey={lessonTrackRefresh} />
+                </div>
                 <WolfieQuickStartCard
                   firstName={firstName}
                   plan={quickStartPlan}
