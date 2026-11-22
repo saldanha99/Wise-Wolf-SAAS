@@ -94,6 +94,12 @@
   HUB_PROFESSOR), `conteudo_geracoes_gamma`, `conteudo_creditos_gamma_mes`, `conteudo_resumos_temas`
   (só itens vistos com 3+ alunos), `conteudo_alunos_perfil` (profissão/finalidade com 2+ alunos). Nenhuma
   tem nome, contato, título ou id de aluno. Migration `20261122203000`; teste `supabase/tests/conteudo_bot_gamma.sql`.
+- **Marca da escola nos livros `brand=school` (22/11, noite):** o gerador lê de `tenants.branding` o tema
+  (`gammaThemeId`), o logo do cabeçalho (`gammaLogoUrl`, só https; `topRight` imagem `sm`, fora da capa) e a cor
+  de destaque (`secondaryColor` → instrução ao Gamma). Wise Wolf: tema `qte9p85c7yez5ew` (azul-marinho), logo
+  `https://system.wisewolflanguage.com.br/assets/brand/wise-wolf-mark-trim-20261028.png` (o `logo.png` do site tem
+  fundo branco opaco), destaque #CC213B. Backup `/opt/wisewolf/backup-gamma-marca-20261122T175043Z/` (função +
+  branding anterior). Desfazer: `update tenants set branding = branding - 'gammaThemeId' - 'gammaLogoUrl' where id = 'school-wise-wolf';`.
 - **Imagens:** `imageOptions.source = "pexels"` (licença comercial, sem marca d'água). `webFreeToUseCommercially`
   trouxe foto de banco com marca d'água na capa (teste de 22/11). Unsplash não existe no enum da API. IA do
   Gamma (`aiGenerated`) fica fora: imagem gerada só pelo Codex.
