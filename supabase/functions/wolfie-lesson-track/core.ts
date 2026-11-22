@@ -810,8 +810,14 @@ const FACT_KINDS = new Set([
   "preferred_topic",
 ]);
 // Dado sensível nunca vira memória (mesma régua do Wolfie: só o que é útil para praticar).
-const SENSITIVE_FACT =
-  /(health|sick|illness|disease|doctor|hospital|pregnan|religio|church|god|politic|vote|salary|money|debt|\$|r\$|address|street|divorc|depress|anxiety|medic|therapy)/i;
+const SENSITIVE_FACT = new RegExp(
+  [
+    "health|sick|illness|disease|doctor|hospital|pregnan|religio|church|\\bgod\\b|politic|\\bvote|salary|money|debt|\\$|address|street|divorc|depress|anxiety|medic|therapy",
+    "sa[uú]de|doen[çc]a|m[eé]dic|gr[aá]vid|religi|igreja|\\bdeus\\b|pol[ií]tic|\\bvoto|sal[aá]rio|dinheiro|d[ií]vida|endere[çc]o|\\brua\\b|div[oó]rc|ansied|terapia|rem[eé]dio",
+    "@|\\b\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2}\\b|\\(?\\d{2}\\)?\\s?9?\\d{4}-?\\d{4}",
+  ].join("|"),
+  "i",
+);
 
 export function parseLearnerFacts(raw: unknown): LearnerFact[] {
   const seen = new Set<string>();

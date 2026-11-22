@@ -308,6 +308,18 @@ Deno.test("memória: só fatos do próprio aluno, sem dado sensível", () => {
       quote: "my anxiety",
     },
     { kind: "personal_story", key: "x", text: "x", quote: "x" },
+    {
+      kind: "preferred_topic",
+      key: "church",
+      text: "Goes to church",
+      quote: "vou na igreja domingo",
+    },
+    {
+      kind: "professional_scenario",
+      key: "phone",
+      text: "Shares phone",
+      quote: "meu zap é 11 98765-4321",
+    },
   ]);
   assertEquals(facts.map((f) => f.key), ["it-analyst", "gym"]);
 });

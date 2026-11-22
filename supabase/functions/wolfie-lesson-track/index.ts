@@ -42,6 +42,7 @@ import {
   type LearnerFact,
   type LessonInput,
   lessonInputIsUsable,
+  normalizeAnswer,
   normalizeTrackContent,
   parseEvaluation,
   parseRoleplayFeedback,
@@ -1101,7 +1102,20 @@ async function handleRoleplayFeedback(
     await release();
     throw new HttpError(503, "FEEDBACK_UNAVAILABLE");
   }
-  const { facts, ...cards } = feedback;
+  const { facts: rawFacts, ...cards } = feedback;
+  // Fato só vale se o aluno disse mesmo: a citação precisa estar numa fala dele.
+  const learnerText = normalizeAnswer(
+    transcript.filter((turn: { speaker: string }) => turn.speaker === "student")
+      .map((turn: { text: string }) => turn.text).join(" "),
+  );
+  const facts = rawFacts.filter((fact) => {
+    const words = normalizeAnswer(fact.quote).split(" ").filter((w) =>
+      w.length > 2
+    );
+    if (!words.length) return false;
+    const found = words.filter((w) => learnerText.includes(w)).length;
+    return found / words.length >= 0.6;
+  });
   await admin.from("wolfie_lesson_tracks").update({
     roleplay_feedback: { ...cards, conversationId },
     updated_at: new Date().toISOString(),

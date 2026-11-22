@@ -39,10 +39,12 @@ begin
          or exists (
            select 1 from public.upcoming_classes as u
             where u.student_id = w.student_id and u.teacher_id = v_me.id
+              and u.tenant_id = v_me.tenant_id
          )
          or exists (
            select 1 from public.class_logs as l
             where l.student_id = w.student_id and l.teacher_id = v_me.id
+              and l.tenant_id = v_me.tenant_id
               and l.class_date >= (pg_catalog.now() - interval '60 days')::date
          )
        )
@@ -72,7 +74,8 @@ begin
     )), '{}'::jsonb)
     into v_result
     from latest as l
-    join public.wolfie_lesson_tracks as t on t.id = l.track_id;
+    join public.wolfie_lesson_tracks as t
+      on t.id = l.track_id and t.tenant_id = v_me.tenant_id;
 
   return v_result;
 end;
