@@ -90,3 +90,102 @@ Deno.test("embeddings vão para a OpenAI só com os campos que ela aceita", asyn
     else Deno.env.delete("OPENAI_API_KEY");
   }
 });
+
+// ── Teto mensal da Anthropic (22/11/2026) ──
+import {
+  anthropicCostUsd,
+  anthropicRoutingOff,
+  monthlyBudgetUsd,
+  overBudget,
+} from "./ai-gateway.ts";
+
+function assertClose(actual: number | null, expected: number) {
+  if (actual === null || Math.abs(actual - expected) > 1e-9) {
+    throw new Error(`expected ${expected}, got ${actual}`);
+  }
+}
+
+Deno.test("custo do Haiku 5.5: entrada, saída e cache pelo preço oficial", () => {
+  // 17.000 entrada (2.000 em cache) + 1.600 saída
+  assertClose(
+    anthropicCostUsd("claude-haiku-5-5", {
+      prompt_tokens: 17_000,
+      completion_tokens: 1_600,
+      prompt_tokens_details: { cached_tokens: 2_000 },
+    }),
+    (15_000 * 0.10 + 2_000 * 0.01 + 1_600 * 0.50) / 1e6,
+  );
+});
+
+Deno.test("Haiku acima de 100K tokens de prompt usa o preço longo", () => {
+  assertClose(
+    anthropicCostUsd("claude-haiku-5-5", {
+      prompt_tokens: 120_000,
+      completion_tokens: 1_000,
+    }),
+    (120_000 * 0.50 + 1_000 * 2.50) / 1e6,
+  );
+});
+
+Deno.test("Sonnet 5.5 e modelo desconhecido custam como Sonnet", () => {
+  const expected = (10_000 * 2 + 1_000 * 10) / 1e6;
+  assertClose(
+    anthropicCostUsd("claude-sonnet-5-5", {
+      prompt_tokens: 10_000,
+      completion_tokens: 1_000,
+    }),
+    expected,
+  );
+  assertClose(
+    anthropicCostUsd("claude-novo", {
+      prompt_tokens: 10_000,
+      completion_tokens: 1_000,
+    }),
+    expected,
+  );
+});
+
+Deno.test("resposta sem usage não é medida", () => {
+  assertEquals(anthropicCostUsd("claude-haiku-5-5", undefined), null);
+  assertEquals(
+    anthropicCostUsd("claude-haiku-5-5", { prompt_tokens: "x" }),
+    null,
+  );
+});
+
+Deno.test("teto: padrão 50, valor configurado, off = sem teto, inválido = 50", () => {
+  const previous = Deno.env.get("ANTHROPIC_MONTHLY_BUDGET_USD");
+  try {
+    Deno.env.delete("ANTHROPIC_MONTHLY_BUDGET_USD");
+    assertEquals(monthlyBudgetUsd(), 50);
+    Deno.env.set("ANTHROPIC_MONTHLY_BUDGET_USD", "80");
+    assertEquals(monthlyBudgetUsd(), 80);
+    Deno.env.set("ANTHROPIC_MONTHLY_BUDGET_USD", "off");
+    assertEquals(monthlyBudgetUsd(), Number.POSITIVE_INFINITY);
+    Deno.env.set("ANTHROPIC_MONTHLY_BUDGET_USD", "-3");
+    assertEquals(monthlyBudgetUsd(), 50);
+  } finally {
+    if (previous === undefined) Deno.env.delete("ANTHROPIC_MONTHLY_BUDGET_USD");
+    else Deno.env.set("ANTHROPIC_MONTHLY_BUDGET_USD", previous);
+  }
+});
+
+Deno.test("acima do teto só com gasto conhecido; leitura falha não bloqueia", () => {
+  assertEquals(overBudget(49.99, 50), false);
+  assertEquals(overBudget(50, 50), true);
+  assertEquals(overBudget(null, 50), false);
+  assertEquals(overBudget(1_000, Number.POSITIVE_INFINITY), false);
+});
+
+Deno.test("ANTHROPIC_ROUTING=off é a chave para voltar ao OpenRouter", () => {
+  const previous = Deno.env.get("ANTHROPIC_ROUTING");
+  try {
+    Deno.env.set("ANTHROPIC_ROUTING", "on");
+    assertEquals(anthropicRoutingOff(), false);
+    Deno.env.set("ANTHROPIC_ROUTING", "off");
+    assertEquals(anthropicRoutingOff(), true);
+  } finally {
+    if (previous === undefined) Deno.env.delete("ANTHROPIC_ROUTING");
+    else Deno.env.set("ANTHROPIC_ROUTING", previous);
+  }
+});
