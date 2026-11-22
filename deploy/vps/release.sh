@@ -1654,6 +1654,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122201000_financeiro_precificacao_e_equilibrio.sql"
   "supabase/migrations/20261122202000_financeiro_fluxo_projetado_e_dre_completo.sql"
   "supabase/migrations/20261122203000_conteudo_bot_gamma_marca_e_views.sql"
+  "supabase/migrations/20261122204000_financeiro_melhorias_fuso_e_bordas.sql"
   "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
   "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
 )

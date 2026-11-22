@@ -82,8 +82,8 @@ const numberField = (
       inputMode="decimal"
       min="0"
       step={step}
-      value={Number.isFinite(value) ? value : 0}
-      onChange={(e) => onChange(Number(e.target.value))}
+      value={Number.isFinite(value) ? value : ''}
+      onChange={(e) => onChange(e.target.value === '' ? Number.NaN : Number(e.target.value))}
       className="mt-1 w-full rounded-xl border border-brand-border bg-brand-surface-2 px-3 py-2 text-sm font-bold text-brand-text outline-hidden focus:ring-2 focus:ring-tenant-primary"
     />
     <span className="mt-1 block text-[11px] text-brand-muted">{hint}</span>
@@ -102,6 +102,13 @@ export const FinanceSettingsButton: React.FC<{
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { if (open && settings) setForm({ ...settings }); }, [open, settings]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  const num = (v: number) => (Number.isFinite(v) ? v : 0);
 
   const save = async () => {
     if (!form) return;
@@ -110,12 +117,12 @@ export const FinanceSettingsButton: React.FC<{
     const { error: e } = await supabase.rpc('finance_settings_save', {
       p_settings: {
         tax_mode: form.tax_mode,
-        tax_percent: form.tax_percent,
-        tax_fixed_monthly: form.tax_fixed_monthly,
-        voice_brl_per_minute: form.voice_brl_per_minute,
-        asaas_fee_per_charge: form.asaas_fee_per_charge,
-        usd_brl: form.usd_brl,
-        extra_fixed_costs_monthly: form.extra_fixed_costs_monthly,
+        tax_percent: num(form.tax_percent),
+        tax_fixed_monthly: num(form.tax_fixed_monthly),
+        voice_brl_per_minute: num(form.voice_brl_per_minute),
+        asaas_fee_per_charge: num(form.asaas_fee_per_charge),
+        usd_brl: num(form.usd_brl),
+        extra_fixed_costs_monthly: num(form.extra_fixed_costs_monthly),
       },
     });
     setSaving(false);
@@ -137,7 +144,7 @@ export const FinanceSettingsButton: React.FC<{
         {settings?.tax_mode === 'UNSET' && <span className="ml-1 h-2 w-2 rounded-full bg-amber-500" aria-label="imposto não configurado" />}
       </button>
       {open && form && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Configuração financeira">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Configuração financeira" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
           <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-brand-surface p-5 shadow-xl sm:max-w-lg sm:rounded-3xl sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-black text-brand-text">Configuração financeira</h3>
@@ -158,7 +165,7 @@ export const FinanceSettingsButton: React.FC<{
                 <span className="mt-1 block text-[11px] text-brand-muted">Confirme com a contabilidade. Sem isso, a margem não desconta imposto.</span>
               </label>
               {form.tax_mode === 'PERCENT_REVENUE' && numberField('Alíquota (%)', 'Alíquota efetiva sobre a mensalidade.', form.tax_percent, (v) => setForm({ ...form, tax_percent: v }))}
-              {form.tax_mode === 'FIXED_MONTHLY' && numberField('DAS por mês (R$)', 'Rateado entre os alunos pagantes do mês.', form.tax_fixed_monthly, (v) => setForm({ ...form, tax_fixed_monthly: v }))}
+              {form.tax_mode === 'FIXED_MONTHLY' && numberField('DAS por mês (R$)', 'Rateado entre os alunos pagantes do mês. Não lance o boleto do DAS também como despesa: ele já entra por aqui.', form.tax_fixed_monthly, (v) => setForm({ ...form, tax_fixed_monthly: v }))}
               {numberField('Custos fixos fora do caixa (R$/mês)', 'Pró-labore, aluguel ou contas pagas por fora do sistema. Entram no ponto de equilíbrio.', form.extra_fixed_costs_monthly, (v) => setForm({ ...form, extra_fixed_costs_monthly: v }))}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {numberField('Voz (R$/min)', 'Wolfie ao vivo.', form.voice_brl_per_minute, (v) => setForm({ ...form, voice_brl_per_minute: v }), '0.0001')}

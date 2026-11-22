@@ -60,7 +60,7 @@ const PricingPanel: React.FC<{ user: User }> = ({ user }) => {
   const simulatedFixed = useMemo(() => {
     if (!eq) return null;
     const contrib = Number(eq.margem_contribuicao_media) || 0;
-    const alunos = (Number(eq.alunos_pagantes) || 0) + (Number(extraStudents) || 0);
+    const alunos = Math.max(0, (Number(eq.alunos_pagantes) || 0) + (Number(extraStudents) || 0));
     return { alunos, resultado: Math.round((alunos * contrib - eq.custos_fixos_mes) * 100) / 100 };
   }, [eq, extraStudents]);
 
@@ -110,7 +110,7 @@ const PricingPanel: React.FC<{ user: User }> = ({ user }) => {
                 hint={eq.folga_alunos == null ? '' : eq.folga_alunos >= 0 ? `${eq.folga_alunos} acima do equilíbrio` : `faltam ${-eq.folga_alunos}`} />
             </div>
             <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-brand-surface-2 p-3 text-sm sm:flex-row sm:items-center sm:gap-4">
-              <label className="flex items-center gap-2 font-bold text-brand-text">
+              <label className="flex flex-wrap items-center gap-2 font-bold text-brand-text">
                 E se a escola tiver
                 <input
                   type="number"
@@ -164,7 +164,7 @@ const PricingPanel: React.FC<{ user: User }> = ({ user }) => {
                     </div>
                     <div><p className="text-[10px] font-black uppercase text-brand-muted">Preço mínimo</p><p className="font-bold">{money(p.preco_minimo)}</p></div>
                     <div className="col-span-2 rounded-xl bg-brand-surface-2 p-2 sm:col-span-1">
-                      <label className="flex items-center gap-2 text-xs font-bold text-brand-muted">
+                      <label className="flex flex-wrap items-center gap-2 text-xs font-bold text-brand-muted">
                         Simular
                         <input
                           type="text"
