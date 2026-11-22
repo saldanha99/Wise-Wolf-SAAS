@@ -180,7 +180,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     tone="sky"
                     label="Aguardando crédito"
                     value={money(summary.byBucket.CONFIRMED.total)}
-                    hint={`${summary.byBucket.CONFIRMED.count} cartão${summary.byBucket.CONFIRMED.count === 1 ? '' : 'ões'} aprovado${summary.byBucket.CONFIRMED.count === 1 ? '' : 's'}, ainda sem crédito`}
+                    hint={`${summary.byBucket.CONFIRMED.count} ${summary.byBucket.CONFIRMED.count === 1 ? 'cartão' : 'cartões'} aprovado${summary.byBucket.CONFIRMED.count === 1 ? '' : 's'}, ainda sem crédito`}
                 />
                 <Kpi3D
                     icon={<CalendarClock size={20} />}
