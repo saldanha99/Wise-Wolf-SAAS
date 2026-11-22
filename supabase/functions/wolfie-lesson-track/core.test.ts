@@ -256,3 +256,8 @@ Deno.test("roleplay respeita o limite do realtime e a política de correção", 
   assert(brief.scenario.length <= 1200);
   assert(brief.scenario.includes("at most once every 3 turns"));
 });
+
+Deno.test("forma certa do Mistake Repair vem com maiúscula e ponto", () => {
+  const content = normalizeTrackContent(sampleRaw());
+  assertEquals(content.keys.m1.modelAnswer, "Yesterday I went to the beach.");
+});

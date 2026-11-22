@@ -83,7 +83,7 @@ function fromAnswered(item: AnsweredItem | undefined): ItemState | undefined {
 }
 
 /** Resposta do Wolfie a um item: certo, dica (tente de novo) ou o cartão com a forma certa. */
-const Verdict: React.FC<{ result: AnswerResult }> = ({ result }) => {
+const Verdict: React.FC<{ result: AnswerResult; example?: boolean }> = ({ result, example = false }) => {
   if (result.canRetry && result.hintPt) {
     return (
       <div className="mt-3 flex gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100" role="status">
@@ -106,7 +106,9 @@ const Verdict: React.FC<{ result: AnswerResult }> = ({ result }) => {
         {result.correct ? "Certo!" : "Ainda não."}
       </p>
       {result.corrected && !result.correct ? <p className="mt-1">Sua frase corrigida: <em>{result.corrected}</em></p> : null}
-      {result.expected ? <p className="mt-1">Forma certa: <strong>{result.expected}</strong></p> : null}
+      {result.expected
+        ? <p className="mt-1">{example ? "Exemplo de resposta" : "Forma certa"}: <strong>{result.expected}</strong></p>
+        : null}
       {result.whyPt ? <p className="mt-1 text-slate-200">Por quê: {result.whyPt}</p> : null}
       {result.native ? <p className="mt-1 text-slate-300">Como um nativo diria: <em>{result.native}</em></p> : null}
     </div>
@@ -212,7 +214,13 @@ export const WolfieLessonTrackSession: React.FC<SessionProps> = ({ trackId, user
     }
   };
 
-  const textItem = (id: string, label: React.ReactNode, placeholder: string, multiline = false) => {
+  const textItem = (
+    id: string,
+    label: React.ReactNode,
+    placeholder: string,
+    multiline = false,
+    example = false,
+  ) => {
     const state = items[id];
     const locked = state?.result && !state.result.canRetry;
     return (
@@ -258,7 +266,7 @@ export const WolfieLessonTrackSession: React.FC<SessionProps> = ({ trackId, user
             : null}
         </form>
         {state?.error ? <p className="mt-2 text-sm text-rose-300">{state.error}</p> : null}
-        {state?.result ? <Verdict result={state.result} /> : null}
+        {state?.result ? <Verdict result={state.result} example={example} /> : null}
       </div>
     );
   };
@@ -420,6 +428,7 @@ export const WolfieLessonTrackSession: React.FC<SessionProps> = ({ trackId, user
                     <span className="mt-1 block">{p.prompt}</span>
                   </span>,
                   p.kind === "produce" ? "sua frase, sobre a sua vida…" : "sua resposta…",
+                  p.kind === "produce",
                   p.kind === "produce",
                 );
               })}

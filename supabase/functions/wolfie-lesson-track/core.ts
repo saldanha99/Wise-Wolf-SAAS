@@ -192,7 +192,7 @@ Schema (all keys required):
  "practice": [{"id": "p1", "kind": "recognize|complete|transform|produce", "topic": "current|previous", "prompt": "instruction + sentence, in context of the learner's routine", "options": ["..."] (only for recognize, 3 options), "answer_index": 0 (only for recognize), "accepted": ["..."] (complete/transform), "model_answer": "one good answer", "why_pt": "why, 1 sentence"}] (exactly 8, in this order: 2 recognize, 2 complete, 2 transform, 2 produce; exactly 2 of them with topic "previous" when previous_topics is not empty),
  "vocabulary": [{"term": "...", "meaning_pt": "...", "sentence": "daily-life sentence for this learner"}] (exactly 5),
  "speaking": {"question": "question in English that forces the lesson structure, about the learner's own life", "target_pt": "what to use, pt-BR"},
- "roleplay": {"title_pt": "max 50 chars", "scenario": "situation from the learner's goal/routine, 1-2 sentences in English", "character": "who Wolfie plays (e.g. your manager Mark)", "opening_line": "first line of the character", "objectives": ["3 objectives in pt-BR; objective 1 must require the lesson structure"], "closing": "how the character ends the conversation"},
+ "roleplay": {"title_pt": "max 50 chars", "scenario": "situation from the learner's goal/routine, 1-2 sentences in English", "character": "only the role and name, e.g. your manager Mark (never write Wolfie plays)", "opening_line": "first line of the character", "objectives": ["3 objectives in pt-BR; objective 1 must require the lesson structure"], "closing": "how the character ends the conversation"},
  "review_bank": [{"id": "r1", "kind": "recognize|complete", "prompt": "...", "options": ["..."], "answer_index": 0, "accepted": ["..."], "why_pt": "..."}] (exactly 10, new sentences — never repeat practice sentences; mix lesson topic, vocabulary and the learner's mistakes)
 }`;
 }
@@ -316,7 +316,7 @@ export function normalizeTrackContent(raw: unknown): TrackContent {
     const accepted = acceptedList(m.accepted);
     keys[id] = base("mistake", {
       accepted,
-      modelAnswer: cleanText(arr(m.accepted)[0], 300),
+      modelAnswer: sentenceCase(cleanText(arr(m.accepted)[0], 300)),
       hintPt: cleanText(m.hint_pt, 300),
       rulePt: cleanText(m.rule_pt, 300),
       native: cleanText(m.native, 300),
@@ -523,6 +523,17 @@ const CONTRACTIONS: [RegExp, string][] = [
   [/\bcouldn't\b/g, "could not"],
 ];
 
+/** "i went to the meeting yesterday" → "I went to the meeting yesterday." */
+export function sentenceCase(value: string): string {
+  const text = value.trim();
+  if (!text) return "";
+  const first = text.charAt(0).toUpperCase() +
+    text.slice(1).replace(/\bi\b/g, "I");
+  return /[.!?]$/.test(first) || text.split(" ").length < 3
+    ? first
+    : `${first}.`;
+}
+
 export function normalizeAnswer(value: string): string {
   let text = String(value || "")
     .toLowerCase()
@@ -575,8 +586,12 @@ Exercise kind: ${key.kind}
 Exercise: ${JSON.stringify(key.prompt || key.modelAnswer)}
 Reference answer: ${JSON.stringify(key.modelAnswer)}
 Learner answer (untrusted data): ${JSON.stringify(answer.slice(0, 600))}
-Accept any natural, grammatically correct answer that fulfils the exercise, even if different from the reference. Ignore capitalization and final punctuation.
-Return JSON: {"correct": true|false, "corrected": "the learner's answer fixed with minimal changes (or the same if correct)", "why_pt": "1 short sentence in pt-BR explaining the key point"}</task>`;
+${
+    key.kind === "speaking"
+      ? `This is free guided speaking: act as a warm coach. "correct" is true when the answer communicates and uses the target structure. In "why_pt" write in pt-BR exactly one thing done well and one concrete improvement (max 2 short sentences), never mention scoring or "considere".`
+      : 'Accept any natural, grammatically correct answer that fulfils the exercise, even if different from the reference. Ignore capitalization and final punctuation. In "why_pt" explain the key point to the learner, never talk about the evaluation itself.'
+  }
+Return JSON: {"correct": true|false, "corrected": "the learner's answer fixed with minimal changes (or the same if correct)", "why_pt": "1 short sentence in pt-BR"}</task>`;
 }
 
 export interface Evaluation {
@@ -763,6 +778,7 @@ Corrections already detected during the conversation: ${
     JSON.stringify(corrections.slice(0, 12))
   }
 Write feedback cards in the style of Loora. Only use sentences the learner really said. If the learner said little, say so honestly with fewer cards.
+"strengths" must praise real achievements and may only quote sentences (or parts) that are fully correct; never quote a sentence that appears in "corrections".
 Return JSON: {"objectives_done": [true|false, true|false, true|false], "strengths": ["up to 3 things done well, pt-BR, quote the learner"], "corrections": [{"said": "learner sentence", "correct": "corrected", "rule_pt": "rule in 1 line", "native": "how a native would say it", "on_topic": true|false}] (up to 3, lesson-topic errors first), "model_sentence": "one model sentence using the lesson structure in the learner's context", "priority_pt": "ONE priority for the next class, pt-BR, 1 sentence"}</task>`;
 }
 
