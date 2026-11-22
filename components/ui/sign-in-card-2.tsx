@@ -26,9 +26,12 @@ interface SignInCard2Props {
     error?: string;
     /** Envia o e-mail de redefinição de senha para o endereço digitado. */
     onForgotPassword?: (email: string) => Promise<void>;
+    /** White label: escola cliente resolvida pelo endereço (sem marca da Wise Wolf). */
+    brand?: { name: string; logoUrl?: string | null } | null;
 }
 
-export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: SignInCard2Props) {
+export function SignInCard2({ onLogin, isLoading, error, onForgotPassword, brand }: SignInCard2Props) {
+    const brandLogo = brand?.logoUrl && /^https:\/\//.test(brand.logoUrl) ? brand.logoUrl : null;
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -81,6 +84,17 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
     return (
         <div className="min-h-screen w-full bg-[#020617] relative overflow-hidden flex items-center justify-center p-4">
             {/* Brand Watermark */}
+            {brand ? (
+                <div className="absolute top-6 left-6 flex items-center gap-3" data-testid="tenant-brand">
+                    {brandLogo && (
+                        <span className="flex h-10 w-12 items-center justify-center rounded-lg bg-white p-1 shadow-lg">
+                            <img src={brandLogo} alt="" className="h-full w-full object-contain" />
+                        </span>
+                    )}
+                    <span className="text-white font-black text-lg tracking-tight leading-none">{brand.name}</span>
+                </div>
+            ) : (
+            <>
             <div className="absolute top-6 left-6 flex items-center gap-3">
                 <span className="flex h-10 w-12 items-center justify-center rounded-lg bg-white p-1 shadow-lg">
                     <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="" className="h-full w-full object-contain" />
@@ -97,6 +111,8 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                 aria-hidden="true"
                 className="pointer-events-none absolute -bottom-16 -right-24 w-[min(90vw,760px)] opacity-100 select-none"
             />
+            </>
+            )}
 
             {/* Background gradient effect - Deep Blue Theme */}
             <div className="absolute inset-0 bg-linear-to-b from-[#000F66]/25 via-[#06142D]/40 to-[#020617]" />
@@ -188,7 +204,13 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                                     animate={{ scale: 1, opacity: 1 }}
                                     className="mx-auto w-20 h-14 rounded-2xl bg-white p-2 flex items-center justify-center shadow-lg shadow-[#CC213B]/20"
                                 >
-                                    <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="Wise Wolf Languages" className="h-full w-full object-contain" />
+                                    {brand ? (
+                                        brandLogo
+                                            ? <img src={brandLogo} alt={brand.name} className="h-full w-full object-contain" />
+                                            : <span className="text-2xl font-black text-slate-900">{brand.name.slice(0, 1).toUpperCase()}</span>
+                                    ) : (
+                                        <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="Wise Wolf Languages" className="h-full w-full object-contain" />
+                                    )}
                                 </motion.div>
 
                                 <div>
@@ -364,7 +386,7 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
 
             <div className="absolute bottom-6 text-center w-full pointer-events-none">
                 <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50">
-                    Wise Wolf System • v1.0
+                    {brand ? brand.name : 'Wise Wolf System • v1.0'}
                 </p>
             </div>
         </div>

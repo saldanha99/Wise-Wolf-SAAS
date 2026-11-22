@@ -673,11 +673,17 @@ async function refreshGeneration(
 
 async function readCredits(profile: AuthProfile, isBot: boolean) {
   if (!isBot && !["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(profile.role)) {
-    return json(403, { error: "CREDITS_ACCESS_DENIED", code: "CREDITS_ACCESS_DENIED" });
+    return json(403, {
+      error: "CREDITS_ACCESS_DENIED",
+      code: "CREDITS_ACCESS_DENIED",
+    });
   }
   const gammaApiKey = (Deno.env.get("GAMMA_API_KEY") ?? "").trim();
   if (!gammaApiKey) {
-    return json(503, { error: "GAMMA_NOT_CONFIGURED", code: "GAMMA_NOT_CONFIGURED" });
+    return json(503, {
+      error: "GAMMA_NOT_CONFIGURED",
+      code: "GAMMA_NOT_CONFIGURED",
+    });
   }
   try {
     const response = await fetchWithTimeout(`${GAMMA_BASE_URL}/me`, {
@@ -692,7 +698,9 @@ async function readCredits(profile: AuthProfile, isBot: boolean) {
       creditsRemaining: typeof payload.creditsRemaining === "number"
         ? payload.creditsRemaining
         : null,
-      neutralThemeConfigured: Boolean((Deno.env.get("GAMMA_THEME_ID_NEUTRAL") ?? "").trim()),
+      neutralThemeConfigured: Boolean(
+        (Deno.env.get("GAMMA_THEME_ID_NEUTRAL") ?? "").trim(),
+      ),
     });
   } catch {
     return json(503, { error: "GAMMA_UNAVAILABLE", code: "GAMMA_UNAVAILABLE" });
@@ -711,7 +719,10 @@ serve(async (req) => {
   if (botToken) {
     const bot = await authorizeContentBot(botToken);
     if (!bot) {
-      return json(401, { error: "CONTENT_BOT_DENIED", code: "CONTENT_BOT_DENIED" });
+      return json(401, {
+        error: "CONTENT_BOT_DENIED",
+        code: "CONTENT_BOT_DENIED",
+      });
     }
     context = bot;
     isBot = true;

@@ -1,5 +1,9 @@
 /// <reference lib="deno.ns" />
 // Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import {
+  applyTutorPersona,
+  tutorPersonaFromTenant,
+} from "../_shared/tutor-persona.ts";
 import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -7305,7 +7309,7 @@ serve(async (req) => {
         : effectiveConfig.previousSessionSummary ||
           wolfMemory.previous_session_summary || {},
     };
-    const systemPrompt = buildSystemPrompt(
+    const rawSystemPrompt = buildSystemPrompt(
       effectiveConfig,
       boundedString(profile.full_name, 200) || undefined,
       profileGoal,
@@ -7315,6 +7319,17 @@ serve(async (req) => {
       currentScenarioStatus,
       pendingRetry,
       transcriptionRequiresConfirmation,
+    );
+    // White label: escola cliente com tutorName próprio → o tutor se apresenta
+    // com esse nome. Falha na leitura mantém o Wolfie (nunca derruba o turno).
+    const { data: tenantBrand } = await supabase
+      .from("tenants")
+      .select("name, branding")
+      .eq("id", profile.tenant_id)
+      .maybeSingle();
+    const systemPrompt = applyTutorPersona(
+      rawSystemPrompt,
+      tutorPersonaFromTenant(tenantBrand?.name, tenantBrand?.branding),
     );
     let providerResult: OpenRouterResult;
     try {

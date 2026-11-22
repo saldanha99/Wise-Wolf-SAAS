@@ -717,6 +717,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/gamma-book-generator/book-spec.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/gamma-book-generator/index.ts \
+  supabase/functions/tenant-domain-allowed/index.ts \
+  supabase/functions/tenant-domain-allowed/host.ts \
+  supabase/functions/tenant-domain-allowed/host.test.ts \
+  supabase/functions/_shared/tutor-persona.ts \
+  supabase/functions/_shared/tutor-persona.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -942,6 +947,8 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
+  supabase/functions/tenant-domain-allowed/host.test.ts \
+  supabase/functions/_shared/tutor-persona.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1016,6 +1023,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
+  supabase/functions/tenant-domain-allowed/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
   supabase/functions/wolfie-tts/index.ts \
   supabase/functions/create-wolfie-topup/provider-safety.ts \
@@ -1657,6 +1665,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122204000_financeiro_melhorias_fuso_e_bordas.sql"
   "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
   "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
+  "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1871,6 +1880,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/guarda_de_agenda.sql"
   "supabase/tests/financeiro_inteligencia.sql"
   "supabase/tests/conteudo_bot_gamma.sql"
+  "supabase/tests/white_label_dominio.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1916,6 +1926,7 @@ SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
 SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
+SHARED_TUTOR_PERSONA_RELATIVE="supabase/functions/_shared/tutor-persona.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
 SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
@@ -1997,6 +2008,7 @@ HARDENED_FUNCTIONS=(
   generate-student-insights
   kiwify-webhook
   resend-webhook
+  tenant-domain-allowed
   manage-hub-account-status
   cancel-hub-subscription
   expire-hub-abandoned-checkouts
@@ -2094,6 +2106,7 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_PAYMENT_EMAIL_RELATIVE" ]] || die "envio de e-mail dos avisos de cobrança ausente"
 [[ -s "$SHARED_AI_GATEWAY_RELATIVE" ]] || die "ponte de IA compartilhada ausente"
+[[ -s "$SHARED_TUTOR_PERSONA_RELATIVE" ]] || die "persona do tutor compartilhada ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2223,6 +2236,7 @@ append_release_input_checksum() {
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_PAYMENT_EMAIL_RELATIVE" \
     "$SHARED_AI_GATEWAY_RELATIVE" \
+    "$SHARED_TUTOR_PERSONA_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
@@ -2408,6 +2422,8 @@ rsync -a -- "$SHARED_PAYMENT_EMAIL_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-email.ts"
 rsync -a -- "$SHARED_AI_GATEWAY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-gateway.ts"
+rsync -a -- "$SHARED_TUTOR_PERSONA_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-persona.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
@@ -2614,6 +2630,7 @@ hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 payment_email_shared_swapped=0
 ai_gateway_shared_swapped=0
+tutor_persona_shared_swapped=0
 payment_notice_core_shared_swapped=0
 payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
@@ -2793,6 +2810,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-email.ts" ]]
 [[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
+[[ -s "$release_dir/functions/_shared/tutor-persona.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
@@ -3088,6 +3106,14 @@ restore_previous_release() {
         "$functions_dir/_shared/ai-gateway.ts"
     else
       rm -f -- "$functions_dir/_shared/ai-gateway.ts"
+    fi
+  fi
+  if [[ "$tutor_persona_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/tutor-persona.ts" ]]; then
+      cp -a -- "$backup_dir/tutor-persona.ts" \
+        "$functions_dir/_shared/tutor-persona.ts"
+    else
+      rm -f -- "$functions_dir/_shared/tutor-persona.ts"
     fi
   fi
   if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
@@ -4490,6 +4516,14 @@ fi
 ai_gateway_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/ai-gateway.ts" \
   "$functions_dir/_shared/ai-gateway.ts"
+
+if [[ -f "$functions_dir/_shared/tutor-persona.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/tutor-persona.ts" \
+    "$backup_dir/tutor-persona.ts"
+fi
+tutor_persona_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/tutor-persona.ts" \
+  "$functions_dir/_shared/tutor-persona.ts"
 
 if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
   cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \

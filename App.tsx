@@ -28,6 +28,7 @@ import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loa
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
+import { brandText, setTutorName } from './lib/tutorBrand';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
 import { useStudentDossierLink } from './lib/studentDossierLink';
@@ -629,6 +630,7 @@ const App: React.FC = () => {
   useEffect(() => {
     resolveTenantFromHostname().then(tenant => {
       setHostnameTenant(tenant);
+      setTutorName((tenant?.branding as { tutorName?: unknown } | null | undefined)?.tutorName);
       if (tenant?.branding) {
         // Aplica branding do tenant na tela de login
         applyTenantBranding(tenant.branding.primaryColor, tenant.branding.secondaryColor);
@@ -668,6 +670,7 @@ const App: React.FC = () => {
             resolvedTenantData.branding?.primaryColor,
             resolvedTenantData.branding?.secondaryColor,
           );
+          setTutorName(resolvedTenantData.branding?.tutorName);
           setCurrentTenant({
             id: resolvedTenantData.id,
             name: resolvedTenantData.name,
@@ -1210,7 +1213,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200" role="status">
         <Loader2 className="animate-spin mr-3 text-red-400" aria-hidden="true" />
-        Abrindo o Wolfie AI Tutor...
+        {brandText('Abrindo o Wolfie AI Tutor...')}
       </div>
     );
   }
@@ -1644,7 +1647,7 @@ const App: React.FC = () => {
                       'pedagogical': 'Pedagógico',
                       'materials': 'Materiais',
                       'financial': 'Financeiro',
-                      'ai-tutor': 'Praticar com o Wolfie',
+                      'ai-tutor': brandText('Praticar com o Wolfie'),
                       'practice': 'Minhas Trilhas',
                       'whatsapp': 'WhatsApp',
                       'automation': 'Conexão do WhatsApp',

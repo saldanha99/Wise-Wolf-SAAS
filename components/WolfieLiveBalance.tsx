@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { brandText } from '../lib/tutorBrand';
 import { Mic, Zap, Infinity as InfinityIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { WolfieTopupModal } from './WolfieTopupModal';
@@ -62,7 +63,7 @@ export const WolfieLiveBalance: React.FC<WolfieLiveBalanceProps> = ({
         return (
             <div className="flex items-center gap-2 text-xs text-slate-500">
                 <InfinityIcon size={13} />
-                <span>Prática ilimitada com o Wolfie</span>
+                <span>{brandText("Prática ilimitada com o Wolfie")}</span>
             </div>
         );
     }

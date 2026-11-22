@@ -114,22 +114,47 @@ Deno.test("branding defaults to the school theme and school library", () => {
 });
 
 Deno.test("hub books must be neutral and footers stay short plain text", () => {
-  const hub = parseBookBranding({ brand: "NEUTRAL", destination: "hub", footerText: "  Wise   Wolf  " });
+  const hub = parseBookBranding({
+    brand: "NEUTRAL",
+    destination: "hub",
+    footerText: "  Wise   Wolf  ",
+  });
   assert(hub.ok, "neutral hub rejected");
   assert(hub.branding.destination === "HUB", "destination not normalized");
   assert(hub.branding.footerText === "Wise Wolf", "footer not normalized");
   const schoolHub = parseBookBranding({ brand: "school", destination: "HUB" });
-  assert(!schoolHub.ok && schoolHub.code === "HUB_REQUIRES_NEUTRAL_BRAND", "school brand reached the hub");
-  const link = parseBookBranding({ brand: "neutral", footerText: "veja https://x.y" });
-  assert(!link.ok && link.code === "INVALID_BOOK_FOOTER", "link accepted in footer");
-  const bare = parseBookBranding({ brand: "neutral", footerText: "wisewolf.com.br" });
+  assert(
+    !schoolHub.ok && schoolHub.code === "HUB_REQUIRES_NEUTRAL_BRAND",
+    "school brand reached the hub",
+  );
+  const link = parseBookBranding({
+    brand: "neutral",
+    footerText: "veja https://x.y",
+  });
+  assert(
+    !link.ok && link.code === "INVALID_BOOK_FOOTER",
+    "link accepted in footer",
+  );
+  const bare = parseBookBranding({
+    brand: "neutral",
+    footerText: "wisewolf.com.br",
+  });
   assert(!bare.ok, "bare domain accepted in footer");
-  const long = parseBookBranding({ brand: "neutral", footerText: "x".repeat(61) });
+  const long = parseBookBranding({
+    brand: "neutral",
+    footerText: "x".repeat(61),
+  });
   assert(!long.ok, "long footer accepted");
   const schoolFooter = parseBookBranding({ footerText: "Wise Wolf" });
-  assert(!schoolFooter.ok && schoolFooter.code === "FOOTER_ONLY_FOR_NEUTRAL", "footer on school brand");
+  assert(
+    !schoolFooter.ok && schoolFooter.code === "FOOTER_ONLY_FOR_NEUTRAL",
+    "footer on school brand",
+  );
   const bad = parseBookBranding({ brand: "acme" });
-  assert(!bad.ok && bad.code === "INVALID_BOOK_BRAND", "unknown brand accepted");
+  assert(
+    !bad.ok && bad.code === "INVALID_BOOK_BRAND",
+    "unknown brand accepted",
+  );
 });
 
 Deno.test("neutral instructions forbid any brand mark", () => {
@@ -138,5 +163,8 @@ Deno.test("neutral instructions forbid any brand mark", () => {
   const neutral = buildSchoolBookInstructions(parsed.spec, "neutral");
   const school = buildSchoolBookInstructions(parsed.spec);
   assert(neutral.includes("unbranded edition"), "neutral rule missing");
-  assert(!school.includes("unbranded edition"), "school book got the neutral rule");
+  assert(
+    !school.includes("unbranded edition"),
+    "school book got the neutral rule",
+  );
 });
