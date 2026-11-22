@@ -122,6 +122,8 @@ Deno.test("hub books must be neutral and footers stay short plain text", () => {
   assert(!schoolHub.ok && schoolHub.code === "HUB_REQUIRES_NEUTRAL_BRAND", "school brand reached the hub");
   const link = parseBookBranding({ brand: "neutral", footerText: "veja https://x.y" });
   assert(!link.ok && link.code === "INVALID_BOOK_FOOTER", "link accepted in footer");
+  const bare = parseBookBranding({ brand: "neutral", footerText: "wisewolf.com.br" });
+  assert(!bare.ok, "bare domain accepted in footer");
   const long = parseBookBranding({ brand: "neutral", footerText: "x".repeat(61) });
   assert(!long.ok, "long footer accepted");
   const schoolFooter = parseBookBranding({ footerText: "Wise Wolf" });

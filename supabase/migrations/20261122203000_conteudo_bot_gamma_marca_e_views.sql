@@ -78,6 +78,7 @@ begin
   if not exists (
     select 1 from public.profiles p
      where p.id = v_cred.user_id and p.tenant_id = v_cred.tenant_id and p.role = 'TEACHER'
+       and coalesce(p.is_test_account, false)
   ) then
     return;
   end if;
@@ -217,10 +218,10 @@ create or replace view openbot.conteudo_resumos_temas as
   ), itens as (
     select 'conteudo_praticado'::text as tipo, a.student_id, a.class_date,
            lower(btrim(left(split_part(x.item, ':', 1), 80))) as tema
-      from aprovados a cross join lateral jsonb_array_elements_text(a.content -> 'content_practiced') x(item)
+      from aprovados a cross join lateral jsonb_array_elements_text(coalesce(a.content -> 'content_practiced', '[]'::jsonb)) x(item)
     union all
     select 'erro_recorrente', a.student_id, a.class_date, lower(btrim(left(split_part(x.item, ':', 1), 80)))
-      from aprovados a cross join lateral jsonb_array_elements_text(a.content -> 'recurring_errors') x(item)
+      from aprovados a cross join lateral jsonb_array_elements_text(coalesce(a.content -> 'recurring_errors', '[]'::jsonb)) x(item)
     union all
     select 'objetivo', a.student_id, a.class_date, lower(btrim(left(a.content ->> 'lesson_objective', 120)))
       from aprovados a
@@ -238,15 +239,20 @@ create or replace view openbot.conteudo_resumos_temas as
 -- Perfil dos alunos com resumo aprovado, sem nome: profissão e finalidade do
 -- inglês (english_for). Valor com menos de 2 alunos vira "outras".
 create or replace view openbot.conteudo_alunos_perfil as
-  with base as (
+  with ult as (
+    select distinct on (v.lesson_session_id) v.lesson_session_id, v.status
+      from private.lesson_summary_versions v
+     where v.tenant_id = 'school-wise-wolf'
+     order by v.lesson_session_id, v.version desc
+  ), base as (
     select p.id,
            coalesce(nullif(lower(btrim(p.occupation)), ''), 'não informada') as profissao,
            coalesce(nullif(btrim(p.english_for), ''), 'não informada') as finalidade,
            count(distinct s.id) as aulas
-      from private.lesson_summary_versions v
-      join public.lesson_sessions s on s.id = v.lesson_session_id
+      from ult u
+      join public.lesson_sessions s on s.id = u.lesson_session_id
       join public.profiles p on p.id = s.student_id
-     where v.tenant_id = 'school-wise-wolf' and v.status = 'VERIFIED' and s.tenant_id = 'school-wise-wolf'
+     where u.status = 'VERIFIED' and s.tenant_id = 'school-wise-wolf'
      group by 1, 2, 3
   ), dim as (
     select 'profissao'::text as dimensao, profissao as valor, aulas from base

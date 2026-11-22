@@ -220,7 +220,10 @@ export function parseBookBranding(body: JsonObject): BookBrandingParse {
     }
     const footer = body.footerText.replace(/[\u0000-\u001f\u007f]/g, " ")
       .replace(/\s+/g, " ").trim();
-    if (footer.length > 60 || /https?:|www\./i.test(footer)) {
+    if (
+      footer.length > 60 || /https?:|www\.|@/i.test(footer) ||
+      /\b[a-z0-9-]+\.(com|br|net|org|io|app|me|co|site|online)\b/i.test(footer)
+    ) {
       return { ok: false, code: "INVALID_BOOK_FOOTER" };
     }
     footerText = footer || null;
