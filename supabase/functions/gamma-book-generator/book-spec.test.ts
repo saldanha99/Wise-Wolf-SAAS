@@ -5,6 +5,7 @@ import {
   buildSchoolBookInstructions,
   parseBookBranding,
   parseSchoolBookSpec,
+  schoolBookBrandFromTenant,
 } from "./book-spec.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -166,5 +167,38 @@ Deno.test("neutral instructions forbid any brand mark", () => {
   assert(
     !school.includes("unbranded edition"),
     "school book got the neutral rule",
+  );
+});
+
+Deno.test("school brand comes from tenant branding and is validated", () => {
+  const ok = schoolBookBrandFromTenant({
+    gammaThemeId: "qte9p85c7yez5ew",
+    gammaLogoUrl: "https://system.example.com/logo.png",
+    secondaryColor: "#cc213b",
+  });
+  assert(ok.themeId === "qte9p85c7yez5ew", "theme");
+  assert(ok.logoUrl === "https://system.example.com/logo.png", "logo");
+  assert(ok.accentHex === "#CC213B", "accent");
+  const bad = schoolBookBrandFromTenant({
+    gammaThemeId: "x; drop",
+    gammaLogoUrl: "http://insecure/logo.png",
+    secondaryColor: "red",
+  });
+  assert(!bad.themeId && !bad.logoUrl && !bad.accentHex, "invalid values kept");
+  const none = schoolBookBrandFromTenant(null);
+  assert(!none.themeId && !none.logoUrl && !none.accentHex, "null branding");
+  const parsed = parseSchoolBookSpec(base);
+  assert(parsed.ok, "valid book spec rejected");
+  assert(
+    buildSchoolBookInstructions(parsed.spec, "school", "#CC213B").includes(
+      "#CC213B",
+    ),
+    "accent missing",
+  );
+  assert(
+    !buildSchoolBookInstructions(parsed.spec, "neutral", "#CC213B").includes(
+      "#CC213B",
+    ),
+    "accent leaked into neutral",
   );
 });

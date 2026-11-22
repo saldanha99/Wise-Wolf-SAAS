@@ -14,6 +14,7 @@ import {
   parseBookBranding,
   parseSchoolBookSpec,
   schoolBookAudience,
+  schoolBookBrandFromTenant,
   type SchoolBookSpec,
 } from "./book-spec.ts";
 
@@ -187,7 +188,7 @@ async function startGeneration(
     return json(400, { error: brandingParsed.code, code: brandingParsed.code });
   }
   const branding = brandingParsed.branding;
-  const themeId = (Deno.env.get(
+  let themeId = (Deno.env.get(
     branding.brand === "neutral" ? "GAMMA_THEME_ID_NEUTRAL" : "GAMMA_THEME_ID",
   ) ?? "").trim();
   // Livro neutro sem tema neutro cairia no tema padrão da conta (pode ter a
@@ -226,10 +227,15 @@ async function startGeneration(
   }
 
   const { data: tenant, error: tenantError } = await admin.from("tenants")
-    .select("id").eq("id", tenantId).maybeSingle();
+    .select("id, branding").eq("id", tenantId).maybeSingle();
   if (tenantError || !tenant) {
     return json(404, { error: "TENANT_NOT_FOUND", code: "TENANT_NOT_FOUND" });
   }
+  // brand=school: tema, logo e cor de destaque da própria escola (branding).
+  const schoolBrand = branding.brand === "school"
+    ? schoolBookBrandFromTenant(tenant.branding)
+    : { themeId: null, logoUrl: null, accentHex: null };
+  if (schoolBrand.themeId) themeId = schoolBrand.themeId;
 
   const { data: existing, error: existingError } = await admin
     .from("school_book_generations")
@@ -285,7 +291,11 @@ async function startGeneration(
   const payload: JsonObject = {
     title: spec.title,
     inputText: buildSchoolBookInput(spec),
-    additionalInstructions: buildSchoolBookInstructions(spec, branding.brand),
+    additionalInstructions: buildSchoolBookInstructions(
+      spec,
+      branding.brand,
+      schoolBrand.accentHex,
+    ),
     textMode: "generate",
     format: "document",
     cardSplit: "inputTextBreaks",
@@ -306,6 +316,16 @@ async function startGeneration(
       dimensions: "a4",
       headerFooter: {
         topLeft: { type: "text", value: spec.title },
+        ...(schoolBrand.logoUrl
+          ? {
+            topRight: {
+              type: "image",
+              source: "custom",
+              src: schoolBrand.logoUrl,
+              size: "sm",
+            },
+          }
+          : {}),
         bottomRight: { type: "cardNumber" },
         ...(branding.footerText
           ? { bottomLeft: { type: "text", value: branding.footerText } }

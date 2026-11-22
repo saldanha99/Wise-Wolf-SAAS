@@ -241,6 +241,45 @@ export function parseBookBranding(body: JsonObject): BookBrandingParse {
   };
 }
 
+export interface SchoolBookBrand {
+  themeId: string | null;
+  logoUrl: string | null;
+  accentHex: string | null;
+}
+
+// Marca da escola nos livros brand=school, lida de tenants.branding:
+// gammaThemeId (tema da conta Gamma), gammaLogoUrl (https, entra no cabeçalho)
+// e secondaryColor (cor de destaque). Valor inválido é ignorado.
+export function schoolBookBrandFromTenant(branding: unknown): SchoolBookBrand {
+  const record = branding && typeof branding === "object" &&
+      !Array.isArray(branding)
+    ? branding as JsonObject
+    : {};
+  const theme = typeof record.gammaThemeId === "string"
+    ? record.gammaThemeId.trim()
+    : "";
+  const logo = typeof record.gammaLogoUrl === "string"
+    ? record.gammaLogoUrl.trim()
+    : "";
+  const accent = typeof record.secondaryColor === "string"
+    ? record.secondaryColor.trim()
+    : "";
+  let logoUrl: string | null = null;
+  try {
+    const url = new URL(logo);
+    if (url.protocol === "https:" && logo.length <= 2048) {
+      logoUrl = url.toString();
+    }
+  } catch {
+    logoUrl = null;
+  }
+  return {
+    themeId: /^[a-z0-9]{6,40}$/i.test(theme) ? theme : null,
+    logoUrl,
+    accentHex: /^#[0-9a-f]{6}$/i.test(accent) ? accent.toUpperCase() : null,
+  };
+}
+
 const audienceLabel = (audience: BookAudience): string =>
   ({
     kids: "children; playful, safe, short and highly scaffolded tasks",
@@ -414,6 +453,7 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
 export function buildSchoolBookInstructions(
   spec: SchoolBookSpec,
   brand: BookBrand = "school",
+  accentHex: string | null = null,
 ): string {
   const languageRule = spec.language === "bilingual"
     ? "Write learning texts, examples and target language in natural English. Write explanations and task instructions in Brazilian Portuguese when that improves clarity. Never translate away the English practice."
@@ -429,6 +469,11 @@ export function buildSchoolBookInstructions(
     "Prefer communicative, realistic tasks over generic filler. Build progression and recycle prior vocabulary across units.",
     "All multiple-choice and gap-fill activities must have one defensible answer. The answer-key cards must match the exercises exactly and may never invent missing questions.",
     "Use tables, callouts and visual hierarchy where useful. Never invent external links, audio files, QR codes, citations or research claims.",
+    ...(brand === "school" && accentHex
+      ? [
+        `Use the school's brand accent color ${accentHex} for highlights, key words, heading accents and callout borders. Never write a logo or brand mark as text; the logo is placed in the page header.`,
+      ]
+      : []),
     ...(brand === "neutral"
       ? [
         "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
