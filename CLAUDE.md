@@ -17,6 +17,23 @@
   HUB_PROFESSOR), `conteudo_geracoes_gamma`, `conteudo_creditos_gamma_mes`, `conteudo_resumos_temas`
   (só itens vistos com 3+ alunos), `conteudo_alunos_perfil` (profissão/finalidade com 2+ alunos). Nenhuma
   tem nome, contato, título ou id de aluno. Migration `20261122203000`; teste `supabase/tests/conteudo_bot_gamma.sql`.
+- **Imagens:** `imageOptions.source = "pexels"` (licença comercial, sem marca d'água). `webFreeToUseCommercially`
+  trouxe foto de banco com marca d'água na capa (teste de 22/11). Unsplash não existe no enum da API. IA do
+  Gamma (`aiGenerated`) fica fora: imagem gerada só pelo Codex.
+- **No ar (22/11, ~16:40 UTC):** migration aplicada e marcada; `gamma-book-generator` copiado + linha no
+  `releases/.published-functions.md5`; `.env.functions` ganhou `GAMMA_API_KEY` e `GAMMA_THEME_ID_NEUTRAL=default-light`
+  (tema padrão "Basic Light", sem marca) com `--force-recreate functions`. **`GAMMA_THEME_ID` (tema da escola)
+  continua vazio:** livro `school` sai no tema padrão da conta, sem logo. A conta Gamma tem 3 temas próprios
+  "Tema sem título"; o Vinícius escolhe qual é o da escola. Conta técnica `conteudo-bot@wisewolflanguage.com.br`
+  (id `8e541217-9b3f-49c0-a3e0-b70fe9aed643`); token no Vault do OpenBot (`WISEWOLF_CONTENT_BOT_TOKEN`).
+  Testes: 2 livros de 12 páginas (36 créditos cada; saldo 11.653), ambos PENDING/PRIVATE, título "Teste técnico — …".
+- **Rollback:** backup `/opt/wisewolf/backup-conteudo-20261122T163541Z/` (`postgres.dump`, `functions/gamma-book-generator`,
+  `env.functions`, `.published-functions.md5`, `migration-checksums`). Função: copiar a pasta de volta + o md5 e
+  `docker restart supabase-edge-functions`; env: devolver `env.functions` e `docker compose up -d --no-deps
+  --force-recreate functions`. Agente: `update private.content_bot_credentials set revoked_at = now();`. Banco
+  (aditivo; só se preciso): `drop view openbot.conteudo_materiais, openbot.conteudo_geracoes_gamma,
+  openbot.conteudo_creditos_gamma_mes, openbot.conteudo_resumos_temas, openbot.conteudo_alunos_perfil;`
+  (as colunas novas têm default e podem ficar).
 ### 22/11/2026 (noite, 3) — Hub: checkout com cartão, anual do Wolfie e Hub só logado (branch feat/hub-checkout-cartao)
 
 - **Venda pelo site principal:** `wisewolflanguage.com.br/wolfie`, `/para-professores` e `/para-escolas`
