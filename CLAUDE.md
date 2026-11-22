@@ -54,6 +54,10 @@
   (`hub-purchase-capi.ts`), só na 1ª cobrança. ⚠️ **`FB_CAPI_TOKEN` não existe na VPS**: o CAPI é no-op até o token.
 - **Hub só logado:** deslogado nas páginas de venda do Hub vai para o site principal (com UTMs); a raiz é o login.
   HTML estático dessas páginas com `noindex` e canonical no site principal; sitemap do hub só com termos/privacidade.
+- **301 no Caddy (bloco `hub.wisewolflanguage.com.br`):** `/professores` → `/para-professores` e `/escolas` →
+  `/para-escolas` (com a query). ⚠️ `/biblioteca`, `/educador-ia`, `/wolfie` e `/saas-escolar` NÃO podem ter 301:
+  logado, abrem abas do portal (`portalTabForMarketingPage`); seguem com noindex + canonical. Backup do Caddyfile em
+  `/opt/wisewolf/backup-hub-checkout-20261122T155554Z/Caddyfile.before-hub-301`.
 - **App do Wolfie (`wolfie.wisewolflanguage.com.br`):** estava 403 desde 22/09 (`current` apontava para um build do
   SaaS). Release nova `20261122T155909Z-hub-checkout` (build de `apps/wolfie-web` desta ponta); `current` → `.../dist`.
 - **Backup/rollback:** `/opt/wisewolf/backup-hub-checkout-20261122T155554Z/` (banco, `frontend-dist`, funções
