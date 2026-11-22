@@ -1,3 +1,22 @@
+### 22/11/2026 (noite, 13) — Teto da Anthropic só avisa; senhas de demo fora do código; 49 do Hub aprovados
+
+- **Teto só avisa (decisão do Vinícius, substitui a "noite, 11"):** acima de `ANTHROPIC_MONTHLY_BUDGET_USD` o chat
+  **continua na Anthropic**; o `_shared/ai-gateway.ts` só grava o gasto e dá `console.warn` quando o total passa do
+  teto (sem leitura antes de cada chamada, sem desvio ao OpenRouter). `ANTHROPIC_ROUTING=off` segue como chave manual.
+  Vigia: `scripts/ops/anthropic-spend-alert.sh [host]` (somente leitura; saída 0 OK, 1 ALERTA em ≥ US$ 40 / ≥ US$ 50,
+  2 erro), cópia em `/data/OpenBot/Shared/wisewolf/ops/`. Commits `e474c4b` + `6c5898c`.
+- **No ar (22:29 UTC):** só `_shared/ai-gateway.ts` (md5 `efc9b74c…`); `functions` recriado, healthy. Sem front.
+- **Rollback:** `/opt/wisewolf/backup-teto-so-aviso-20261122T222912Z/functions/_shared/ai-gateway.ts` → volume +
+  `docker compose up -d --no-deps --force-recreate functions`.
+- **Segurança (`a3b1aba`):** saiu do código o bloco comentado de "Demo Quick Access" (`sign-in-card-2.tsx`), o
+  `MOCK_ACCOUNTS` (`constants.tsx`) e o `SupabaseSeeder.tsx` (sem uso). A senha do `SUPER_ADMIN` `a***n@educore.io` foi
+  trocada no banco por uma aleatória que ninguém guarda (a conta fica: é o `hub_rights_verified_by` do Hub). Nada muda
+  no bundle (o bloco já não chegava ao front). Ainda com 123456, por decisão do Vinícius: as contas de demo dos
+  tenants de teste e o `scripts/test-edge-functions.mjs` (aluno demo).
+- **Hub:** os 49 pendentes foram aprovados no servidor pela RPC `hub_approve_commercial_publications` (identidade da
+  conta da plataforma) + `sync-hub-material` em lotes de 5; catálogo 42 → 91. Autorização em `public.audit_logs`
+  (`action = hub_commercial_approval_bulk`). Backup: `/data/OpenBot/Shared/wisewolf/conteudo/lote/aprovacao-20261122/`.
+
 ### 22/11/2026 (noite, 11) — Teto de US$ 50/mês da Anthropic e Lançador (escolher professor / só gerar link)
 
 - **Teto da Anthropic (decisão do Vinícius):** a chave é a mesma do Lei Prova (que tem contador próprio de US$ 50). O
