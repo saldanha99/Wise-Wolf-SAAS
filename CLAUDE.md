@@ -1,3 +1,27 @@
+### 22/11/2026 (noite, 2) — Inteligência financeira no ar (branch feat/financeiro-inteligencia, de85803)
+
+- **O quê:** Relatórios → Financeiro ganha 4 telas, só SCHOOL_ADMIN/SUPER_ADMIN: **Margem por plano**
+  (`unit-economics`: mensalidade − repasse − IA/Wolfie − taxa Asaas − imposto, por aluno/plano/professor),
+  **Preços e equilíbrio** (`pricing`: margem por plano do catálogo, simulador de preço, ponto de equilíbrio),
+  **Caixa projetado** (`cashflow-projection`: mês atual + 6) e **DRE 12 meses** (`dre-12m`). Tour
+  `2026-11-23-margem-precos-equilibrio`.
+- **Banco (aditivo):** migrations `20261122200000`, `…201000`, `…202000`. Tabela `public.finance_settings`
+  (imposto, taxa Asaas por cobrança, US$→R$, R$/min do realtime, custos fixos extras) e as funções
+  `finance_*`. Não altera `get_cashflow` nem `dre_gerencial`: lê deles.
+- **Regras que valem:** imposto **não configurado** (`tax_mode=UNSET`) = margem e DRE sem imposto, com aviso.
+  Caixa projetado só para a escola de quem consulta (outra escola → erro 42501, sem mistura). Repasse pago
+  conta por `teacher_closings.paid_at`, não só status `PAGO`. Fechamento com mais de 2 meses sem pagamento
+  fica fora da projeção e vira aviso. Plano adiantado sai da previsão pela `student_payment_allocations`.
+- **Publicação isolada:** backup em `/opt/wisewolf/backup-financeiro-20261122T155124Z/` (`postgres.dump`,
+  `frontend-dist`, `frontend-dist.md5`, `migration-checksums`); 3 migrations numa transação e marcadas em
+  `.migration-checksums`; front anterior em `src/dist.prev7-financeiro`. Sem Edge Function nova.
+- **Rollback:** front: `cd /opt/wisewolf/frontend/src && mv dist dist.financeiro && mv dist.prev7-financeiro dist
+  && cd .. && docker compose restart frontend`. Banco (só se preciso): `drop function public.finance_cashflow_projection(int,text),
+  public.finance_dre_completo(text,text), public.finance_pricing_overview, public.finance_unit_economics,
+  public.finance_settings_get, public.finance_settings_save, private.finance_student_economics,
+  private.finance_student_plan, private.finance_settings_effective;` (confira as assinaturas com `\df finance_*`)
+  e `drop table public.finance_settings;` + apagar os 3 `.sha256` de `20261122200000/201000/202000`.
+
 ### 22/11/2026 (noite) — Decisões do Vinícius: lançar aula aprova resumo, OpenRouter fora, compra de minutos
 
 - **Lançar a aula APROVA o resumo** (substitui 28/09). `private.approve_proposed_summary` (migration
