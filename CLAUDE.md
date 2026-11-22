@@ -1,3 +1,17 @@
+### 22/11/2026 — Primeiro toque não insiste em número sem WhatsApp (hotfix)
+
+O primeiro toque do `funnel-sweeper` (a cada 5 min, horário comercial) desfazia a marca
+quando o envio falhava e seguia para o próximo lead: 11 leads NEW com número que não existe
+no WhatsApp eram tentados em TODA rodada (~130 recusas 400/h no `whatsapp_outbound_ledger`
+pela central, desde pelo menos 21/11). Nada chegava ao WhatsApp (a Evolution recusa antes),
+mas sujava o livro e os logs. Agora `whatsappNumberStatus` (`_shared/evolution-send.ts`)
+consulta `chat/whatsappNumbers`; só "não existe" confirmado grava
+`automation_sent` kind `SDR_NO_WHATSAPP` (por telefone; não conta no teto de 15/dia) e o
+lead sai do primeiro toque. Falha da consulta segue o envio como antes. O lead continua NEW
+no CRM para a equipe. Publicado por hotfix (scp das duas peças), backup em
+`/opt/wisewolf/backups/hotfix-primeiro-toque-sem-whatsapp-20261122T151453Z`; no próximo
+release completo o drift guard acusa `funnel-sweeper` e `_shared`: é este hotfix.
+
 ### 22/11/2026 — Número só do financeiro no ar (ex-suporte W-Tech)
 
 O número do antigo "Suporte W-Tech Brasil" (final 6468) já estava no MESMO

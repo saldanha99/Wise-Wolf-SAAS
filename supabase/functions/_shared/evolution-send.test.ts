@@ -519,3 +519,54 @@ Deno.test("teto: sem régua (null) o envio é o de sempre", async () => {
     setOutboundPermitSource(null);
   }
 });
+
+Deno.test("whatsappNumberStatus: só diz 'missing' quando a Evolution confirma", async () => {
+  const { whatsappNumberStatus } = await import("./evolution-send.ts");
+  const fone = "5511999998888";
+  await comFetchFalso(
+    () => Response.json([{ number: fone, exists: false, jid: null }]),
+    async () => {
+      assertEquals(
+        await whatsappNumberStatus(BASE, KEYS, "inst", fone),
+        "missing",
+      );
+    },
+  );
+  await comFetchFalso(
+    () =>
+      Response.json([{
+        number: fone,
+        exists: true,
+        jid: `${fone}@s.whatsapp.net`,
+      }]),
+    async () => {
+      assertEquals(
+        await whatsappNumberStatus(BASE, KEYS, "inst", fone),
+        "exists",
+      );
+    },
+  );
+  // Falha da consulta ou resposta estranha nunca vira "não existe".
+  for (
+    const resp of [
+      new Response("erro", { status: 500 }),
+      Response.json([]),
+      Response.json({}),
+    ]
+  ) {
+    await comFetchFalso(() => resp, async () => {
+      assertEquals(
+        await whatsappNumberStatus(BASE, KEYS, "inst", fone),
+        "unknown",
+      );
+    });
+  }
+  // Grupo não é consultado.
+  await comFetchFalso(() => Response.json([]), async (chamadas) => {
+    assertEquals(
+      await whatsappNumberStatus(BASE, KEYS, "inst", "123@g.us"),
+      "unknown",
+    );
+    assertEquals(chamadas.length, 0);
+  });
+});

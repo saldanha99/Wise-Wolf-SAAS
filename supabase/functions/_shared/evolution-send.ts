@@ -219,6 +219,45 @@ export async function resolveJid(
 }
 
 /**
+ * O número tem WhatsApp? "missing" só quando a Evolution respondeu e disse
+ * que não existe; qualquer falha da consulta é "unknown" (quem chama segue
+ * como antes). Existe para automações não ficarem retentando para sempre um
+ * número que nunca vai receber: em 22/11/2026 o primeiro toque do
+ * funnel-sweeper tentava 11 leads sem WhatsApp a cada 5 min (~130 recusas/h).
+ */
+export async function whatsappNumberStatus(
+  base: string,
+  keys: string[],
+  instance: string,
+  phone: string,
+): Promise<"exists" | "missing" | "unknown"> {
+  if (!precisaResolverJid(phone)) return "unknown";
+  for (const key of keys) {
+    try {
+      const resp = await fetch(
+        `${base}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key },
+          body: JSON.stringify({ numbers: [phone] }),
+          redirect: "error",
+          signal: AbortSignal.timeout(10000),
+        },
+      );
+      if (resp.status === 401) continue;
+      if (!resp.ok) return "unknown";
+      const data = await resp.json();
+      const entry = Array.isArray(data) ? data[0] : null;
+      if (!entry || typeof entry.exists !== "boolean") return "unknown";
+      return entry.exists ? "exists" : "missing";
+    } catch {
+      return "unknown";
+    }
+  }
+  return "unknown";
+}
+
+/**
  * Resolve o destino que deve ser persistido/autorizado pelo fence.
  *
  * A indisponibilidade do lookup preserva a compatibilidade histórica: o

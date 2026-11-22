@@ -6,6 +6,7 @@ import { handoffAtivo } from "../_shared/lead-contact.ts";
 import {
   sendWhatsText,
   sendWhatsTextDetailed,
+  whatsappNumberStatus,
 } from "../_shared/evolution-send.ts";
 import {
   evaluateCommercialSuppression,
@@ -276,6 +277,7 @@ serve(async (req) => {
       first_touch: 0,
       first_touch_skipped: 0,
       first_touch_suppressed: 0,
+      first_touch_no_whatsapp: 0,
       reheat: 0,
       rebroadcasts: 0,
       director_alerts: 0,
@@ -450,6 +452,37 @@ serve(async (req) => {
         }
         if (isCandidatePhone(lead.tenant_id, lead.phone || "")) {
           result.first_touch_skipped++;
+          continue;
+        }
+
+        // Número sem WhatsApp nunca vai receber: a Evolution recusa (400) e,
+        // sem esta marca, o lead voltava à fila a cada 5 min para sempre
+        // (22/11/2026: 11 leads, ~130 recusas/h no livro de envios). A marca
+        // é outra, não SDR_FIRST_TOUCH, para não gastar o teto diário.
+        if (await sentEver(sb, "SDR_NO_WHATSAPP", phone)) {
+          result.first_touch_no_whatsapp++;
+          continue;
+        }
+        if (
+          await whatsappNumberStatus(
+            EVOLUTION_API_URL,
+            EVOLUTION_KEYS,
+            t.studentInstance,
+            phone,
+          ) === "missing"
+        ) {
+          await sb.from("automation_sent").insert({
+            kind: "SDR_NO_WHATSAPP",
+            subject_id: phone,
+            ref_date: todayBRT(),
+          });
+          console.warn(
+            "[funnel-sweeper] lead sem WhatsApp, fora do primeiro toque",
+            {
+              leadId: lead.id,
+            },
+          );
+          result.first_touch_no_whatsapp++;
           continue;
         }
 
