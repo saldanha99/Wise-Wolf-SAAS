@@ -1,3 +1,21 @@
+### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
+
+- **Aviso do recebedor no Wolfie (decisão do Chefe/Vinícius, `8e4c33a`, Revisor Ok):** a mesma constante
+  `_shared/hub-payment-processor.ts` aparece no app do Wolfie (`apps/wolfie-web/.../SubscribePage.tsx`: revisão antes de
+  gerar, junto do QR e no rodapé; saiu "processada pelo Asaas") e na compra de minutos (`WolfieTopupModal`). E-mail de
+  confirmação já tinha. Site: produto `wolfie` com `payeeNotice` (institucional `a7bdce2`, Dev Next.js). Termos do
+  Wolfie (2026-08-03-v1) não mudaram.
+- **No ar (20:35–20:38 UTC):** front do sistema `index-CeZsTFPJ.js` (56 arquivos fora de `assets/` iguais); app do
+  Wolfie release `20261123T203636Z-wolfie-aviso-recebedor` (`index-PXJ9NTPT.js`, `current` → `.../20261123T203636Z-wolfie-aviso-recebedor/dist`, container recriado com
+  `docker compose up -d --force-recreate`; só restart mantém a pasta antiga montada).
+- **Rollback:** sistema: `cd /opt/wisewolf/frontend/src && mv dist dist.wolfie-aviso && mv dist.prev20-wolfie-aviso dist && cd .. &&
+  docker compose restart frontend`. Wolfie: `cd /opt/wisewolf/wolfie-frontend && ln -sfn
+  /opt/wisewolf/wolfie-frontend/releases/20261122T155909Z-hub-checkout/dist current && echo 20261122T155909Z-hub-checkout >
+  ACTIVE_RELEASE && docker compose up -d --force-recreate`.
+- **Gerador do Hub v4.2 (Dev Wise Wolf Hub, `7915976`, Revisor Ok):** a certa da múltipla escolha gira de letra. Só
+  `pedagogical-content` (`a0bb6072…`), 20:34 UTC. Rollback: pasta + `published-functions.md5` de
+  `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/` + `docker restart supabase-edge-functions`.
+
 ### 23/11/2026 (noite, 2) — Hub Fase 1 no ar: teste Pro sem cartão, Google, logo/Word, atividade por link/QR e correção por IA
 
 - **O quê (pedido do Chefe d03e7683 + defeitos do E2E de 23/11):** teste **Pro de 7 dias sem cartão** (o claim dá
