@@ -3,6 +3,7 @@
 import {
   americanizeSpelling,
   buildHubVerifyPrompt,
+  focusBelowLevel,
   hubMaterialQualityIssues,
   hubVerifySchema,
   isNotARealError,
@@ -193,4 +194,94 @@ Deno.test("2ª passada: schema estrito com issues + material e prompt com a chec
     "achado automático no prompt",
   );
   assert(prompt.includes("UMA posição coerente"), "coerência de personagem");
+});
+
+Deno.test("erro de propósito não reprova: correção de erros, distrator e dever com IA; alternativa certa errada reprova", () => {
+  const ok = hubMaterialQualityIssues({
+    sentences: [{
+      sentence: "The bus is more cheap.",
+      answer: "The bus is cheaper.",
+      explanation_pt: "",
+    }],
+    questions: [{
+      prompt: "The train is ___.",
+      options: ["faster", "more fast"],
+      correct: 0,
+      explanation_pt: "",
+    }],
+    ai_homework: [{
+      task_pt: "x",
+      prompt_en: "Correct my sentences: The event is more big.",
+      tip_pt: "",
+    }],
+  });
+  assert(
+    !ok.some((issue) => issue.code === "WRONG_COMPARATIVE"),
+    `falso positivo: ${JSON.stringify(ok)}`,
+  );
+  const bad = hubMaterialQualityIssues({
+    questions: [{
+      prompt: "The train is ___.",
+      options: ["faster", "more fast"],
+      correct: 1,
+      explanation_pt: "",
+    }],
+    cards: [{ term: "better", definition_en: "more good than something else" }],
+  });
+  const paths = bad.filter((issue) => issue.code === "WRONG_COMPARATIVE").map((
+    issue,
+  ) => issue.path);
+  assert(
+    paths.includes("questions[0].options[1]") &&
+      paths.includes("cards[0].definition_en"),
+    JSON.stringify(paths),
+  );
+});
+
+Deno.test("2ª passada: foco de nível abaixo não vale e distrator aceitável na fala informal é trocado", () => {
+  const b1 = buildHubVerifyPrompt(spec("vocab_cards", "B1"), {}, []);
+  assert(
+    b1.includes("NÃO valem como foco de B1") && b1.includes("A2: past simple"),
+    "lista dos níveis abaixo",
+  );
+  assert(b1.includes("You think it is good?"), "distrator informal");
+  assert(
+    !buildHubVerifyPrompt(spec("quiz", "A1"), {}, []).includes(
+      "NÃO valem como foco",
+    ),
+    "A1 não tem nível abaixo",
+  );
+});
+
+Deno.test("foco abaixo do nível: past simple sozinho em B1 sim; contraste com present perfect não", () => {
+  assert(
+    focusBelowLevel("B1", "Past simple for finished events in stories"),
+    "past simple em B1",
+  );
+  assert(
+    !focusBelowLevel(
+      "B1",
+      "Present perfect vs. past simple for life experiences",
+    ),
+    "contraste é B1",
+  );
+  assert(
+    !focusBelowLevel("A2", "Past simple for finished events"),
+    "past simple é A2",
+  );
+  assert(
+    focusBelowLevel("C1", "Second conditional for advice"),
+    "2º condicional em C1",
+  );
+  assert(
+    !focusBelowLevel("C1", "Cleft sentences with What I need is"),
+    "cleft é C1",
+  );
+  const issues = hubMaterialQualityIssues({
+    grammar_focus: { point: "Past simple for stories" },
+  }, "B1");
+  assert(
+    issues.some((issue) => issue.code === "FOCUS_BELOW_LEVEL"),
+    "checagem com nível",
+  );
 });

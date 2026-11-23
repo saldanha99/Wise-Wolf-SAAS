@@ -15,6 +15,7 @@ import {
   buildHubVerifyPrompt,
   hubMaterialQualityIssues,
   hubVerifySchema,
+  RETRY_QUALITY_CODES,
 } from "../../supabase/functions/pedagogical-content/hub-quality.ts";
 import { toAnthropicBody } from "../../supabase/functions/_shared/ai-gateway.ts";
 
@@ -110,7 +111,9 @@ for await (const entry of Deno.readDir(inDir)) {
       `wise_wolf_material_${spec.kind}`,
     );
     const first = normalizeHubMaterial(spec, gen.result);
-    const afterGen = hubMaterialQualityIssues(gen.result).map((i) => i.code);
+    const afterGen = hubMaterialQualityIssues(gen.result, spec.level).map((i) =>
+      i.code
+    );
     let status = first.ok ? "ok" : `NORMALIZE_${first.code}`;
     let verIn = 0, verOut = 0, modelIssues = 0;
     let finalRaw: unknown = gen.result;
@@ -119,7 +122,7 @@ for await (const entry of Deno.readDir(inDir)) {
         buildHubVerifyPrompt(
           spec,
           gen.result,
-          hubMaterialQualityIssues(gen.result),
+          hubMaterialQualityIssues(gen.result, spec.level),
         ),
         hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
         `wise_wolf_verify_${spec.kind}`,
@@ -130,8 +133,27 @@ for await (const entry of Deno.readDir(inDir)) {
         ? ver.result.issues.length
         : 0;
       if (normalizeHubMaterial(spec, ver.result.material).ok) {
-        finalRaw = ver.result.material;
+        finalRaw = americanizeSpelling(ver.result.material);
       } else status = "correction_rejected";
+      // 2ª rodada só se sobrar problema que reprova (igual ao servidor).
+      const left = hubMaterialQualityIssues(
+        finalRaw as Record<string, unknown>,
+        spec.level,
+      )
+        .filter((i) => RETRY_QUALITY_CODES.has(i.code));
+      if (left.length) {
+        const again = await chat(
+          buildHubVerifyPrompt(spec, finalRaw as Record<string, unknown>, left),
+          hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
+          `wise_wolf_verify_${spec.kind}`,
+        );
+        verIn += again.tokensIn;
+        verOut += again.tokensOut;
+        if (normalizeHubMaterial(spec, again.result.material).ok) {
+          finalRaw = again.result.material;
+        }
+        status = "ok_2_rodadas";
+      }
       await Deno.writeTextFile(
         `${outDir}/${env.grade_id}.issues.json`,
         JSON.stringify(ver.result.issues, null, 2),

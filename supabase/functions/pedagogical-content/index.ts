@@ -28,7 +28,9 @@ import {
   BLOCKING_QUALITY_CODES,
   buildHubVerifyPrompt,
   hubMaterialQualityIssues,
+  type HubQualityIssue,
   hubVerifySchema,
+  RETRY_QUALITY_CODES,
 } from "./hub-quality.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
@@ -1703,32 +1705,49 @@ async function verifyHubMaterial(
   userId: string,
   base: ProviderGenerationOptions,
 ): Promise<HubVerifiedMaterial> {
-  const before = hubMaterialQualityIssues((raw ?? {}) as JsonObject);
-  let chosenRaw: unknown = raw;
+  const before = hubMaterialQualityIssues(
+    (raw ?? {}) as JsonObject,
+    spec.level,
+  );
+  const enabled = Deno.env.get("HUB_MATERIAL_VERIFY")?.trim() !== "off";
+  let currentRaw: unknown = raw;
   let modelIssues = 0;
-  let verifyStatus = "ok";
-  if (Deno.env.get("HUB_MATERIAL_VERIFY")?.trim() !== "off") {
+  let rounds = 0;
+  let verifyStatus = enabled ? "ok" : "disabled";
+  const retryOf = (candidate: unknown) =>
+    hubMaterialQualityIssues((candidate ?? {}) as JsonObject, spec.level)
+      .filter((issue) => RETRY_QUALITY_CODES.has(issue.code));
+
+  // 1ª rodada sempre; 2ª só se sobrar problema que reprova (custa pouco: é rara).
+  const review = async (candidate: unknown, issues: HubQualityIssue[]) => {
+    rounds += 1;
+    const verified = await callOpenRouter(
+      apiKey,
+      redactDirectIdentifiers(
+        buildHubVerifyPrompt(spec, (candidate ?? {}) as JsonObject, issues),
+      ),
+      hubUsageSink(userId, "hub_educator_material_verify"),
+      {
+        ...base,
+        responseSchema: hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
+        responseSchemaName: `wise_wolf_verify_${spec.kind}`,
+        temperature: 0.2,
+      },
+    );
+    const result = verified.result as JsonObject | null;
+    modelIssues += Array.isArray(result?.issues) ? result!.issues.length : 0;
+    if (result && normalizeHubMaterial(spec, result.material).ok) {
+      return americanizeSpelling(result.material);
+    }
+    verifyStatus = "correction_rejected";
+    return candidate;
+  };
+
+  if (enabled) {
     try {
-      const verified = await callOpenRouter(
-        apiKey,
-        redactDirectIdentifiers(
-          buildHubVerifyPrompt(spec, (raw ?? {}) as JsonObject, before),
-        ),
-        hubUsageSink(userId, "hub_educator_material_verify"),
-        {
-          ...base,
-          responseSchema: hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
-          responseSchemaName: `wise_wolf_verify_${spec.kind}`,
-          temperature: 0.2,
-        },
-      );
-      const result = verified.result as JsonObject | null;
-      modelIssues = Array.isArray(result?.issues) ? result!.issues.length : 0;
-      if (result && normalizeHubMaterial(spec, result.material).ok) {
-        chosenRaw = result.material;
-      } else {
-        verifyStatus = "correction_rejected";
-      }
+      currentRaw = await review(raw, before);
+      const left = retryOf(currentRaw);
+      if (left.length) currentRaw = await review(currentRaw, left);
     } catch (error) {
       // Revisão fora do ar não derruba a geração: seguem as checagens sem IA.
       verifyStatus = "verify_failed";
@@ -1737,20 +1756,20 @@ async function verifyHubMaterial(
         code: error instanceof HttpError ? error.code : "UNKNOWN",
       });
     }
-  } else {
-    verifyStatus = "disabled";
   }
-  const fixedRaw = americanizeSpelling(chosenRaw);
+  const fixedRaw = americanizeSpelling(currentRaw);
   const renormalized = normalizeHubMaterial(spec, fixedRaw);
   const value = renormalized.ok ? renormalized.value : first;
   const after = hubMaterialQualityIssues(
     (renormalized.ok ? fixedRaw : raw ?? {}) as JsonObject,
+    spec.level,
   ).filter((issue) => issue.code !== "BRITISH_SPELLING");
   const blocking = after.filter((issue) =>
     BLOCKING_QUALITY_CODES.has(issue.code)
   );
   const report = {
     status: verifyStatus,
+    rounds,
     model_issues: modelIssues,
     automatic_before: before.map((issue) => issue.code),
     automatic_after: after.map((issue) => issue.code),

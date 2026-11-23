@@ -17,6 +17,8 @@ import {
 
 type JsonObject = Record<string, unknown>;
 
+const LEVEL_ORDER: HubMaterialLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
 export const HUB_QUALITY_RULES = (spec: HubMaterialSpec): string =>
   [
     `REGRAS DE QUALIDADE (o material é revisado por um professor e reprovado se violar qualquer uma):`,
@@ -42,7 +44,8 @@ export interface HubQualityIssue {
     | "AUDIO_MENTION"
     | "WRONG_COMPARATIVE"
     | "BRITISH_SPELLING"
-    | "WATCH_OUT_NOT_AN_ERROR";
+    | "WATCH_OUT_NOT_AN_ERROR"
+    | "FOCUS_BELOW_LEVEL";
   detail: string;
 }
 
@@ -131,8 +134,70 @@ function* englishStrings(
 const isWrongSide = (path: string): boolean =>
   /watch_out\[\d+\]\.wrong_en$/.test(path);
 
+// Campos com erro DE PROPÓSITO (o aluno corrige): frase da correção de erros,
+// distratores do quiz e o prompt do dever com IA, que traz as frases do aluno.
+// A alternativa certa é conferida à parte.
+const DELIBERATE_ERROR_KEYS = new Set([
+  "sentence",
+  "options",
+  "prompt_en",
+  "wrong_en",
+]);
+
+function* correctOptions(
+  value: unknown,
+  path: string,
+): Generator<[string, string]> {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      yield* correctOptions(value[i], `${path}[${i}]`);
+    }
+  } else if (value && typeof value === "object") {
+    const item = value as JsonObject;
+    const index = Number(item.correct);
+    if (
+      Array.isArray(item.options) && Number.isInteger(index) &&
+      typeof item.options[index] === "string"
+    ) {
+      yield [`${path}.options[${index}]`, item.options[index] as string];
+    }
+    for (const [k, v] of Object.entries(item)) {
+      if (k !== "options") yield* correctOptions(v, path ? `${path}.${k}` : k);
+    }
+  }
+}
+
+// Foco gramatical claramente de nível abaixo (sozinho, sem o contraste que o
+// nível pede). Não reprova: força a 2ª rodada com o problema dito.
+const BELOW_LEVEL_FOCUS: Array<[HubMaterialLevel, RegExp]> = [
+  ["A2", /^(the )?(verb )?to be\b|^there (is|are)\b/i],
+  [
+    "B1",
+    /^(the )?past simple\b(?!.*(\bvs\b|versus|\bx\b|present perfect|continuous|used to))|^comparatives?\b|^(adverbs of )?frequency\b|^going to\b/i,
+  ],
+  [
+    "B2",
+    /^(the )?present perfect\b(?!.*(continuous|\bvs\b|versus|\bx\b|passive))|^first conditional\b|^used to\b/i,
+  ],
+  [
+    "C1",
+    /^(second|third) conditional\b(?!.*mixed)|^reported speech\b|^(the )?passive( voice)?\b/i,
+  ],
+];
+
+export function focusBelowLevel(
+  level: HubMaterialLevel,
+  point: string,
+): boolean {
+  const index = LEVEL_ORDER.indexOf(level);
+  return BELOW_LEVEL_FOCUS.some(([from, pattern]) =>
+    LEVEL_ORDER.indexOf(from) <= index && pattern.test(point.trim())
+  );
+}
+
 export function hubMaterialQualityIssues(
   material: JsonObject,
+  level?: HubMaterialLevel,
 ): HubQualityIssue[] {
   const issues: HubQualityIssue[] = [];
   for (const [path, key, text] of englishStrings(material, "")) {
@@ -141,7 +206,9 @@ export function hubMaterialQualityIssues(
     }
     if (isPortugueseKey(key) || isWrongSide(path)) continue;
     // Texto em pt pode citar o erro entre aspas; só o inglês é conferido.
-    const comparative = text.match(WRONG_COMPARATIVE);
+    const comparative = DELIBERATE_ERROR_KEYS.has(key)
+      ? null
+      : text.match(WRONG_COMPARATIVE);
     if (comparative) {
       issues.push({ path, code: "WRONG_COMPARATIVE", detail: comparative[0] });
     }
@@ -151,7 +218,23 @@ export function hubMaterialQualityIssues(
       }
     }
   }
+  for (const [path, option] of correctOptions(material, "")) {
+    const comparative = option.match(WRONG_COMPARATIVE);
+    if (comparative) {
+      issues.push({ path, code: "WRONG_COMPARATIVE", detail: comparative[0] });
+    }
+  }
   const focus = material.grammar_focus as JsonObject | undefined;
+  if (
+    level && typeof focus?.point === "string" &&
+    focusBelowLevel(level, focus.point)
+  ) {
+    issues.push({
+      path: "grammar_focus.point",
+      code: "FOCUS_BELOW_LEVEL",
+      detail: focus.point,
+    });
+  }
   const watch = Array.isArray(focus?.watch_out)
     ? focus!.watch_out as JsonObject[]
     : [];
@@ -206,6 +289,16 @@ export function hubVerifySchema(materialSchema: JsonObject): JsonObject {
   };
 }
 
+// Pontos dos níveis abaixo NÃO valem como foco (ex.: "past simple" sozinho num
+// B1 é foco de A2 — achado do Revisor no lote 1).
+export function lowerLevelsNote(level: HubMaterialLevel): string {
+  const lower = LEVEL_ORDER.slice(0, LEVEL_ORDER.indexOf(level));
+  if (!lower.length) return "";
+  return `"grammar_focus.point" TEM de ser um ponto do leque do ${level}. Estes são de nível abaixo e NÃO valem como foco de ${level} (só como revisão dentro de um ponto do ${level}): ${
+    lower.map((item) => `${item}: ${CEFR_GRAMMAR_MAP[item]}`).join(" | ")
+  }. Se o foco atual for de nível abaixo, TROQUE por um ponto do ${level} e ajuste padrões, cuidados e exercícios para ele.`;
+}
+
 export function buildHubVerifyPrompt(
   spec: HubMaterialSpec,
   material: JsonObject,
@@ -220,6 +313,8 @@ export function buildHubVerifyPrompt(
     HUB_QUALITY_RULES(spec),
     ``,
     `GRAMÁTICA DO NÍVEL ${level}: ${CEFR_GRAMMAR_MAP[level]}.`,
+    lowerLevelsNote(level),
+    `Para CADA alternativa errada de múltipla escolha, pergunte: um nativo diria isso numa conversa informal (ex.: "You think it is good?", "Sounds good", "Me too")? Se sim, ela não pode ser a errada: troque por uma alternativa claramente agramatical.`,
     `Confira em especial: cada "watch_out" (o "wrong_en" é mesmo errado? o "right_en" é mesmo certo e natural?); cada frase em inglês do diálogo, do shadowing, dos exemplos e das alternativas certas; coerência de cada personagem; nível de cada palavra; gabarito único.`,
     automaticIssues.length
       ? `A checagem automática JÁ achou (corrija obrigatoriamente): ${
@@ -268,6 +363,13 @@ export function americanizeSpelling<T>(value: T, path = "", key = ""): T {
 
 // O que ainda reprova depois da 2ª passada (grafia já foi corrigida; cuidado
 // que não é erro a normalização descarta).
+// Pedem a 2ª rodada de correção (o que reprova + o foco abaixo do nível).
+export const RETRY_QUALITY_CODES = new Set<HubQualityIssue["code"]>([
+  "AUDIO_MENTION",
+  "WRONG_COMPARATIVE",
+  "FOCUS_BELOW_LEVEL",
+]);
+
 export const BLOCKING_QUALITY_CODES = new Set<HubQualityIssue["code"]>([
   "AUDIO_MENTION",
   "WRONG_COMPARATIVE",
