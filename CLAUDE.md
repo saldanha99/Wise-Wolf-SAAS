@@ -109,6 +109,13 @@
   palavras com "…" (antes cortava no meio da palavra: "O professor lê cada fra"); `focus_pt` 300 → 800; dever com
   IA sem marca de outra IA; lacuna de dado com pista. Backup `/opt/wisewolf/backup-gerador-v41-20261123T190155Z/`
   (pasta + md5; devolver e `docker restart supabase-edge-functions`).
+- **v4.2 no ar (20:34 UTC, `7915976`, só `pedagogical-content`):** a resposta certa da múltipla escolha gira de letra
+  (`balanceCorrectPositions`; medido antes: 47 de 64 na B, nenhuma na D). Explicação que cita a letra fica como veio.
+  Backup `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/`.
+- **E2E logado (20:35 UTC, conta `qa-gerador` em Pro temporário):** tour, Ferramentas, Verificar nível (C1, 1 uso de
+  `cefr_check`, ~US$ 0,0007), Adaptar texto (v4.2, `quality_check` ok, 1 uso de `adapt`, ~US$ 0,0044) e filtros da
+  biblioteca. Prints 390 px: `/data/OpenBot/Shared/wisewolf/hub/prints-fase2-390/`. ⚠️ Magic link de QA: gerar pelo
+  admin do Auth só em arquivo e apagar depois (é credencial); o link vale uma vez.
 - **Rollback:** backup `/opt/wisewolf/backup-hub-fase2-20261123T183417Z/` (`postgres.dump`, `functions/pedagogical-content`,
   `published-functions.md5`, `frontend-dist.md5`, `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv
   dist dist.hub-fase2 && mv dist.prev17-hub-fase2 dist && cd .. && docker compose restart frontend`. Funções: copiar
