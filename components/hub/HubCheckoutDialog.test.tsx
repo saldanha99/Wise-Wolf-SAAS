@@ -72,6 +72,8 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
 
     expect(await screen.findByRole('heading', { name: /revise antes de gerar/i })).toBeTruthy();
     expect(screen.getByText(/Final 0181/i)).toBeTruthy();
+    // O recebedor (MEI) aparece ANTES de gerar a cobrança e de novo junto do QR.
+    expect(screen.getByText(/Pagamento processado por 55\.806\.029 Debora Alves Fernandes \(CNPJ 55\.806\.029\/0001-57\), empresa responsável pela Wise Wolf\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /gerar pix no asaas/i }));
 
     await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
@@ -88,7 +90,7 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
         phone: '(11) 99999-0000',
         acceptedTerms: true,
         acceptedPrivacy: true,
-        termsVersion: '2026-08-24',
+        termsVersion: '2026-11-23',
         privacyVersion: '2026-08-24',
         requestKey: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -98,6 +100,7 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
     expect(invoke.mock.calls[0]?.[1]?.body).not.toHaveProperty('testMode');
     expect(await screen.findByRole('heading', { name: /agora falta confirmar o pagamento/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /copiar pix/i })).toBeTruthy();
+    expect(screen.getByTestId('hub-payment-processor')).toHaveTextContent('CNPJ 55.806.029/0001-57');
   });
 
   it('não libera produto quando a função recusa a cobrança', async () => {
