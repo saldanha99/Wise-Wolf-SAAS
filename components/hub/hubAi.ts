@@ -34,6 +34,7 @@ const MESSAGES: Record<string, string> = {
   SUBSCRIPTION_REQUIRED: 'Seu teste terminou. Escolha um plano para continuar.',
   AI_PROVIDER_INVALID_RESPONSE: 'A IA não entregou o resultado dentro do padrão. Nada foi cobrado — tente de novo.',
   AI_PROVIDER_UNAVAILABLE: 'A IA está indisponível agora. Tente de novo em instantes; nada foi cobrado.',
+  MATERIAL_QUALITY_FAILED: 'O material não passou na revisão de qualidade (inglês ou gabarito). Nada foi cobrado — gere de novo.',
   MATERIAL_TOPIC_REQUIRED: 'Descreva o tema (mínimo 3 caracteres).',
   MATERIAL_SOURCE_TEXT_REQUIRED: 'Cole um texto em inglês com pelo menos 30 palavras.',
   INVALID_MATERIAL_COUNT: 'Escolha entre 4 e 15 itens.',

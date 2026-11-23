@@ -94,6 +94,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   SUBSCRIPTION_REQUIRED: 'Seu teste terminou. Escolha um plano para continuar gerando material.',
   AI_PROVIDER_INVALID_RESPONSE: 'A IA não entregou um material dentro do padrão (gabarito ou seções incompletas). Nada foi cobrado — tente de novo ou ajuste o tema.',
   AI_PROVIDER_UNAVAILABLE: 'O provedor de IA está indisponível agora. Tente novamente em instantes; nada foi cobrado.',
+  MATERIAL_QUALITY_FAILED: 'O material não passou na revisão de qualidade (inglês ou gabarito). Nada foi cobrado — gere de novo.',
   MATERIAL_TOPIC_REQUIRED: 'Descreva o tema do material (mínimo 3 caracteres).',
   INVALID_MATERIAL_COUNT: 'Escolha entre 4 e 15 itens.',
   HUB_ACCESS_UNAVAILABLE: 'Não foi possível confirmar seu acesso. Recarregue a página e tente de novo.',
