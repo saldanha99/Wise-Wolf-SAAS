@@ -105,7 +105,6 @@ const HubAuthDialog: React.FC<HubAuthDialogProps> = ({
       if (checkoutIntent) {
         try { persistHubCheckoutIntent(window.localStorage, createHubCheckoutIntent(checkoutIntent.planCode, checkoutIntent.billingCycle)); } catch {}
       }
-      try { window.sessionStorage.setItem('wisewolf.hub.oauthAudience', audience); } catch {}
       const redirectTo = new URL(hubMarketingPath('overview'), window.location.origin).toString();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',

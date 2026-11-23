@@ -1070,6 +1070,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/submit-quiz/index.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/hub-library-access/index.ts \
+  supabase/functions/hub-material-share/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
   supabase/functions/create-hub-checkout/due-date.ts \
@@ -2097,6 +2098,7 @@ HARDENED_FUNCTIONS=(
   whatsapp-notificacao-wise
   wolfie-healthcheck
   gamma-book-generator
+  hub-material-share
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -4931,6 +4933,12 @@ wait_for_http_status 401 "autenticação da biblioteca do Hub" \
   -X POST "$api_url/functions/v1/hub-library-access" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_http_status 200 "preflight da atividade por link do Hub" \
+  -X OPTIONS "$api_url/functions/v1/hub-material-share"
+wait_for_http_status 404 "link inválido da atividade do Hub" \
+  -X POST "$api_url/functions/v1/hub-material-share" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"view","token":"invalido"}'
 wait_for_http_status 200 "preflight da sincronização de materiais do Hub" \
   -X OPTIONS "$api_url/functions/v1/sync-hub-material"
 wait_for_http_status 401 "autenticação da sincronização de materiais do Hub" \

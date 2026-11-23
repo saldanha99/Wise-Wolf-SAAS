@@ -15,6 +15,7 @@ import {
   mergeOpenFeedback,
   OPEN_FEEDBACK_SCHEMA,
   parseAnswers,
+  studentView,
 } from "./grade.ts";
 import {
   isShareToken,
@@ -104,10 +105,28 @@ serve(async (req) => {
     const mode: KeyMode = ctx.answerKeyMode === "never"
       ? "never"
       : "after_submit";
-    const graded = gradeClosed(ctx.material ?? {}, answers, mode);
+    // O professor vê tudo (esperado, explicação, frase corrigida); o aluno, a versão do modo.
+    const graded = gradeClosed(ctx.material ?? {}, answers, "after_submit");
     let items = graded.items;
     let aiCorrected = false;
-    if (graded.open.length && Number(ctx.aiRemaining) > 0 && textAiKey()) {
+    let reservationId: string | null = null;
+    if (graded.open.length && textAiKey()) {
+      // Reserva 1 correção da cota ANTES de chamar a IA (trava por conta no banco).
+      const { data: reserve, error: reserveError } = await admin.rpc(
+        "hub_material_share_reserve_ai",
+        { p_link_id: ctx.linkId },
+      );
+      if (reserveError) {
+        console.error("Hub share AI reserve failed", {
+          code: reserveError.code,
+        });
+      } else if (reserve?.ok && typeof reserve.reservationId === "string") {
+        reservationId = reserve.reservationId;
+      }
+    }
+    if (reservationId) {
+      const models: Record<number, string> = {};
+      for (const o of graded.open) models[o.index] = o.model;
       try {
         const response = await aiFetch(
           "https://openrouter.ai/api/v1/chat/completions",
@@ -129,6 +148,7 @@ serve(async (req) => {
                   content: buildOpenPrompt(
                     String(ctx.level ?? "A2"),
                     graded.open,
+                    mode,
                   ),
                 },
               ],
@@ -151,7 +171,7 @@ serve(async (req) => {
           const parsed = typeof text === "string"
             ? JSON.parse(text.replace(/^```(?:json)?|```$/g, "").trim())
             : null;
-          items = mergeOpenFeedback(items, parsed, mode);
+          items = mergeOpenFeedback(items, parsed, mode, models);
           aiCorrected = true;
           await recordAiUsage(admin, {
             tenantId: null,
@@ -167,6 +187,18 @@ serve(async (req) => {
           reason: (error as Error).name,
         });
       }
+    }
+    if (reservationId && !aiCorrected) {
+      const { error: releaseError } = await admin.rpc(
+        "hub_material_share_release_ai",
+        { p_reservation_id: reservationId },
+      );
+      if (releaseError) {
+        console.error("Hub share AI release failed", {
+          code: releaseError.code,
+        });
+      }
+      reservationId = null;
     }
     if (!aiCorrected) {
       items = items.map((it) =>
@@ -185,6 +217,7 @@ serve(async (req) => {
       total: graded.total,
       keyMode: mode,
     };
+    const studentResult = { ...result, items: studentView(items, mode) };
     const { error: recordError } = await admin.rpc(
       "hub_material_share_record",
       {
@@ -195,13 +228,14 @@ serve(async (req) => {
         p_closed_right: graded.right,
         p_closed_total: graded.total,
         p_ai_corrected: aiCorrected,
+        p_reservation_id: reservationId,
       },
     );
     if (recordError) {
       console.error("Hub share record failed", { code: recordError.code });
       return json(503, { code: "SERVICE_UNAVAILABLE" });
     }
-    return json(200, result);
+    return json(200, studentResult);
   }
 
   // Professor: cria ou revoga.
@@ -227,6 +261,9 @@ serve(async (req) => {
       p_user_id: userId,
       p_material_id: body.materialId,
       p_token_sha256: await sha256Hex(token),
+      p_answer_key_mode: body.answerKeyMode === "never"
+        ? "never"
+        : "after_submit",
     });
     if (error) {
       console.error("Hub share create failed", { code: error.code });
@@ -235,13 +272,6 @@ serve(async (req) => {
     if (!data?.ok) {
       const code = String(data?.code ?? "MATERIAL_ACCESS_DENIED");
       return json(statusForCode(code), { code });
-    }
-    if (body.answerKeyMode === "never") {
-      await admin.rpc("hub_material_share_set_mode", {
-        p_user_id: userId,
-        p_token_sha256: await sha256Hex(token),
-        p_mode: "never",
-      });
     }
     const url = shareUrl(token, Deno.env.get("HUB_PUBLIC_URL"));
     const qrSvg = await qrToString(url, {

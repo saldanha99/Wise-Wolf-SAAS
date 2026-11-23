@@ -41,10 +41,9 @@ export async function resizeLogo(file: File, max = 400): Promise<string> {
 export function buildWordMhtml(title: string, bodyHtml: string, logoDataUrl?: string | null): string {
   const boundary = `----=_WiseWolfHub_${Date.now().toString(36)}`;
   const logo = logoDataUrl?.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${WORD_STYLE}</style></head><body>${bodyHtml.replace(
-    /src="data:image\/[^"]+"/g,
-    logo ? 'src="cid:logo"' : 'src=""',
-  )}</body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${WORD_STYLE}</style></head><body>${(logo && logoDataUrl ? bodyHtml.split(`src="${logoDataUrl}"`).join('src="cid:logo"') : bodyHtml)
+    // O Word não abre imagem em data: dentro do MHTML; só o logo vira anexo, o resto sai.
+    .replace(/src="data:image\/[^"]+"/g, 'src=""')}</body></html>`;
   const parts = [
     'MIME-Version: 1.0',
     `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"`,

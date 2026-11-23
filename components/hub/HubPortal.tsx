@@ -46,6 +46,7 @@ import HubLibraryFilters, { EMPTY_HUB_CATALOG_FILTERS, filterHubCatalog, type Hu
 import GuidedTour from '../tour/GuidedTour';
 import { HUB_FASE2_TOUR_ID, HUB_FASE2_TOUR_STEPS, useHubFeatureTour } from './hubFeatureTour';
 import HubPersonalization from './HubPersonalization';
+import { hubDisplayTitle } from './hubDisplayTitle';
 import { resolveSystemAppUrl } from './hubRoutes';
 
 const HubEducatorPlanner = React.lazy(() => import('./HubEducatorPlanner'));
@@ -305,7 +306,7 @@ const HubLibrary: React.FC<{
   const filtered = useMemo(() => filterHubCatalog(content, filters), [content, filters]);
   const materials = useMemo<MaterialItem[]>(() => filtered.map((item) => ({
     id: item.id,
-    title: item.title,
+    title: hubDisplayTitle(item.title),
     type: item.content_type,
     level_tag: item.level_tag || undefined,
     niche: item.niche,
@@ -319,7 +320,7 @@ const HubLibrary: React.FC<{
       if (!item.collection_id || seen.has(item.collection_id)) continue;
       seen.set(item.collection_id, {
         id: item.collection_id,
-        title: item.collection_name || 'Coleção',
+        title: item.collection_name ? hubDisplayTitle(item.collection_name) : 'Coleção',
         niche: item.niche,
         level_tag: item.level_tag || undefined,
         cover_url: item.cover_url,
@@ -687,8 +688,11 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
   const visibleNavItems = useMemo(
     () => isInvitedLearner
       ? NAV_ITEMS.filter((item) => item.id === 'desk' || (item.id === 'wolfie' && wolfieAvailable))
-      : NAV_ITEMS.filter((item) => item.id !== 'desk' && (item.id !== 'educator' || canUseEducator)),
-    [canUseEducator, isInvitedLearner, wolfieAvailable],
+      : NAV_ITEMS.filter((item) => item.id !== 'desk'
+        && (item.id !== 'educator' || canUseEducator)
+        // Professor não vê "Para escolas" (o sistema escolar é venda para instituição).
+        && (item.id !== 'saas' || bootstrap.account.audience === 'INSTITUTION')),
+    [bootstrap.account.audience, canUseEducator, isInvitedLearner, wolfieAvailable],
   );
   const hubTenant = useMemo<Tenant>(() => ({
     id: bootstrap.account.id,

@@ -17,6 +17,12 @@ describe('exportação Word do material do Hub', () => {
     expect(text).toContain('src=""');
   });
 
+  it('outra imagem do corpo não vira o logo', async () => {
+    const text = buildWordMhtml('Ficha', '<img src="data:image/png;base64,iVBORw0KGgo="><img src="data:image/png;base64,BBBB">', 'data:image/png;base64,iVBORw0KGgo=');
+    expect(text.match(/src="cid:logo"/g)?.length).toBe(1);
+    expect(text).toContain('src=""');
+  });
+
   it('nome de arquivo seguro', () => {
     expect(safeFileName('Ficha: Aeroporto — check-in (A2)')).toBe('Ficha-Aeroporto-check-in-A2');
   });
