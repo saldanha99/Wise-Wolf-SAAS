@@ -309,6 +309,11 @@ const HubLibrary: React.FC<{
     // window.open feito depois de um await. Ela recebe o endereço quando a
     // URL assinada chega, ou é fechada se o pedido falhar ou ficar velho.
     const pendingTab = window.open('', '_blank');
+    try {
+      if (pendingTab) pendingTab.document.title = 'Abrindo material…';
+    } catch {
+      // aba de outra origem ou já fechada
+    }
     const closePendingTab = () => {
       try {
         pendingTab?.close();
@@ -324,12 +329,14 @@ const HubLibrary: React.FC<{
         closePendingTab();
         return;
       }
-      if (pendingTab && !pendingTab.closed) {
+      if (!pendingTab) {
+        // Pop-up do toque bloqueado: tenta do jeito de antes.
+        window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      } else if (!pendingTab.closed) {
         pendingTab.opener = null;
         pendingTab.location.replace(signedUrl);
-      } else {
-        window.open(signedUrl, '_blank', 'noopener,noreferrer');
       }
+      // Aba fechada pelo usuário durante a espera: não reabre.
       await onRefresh();
     } catch (caught) {
       closePendingTab();
