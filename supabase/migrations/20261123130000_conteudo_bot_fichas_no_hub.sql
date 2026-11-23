@@ -51,6 +51,7 @@ as $$
     join public.profiles as hub_profile
       on hub_profile.id = identity.hub_user_id
      and hub_profile.role = 'NON_STUDENT'
+     and pg_catalog.lower(pg_catalog.btrim(hub_profile.lifecycle_status)) = 'active'
      and not coalesce(hub_profile.is_test_account, false)
     join public.hub_accounts as account
       on account.id = identity.hub_account_id

@@ -79,6 +79,10 @@ select pg_temp.assert_true(
   not exists (select 1 from public.content_bot_hub_identity(repeat('a', 64))), 'acervo de teste nega');
 update public.profiles set is_test_account = false, test_fixture_key = null
  where id = '7d000000-0000-4000-8000-000000000002';
+update public.profiles set lifecycle_status = 'offboarded' where id = '7d000000-0000-4000-8000-000000000002';
+select pg_temp.assert_true(
+  not exists (select 1 from public.content_bot_hub_identity(repeat('a', 64))), 'acervo inativo nega');
+update public.profiles set lifecycle_status = 'active' where id = '7d000000-0000-4000-8000-000000000002';
 update private.content_bot_credentials set revoked_at = now() where token_sha256 = repeat('a', 64);
 select pg_temp.assert_true(
   not exists (select 1 from public.content_bot_hub_identity(repeat('a', 64))), 'credencial revogada nega');
