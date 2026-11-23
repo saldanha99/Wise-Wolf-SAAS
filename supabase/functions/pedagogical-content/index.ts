@@ -7,6 +7,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
+  contentBotMaterialBody,
+  contentBotTokenFrom,
+  resolveContentBotIdentity,
+} from "./content-bot.ts";
+import {
   filterRecommendedMaterials,
   memoryHasContent,
   normalizePlannerResult,
@@ -43,7 +48,7 @@ import {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-content-bot-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Cache-Control": "no-store, max-age=0",
   "Pragma": "no-cache",
@@ -2028,6 +2033,27 @@ serve(async (req) => {
     releaseReason: "REQUEST_FAILED",
   };
   try {
+    // Agente de conteúdo (sem login): só gera material na conta do acervo do Hub.
+    const contentBotToken = contentBotTokenFrom(req);
+    if (contentBotToken) {
+      const admin = usageRecorder(); // cliente service_role
+      const identity = admin
+        ? await resolveContentBotIdentity(admin, contentBotToken, sha256Hex)
+        : null;
+      if (!admin || !identity) throw new HttpError(401, "CONTENT_BOT_DENIED");
+      const botBody = contentBotMaterialBody(
+        await readJsonObject(req),
+        identity,
+      );
+      if (!botBody) throw new HttpError(403, "CONTENT_BOT_ACTION_FORBIDDEN");
+      return await handleHubMaterialGenerate(
+        admin,
+        identity.hubUserId,
+        botBody,
+        reservationState,
+      );
+    }
+
     const auth = await authorizeRequest(req, {
       corsHeaders,
       allowedRoles: [

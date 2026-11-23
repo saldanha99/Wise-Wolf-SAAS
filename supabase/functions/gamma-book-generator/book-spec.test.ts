@@ -202,3 +202,45 @@ Deno.test("school brand comes from tenant branding and is validated", () => {
     "accent leaked into neutral",
   );
 });
+
+Deno.test("imageStyle opcional, curto e só texto vai às instruções", () => {
+  const parsed = parseSchoolBookSpec(base);
+  assert(parsed.ok, "spec");
+  const none = parseBookBranding({});
+  assert(none.ok && none.branding.imageStyle === null, "default null");
+  const style = parseBookBranding({
+    brand: "neutral",
+    destination: "HUB",
+    imageStyle:
+      "  pessoas e cenas do cotidiano,\n sem livros, capas nem texto legível ",
+  });
+  assert(style.ok, "style accepted");
+  assert(
+    style.branding.imageStyle ===
+      "pessoas e cenas do cotidiano, sem livros, capas nem texto legível",
+    "style normalized",
+  );
+  const text = buildSchoolBookInstructions(
+    parsed.spec,
+    "neutral",
+    null,
+    style.branding.imageStyle,
+  );
+  assert(
+    text.includes("Image guidance for every picture you choose: pessoas"),
+    "style in instructions",
+  );
+  assert(
+    !buildSchoolBookInstructions(parsed.spec, "neutral").includes(
+      "Image guidance",
+    ),
+    "no style, no line",
+  );
+  for (const bad of ["x".repeat(121), "veja https://a.b", "{oi}", 42]) {
+    const result = parseBookBranding({ imageStyle: bad });
+    assert(
+      !result.ok && result.code === "INVALID_BOOK_IMAGE_STYLE",
+      `rejects ${bad}`,
+    );
+  }
+});
