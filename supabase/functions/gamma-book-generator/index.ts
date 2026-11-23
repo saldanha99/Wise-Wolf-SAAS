@@ -9,14 +9,19 @@ import {
   methodNotAllowed,
 } from "../_shared/request-auth.ts";
 import {
-  buildSchoolBookInput,
-  buildSchoolBookInstructions,
   parseBookBranding,
   parseSchoolBookSpec,
   schoolBookAudience,
   schoolBookBrandFromTenant,
   type SchoolBookSpec,
 } from "./book-spec.ts";
+import {
+  type BookContentState,
+  buildFinalInput,
+  buildPreserveInstructions,
+  initialContentState,
+} from "./book-content.ts";
+import { advanceContent } from "./content-runner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -271,6 +276,9 @@ async function startGeneration(
       destination: branding.destination,
       footer_text: branding.footerText,
       created_via: isBot ? "CONTENT_BOT" : "APP",
+      image_style: branding.imageStyle,
+      // Conteúdo escrito e validado por nós antes do Gamma (que só diagrama).
+      content: initialContentState(spec, branding.imageStyle),
     })
     .select(JOB_COLUMNS)
     .single();
@@ -288,23 +296,66 @@ async function startGeneration(
     });
   }
 
+  // A escrita (blocos validados) avança a cada "status"; o Gamma entra no fim.
+  return json(202, { job, idempotent: false });
+}
+
+/** Regras de marca para o Gamma (o resto das instruções é "diagramar sem reescrever"). */
+function brandRules(brand: string, accentHex: string | null): string[] {
+  if (brand === "neutral") {
+    return [
+      "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
+    ];
+  }
+  return accentHex
+    ? [
+      `Use the school's brand accent color ${accentHex} for highlights, heading accents and callout borders. Never write a logo or brand mark as text; the logo is placed in the page header.`,
+    ]
+    : [];
+}
+
+/** Envia o texto pronto (conteúdo validado + gabarito montado por código) ao Gamma. */
+async function launchGamma(
+  admin: AdminClient,
+  job: JsonObject,
+  spec: SchoolBookSpec,
+  state: BookContentState,
+) {
+  const gammaApiKey = (Deno.env.get("GAMMA_API_KEY") ?? "").trim();
+  if (!gammaApiKey) return { ok: false as const, code: "GAMMA_NOT_CONFIGURED" };
+  const branding = {
+    brand: String(job.brand),
+    footerText: typeof job.footer_text === "string" ? job.footer_text : null,
+    imageStyle: state.imageStyle,
+  };
+  let themeId = (Deno.env.get(
+    branding.brand === "neutral" ? "GAMMA_THEME_ID_NEUTRAL" : "GAMMA_THEME_ID",
+  ) ?? "").trim();
+  if (branding.brand === "neutral" && !themeId) {
+    return { ok: false as const, code: "GAMMA_NEUTRAL_THEME_NOT_CONFIGURED" };
+  }
+  const { data: tenant } = await admin.from("tenants").select("id, branding")
+    .eq("id", String(job.tenant_id)).maybeSingle();
+  const schoolBrand = branding.brand === "school"
+    ? schoolBookBrandFromTenant(tenant?.branding)
+    : { themeId: null, logoUrl: null, accentHex: null };
+  if (schoolBrand.themeId) themeId = schoolBrand.themeId;
+  const inputText = buildFinalInput(spec, state);
+
   const payload: JsonObject = {
     title: spec.title,
-    inputText: buildSchoolBookInput(spec),
-    additionalInstructions: buildSchoolBookInstructions(
-      spec,
-      branding.brand,
-      schoolBrand.accentHex,
+    inputText,
+    additionalInstructions: buildPreserveInstructions(
+      brandRules(branding.brand, schoolBrand.accentHex),
       branding.imageStyle,
     ),
-    textMode: "generate",
+    // O texto já está pronto e validado: o Gamma só diagrama.
+    textMode: "preserve",
     format: "document",
     cardSplit: "inputTextBreaks",
     exportAs: "pdf",
     textOptions: {
-      amount: "detailed",
       language: spec.language === "bilingual" ? "pt-br" : "en",
-      tone: "clear, warm, rigorous, practical, motivating",
       audience: schoolBookAudience(spec),
     },
     // Pexels: licença comercial sem marca d'água. A busca "webFreeToUse
@@ -372,7 +423,7 @@ async function startGeneration(
         provider_request_id: providerRequestId,
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
-      return json(response.status >= 500 ? 503 : 422, { error: code, code });
+      return { ok: false as const, code };
     }
     const generationId = responsePayload.generationId.trim();
     if (!generationId || generationId.length > 300) {
@@ -391,7 +442,7 @@ async function startGeneration(
       .select(JOB_COLUMNS)
       .single();
     if (updateError || !started) throw new Error("BOOK_JOB_UPDATE_FAILED");
-    return json(202, { job: started, idempotent: false });
+    return { ok: true as const, job: started };
   } catch (error) {
     const code = error instanceof Error && error.name === "AbortError"
       ? "GAMMA_TIMEOUT"
@@ -405,7 +456,7 @@ async function startGeneration(
       error_code: code,
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);
-    return json(503, { error: code, code });
+    return { ok: false as const, code };
   }
 }
 
@@ -563,6 +614,129 @@ async function finalizeBook(
   }
 }
 
+const WRITE_LEASE_SECONDS = 150;
+
+function progressOf(state: BookContentState | null) {
+  if (!state) return null;
+  const done = state.chunks.filter((c) => c.state === "done").length;
+  return { stage: "WRITING", done, total: state.chunks.length };
+}
+
+function specOfJob(job: JsonObject): SchoolBookSpec {
+  const parsed = parseSchoolBookSpec({
+    title: job.title,
+    level: job.level_tag,
+    niche: job.niche,
+    audience: job.audience,
+    language: job.book_language,
+    pageCount: job.page_count,
+    objective: job.objective,
+    topics: job.topics,
+  });
+  if (!parsed.ok) throw new Error("BOOK_JOB_SPEC_INVALID");
+  return parsed.spec;
+}
+
+/**
+ * Livro em STARTING com conteúdo estruturado: avança UM passo (escrever ou verificar um
+ * bloco) sob uma trava curta, para duas chamadas de "status" não escreverem o mesmo bloco.
+ * Quando todos os blocos passam, monta o texto final e chama o Gamma (status GENERATING).
+ */
+async function advanceWriting(admin: AdminClient, job: JsonObject) {
+  const jobId = String(job.id);
+  const now = new Date();
+  const { data: claimed, error: claimError } = await admin
+    .from("school_book_generations")
+    .update({
+      content_lease_until: new Date(now.getTime() + WRITE_LEASE_SECONDS * 1000)
+        .toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("status", "STARTING")
+    .not("content", "is", null)
+    .or(
+      `content_lease_until.is.null,content_lease_until.lt."${now.toISOString()}"`,
+    )
+    .select(`${JOB_COLUMNS},content`)
+    .maybeSingle();
+  if (claimError) {
+    return json(503, {
+      error: "BOOK_JOB_UNAVAILABLE",
+      code: "BOOK_JOB_UNAVAILABLE",
+    });
+  }
+  if (!claimed) {
+    // Livro antigo (sem conteúdo) ou outro "status" já está trabalhando: só devolve.
+    const { data: current } = await admin.from("school_book_generations")
+      .select(`${JOB_COLUMNS},content`).eq("id", jobId).maybeSingle();
+    const { content, ...publicJob } = (current ?? job) as JsonObject;
+    return json(200, {
+      job: publicJob,
+      progress: progressOf(content as BookContentState | null),
+    });
+  }
+  const { content: rawState, ...publicJob } = claimed as JsonObject;
+  let state = rawState as BookContentState;
+  const release = (extra: JsonObject = {}) =>
+    admin.from("school_book_generations").update({
+      content: state,
+      content_lease_until: null,
+      updated_at: new Date().toISOString(),
+      ...extra,
+    }).eq("id", jobId).select(JOB_COLUMNS).maybeSingle();
+
+  try {
+    const spec = specOfJob(publicJob);
+    const step = await advanceContent(spec, state, {
+      db: admin,
+      tenantId: String(publicJob.tenant_id),
+      userId: String(publicJob.created_by),
+    });
+    state = step.state;
+    if (step.outcome === "failed") {
+      const { data } = await release({
+        status: "FAILED",
+        error_code: step.errorCode ?? "BOOK_CONTENT_INVALID",
+      });
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    if (step.outcome !== "ready") {
+      const { data } = await release();
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    await release({
+      content_lease_until: new Date(Date.now() + WRITE_LEASE_SECONDS * 1000)
+        .toISOString(),
+    });
+    const launched = await launchGamma(admin, publicJob, spec, state);
+    if (!launched.ok) {
+      const { data } = await release({
+        status: "FAILED",
+        error_code: launched.code,
+      });
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    await admin.from("school_book_generations").update({
+      content_lease_until: null,
+    }).eq("id", jobId);
+    return json(200, {
+      job: launched.job,
+      progress: {
+        stage: "LAYOUT",
+        done: state.chunks.length,
+        total: state.chunks.length,
+      },
+    });
+  } catch (error) {
+    const code = error instanceof Error && /^(BOOK|GAMMA)_/.test(error.message)
+      ? error.message
+      : "BOOK_CONTENT_FAILED";
+    console.error("Book content step failed", { code });
+    const { data } = await release({ status: "FAILED", error_code: code });
+    return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+  }
+}
+
 async function refreshGeneration(
   req: Request,
   admin: AdminClient,
@@ -587,11 +761,10 @@ async function refreshGeneration(
       code: "BOOK_JOB_ACCESS_DENIED",
     });
   }
-  if (
-    ["COMPLETED", "FAILED", "FINALIZING", "STARTING"].includes(
-      String(job.status),
-    )
-  ) {
+  if (String(job.status) === "STARTING") {
+    return await advanceWriting(admin, job);
+  }
+  if (["COMPLETED", "FAILED", "FINALIZING"].includes(String(job.status))) {
     return json(200, { job });
   }
 
