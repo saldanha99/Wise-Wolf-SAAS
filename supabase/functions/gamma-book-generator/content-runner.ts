@@ -183,7 +183,9 @@ export async function advanceContent(
       return { state, outcome: "transient" };
     }
     if (raw && typeof raw === "object") chunk.draft = raw;
-    const result = normalizeChunk(raw, chunk, state.units);
+    const result = normalizeChunk(raw, chunk, state.units, {
+      instructionsPt: spec.language === "bilingual",
+    });
     if (result.ok) {
       chunk.content = result.pages;
       // Páginas sem exercício (capa, abertura): só a validação por código.

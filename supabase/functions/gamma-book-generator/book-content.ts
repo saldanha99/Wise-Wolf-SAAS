@@ -291,10 +291,35 @@ const TEACHER_ADDRESS =
   /\b(?:teacher'?s? (?:notes?|reference|guide|use)|for (?:the )?teachers?\b|notas? do professor|você é (?:o|a)?\s*professor|professor\(a\)|para (?:o |os |a |as )?professor(?:es|as|a)?\b|professores de inglês)/i;
 
 /** Converte a saída do modelo e valida por código. Erros viram feedback para a próxima tentativa. */
+/** Palavras pedidas no enunciado ("about 80 words", "80–120 words", "cerca de 60 palavras"). */
+export function requestedWords(text: string): number | null {
+  const m = text.match(/(\d{2,3})\s*(?:[-–]\s*\d{2,3}\s*)?(?:words|palavras)/i);
+  return m ? Number(m[1]) : null;
+}
+
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter((w) => /[A-Za-zÀ-ÿ]/.test(w)).length;
+}
+
+const EN_HINT =
+  /\b(?:the|and|you|your|write|read|choose|listen|complete|each|with|about|imagine|answer|sentence|following)\b/gi;
+const PT_HINT =
+  /\b(?:de|o|os|as|e|com|para|uma|um|cada|frase|palavras?|escreva|leia|escolha|ouça|complete|responda|ordene|marque|use|sobre|você|seu|sua|em)\b/gi;
+
+/** Instrução de exercício em inglês quando o livro pede instruções em português. */
+export function instructionLooksEnglish(text: string): boolean {
+  const en = text.match(EN_HINT)?.length ?? 0;
+  const pt = text.match(PT_HINT)?.length ?? 0;
+  return en >= 3 && en > pt;
+}
+
+const ANSWER_MAX = 1200;
+
 export function normalizeChunk(
   raw: unknown,
   chunk: ContentChunk,
   units: number,
+  options: { instructionsPt?: boolean } = {},
 ): { ok: true; pages: ContentPage[] } | { ok: false; feedback: string[] } {
   const feedback: string[] = [];
   const list = isObj(raw) && Array.isArray(raw.pages) ? raw.pages : null;
@@ -352,7 +377,7 @@ export function normalizeChunk(
                   : -1,
               }
               : {}),
-            ...(type !== "mcq" ? { answer: str(it.answer, 600) } : {}),
+            ...(type !== "mcq" ? { answer: str(it.answer, ANSWER_MAX) } : {}),
             // Reordenação: as palavras saem da resposta (a fonte da verdade), embaralhadas por código.
             ...(type === "reorder"
               ? { words: scramble(str(it.answer, 600)) || words }
@@ -385,6 +410,47 @@ export function normalizeChunk(
         items,
       });
       const title = str(ex.title, 120) || `Exercise ${k + 1}`;
+      // Resposta-modelo nunca é cortada em silêncio: longa demais volta como problema.
+      (Array.isArray(ex.items) ? ex.items : []).filter(isObj).forEach(
+        (it, i) => {
+          if (
+            typeof it.answer === "string" &&
+            it.answer.trim().length > ANSWER_MAX
+          ) {
+            feedback.push(
+              `Page ${expected} exercise ${k + 1} item ${
+                i + 1
+              }: the answer is longer than ${ANSWER_MAX} characters; shorten it to a complete text.`,
+            );
+          }
+        },
+      );
+      // Resposta-modelo do tamanho pedido (pelo menos 80% do número de palavras do enunciado).
+      if (type === "open") {
+        for (const [i, it] of items.entries()) {
+          const asked = requestedWords(
+            `${str(ex.instruction, 600)} ${it.prompt}`,
+          );
+          const got = wordCount((it as { answer?: string }).answer ?? "");
+          if (asked && got < Math.floor(asked * 0.8)) {
+            feedback.push(
+              `Page ${expected} exercise ${k + 1} item ${
+                i + 1
+              }: the task asks for about ${asked} words but the model answer has ${got}; write a complete model answer of that length.`,
+            );
+          }
+        }
+      }
+      if (
+        options.instructionsPt &&
+        instructionLooksEnglish(str(ex.instruction, 600))
+      ) {
+        feedback.push(
+          `Page ${expected} exercise ${
+            k + 1
+          }: write the instruction in Brazilian Portuguese (the items stay in English).`,
+        );
+      }
       const result = validateExercise(exercise, { units });
       for (const err of result.errors) {
         feedback.push(describe(expected, k + 1, err, exercise));
@@ -470,6 +536,32 @@ export function scramble(answer: string): string[] {
 
 const LETTERS = "abcdefghij";
 
+function hashText(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}
+
+/**
+ * Ordem impressa das alternativas da múltipla escolha: a certa gira de letra a cada item
+ * (nunca um bloco inteiro na mesma letra) e as erradas mantêm a ordem relativa. O gabarito
+ * sai da MESMA permutação. Devolve os índices originais na ordem impressa.
+ */
+export function mcqOrder(ex: Exercise, itemIndex: number): number[] {
+  const it = ex.items[itemIndex];
+  const n = it.options?.length ?? 0;
+  const answer = it.answerIndex ?? -1;
+  if (n < 2 || answer < 0 || answer >= n) return [...Array(n).keys()];
+  const base = hashText(`${ex.instruction}|${ex.items[0]?.prompt ?? ""}`) % n;
+  const target = (base + itemIndex) % n;
+  const others = [...Array(n).keys()].filter((i) => i !== answer);
+  others.splice(target, 0, answer);
+  return others;
+}
+
 /** Ordem determinística dos termos da direita no "match" (nunca a mesma da esquerda). */
 function matchOrder(n: number): number[] {
   const idx = [...Array(n).keys()];
@@ -501,12 +593,14 @@ export function renderPage(p: ContentPage): string {
       );
       return;
     }
-    for (const it of ex.items) {
+    for (const [index, it] of ex.items.entries()) {
       if (ex.type === "mcq") {
         out.push(
           `${it.n}. ${it.prompt}`,
           `   ${
-            (it.options ?? []).map((o, i) => `${LETTERS[i]}) ${o}`).join("   ")
+            mcqOrder(ex, index).map((o, i) =>
+              `${LETTERS[i]}) ${(it.options ?? [])[o]}`
+            ).join("   ")
           }`,
         );
       } else if (ex.type === "reorder") {
@@ -535,6 +629,17 @@ function keyLine(ex: Exercise, it: Exercise["items"][number]): string {
     const order = matchOrder(ex.items.length);
     const pos = order.indexOf(ex.items.indexOf(it));
     return `${it.n}. ${it.prompt} → ${LETTERS[pos]}) ${it.answer ?? ""}`;
+  }
+  if (ex.type === "mcq") {
+    const pos = mcqOrder(ex, ex.items.indexOf(it)).indexOf(
+      it.answerIndex ?? -1,
+    );
+    if (pos >= 0) {
+      return answerLine(ex.type, it).replace(
+        /^(\d+\.\s+)[a-j]\)/,
+        `$1${LETTERS[pos]})`,
+      );
+    }
   }
   return answerLine(ex.type, it);
 }

@@ -9,10 +9,14 @@ import {
   buildFinalInput,
   checkFeedback,
   initialContentState,
+  instructionLooksEnglish,
+  mcqOrder,
   normalizeChunk,
   pruneFlaggedItems,
   renderAnswerPages,
   renderPage,
+  requestedWords,
+  wordCount,
 } from "./book-content.ts";
 import { bookOutline, parseSchoolBookSpec } from "./book-spec.ts";
 
@@ -137,14 +141,16 @@ Deno.test("página e gabarito: mesma numeração e frase completa", () => {
   const page = renderPage(res.pages[0]);
   assert(page.includes("## Exercise 1 — Choose"));
   assert(page.includes("1. I ___ my passport."));
-  assert(page.includes("a) have   b) has   c) having"));
+  // A certa gira de letra; página e gabarito usam a mesma ordem.
+  const line = page.split("\n").find((l) => l.includes(") have"))!;
+  const letter = line.match(/([a-c])\) have/)![1];
   assert(page.includes("1. is / gate / Where / the  ( … ? )"));
   const [key] = renderAnswerPages(
     res.pages,
     bookOutline(spec).filter((p) => p.kind === "answers"),
   );
   assert(key.includes("**Page 4 · Exercise 1 — Choose**"));
-  assert(key.includes("1. a) have — I have my passport."));
+  assert(key.includes(`1. ${letter}) have — I have my passport.`));
   assert(key.includes("1. Where is the gate?"));
 });
 
@@ -223,5 +229,45 @@ Deno.test("poda: tira só os itens apontados e renumera; problema de página nã
       text: "page refers to audio",
     }]),
     null,
+  );
+});
+
+Deno.test("múltipla escolha: a resposta certa não fica na mesma letra no exercício todo", () => {
+  const ex = {
+    type: "mcq" as const,
+    instruction: "Escolha a opção correta.",
+    items: Array.from({ length: 8 }, (_, i) => ({
+      n: i + 1,
+      prompt: `Item ${i} ___ here.`,
+      options: ["right", "wrong one", "wrong two"],
+      answerIndex: 0,
+    })),
+  };
+  const letters = ex.items.map((_, i) => mcqOrder(ex as never, i).indexOf(0));
+  assert(new Set(letters).size === 3);
+  for (let i = 1; i < letters.length; i++) {
+    assert(letters[i] !== letters[i - 1]);
+  }
+  for (let i = 0; i < 8; i++) {
+    assertEquals([...mcqOrder(ex as never, i)].sort().join(), "0,1,2");
+  }
+});
+
+Deno.test("resposta-modelo: tamanho pedido e instrução em português", () => {
+  assertEquals(
+    requestedWords("Escreva um e-mail de cerca de 60 palavras."),
+    60,
+  );
+  assertEquals(requestedWords("Write 80–120 words."), 80);
+  assertEquals(wordCount("I went to the beach with my family."), 8);
+  assert(
+    instructionLooksEnglish(
+      "Imagine you heard the news. Write a short note to your friend about the meeting.",
+    ),
+  );
+  assert(
+    !instructionLooksEnglish(
+      "Escreva uma nota curta para o seu colega sobre a reunião.",
+    ),
   );
 });
