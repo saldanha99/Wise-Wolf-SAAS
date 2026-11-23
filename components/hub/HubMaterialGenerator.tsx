@@ -11,6 +11,7 @@ import {
   FileText,
   ImagePlus,
   Layers,
+  Link2,
   ListChecks,
   Map,
   MessageSquare,
@@ -22,7 +23,14 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { HubBootstrap } from './types';
-import { loadHubAccountBranding, saveHubAccountBranding, type HubAccountBranding } from './hubService';
+import {
+  createHubMaterialShare,
+  loadHubAccountBranding,
+  revokeHubMaterialShares,
+  saveHubAccountBranding,
+  type HubAccountBranding,
+  type HubMaterialShare,
+} from './hubService';
 import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hubExport';
 
 // Gerador de material do Hub: o professor autônomo escolhe tipo × nicho × nível
@@ -516,6 +524,40 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
     }
   };
 
+  const [share, setShare] = useState<HubMaterialShare | null>(null);
+  const [shareMessage, setShareMessage] = useState('');
+  const [sharing, setSharing] = useState(false);
+
+  const SHARE_ERRORS: Record<string, string> = {
+    SUBSCRIPTION_REQUIRED: 'Seu plano não inclui o Educador IA agora.',
+    MATERIAL_ACCESS_DENIED: 'Só quem criou o material ou administra a conta pode gerar o link.',
+    SHARE_LIMIT_REACHED: 'Este material já tem links demais ativos. Desative os antigos e tente de novo.',
+  };
+
+  const openShare = async () => {
+    if (!current) return;
+    setSharing(true);
+    setShareMessage('');
+    try {
+      setShare(await createHubMaterialShare(current.id));
+    } catch (err) {
+      setShareMessage(SHARE_ERRORS[(err as Error).message] ?? 'Não consegui gerar o link agora.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const revokeShares = async () => {
+    if (!current) return;
+    try {
+      const result = await revokeHubMaterialShares(current.id);
+      setShare(null);
+      setShareMessage(`${result.revoked} ${result.revoked === 1 ? 'link desativado' : 'links desativados'}. Quem tiver o link antigo não abre mais.`);
+    } catch {
+      setShareMessage('Não consegui desativar os links agora.');
+    }
+  };
+
   const exportWord = () => {
     const node = document.getElementById('hub-material-print');
     if (!node || !current) return;
@@ -755,6 +797,7 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
                 {teacherVersion ? <EyeOff size={15} /> : <Eye size={15} />}{teacherVersion ? 'Ver versão do aluno' : 'Ver versão do professor (gabarito)'}
               </button>
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Printer size={15} />Imprimir / salvar PDF</button>
+              <button type="button" onClick={() => void openShare()} disabled={sharing} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text disabled:opacity-60"><Link2 size={15} />{sharing ? 'Gerando link...' : 'Link e QR para os alunos'}</button>
               <button type="button" onClick={exportWord} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Download size={15} />Baixar Word</button>
               {isManager && (
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text">
@@ -767,6 +810,24 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
             {current.dropped_items > 0 && <p className="text-xs text-brand-muted">{current.dropped_items} {current.dropped_items === 1 ? 'questão foi descartada' : 'questões foram descartadas'} na verificação do gabarito.</p>}
           </div>
           {brandingMessage && <p role="status" className="text-xs font-bold text-brand-muted print:hidden">{brandingMessage}</p>}
+          {shareMessage && <p role="status" className="text-xs font-bold text-brand-muted print:hidden">{shareMessage}</p>}
+          {share && (
+            <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 print:hidden" aria-label="Link da atividade para os alunos">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(share.qrSvg)}`} alt="QR code da atividade" className="size-40 shrink-0 rounded-xl bg-white p-2" />
+                <div className="min-w-0 space-y-2">
+                  <p className="text-sm font-black">Os alunos abrem pelo QR ou pelo link, sem criar conta. Eles veem a versão do aluno, sem o gabarito.</p>
+                  <p className="break-all rounded-xl bg-brand-surface-2 p-2 text-xs">{share.url}</p>
+                  <p className="text-[11px] text-brand-muted">Vale até {new Date(share.expiresAt).toLocaleDateString('pt-BR')}.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(share.url)} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-tenant-primary px-4 py-2 text-xs font-black text-white"><Copy size={14} />Copiar link</button>
+                    <a href={`https://wa.me/?text=${encodeURIComponent(`Atividade de inglês: ${current.title}\n${share.url}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border px-4 py-2 text-xs font-black">Enviar no WhatsApp</a>
+                    <button type="button" onClick={() => void revokeShares()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-red-600">Desativar links</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <HubMaterialView record={current} teacher={teacherVersion} branding={branding} onGenerateWeek={prefillFromWeek} />
         </section>
       )}

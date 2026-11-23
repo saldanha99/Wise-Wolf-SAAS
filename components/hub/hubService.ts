@@ -252,3 +252,35 @@ export async function saveHubAccountBranding(
   });
   if (error) throw error;
 }
+
+// ── Atividade por link/QR, sem cadastro do aluno (Fase 1, 23/11/2026) ─────────
+export interface HubMaterialShare {
+  url: string;
+  qrSvg: string;
+  expiresAt: string;
+}
+
+async function invokeShare<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('hub-material-share', { body });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    let code = 'SERVICE_UNAVAILABLE';
+    try {
+      const payload = context ? await context.json() : null;
+      if (payload?.code) code = String(payload.code);
+    } catch {
+      // corpo não é JSON
+    }
+    throw new Error(code);
+  }
+  return data as T;
+}
+
+export const createHubMaterialShare = (materialId: string) =>
+  invokeShare<HubMaterialShare>({ action: 'create', materialId });
+
+export const revokeHubMaterialShares = (materialId: string) =>
+  invokeShare<{ revoked: number }>({ action: 'revoke', materialId });
+
+export const viewHubSharedMaterial = (token: string) =>
+  invokeShare<{ ok: true; material: unknown; branding: HubAccountBranding | null; expiresAt: string }>({ action: 'view', token });

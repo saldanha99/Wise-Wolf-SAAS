@@ -1,3 +1,4 @@
+import HubSharedActivity from './HubSharedActivity';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Bot, Building2, Compass, Loader2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -552,6 +553,12 @@ const HubApp: React.FC = () => {
     } catch {}
     setPlanIntent(null);
   }, []);
+
+  // Atividade por link/QR: o aluno abre sem login (Fase 1).
+  const sharedActivityToken = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('atividade')?.trim() || ''
+    : '';
+  if (sharedActivityToken) return <HubSharedActivity token={sharedActivityToken} />;
 
   if (!marketingPage) return <HubNotFound />;
 
