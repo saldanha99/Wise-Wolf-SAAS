@@ -106,6 +106,9 @@ export async function callModel(
   });
   if (!response.ok) throw new Error(`AI_PROVIDER_HTTP_${response.status}`);
   const payload: unknown = await response.json().catch(() => null);
+  // Saída cortada pelo teto de tokens: o JSON até fecha, mas com texto pela metade ("office tea").
+  // Repete uma vez com o dobro do orçamento (até 16 mil) em vez de entregar o corte ao verificador.
+  const truncated = finishReason(payload) === "length";
   if (usage.db) {
     await recordAiUsage(usage.db, {
       tenantId: usage.tenantId,
@@ -116,8 +119,29 @@ export async function callModel(
       usage: parseAiUsage(payload),
     });
   }
+  if (truncated) {
+    if (maxTokens < 16_000) {
+      return callModel(
+        prompt,
+        schema,
+        schemaName,
+        model,
+        Math.min(16_000, maxTokens * 2),
+        timeoutMs,
+        usage,
+        reasoning,
+      );
+    }
+    throw new Error("AI_OUTPUT_TRUNCATED");
+  }
   const text = extractText(payload);
   return text ? parseJson(text) : null;
+}
+
+export function finishReason(payload: unknown): string {
+  const p = payload as { choices?: Array<{ finish_reason?: unknown }> };
+  const reason = p?.choices?.[0]?.finish_reason;
+  return typeof reason === "string" ? reason : "";
 }
 
 /** Avança um passo: escreve o próximo bloco pendente ou verifica o próximo bloco escrito. */
