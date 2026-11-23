@@ -1,3 +1,148 @@
+### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
+
+- **Aviso do recebedor no Wolfie (decisão do Chefe/Vinícius, `8e4c33a`, Revisor Ok):** a mesma constante
+  `_shared/hub-payment-processor.ts` aparece no app do Wolfie (`apps/wolfie-web/.../SubscribePage.tsx`: revisão antes de
+  gerar, junto do QR e no rodapé; saiu "processada pelo Asaas") e na compra de minutos (`WolfieTopupModal`). E-mail de
+  confirmação já tinha. Site: produto `wolfie` com `payeeNotice` (institucional `a7bdce2`, Dev Next.js). Termos do
+  Wolfie (2026-08-03-v1) não mudaram.
+- **No ar (20:35–20:38 UTC):** front do sistema `index-CeZsTFPJ.js` (56 arquivos fora de `assets/` iguais); app do
+  Wolfie release `20261123T203636Z-wolfie-aviso-recebedor` (`index-PXJ9NTPT.js`, `current` → `.../20261123T203636Z-wolfie-aviso-recebedor/dist`, container recriado com
+  `docker compose up -d --force-recreate`; só restart mantém a pasta antiga montada).
+- **Rollback:** sistema: `cd /opt/wisewolf/frontend/src && mv dist dist.wolfie-aviso && mv dist.prev20-wolfie-aviso dist && cd .. &&
+  docker compose restart frontend`. Wolfie: `cd /opt/wisewolf/wolfie-frontend && ln -sfn
+  /opt/wisewolf/wolfie-frontend/releases/20261122T155909Z-hub-checkout/dist current && echo 20261122T155909Z-hub-checkout >
+  ACTIVE_RELEASE && docker compose up -d --force-recreate`.
+- **Gerador do Hub v4.2 (Dev Wise Wolf Hub, `7915976`, Revisor Ok):** a certa da múltipla escolha gira de letra. Só
+  `pedagogical-content` (`a0bb6072…`), 20:34 UTC. Rollback: pasta + `published-functions.md5` de
+  `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/` + `docker restart supabase-edge-functions`.
+
+### 23/11/2026 (noite, 2) — Hub Fase 1 no ar: teste Pro sem cartão, Google, logo/Word, atividade por link/QR e correção por IA
+
+- **O quê (pedido do Chefe d03e7683 + defeitos do E2E de 23/11):** teste **Pro de 7 dias sem cartão** (o claim dá
+  `PROFESSOR_PRO` TRIALING; ao vencer, `expire_hub_trials_internal` dá `DISCOVERY` ACTIVE até 2099, `provider = internal`,
+  metadata `hub_free_after_trial`); **entrar com Google** no `HubAuthDialog`; **logo do professor** (`hub_account_branding`,
+  data URL ≤ 400 KB) no PDF e no **Word** (`hubExport.ts`, MHTML; só o logo vira anexo); **atividade por link/QR** sem
+  cadastro (edge nova `hub-material-share`; banco guarda só o sha256 do token; 30 dias; 30 links vivos por material;
+  aluno vê `hub_strip_answer_keys`); **correção** — fechadas por código, abertas pela IA em pt-BR, cota
+  `educator_ai.correct` (Gratuito 30, Pro 600, Escola 2000, Institucional 5000/mês) **reservada antes da IA**
+  (`hub_material_share_reserve_ai`, trava por conta, reserva de 5 min, liberada na falha); por link 20 envios/min e
+  300/dia; modo do gabarito `after_submit` | `never` gravado na criação do link (`hub_material_share_create` de 4
+  argumentos). No `never` a resposta-modelo não vai à IA e o aluno não recebe esperado, explicação nem frase corrigida;
+  o professor vê tudo em "Ver respostas".
+- **Defeitos do E2E:** aluno convidado tomava **403 no Wolfie** (perfil STUDENT sem escola; gatilho
+  `hub_memberships_promote_tenantless` → NON_STUDENT, migration `190000`) e agora o Wolfie dele **abre na tarefa do
+  professor** (`hub_learner_desk`: última tarefa aberta, recado e objetivo); **cartão no checkout do Hub** (iframe do
+  formulário do site `https://wisewolflanguage.com.br/pagamento/cartao.html`; o site liberou o Hub no `frame-ancestors`,
+  commit `550ede4` do institucional); "Para escolas" fora do menu do professor; `?cadastro=1` abre o cadastro direto
+  (os "Criar conta grátis" do site apontam para lá); títulos crus da biblioteca com nome de vitrine (`hubDisplayTitle`);
+  nenhum texto do checkout cita o Asaas.
+- **No ar (19:47–19:52 UTC):** migrations `20261123150000`–`190000` (uma transação, marcadas em `.migration-checksums`);
+  funções `hub-material-share` (nova, `7dd325e3…`) e `wolf-tutor-api` (`f1f259a6…`) no `.published-functions.md5`;
+  front `index-DaTkBHa2.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Revisor: 0 Bloqueia
+  (2ª rodada). E2E em produção a 390 px: `/data/OpenBot/Shared/wisewolf/hub-fase1-20261123/`.
+- **Rollback:** backup `/opt/wisewolf/backup-hub-fase1-20261123T194728Z/` (`postgres.dump`, `functions/wolf-tutor-api`,
+  `published-functions.md5`, `migration-checksums.list`, `frontend-dist.md5`). Front: `cd /opt/wisewolf/frontend/src && mv
+  dist dist.fase1 && mv dist.prev19-hub-fase1 dist && cd .. && docker compose restart frontend`. Funções: `rm -rf
+  volumes/functions/hub-material-share`, copiar `functions/wolf-tutor-api` do backup, devolver o
+  `published-functions.md5`, `docker restart supabase-edge-functions`. Banco (aditivo; só se preciso): `drop function`
+  das `hub_material_share_*` (create de 3 e 4 argumentos, view, revoke, for_grading, reserve_ai, release_ai, record,
+  results), `drop table public.hub_material_share_ai_reservations, public.hub_material_share_submissions,
+  public.hub_material_share_links, public.hub_account_branding;` `delete from hub_plan_entitlements where feature_key =
+  'educator_ai.correct';` `drop trigger hub_memberships_promote_tenantless on public.hub_memberships;` + as 2 funções do
+  claim/expiração de volta pela definição do dump + apagar os 5 `.sha256`.
+- **Hotfix 20:22 UTC (`7010245`, Revisor Ok):** quem estava no teste Pro levava 409
+  `SUBSCRIPTION_RECONCILIATION_REQUIRED` ao assinar (o teste não tem provedor). `_shared/hub-billing-safety.ts`
+  (`9f66577e…`) isenta TRIALING sem provedor e sem id no provedor. Rollback: `cp -a
+  /opt/wisewolf/backup-hub-assinar-teste-20261123T202212Z/hub-billing-safety.ts volumes/functions/_shared/` +
+  `docker restart supabase-edge-functions`. ⚠️ Se um teste interno passar a gravar `provider = 'internal'`, aceite-o aqui.
+- **E2E em produção (390 px):** cadastro em 1 clique, teste Pro, geração, logo, link/QR, correção nos 2 modos, convite,
+  envio de material, Wolfie do aluno convidado (200, abre na tarefa) e o formulário do cartão dentro do Hub (sem pagar).
+  Asaas de teste apagado (deleted=true); 54 linhas das 2 contas apagadas, cópia em
+  `/opt/wisewolf/backup-hub-fase1-e2e-limpeza-20261123T202514Z/rows.tsv`; varredura final 0.
+
+### 23/11/2026 (noite) — Recebedor do pagamento (MEI) antes do PIX, no e-mail e nos Termos do Hub v2026-11-23
+
+- **Por quê (decisão do Vinícius):** a conta Asaas é o MEI "55.806.029 DEBORA ALVES FERNANDES", sem nome fantasia (em MEI a
+  razão social é o nome da pessoa; não muda por API). O PIX/boleto/fatura mostram esse nome e assustavam o comprador.
+- **O quê:** constante única `_shared/hub-payment-processor.ts` ("Pagamento processado por 55.806.029 Debora Alves Fernandes
+  (CNPJ 55.806.029/0001-57), empresa responsável pela Wise Wolf."): no checkout do Hub (revisão antes de gerar a cobrança e
+  junto do QR), no e-mail de confirmação (`process-hub-fulfillment`) e na cláusula 4 dos **Termos v2026-11-23** (hash
+  `890ccbc3…`; Privacidade continua 2026-08-24). ⚠️ O site (`wisewolf-institucional/components/solucoes/SolutionCheckout.tsx`)
+  fixa `termsVersion`/`termsSha256`: mudou os Termos → o site sobe junto (Dev Next.js, `feat/aviso-recebedor` ff210e0), senão
+  a venda pelo site é recusada. O Wolfie avulso usa a mesma conta Asaas e ainda NÃO mostra o aviso (decisão pendente).
+- **No ar (18:45 UTC):** `create-hub-checkout` (`7b2fc322…`) e `process-hub-fulfillment` (`dab80167…`) + `_shared/hub-payment-processor.ts`;
+  front `index-y3AJxfqv.js` (Fase 2 do Hub + aviso; 56 arquivos fora de `assets/` iguais). Revisor: 0 Bloqueia.
+- **Rollback:** funções: copiar `functions/create-hub-checkout` e `functions/process-hub-fulfillment` de
+  `/opt/wisewolf/backup-aviso-recebedor-20261123T184331Z/`, devolver `published-functions.md5`, `docker restart supabase-edge-functions`
+  (e o site volta para a versão anterior junto). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.aviso && mv
+  dist.prev18-aviso-recebedor dist && cd .. && docker compose restart frontend`.
+
+### 23/11/2026 (noite) — Hub Fase 2 no ar: ferramentas por habilidade, CEFR, adaptação, filtros e gerador endurecido (feat/hub-fase2, ce84001)
+
+- **Ferramentas (aba Educador IA → "Ferramentas", padrão):** 17 por habilidade (leitura, vocabulário, fala, escrita,
+  gramática) em `_shared/hub-tools.ts` (catálogo único, importado pelo front). O navegador manda só `toolId`; tipo e
+  preset saem do servidor (`INVALID_HUB_TOOL` para id desconhecido). 8 tipos novos no `hub-material.ts`: `matching`,
+  `gap_fill`, `true_false`, `discussion`, `writing_prompt`, `error_correction`, `sentence_transformation`,
+  `text_questions` (CHECK de `kind` ampliado; `tool_id` em `hub_educator_materials`). Gabarito dos novos fora da mesa do
+  aluno (`private.hub_strip_answer_keys`: `answer_key`, `model_answer`, `gaps`, `statements`, `sentences`, `items` e
+  `grammar_focus.watch_out`). ⚠️ O Dev Wise Wolf Plataforma vai pôr o parâmetro de "gabarito liberado" nessa função
+  (Fase 1): quem publicar depois faz rebase, sem tirar as chaves desta lista.
+- **Verificar nível (`action: cefr_check`, `hub-cefr.ts`):** métricas sem IA + nível, trechos acima do alvo (só os que
+  existem no texto) e versão simplificada; 1 chamada, sem retry. Cota `educator_ai.cefr_check` (10/150/450).
+- **Adaptar material (`action: adapt_authentic`):** texto, link ou print. Valida sem rede → reserva a cota → só então
+  busca o link (`_shared/safe-fetch.ts`: http/https 80/443, IP público em cada redirect, IPv6 lido inteiro com o
+  IPv4 mapeado na regra do IPv4, 1 MB, 10 s, só HTML/texto). Print lido pela IA e nunca guardado; ilegível conta 1
+  adaptação (a leitura já custou). Cota `educator_ai.adapt` (2/20/60). Fonte citada em `material.source`.
+- **Cotas novas** entraram pela `hub_reserve_feature_internal` por âncora (`if v_feature_key in (…generate,
+  …cefr_check, …adapt)`), migration `20261123100000`. Mudar teto = migration.
+- **Filtros da biblioteca** (habilidade, tema, idade, duração ESTIMADA): colunas em `hub_content_items` + regra
+  `private.hub_catalog_default_tags` e gatilho que só preenche o que está nulo (curadoria sobrescreve); grant por
+  coluna. Migration `20261123110000`. A leitura do catálogo (`loadHubCatalog`) cai na antiga se a coluna faltar.
+  ⚠️ O teto de leitura era 60 e o catálogo chegou a 91: o resto nunca aparecia. Agora 500.
+- **Gerador endurecido (todo material, inclusive o Educador IA e as fichas do acervo), prompt
+  `hub-material-2026-11-24.v4`:** depois dos 3 Bloqueia do Revisor no lote 1 de fichas. `hub-quality.ts`:
+  (1) regras no prompt (nível estrito, cuidados só com erros reais de brasileiro — lista curada —, grafia
+  americana, não PROMETER áudio, personagem coerente, gabarito único, distrator que não seja frase correta);
+  (2) checagens sem IA (promessa de áudio só em instrução/nota/tarefa; comparativo errado só com "than", fim de
+  frase ou predicativo — "more good people" é quantificador e passa; grafia britânica corrigida sem mexer em
+  texto-fonte nem nome próprio; cuidado igual ao certo descartado, cuidado que troca > 4 palavras é suspeito; foco
+  claramente abaixo do nível); (3) 2ª passada (`verifyHubMaterial`): o modelo revisa e devolve o material
+  corrigido no mesmo schema, com delimitador nonce e correção recusada se trouxer URL/e-mail/telefone novo;
+  2ª rodada só se sobrar problema; rodada pulada com < 25 s do orçamento de 135 s. Sobrou áudio ou comparativo
+  → 502 `MATERIAL_QUALITY_FAILED` (reserva liberada). `provider_usage.quality_check` guarda só códigos e contagens.
+  `watch_out` agora é estruturado (`wrong_en`/`right_en`/`why_pt`); `watch_out_pt` é o texto montado para a tela.
+- **Custo medido:** 2ª passada ≈ +128% sobre a geração, ~US$ 0,0024–0,004 por material no total (Haiku 5.5);
+  `ai_usage_events.feature = hub_educator_material_verify`. Bancada para medir de novo:
+  `scripts/hub/quality-harness.ts` (mesmo código, sem banco; precisa de `ANTHROPIC_API_KEY`). Antes/depois dos 20
+  casos reprovados: `/data/OpenBot/Shared/wisewolf/conteudo/fichas/gerador-v4-antes-depois.md`.
+- **Desligar só a 2ª passada:** `HUB_MATERIAL_VERIFY=off` no `.env.functions` + `docker compose up -d --no-deps
+  --force-recreate functions` (prompt v4 e checagens sem IA continuam).
+- **Tour:** `2026-11-24-hub-ferramentas-por-habilidade` (`components/hub/hubFeatureTour.ts`, mesmo `feature_tour_views`;
+  o portal do Hub não passa pelo motor do `App.tsx`).
+- **No ar (18:34–18:38 UTC, publicado pelo Dev Wise Wolf Plataforma):** teste `hub_fase2_ferramentas.sql` com
+  ROLLBACK antes; migrations numa transação e marcadas; `pedagogical-content` (pasta inteira, com `content-bot.ts`) +
+  `_shared/hub-tools.ts` e `safe-fetch.ts`; front `index-LJuyzPH2.js`. E2E: `material` + `toolId` pelo token do bot
+  (200 em 18 s, gabarito do matching conferido, `quality_check` rounds 1/status ok/0 achados no fim).
+- **v4.1 no ar (19:02 UTC, `73deeb0`, só `pedagogical-content`):** `clipText` corta campo em fim de frase ou entre
+  palavras com "…" (antes cortava no meio da palavra: "O professor lê cada fra"); `focus_pt` 300 → 800; dever com
+  IA sem marca de outra IA; lacuna de dado com pista. Backup `/opt/wisewolf/backup-gerador-v41-20261123T190155Z/`
+  (pasta + md5; devolver e `docker restart supabase-edge-functions`).
+- **v4.2 no ar (20:34 UTC, `7915976`, só `pedagogical-content`):** a resposta certa da múltipla escolha gira de letra
+  (`balanceCorrectPositions`; medido antes: 47 de 64 na B, nenhuma na D). Explicação que cita a letra fica como veio.
+  Backup `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/`.
+- **E2E logado (20:35 UTC, conta `qa-gerador` em Pro temporário):** tour, Ferramentas, Verificar nível (C1, 1 uso de
+  `cefr_check`, ~US$ 0,0007), Adaptar texto (v4.2, `quality_check` ok, 1 uso de `adapt`, ~US$ 0,0044) e filtros da
+  biblioteca. Prints 390 px: `/data/OpenBot/Shared/wisewolf/hub/prints-fase2-390/`. ⚠️ Magic link de QA: gerar pelo
+  admin do Auth só em arquivo e apagar depois (é credencial); o link vale uma vez.
+- **Rollback:** backup `/opt/wisewolf/backup-hub-fase2-20261123T183417Z/` (`postgres.dump`, `functions/pedagogical-content`,
+  `published-functions.md5`, `frontend-dist.md5`, `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv
+  dist dist.hub-fase2 && mv dist.prev17-hub-fase2 dist && cd .. && docker compose restart frontend`. Funções: copiar
+  `functions/pedagogical-content` do backup, apagar `volumes/functions/_shared/hub-tools.ts` e `safe-fetch.ts`, devolver
+  o md5, `docker restart supabase-edge-functions`. Banco (aditivo, só se preciso): `drop trigger
+  hub_content_items_fill_tags on public.hub_content_items; drop function private.hub_content_items_fill_tags(),
+  private.hub_catalog_default_tags(text,text,text); delete from public.hub_plan_entitlements where feature_key in
+  ('educator_ai.cefr_check','educator_ai.adapt');` + o bloco `do` da reserva com âncoras trocadas + apagar os 2 `.sha256`.
+
 ### 23/11/2026 — Agente de conteúdo gera fichas no Hub (conta do acervo) e `imageStyle` no Gamma (feat/conteudo-bot-fichas)
 
 - **O quê (pedido do Chefe c90c9912):** o agente de conteúdo chama o `pedagogical-content` com o header

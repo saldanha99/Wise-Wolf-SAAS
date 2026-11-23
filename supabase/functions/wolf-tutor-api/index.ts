@@ -334,6 +334,8 @@ serve(async (req) => {
         const code = typeof usage?.code === "string"
           ? usage.code
           : "FEATURE_NOT_INCLUDED";
+        // Diagnóstico: o motivo da recusa aparece no log (sem dado do aluno).
+        console.warn("Hub Wolfie reservation denied", { code });
         return new Response(JSON.stringify({ error: code, code }), {
           status: hubAccessStatus(code),
           headers: privateJsonHeaders,
@@ -433,6 +435,9 @@ serve(async (req) => {
       existingConversation &&
       !conversationMatchesScope(existingConversation, userId, conversationScope)
     ) {
+      console.warn("Tutor conversation scope mismatch", {
+        productFamily: conversationScope.productFamily,
+      });
       return conversationAccessDenied();
     }
     if (!existingConversation) {

@@ -36,7 +36,7 @@ vi.mock('./HubPortal', () => ({
 vi.mock('./HubLanding', () => ({ default: () => null }));
 vi.mock('./HubAudienceLanding', () => ({ default: () => null }));
 vi.mock('./HubSolutionLanding', () => ({ default: () => null }));
-vi.mock('./HubAuthDialog', () => ({ default: () => null }));
+vi.mock('./HubAuthDialog', () => ({ default: ({ initialMode }: { initialMode: string }) => <p>Diálogo {initialMode}</p> }));
 vi.mock('./useHubHashNavigation', () => ({ useHubHashNavigation: vi.fn() }));
 vi.mock('./hubService', () => ({
   DEFAULT_HUB_SETTINGS: {
@@ -146,5 +146,20 @@ describe('LP autenticada abre o módulo nativo correspondente', () => {
     expect(await screen.findByText(`Portal aberto em ${expectedTab}`)).toBeTruthy();
     expect(bridge.initialTab).toBe(expectedTab);
     expect(mocks.loadHubBootstrap).toHaveBeenCalledWith(accountId);
+  });
+});
+
+describe('Criar conta grátis do site', () => {
+  afterEach(() => {
+    cleanup();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('?cadastro=1 abre o cadastro direto, sem segundo clique', async () => {
+    mocks.getSession.mockReset().mockResolvedValue({ data: { session: null } });
+    mocks.loadHubPublicData.mockReset().mockResolvedValue({ plans: [], settings, content: [] });
+    window.history.replaceState({}, '', '/?cadastro=1');
+    render(<HubApp />);
+    expect(await screen.findByText('Diálogo signup')).toBeTruthy();
   });
 });

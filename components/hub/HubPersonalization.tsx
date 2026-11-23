@@ -12,23 +12,29 @@ interface HubPersonalizationProps {
   onClose?: () => void;
 }
 
-const AUDIENCE_COPY: Record<HubAudience, { eyebrow: string; title: string; rolePlaceholder: string; goalPlaceholder: string }> = {
+const AUDIENCE_COPY: Record<HubAudience, { eyebrow: string; title: string; roleLabel: string; rolePlaceholder: string; levelLabel: string; goalPlaceholder: string }> = {
   EDUCATOR: {
     eyebrow: 'Seu espaço de criação',
     title: 'Vamos adaptar o Hub à forma como você ensina.',
+    roleLabel: 'Como você ensina hoje?',
     rolePlaceholder: 'Ex.: professora de adultos, inglês corporativo, aulas particulares',
+    levelLabel: 'Qual nível a maioria dos seus alunos tem?',
     goalPlaceholder: 'Ex.: preparar aulas mais autorais e reduzir meu tempo de planejamento',
   },
   LEARNER: {
     eyebrow: 'Sua jornada em inglês',
     title: 'Vamos fazer o Wolfie praticar o inglês que você realmente precisa.',
+    roleLabel: 'Qual é seu momento profissional ou acadêmico?',
     rolePlaceholder: 'Ex.: médica, estudante, profissional de tecnologia, viajante',
+    levelLabel: 'Qual nível melhor representa seu inglês hoje?',
     goalPlaceholder: 'Ex.: participar de reuniões internacionais com mais segurança',
   },
   INSTITUTION: {
     eyebrow: 'Sua operação pedagógica',
     title: 'Vamos configurar uma experiência à altura da sua instituição.',
+    roleLabel: 'Que tipo de instituição você representa?',
     rolePlaceholder: 'Ex.: escola de idiomas, universidade, treinamento corporativo',
+    levelLabel: 'Qual nível a maioria dos seus alunos tem?',
     goalPlaceholder: 'Ex.: padronizar qualidade pedagógica sem perder a identidade da equipe',
   },
 };
@@ -43,7 +49,7 @@ const LEVELS = [
 ] as const;
 
 const MODALITIES = [
-  { value: 'voice', label: 'Diálogos', description: 'Priorizar simulações por texto', icon: Mic2 },
+  { value: 'voice', label: 'Diálogos', description: 'Priorizar conversação e simulações', icon: Mic2 },
   { value: 'mixed', label: 'Equilíbrio', description: 'Variar situações e habilidades', icon: Headphones },
   { value: 'text', label: 'Leitura e escrita', description: 'Priorizar produção textual', icon: Keyboard },
 ] as const;
@@ -157,8 +163,8 @@ const HubPersonalization: React.FC<HubPersonalizationProps> = ({ accountId, acco
                 <div>
                   <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-tenant-primary/10 text-tenant-primary"><UserRound size={19} /></div><p className="text-xs font-black uppercase tracking-[0.18em] text-tenant-primary">1 de 2 · Seu contexto</p></div>
                   <h2 ref={stepTitleRef} tabIndex={-1} className="mt-5 text-3xl font-black tracking-tight outline-hidden">{copy.title}</h2>
-                  <label className="mt-7 block"><span className="mb-2 block text-xs font-black text-brand-text">Qual é seu momento profissional ou acadêmico?</span><input value={role} onChange={(event) => setRole(event.target.value)} className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-4 text-brand-text outline-hidden placeholder:text-brand-muted focus:border-tenant-primary focus:ring-4 focus:ring-tenant-primary/10" placeholder={copy.rolePlaceholder} /></label>
-                  <div className="mt-6"><p id="hub-personalization-level-label" className="text-xs font-black text-brand-text">Qual nível melhor representa seu inglês hoje?</p><div role="group" aria-labelledby="hub-personalization-level-label" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{LEVELS.map((item) => <button key={item.value} type="button" aria-pressed={level === item.value} onClick={() => setLevel(item.value)} className={`rounded-2xl border p-3 text-left transition ${level === item.value ? 'border-tenant-primary bg-tenant-primary/10 ring-2 ring-tenant-primary/10' : 'border-brand-border bg-brand-surface-2 hover:border-tenant-primary/40'}`}><span className="text-lg font-black">{item.label}</span><span className="mt-1 block text-[10px] leading-4 text-brand-muted">{item.description}</span></button>)}</div></div>
+                  <label className="mt-7 block"><span className="mb-2 block text-xs font-black text-brand-text">{copy.roleLabel}</span><input value={role} onChange={(event) => setRole(event.target.value)} aria-describedby="hub-personalization-role-hint" className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-4 text-brand-text outline-hidden placeholder:text-brand-muted focus:border-tenant-primary focus:ring-4 focus:ring-tenant-primary/10" placeholder={copy.rolePlaceholder} /><span id="hub-personalization-role-hint" className="mt-2 block text-[11px] text-brand-muted">Escreva pelo menos 3 letras. Dá para mudar depois.</span></label>
+                  <div className="mt-6"><p id="hub-personalization-level-label" className="text-xs font-black text-brand-text">{copy.levelLabel}</p><div role="group" aria-labelledby="hub-personalization-level-label" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{LEVELS.map((item) => <button key={item.value} type="button" aria-pressed={level === item.value} onClick={() => setLevel(item.value)} className={`rounded-2xl border p-3 text-left transition ${level === item.value ? 'border-tenant-primary bg-tenant-primary/10 ring-2 ring-tenant-primary/10' : 'border-brand-border bg-brand-surface-2 hover:border-tenant-primary/40'}`}><span className="text-lg font-black">{item.label}</span><span className="mt-1 block text-[10px] leading-4 text-brand-muted">{item.description}</span></button>)}</div></div>
                 </div>
               ) : (
                 <div>

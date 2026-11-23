@@ -92,12 +92,7 @@ export async function loadHubPublicData(): Promise<{
       .eq('is_public', true)
       .order('display_order'),
     supabase.rpc('hub_get_public_settings'),
-    supabase
-      .from('hub_content_items')
-      .select('id, slug, title, description, content_type, level_tag, niche, collection_name, collection_id, part_number, cover_url, preview_enabled, license_summary, author_name')
-      .eq('is_active', true)
-      .order('published_at', { ascending: false })
-      .limit(60),
+    loadHubCatalog(),
   ]);
 
   if (plansResult.error) throw plansResult.error;
@@ -107,8 +102,31 @@ export async function loadHubPublicData(): Promise<{
   return {
     plans: ((plansResult.data ?? []) as HubPlan[]).filter(isHubCorePlan),
     settings: (settingsResult.data as HubSettings | null) ?? DEFAULT_HUB_SETTINGS,
-    content: (contentResult.data ?? []).map((item) => ({ ...item, metadata: {} })) as HubContentItem[],
+    content: ((contentResult.data ?? []) as unknown as Array<Record<string, unknown>>).map((item) => ({ ...item, metadata: {} })) as unknown as HubContentItem[],
   };
+}
+
+const HUB_CATALOG_COLUMNS = 'id, slug, title, description, content_type, level_tag, niche, collection_name, collection_id, part_number, cover_url, preview_enabled, license_summary, author_name';
+const HUB_CATALOG_FILTER_COLUMNS = 'skills, theme, age_group, duration_minutes';
+// Teto de leitura do catálogo. Era 60 e o catálogo passou disso (91 em
+// 23/11/2026): o que ficava depois do 60º nunca aparecia.
+export const HUB_CATALOG_LIMIT = 500;
+
+// Lê o catálogo com as colunas de filtro; banco sem a migration da Fase 2
+// (coluna inexistente ou sem grant) cai na leitura antiga — a biblioteca nunca
+// some por causa do filtro.
+async function loadHubCatalog() {
+  const query = (columns: string) => supabase
+    .from('hub_content_items')
+    .select(columns)
+    .eq('is_active', true)
+    .order('published_at', { ascending: false })
+    .limit(HUB_CATALOG_LIMIT);
+  const withFilters = await query(`${HUB_CATALOG_COLUMNS}, ${HUB_CATALOG_FILTER_COLUMNS}`);
+  if (!withFilters.error) return withFilters;
+  const code = (withFilters.error as { code?: string }).code;
+  if (code === '42703' || code === '42501' || code === 'PGRST204') return query(HUB_CATALOG_COLUMNS);
+  return withFilters;
 }
 
 export async function claimHubTrial(
@@ -221,3 +239,91 @@ export async function openHubContent(
   }
   return data as { signedUrl: string; expiresIn: number };
 }
+
+// ── Logo do professor nos materiais exportados (Fase 1, 23/11/2026) ──────────
+export interface HubAccountBranding {
+  logo_data_url: string | null;
+  display_name: string | null;
+}
+
+export async function loadHubAccountBranding(accountId: string): Promise<HubAccountBranding | null> {
+  const { data, error } = await supabase
+    .from('hub_account_branding')
+    .select('logo_data_url, display_name')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as HubAccountBranding | null;
+}
+
+export async function saveHubAccountBranding(
+  accountId: string,
+  userId: string,
+  branding: HubAccountBranding,
+): Promise<void> {
+  const { error } = await supabase.from('hub_account_branding').upsert({
+    account_id: accountId,
+    logo_data_url: branding.logo_data_url,
+    display_name: branding.display_name?.trim() || null,
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+// ── Atividade por link/QR, sem cadastro do aluno (Fase 1, 23/11/2026) ─────────
+export interface HubMaterialShare {
+  url: string;
+  qrSvg: string;
+  expiresAt: string;
+}
+
+async function invokeShare<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('hub-material-share', { body });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    let code = 'SERVICE_UNAVAILABLE';
+    try {
+      const payload = context ? await context.json() : null;
+      if (payload?.code) code = String(payload.code);
+    } catch {
+      // corpo não é JSON
+    }
+    throw new Error(code);
+  }
+  return data as T;
+}
+
+export const createHubMaterialShare = (materialId: string) =>
+  invokeShare<HubMaterialShare>({ action: 'create', materialId });
+
+export const revokeHubMaterialShares = (materialId: string) =>
+  invokeShare<{ revoked: number }>({ action: 'revoke', materialId });
+
+export const viewHubSharedMaterial = (token: string) =>
+  invokeShare<{ ok: true; material: unknown; branding: HubAccountBranding | null; expiresAt: string }>({ action: 'view', token });
+
+// ── Correção das respostas da atividade do link (Fase 1) ─────────────────────
+export interface HubGradedItem {
+  section: string;
+  index: number;
+  kind: 'mcq' | 'gap' | 'open';
+  given: string;
+  correct: boolean | null;
+  expected?: string;
+  explanation_pt?: string;
+  feedback_pt?: string;
+  verdict?: 'good' | 'partial' | 'needs_work';
+  corrected_en?: string;
+}
+export interface HubShareResult { items: HubGradedItem[]; right: number; total: number; keyMode: 'after_submit' | 'never' }
+export interface HubShareSubmission { id: string; studentName: string | null; createdAt: string; closedRight: number; closedTotal: number; result: HubShareResult }
+
+export const submitHubSharedAnswers = (token: string, studentName: string, answers: Record<string, Array<number | string | null>>) =>
+  invokeShare<HubShareResult>({ action: 'submit', token, studentName, answers });
+
+export const loadHubShareResults = (materialId: string) =>
+  invokeShare<{ submissions: HubShareSubmission[] }>({ action: 'results', materialId });
+
+export const createHubMaterialShareWithMode = (materialId: string, answerKeyMode: 'after_submit' | 'never') =>
+  invokeShare<HubMaterialShare>({ action: 'create', materialId, answerKeyMode });

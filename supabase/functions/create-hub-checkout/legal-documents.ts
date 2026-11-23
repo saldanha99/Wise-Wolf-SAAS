@@ -1,4 +1,7 @@
-export const HUB_CORE_TERMS_VERSION = "2026-08-24";
+import { HUB_PAYMENT_PROCESSOR_NOTICE } from "../_shared/hub-payment-processor.ts";
+
+export const HUB_CORE_TERMS_VERSION = "2026-11-23";
+
 export const HUB_CORE_PRIVACY_VERSION = "2026-08-24";
 
 export type HubCoreLegalDocumentKey = "terms" | "privacy";
@@ -28,8 +31,8 @@ const TERMS_DOCUMENT: HubCoreLegalDocument = {
   document: "TERMS_OF_USE",
   locale: "pt-BR",
   version: HUB_CORE_TERMS_VERSION,
-  effectiveDate: "2026-08-24",
-  effectiveDateLabel: "24 de agosto de 2026",
+  effectiveDate: "2026-11-23",
+  effectiveDateLabel: "23 de novembro de 2026",
   eyebrow: "Relação transparente",
   title: "Termos de Uso do Wise Wolf Hub",
   summary:
@@ -64,6 +67,7 @@ const TERMS_DOCUMENT: HubCoreLegalDocument = {
       title: "4. Assinatura, cobrança e cancelamento",
       paragraphs: [
         "Preço, periodicidade, tributos aplicáveis e forma de pagamento são exibidos antes da criação da cobrança. A liberação de recursos pagos ocorre somente depois da confirmação do provedor financeiro.",
+        `${HUB_PAYMENT_PROCESSOR_NOTICE} Esse é o nome que aparece como recebedor no PIX, no boleto e na fatura do cartão.`,
         "Assinaturas recorrentes seguem o ciclo escolhido. Pedidos de cancelamento, arrependimento ou reembolso são tratados pelos canais disponibilizados no painel ou no suporte, observados o período contratado, a natureza do serviço e os direitos previstos na legislação brasileira.",
       ],
     },
@@ -247,7 +251,7 @@ export const HUB_CORE_PRIVACY_SNAPSHOT = serializeHubCoreLegalDocument(
 );
 
 export const HUB_CORE_TERMS_SHA256 =
-  "ba35b46f3f13a31188c8a5c5b33fb0d02be7cc9a6415fe15d8d655056aa3bcdb";
+  "890ccbc33e2ffd006ef6ef4aac6239aa4fdcc6548f3601be409e8a6648e877f9";
 export const HUB_CORE_PRIVACY_SHA256 =
   "84082bbc89500c91c9b661499149387bad9a3ce2c8b4f6b708449f3a002aacd7";
 

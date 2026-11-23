@@ -1923,7 +1923,7 @@
 .hub-checkout-cycle,
 .hub-checkout-payment {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 9px;
   margin: 0;
   border: 0;
