@@ -724,6 +724,12 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/tutor-persona.test.ts \
   supabase/functions/_shared/tutor-voice.ts \
   supabase/functions/_shared/tutor-voice.test.ts \
+  supabase/functions/_shared/hub-tools.ts \
+  supabase/functions/_shared/safe-fetch.ts \
+  supabase/functions/_shared/safe-fetch.test.ts \
+  supabase/functions/pedagogical-content/hub-cefr.ts \
+  supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -956,6 +962,9 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/tenant-domain-allowed/host.test.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
   supabase/functions/_shared/tutor-voice.test.ts \
+  supabase/functions/_shared/safe-fetch.test.ts \
+  supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1674,6 +1683,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
   "supabase/migrations/20261122230000_wolfie_abertura_personalizada.sql"
   "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
+  "supabase/migrations/20261123100000_hub_fase2_ferramentas.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1866,6 +1876,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
   "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
   "supabase/tests/gerador_de_material_do_hub.sql"
+  "supabase/tests/hub_fase2_ferramentas.sql"
   "supabase/tests/gamma_school_book_generator.sql"
   "supabase/tests/assentos_de_aluno_no_hub.sql"
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
@@ -1936,6 +1947,8 @@ SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
 SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
 SHARED_TUTOR_PERSONA_RELATIVE="supabase/functions/_shared/tutor-persona.ts"
 SHARED_TUTOR_VOICE_RELATIVE="supabase/functions/_shared/tutor-voice.ts"
+SHARED_HUB_TOOLS_RELATIVE="supabase/functions/_shared/hub-tools.ts"
+SHARED_SAFE_FETCH_RELATIVE="supabase/functions/_shared/safe-fetch.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
 SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
@@ -2437,6 +2450,10 @@ rsync -a -- "$SHARED_TUTOR_PERSONA_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-persona.ts"
 rsync -a -- "$SHARED_TUTOR_VOICE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-voice.ts"
+rsync -a -- "$SHARED_HUB_TOOLS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-tools.ts"
+rsync -a -- "$SHARED_SAFE_FETCH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/safe-fetch.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
@@ -2645,6 +2662,8 @@ payment_email_shared_swapped=0
 ai_gateway_shared_swapped=0
 tutor_persona_shared_swapped=0
 tutor_voice_shared_swapped=0
+hub_tools_shared_swapped=0
+safe_fetch_shared_swapped=0
 payment_notice_core_shared_swapped=0
 payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
@@ -2826,6 +2845,8 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
 [[ -s "$release_dir/functions/_shared/tutor-persona.ts" ]]
 [[ -s "$release_dir/functions/_shared/tutor-voice.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-tools.ts" ]]
+[[ -s "$release_dir/functions/_shared/safe-fetch.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
@@ -3137,6 +3158,22 @@ restore_previous_release() {
         "$functions_dir/_shared/tutor-voice.ts"
     else
       rm -f -- "$functions_dir/_shared/tutor-voice.ts"
+    fi
+  fi
+  if [[ "$hub_tools_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/hub-tools.ts" ]]; then
+      cp -a -- "$backup_dir/hub-tools.ts" \
+        "$functions_dir/_shared/hub-tools.ts"
+    else
+      rm -f -- "$functions_dir/_shared/hub-tools.ts"
+    fi
+  fi
+  if [[ "$safe_fetch_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/safe-fetch.ts" ]]; then
+      cp -a -- "$backup_dir/safe-fetch.ts" \
+        "$functions_dir/_shared/safe-fetch.ts"
+    else
+      rm -f -- "$functions_dir/_shared/safe-fetch.ts"
     fi
   fi
   if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
@@ -4554,6 +4591,20 @@ fi
 tutor_voice_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/tutor-voice.ts" \
   "$functions_dir/_shared/tutor-voice.ts"
+if [[ -f "$functions_dir/_shared/hub-tools.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/hub-tools.ts" \
+    "$backup_dir/hub-tools.ts"
+fi
+hub_tools_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/hub-tools.ts" \
+  "$functions_dir/_shared/hub-tools.ts"
+if [[ -f "$functions_dir/_shared/safe-fetch.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/safe-fetch.ts" \
+    "$backup_dir/safe-fetch.ts"
+fi
+safe_fetch_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/safe-fetch.ts" \
+  "$functions_dir/_shared/safe-fetch.ts"
 
 if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
   cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \
