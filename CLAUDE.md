@@ -61,6 +61,10 @@
   ROLLBACK antes; migrations numa transação e marcadas; `pedagogical-content` (pasta inteira, com `content-bot.ts`) +
   `_shared/hub-tools.ts` e `safe-fetch.ts`; front `index-LJuyzPH2.js`. E2E: `material` + `toolId` pelo token do bot
   (200 em 18 s, gabarito do matching conferido, `quality_check` rounds 1/status ok/0 achados no fim).
+- **v4.1 no ar (19:02 UTC, `73deeb0`, só `pedagogical-content`):** `clipText` corta campo em fim de frase ou entre
+  palavras com "…" (antes cortava no meio da palavra: "O professor lê cada fra"); `focus_pt` 300 → 800; dever com
+  IA sem marca de outra IA; lacuna de dado com pista. Backup `/opt/wisewolf/backup-gerador-v41-20261123T190155Z/`
+  (pasta + md5; devolver e `docker restart supabase-edge-functions`).
 - **Rollback:** backup `/opt/wisewolf/backup-hub-fase2-20261123T183417Z/` (`postgres.dump`, `functions/pedagogical-content`,
   `published-functions.md5`, `frontend-dist.md5`, `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv
   dist dist.hub-fase2 && mv dist.prev17-hub-fase2 dist && cd .. && docker compose restart frontend`. Funções: copiar
