@@ -1,3 +1,24 @@
+### 23/11/2026 (noite, 4) — Livros: conteúdo escrito e validado por nós; o Gamma só diagrama (gamma-book-generator)
+
+- **O quê (pedido do Chefe 87c4e46c):** o `gamma-book-generator` escreve o livro em blocos (capa/abertura, unidades,
+  revisão) com JSON estruturado por item (`book-content.ts`, `content-runner.ts`): Haiku escreve, Sonnet confere e
+  corrige (severidade blocker/minor; 4ª tentativa poda o item marcado; até 6), o código valida com o validador comum
+  `_shared/exercise-validator.ts` (mcq/gap/reorder/match/tf/transform/correct_error/open) e monta o gabarito. O Gamma
+  recebe o texto pronto com `textMode: preserve`. Estado em `school_book_generations.content` (contém gabarito: nunca
+  ao aluno), avanço de 1 passo por chamada do status com `content_lease_until`. `sourceNotes` (≤ 6000) no spec.
+- **Revisão do lote T2 (20 livros, ~US$ 0,80 cada):** múltipla escolha com a certa girando de letra (`mcqOrder`, página
+  e gabarito da mesma permutação); resposta-modelo nunca cortada (teto 1200, acima volta à IA); menos de 80% das
+  palavras pedidas volta à IA; instrução em inglês em livro bilíngue volta à IA; saída cortada pelo teto de tokens
+  repete com o dobro (até 16 mil). Revisor: 342/342 MCQ página × gabarito, 0 Bloqueia. Livros em
+  `/data/OpenBot/Shared/wisewolf/conteudo/livros-motor-novo/`.
+- **No ar (21:11 UTC):** migration `20261123140000` (aditiva: `content`, `content_lease_until`, `image_style`) marcada;
+  `gamma-book-generator` (`338de0a5…`) + `_shared/exercise-validator.ts` (novo); `docker restart supabase-edge-functions`.
+  Conferido: `action: credits` pelo token do bot = 200 (saldo Gamma 1.629 créditos em 23/11 — ⚠️ baixo).
+  `release.sh`: validador e `hub-payment-processor.ts` registrados como `_shared` (estavam fora).
+- **Rollback:** `/opt/wisewolf/backup-livros-motor-20261123T211111Z/` — copiar `functions/gamma-book-generator`, apagar
+  `volumes/functions/_shared/exercise-validator.ts`, devolver `published-functions.md5`, `docker restart
+  supabase-edge-functions`. Banco: as colunas podem ficar (livro sem `content` segue o fluxo antigo).
+
 ### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
 
 - **Aviso do recebedor no Wolfie (decisão do Chefe/Vinícius, `8e4c33a`, Revisor Ok):** a mesma constante
