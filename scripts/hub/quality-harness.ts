@@ -111,9 +111,11 @@ for await (const entry of Deno.readDir(inDir)) {
       `wise_wolf_material_${spec.kind}`,
     );
     const first = normalizeHubMaterial(spec, gen.result);
-    const afterGen = hubMaterialQualityIssues(gen.result, spec.level).map((i) =>
-      i.code
-    );
+    const afterGen = hubMaterialQualityIssues(
+      gen.result,
+      spec.level,
+      spec.extra,
+    ).map((i) => i.code);
     let status = first.ok ? "ok" : `NORMALIZE_${first.code}`;
     let verIn = 0, verOut = 0, modelIssues = 0;
     let finalRaw: unknown = gen.result;
@@ -122,7 +124,7 @@ for await (const entry of Deno.readDir(inDir)) {
         buildHubVerifyPrompt(
           spec,
           gen.result,
-          hubMaterialQualityIssues(gen.result, spec.level),
+          hubMaterialQualityIssues(gen.result, spec.level, spec.extra),
         ),
         hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
         `wise_wolf_verify_${spec.kind}`,
@@ -133,7 +135,10 @@ for await (const entry of Deno.readDir(inDir)) {
         ? ver.result.issues.length
         : 0;
       if (normalizeHubMaterial(spec, ver.result.material).ok) {
-        finalRaw = americanizeSpelling(ver.result.material);
+        finalRaw = americanizeSpelling(
+          ver.result.material,
+          new Set(spec.sourceText ? ["text"] : []),
+        );
       } else status = "correction_rejected";
       // 2ª rodada só se sobrar problema que reprova (igual ao servidor).
       const left = hubMaterialQualityIssues(
@@ -159,7 +164,10 @@ for await (const entry of Deno.readDir(inDir)) {
         JSON.stringify(ver.result.issues, null, 2),
       );
     }
-    finalRaw = americanizeSpelling(finalRaw);
+    finalRaw = americanizeSpelling(
+      finalRaw,
+      new Set(spec.sourceText ? ["text"] : []),
+    );
     const final = normalizeHubMaterial(spec, finalRaw);
     const afterFinal = hubMaterialQualityIssues(
       finalRaw as Record<string, unknown>,

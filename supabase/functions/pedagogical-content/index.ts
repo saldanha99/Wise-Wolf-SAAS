@@ -30,6 +30,7 @@ import {
   hubMaterialQualityIssues,
   type HubQualityIssue,
   hubVerifySchema,
+  introducesContacts,
   RETRY_QUALITY_CODES,
 } from "./hub-quality.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
@@ -42,6 +43,7 @@ import {
   filterRecommendedMaterials,
   memoryHasContent,
   normalizePlannerResult,
+  PLANNER_TOTAL_BUDGET_MS,
   plannerModelProfile,
   type PlannerResult,
   plannerResultQualityGaps,
@@ -1421,6 +1423,7 @@ async function handleHubAdaptAuthentic(
   body: JsonObject,
   reservationState: HubReservationState,
 ): Promise<Response> {
+  const startedAt = performance.now();
   const kind = typeof body.kind === "string" ? body.kind : "reading";
   if (!HUB_ADAPT_KINDS.has(kind)) {
     throw new HttpError(400, "INVALID_MATERIAL_KIND");
@@ -1618,6 +1621,7 @@ async function handleHubAdaptAuthentic(
       models: [model],
       user: providerUser,
     },
+    startedAt + PLANNER_TOTAL_BUDGET_MS,
   );
   const checked = quality.value;
   const material = {
@@ -1704,10 +1708,15 @@ async function verifyHubMaterial(
   first: NormalizedHubMaterial,
   userId: string,
   base: ProviderGenerationOptions,
+  // Prazo total da requisição (performance.now()): rodada sem tempo é pulada.
+  deadlineAt = performance.now() + PLANNER_TOTAL_BUDGET_MS,
 ): Promise<HubVerifiedMaterial> {
+  // Texto do professor/da página não é reescrito (é citação de fonte).
+  const skipKeys = new Set<string>(spec.sourceText ? ["text"] : []);
   const before = hubMaterialQualityIssues(
     (raw ?? {}) as JsonObject,
     spec.level,
+    spec.extra,
   );
   const enabled = Deno.env.get("HUB_MATERIAL_VERIFY")?.trim() !== "off";
   let currentRaw: unknown = raw;
@@ -1715,12 +1724,23 @@ async function verifyHubMaterial(
   let rounds = 0;
   let verifyStatus = enabled ? "ok" : "disabled";
   const retryOf = (candidate: unknown) =>
-    hubMaterialQualityIssues((candidate ?? {}) as JsonObject, spec.level)
+    hubMaterialQualityIssues(
+      (candidate ?? {}) as JsonObject,
+      spec.level,
+      spec.extra,
+    )
       .filter((issue) => RETRY_QUALITY_CODES.has(issue.code));
 
   // 1ª rodada sempre; 2ª só se sobrar problema que reprova (custa pouco: é rara).
   const review = async (candidate: unknown, issues: HubQualityIssue[]) => {
+    const remainingMs = deadlineAt - performance.now();
+    // Menos de 25 s: não cabe uma revisão; ficam as checagens sem IA.
+    if (remainingMs < 25_000) {
+      verifyStatus = "skipped_time";
+      return candidate;
+    }
     rounds += 1;
+    const attemptMs = Math.min(60_000, remainingMs - 3_000);
     const verified = await callOpenRouter(
       apiKey,
       redactDirectIdentifiers(
@@ -1729,6 +1749,8 @@ async function verifyHubMaterial(
       hubUsageSink(userId, "hub_educator_material_verify"),
       {
         ...base,
+        attemptMs,
+        deadlineMs: attemptMs + 1_000,
         responseSchema: hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
         responseSchemaName: `wise_wolf_verify_${spec.kind}`,
         temperature: 0.2,
@@ -1736,8 +1758,12 @@ async function verifyHubMaterial(
     );
     const result = verified.result as JsonObject | null;
     modelIssues += Array.isArray(result?.issues) ? result!.issues.length : 0;
+    if (introducesContacts(candidate, result?.material)) {
+      verifyStatus = "correction_rejected_contacts";
+      return candidate;
+    }
     if (result && normalizeHubMaterial(spec, result.material).ok) {
-      return americanizeSpelling(result.material);
+      return americanizeSpelling(result.material, skipKeys);
     }
     verifyStatus = "correction_rejected";
     return candidate;
@@ -1747,7 +1773,9 @@ async function verifyHubMaterial(
     try {
       currentRaw = await review(raw, before);
       const left = retryOf(currentRaw);
-      if (left.length) currentRaw = await review(currentRaw, left);
+      if (left.length && verifyStatus === "ok") {
+        currentRaw = await review(currentRaw, left);
+      }
     } catch (error) {
       // Revisão fora do ar não derruba a geração: seguem as checagens sem IA.
       verifyStatus = "verify_failed";
@@ -1757,12 +1785,13 @@ async function verifyHubMaterial(
       });
     }
   }
-  const fixedRaw = americanizeSpelling(currentRaw);
+  const fixedRaw = americanizeSpelling(currentRaw, skipKeys);
   const renormalized = normalizeHubMaterial(spec, fixedRaw);
   const value = renormalized.ok ? renormalized.value : first;
   const after = hubMaterialQualityIssues(
     (renormalized.ok ? fixedRaw : raw ?? {}) as JsonObject,
     spec.level,
+    spec.extra,
   ).filter((issue) => issue.code !== "BRITISH_SPELLING");
   const blocking = after.filter((issue) =>
     BLOCKING_QUALITY_CODES.has(issue.code)
@@ -1802,6 +1831,7 @@ async function handleHubMaterialGenerate(
   if (tool?.sourceTextRequired && typeof body.sourceText !== "string") {
     throw new HttpError(400, "MATERIAL_SOURCE_TEXT_REQUIRED");
   }
+  const startedAt = performance.now();
   const parsed = parseHubMaterialSpec(
     tool ? { ...body, kind: tool.kind } : body,
     tool?.preset ?? "",
@@ -2006,6 +2036,7 @@ async function handleHubMaterialGenerate(
     normalized.value,
     userId,
     providerOptions(economyModel),
+    startedAt + PLANNER_TOTAL_BUDGET_MS,
   );
   normalized = { ok: true, value: quality.value };
 
