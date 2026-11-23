@@ -441,3 +441,23 @@ Deno.test("texto-base não fecha o bloco de aspas triplas do prompt", () => {
     "o prompt deveria ter exatamente um bloco de texto",
   );
 });
+
+Deno.test("corte de texto: nunca no meio da palavra (shadowing.focus_pt do lote 1)", async () => {
+  const { clipText } = await import("./hub-material.ts");
+  const long =
+    "O professor lê cada frase em voz alta. O aluno repete prestando atenção ao ritmo. " +
+    "Depois troca de papel e lê a fala do colega com a mesma entonação de pergunta.";
+  const cut = clipText(long, 100);
+  assert(
+    cut ===
+      "O professor lê cada frase em voz alta. O aluno repete prestando atenção ao ritmo.",
+    cut,
+  );
+  const noSentence = clipText("palavra ".repeat(40).trim(), 50);
+  assert(
+    noSentence.endsWith("…") && !/palavr…$/.test(noSentence) &&
+      noSentence.length <= 50,
+    noSentence,
+  );
+  assert(clipText("curto", 50) === "curto", "texto curto não muda");
+});

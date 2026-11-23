@@ -13,7 +13,7 @@ import { auditQuestionKey } from "../wolfie-activity/answer-key-audit.ts";
 
 import { HUB_QUALITY_RULES, isNotARealError } from "./hub-quality.ts";
 
-export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-24.v4";
+export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-24.v4.1";
 
 export const HUB_MATERIAL_KINDS = [
   "worksheet",
@@ -589,7 +589,7 @@ export function buildHubMaterialPrompt(spec: HubMaterialSpec): string {
       : `"opportunity_pt": 1–2 frases em pt-BR dizendo o que o aluno passa a conseguir fazer no objetivo dele com este material (ex.: "Com isso você consegue apresentar o status de um embarque na reunião semanal").`,
     spec.kind === "journey"
       ? ""
-      : `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (ChatGPT ou o Wolfie) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
+      : `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (escreva "a IA" ou "o Wolfie"; nunca cite marca de outra IA) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
     ``,
     HUB_QUALITY_RULES(spec),
     ``,
@@ -619,8 +619,26 @@ export type HubMaterialNormalization =
 const isObject = (value: unknown): value is JsonObject =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+// Corte que respeita o texto: termina numa frase inteira quando dá; senão
+// entre palavras com "…". Nunca no meio da palavra ("O professor lê cada fra").
+export const clipText = (value: string, max: number): string => {
+  if (value.length <= max) return value;
+  const head = value.slice(0, max);
+  const sentenceEnd = Math.max(
+    head.lastIndexOf(". "),
+    head.lastIndexOf("! "),
+    head.lastIndexOf("? "),
+  );
+  if (sentenceEnd >= max * 0.5) return head.slice(0, sentenceEnd + 1);
+  const space = head.lastIndexOf(" ", max - 1);
+  return `${
+    (space >= max * 0.5 ? head.slice(0, space) : head.slice(0, max - 1))
+      .replace(/[\s,;:]+$/, "")
+  }…`;
+};
+
 const text = (value: unknown, max = 2_000): string =>
-  typeof value === "string" ? collapse(value).slice(0, max) : "";
+  typeof value === "string" ? clipText(collapse(value), max) : "";
 
 const textList = (value: unknown, max = 20): string[] =>
   Array.isArray(value)
@@ -771,7 +789,7 @@ const normalizeReadingStrategies = (value: unknown): JsonObject => {
     chunks: pairList(source.chunks, "chunk", "pt", 14),
     shadowing: {
       passage: text(shadowing.passage, 600),
-      focus_pt: text(shadowing.focus_pt, 300),
+      focus_pt: text(shadowing.focus_pt, 800),
     },
   };
 };
@@ -780,7 +798,7 @@ const normalizeShadowing = (value: unknown): JsonObject => {
   const source = isObject(value) ? value : {};
   return {
     lines: textList(source.lines, 8),
-    focus_pt: text(source.focus_pt, 300),
+    focus_pt: text(source.focus_pt, 800),
   };
 };
 

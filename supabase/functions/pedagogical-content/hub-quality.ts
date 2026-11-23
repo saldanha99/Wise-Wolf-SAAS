@@ -30,7 +30,7 @@ export const HUB_QUALITY_RULES = (spec: HubMaterialSpec): string =>
     `5. Não existe áudio: NUNCA PROMETA áudio, gravação, faixa ou QR code nas instruções, notas e tarefas ("ouça o áudio", "use a gravação"). Para fala e escuta, o professor lê em voz alta ou o aluno lê com o professor. Áudio como ASSUNTO do conteúdo pode (ex.: "Sorry, the audio is breaking up" numa reunião online).`,
     `6. Diálogos: cada personagem tem nome próprio fixo, uma voz e UMA posição coerente do começo ao fim; quem defende manhã não passa a defender tarde. Papéis diferentes = nomes diferentes. Cada fala responde de fato à anterior (nada de "That is a good question" depois de uma resposta, nem pergunta sem resposta).`,
     `7. Gabarito: cada questão tem UMA resposta defensável. Distrator não pode ser aceitável na fala informal (ex.: "You think it is right?" como errado). Alternativa errada não pode ser outra frase gramatical que também responderia (ex.: "I agreed with you yesterday" numa pergunta sobre concordar). Resposta de scanning responde exatamente o que foi perguntado, na mesma pessoa da pergunta, e scanning não repete informação já cobrada nas perguntas de compreensão.`,
-    `8. Dicas e explicações em pt-BR claras, sem referente solto ("eles não usam"); diga quem.`,
+    `8. Dicas e explicações em pt-BR claras, sem referente solto ("eles não usam"); diga quem. Lacuna cuja resposta é um dado (hora, número, nome, lugar) traz a pista no enunciado ou na dica (ex.: "The meeting is ___ today. (3:00)"); sem pista, a resposta tem de sair só da gramática.`,
     `9. Sem marcas, apps, empresas, instituições, exames ou editoras reais; e-mail e site só example.com; telefone 555-01xx.`,
   ].join("\n");
 
@@ -63,7 +63,7 @@ const SHORT_ADJ =
   "(busy|easy|happy|big|small|fast|cheap|early|late|hot|cold|tall|short|long|old|young|nice|good|bad|quick|slow|near|far|large|safe|new|high|low|strong|warm|close)";
 const WRONG_COMPARATIVE = new RegExp(
   // "is/feel/look… more busy" (predicativo é sempre comparativo)
-  `\\b(is|are|was|were|be|been|being|am|'s|'re|get|gets|got|getting|feel|feels|felt|look|looks|seem|seems|become|becomes|became)\\s+((a )?(bit|little|lot) |much |even |far |slightly )?more ${SHORT_ADJ}\\b(?=\\s+(than|for|to|in|at|on|now|today|with|when|because|but|and|or|this|these|every|than)\\b|\\s*[.,;:!?)"'\u201d]|\\s*$)` +
+  `\\b(is|are|was|were|be|been|being|am|'s|'re|get|gets|got|getting|feel|feels|felt|look|looks|seem|seems|become|becomes|became)\\s+((a )?(bit|little|lot) |much |even |far |slightly )?more ${SHORT_ADJ}\\b(?=\\s+(than|for|to|in|at|on|now|today|with|when|because|but|and|or|this|these|every)\\b|\\s*[.,;:!?)"'\u201d]|\\s*$)` +
     // "more busy than" / "more busy." (fim de frase)
     `|\\bmore ${SHORT_ADJ}\\b(?=\\s+than\\b|\\s*[.,;:!?)"'\u201d]|\\s*$)` +
     `|\\b(more better|more worse|most best|most worst)\\b`,
