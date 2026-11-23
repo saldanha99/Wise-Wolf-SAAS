@@ -111,7 +111,7 @@ describe('Painel Meus alunos do professor', () => {
     expect(screen.getByText(/Feito em .* · “Fácil”/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Gerar link de convite' }));
-    expect(await screen.findByText('Convite enviado')).toBeTruthy();
+    expect(await screen.findByText('Convite pronto: envie o link')).toBeTruthy();
     const whatsapp = screen.getByRole('link', { name: 'Mandar pelo WhatsApp' }) as HTMLAnchorElement;
     expect(whatsapp.href).toContain(encodeURIComponent(hubInviteUrl(token)));
     expect(screen.getByTestId('hub-seats-usage').textContent).toContain('2 de 8 assentos');
