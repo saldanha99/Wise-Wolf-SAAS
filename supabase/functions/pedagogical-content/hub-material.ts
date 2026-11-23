@@ -11,7 +11,9 @@
 
 import { auditQuestionKey } from "../wolfie-activity/answer-key-audit.ts";
 
-export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-23.v3";
+import { HUB_QUALITY_RULES, isNotARealError } from "./hub-quality.ts";
+
+export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-24.v4";
 
 export const HUB_MATERIAL_KINDS = [
   "worksheet",
@@ -314,7 +316,9 @@ const COMMON_BLOCKS = {
     point: str,
     why_pt: str,
     patterns: arr(obj({ en: str, pt: str })),
-    watch_out_pt: arr(str),
+    // Estruturado desde a v4: o "erro" e o "certo" lado a lado deixam a
+    // checagem automática conferir que o erro é mesmo erro.
+    watch_out: arr(obj({ wrong_en: str, right_en: str, why_pt: str })),
   }),
   opportunity_pt: str,
   ai_homework: arr(obj({ task_pt: str, prompt_en: str, tip_pt: str })),
@@ -510,7 +514,7 @@ const countGuidance = (spec: HubMaterialSpec): string => {
           : `Escreva um texto em inglês de ${
             readingLength(spec.level)
           } palavras sobre o tema`
-      }, um glossário de 6 termos, exatamente ${n} perguntas de compreensão (4 alternativas, uma correta) e 3 perguntas de discussão oral. Em "strategies": skimming (instrução em pt-BR, UMA pergunta de ideia geral e um limite de tempo em segundos entre 30 e 90), scanning (3 perguntas de dado específico com a resposta exata do texto), chunks (o texto dividido em 6–10 blocos de sentido, cada um com a tradução) e shadowing (um trecho de 2–3 frases do texto para o aluno repetir em voz alta junto com o áudio, com o foco de pronúncia/ritmo em pt-BR).`;
+      }, um glossário de 6 termos, exatamente ${n} perguntas de compreensão (4 alternativas, uma correta) e 3 perguntas de discussão oral. Em "strategies": skimming (instrução em pt-BR, UMA pergunta de ideia geral e um limite de tempo em segundos entre 30 e 90), scanning (3 perguntas de dado específico com a resposta exata do texto), chunks (o texto dividido em 6–10 blocos de sentido, cada um com a tradução) e shadowing (um trecho de 2–3 frases do texto para o aluno ler em voz alta junto com o professor, com o foco de pronúncia/ritmo em pt-BR).`;
     case "worksheet":
       return `Monte uma folha de exercícios com: 3 perguntas de aquecimento oral (warm_up), ${
         Math.max(3, Math.round(n / 2))
@@ -576,7 +580,7 @@ export function buildHubMaterialPrompt(spec: HubMaterialSpec): string {
     }.`,
     spec.kind === "journey"
       ? "Na jornada, cada semana usa UM ponto desse leque, em progressão; nada acima do nível."
-      : `Em "grammar_focus" escolha UM ponto desse leque que sirva ao objetivo e ao tema: "point" em inglês (ex.: "Present simple for routines"), "why_pt" explica em 1–2 frases por que esse ponto abre porta para o objetivo do aluno, "patterns" traz 3 padrões de frase (en + pt) no contexto do aluno, "watch_out_pt" lista 2 erros comuns de brasileiro nesse ponto. Nada de estrutura acima do nível em nenhuma parte do material.`,
+      : `Em "grammar_focus" escolha UM ponto desse leque que sirva ao objetivo e ao tema: "point" em inglês (ex.: "Present simple for routines"), "why_pt" explica em 1–2 frases por que esse ponto abre porta para o objetivo do aluno, "patterns" traz 3 padrões de frase (en + pt) no contexto do aluno, "watch_out" lista 2 erros REAIS e frequentes de brasileiro nesse ponto, cada um com "wrong_en" (a frase errada), "right_en" (a mesma frase certa) e "why_pt" (por que o brasileiro erra). Nada de estrutura acima do nível em nenhuma parte do material.`,
     ``,
     countGuidance(spec),
     ``,
@@ -586,6 +590,8 @@ export function buildHubMaterialPrompt(spec: HubMaterialSpec): string {
     spec.kind === "journey"
       ? ""
       : `"ai_homework": exatamente 2 tarefas de casa em que o aluno usa uma inteligência artificial (ChatGPT ou o Wolfie) para praticar sozinho: "task_pt" explica a tarefa em pt-BR, "prompt_en" é o prompt PRONTO em inglês que o aluno cola na IA (peça para a IA corrigir, dar feedback ou simular a situação do objetivo, sempre no nível ${spec.level}), "tip_pt" ensina como continuar a conversa com a IA (pedir versão mais natural, mais exemplos, corrigir de novo).`,
+    ``,
+    HUB_QUALITY_RULES(spec),
     ``,
     `Regras:`,
     `- Vocabulário e gramática 100% dentro do nível ${spec.level}; situações reais do nicho e do objetivo, nada genérico.`,
@@ -692,11 +698,30 @@ const normalizeGrammarFocus = (
   const point = text(value.point, 160);
   const patterns = pairList(value.patterns, "en", "pt", 6);
   if (!point || patterns.length < 1) return null;
+  // "Cuidado" que não é erro (igual ao certo, ou só grafia US x UK) sai: a
+  // revisão pedagógica reprovou fichas por isso.
+  const watch_out = Array.isArray(value.watch_out)
+    ? value.watch_out.flatMap((item) => {
+      if (!isObject(item)) return [];
+      const wrong_en = text(item.wrong_en, 200);
+      const right_en = text(item.right_en, 200);
+      if (isNotARealError(wrong_en, right_en)) return [];
+      return [{ wrong_en, right_en, why_pt: text(item.why_pt, 300) }];
+    }).slice(0, 4)
+    : [];
   return {
     point,
     why_pt: text(value.why_pt, 600),
     patterns,
-    watch_out_pt: textList(value.watch_out_pt, 4),
+    watch_out,
+    // Texto pronto para a tela, a impressão e o texto copiado (e é o campo que
+    // a mesa do aluno já tira).
+    watch_out_pt: watch_out.length
+      ? watch_out.map((item) =>
+        `Errado: "${item.wrong_en}" → Certo: "${item.right_en}". ${item.why_pt}`
+          .trim()
+      )
+      : textList(value.watch_out_pt, 4),
   };
 };
 

@@ -23,6 +23,13 @@ import {
   normalizeHubCefr,
   parseHubCefrSpec,
 } from "./hub-cefr.ts";
+import {
+  americanizeSpelling,
+  BLOCKING_QUALITY_CODES,
+  buildHubVerifyPrompt,
+  hubMaterialQualityIssues,
+  hubVerifySchema,
+} from "./hub-quality.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
   contentBotMaterialBody,
@@ -59,6 +66,7 @@ import {
   HUB_MATERIAL_PROMPT_VERSION,
   hubMaterialResponseSchema,
   type HubMaterialSpec,
+  type NormalizedHubMaterial,
   normalizeHubMaterial,
   parseHubMaterialSpec,
   sanitizeSourceText,
@@ -1595,8 +1603,23 @@ async function handleHubAdaptAuthentic(
     });
     throw new HttpError(502, "AI_PROVIDER_INVALID_RESPONSE");
   }
+  const quality = await verifyHubMaterial(
+    apiKey,
+    spec,
+    generated.result,
+    normalized.value,
+    userId,
+    {
+      maxCompletionTokens: 5_000,
+      attemptMs: profile.timeoutMs,
+      deadlineMs: profile.timeoutMs + 1_000,
+      models: [model],
+      user: providerUser,
+    },
+  );
+  const checked = quality.value;
   const material = {
-    ...normalized.value.material,
+    ...checked.material,
     source: {
       type: source.type,
       url: source.url,
@@ -1623,15 +1646,16 @@ async function handleHubAdaptAuthentic(
       bilingual: spec.bilingual,
       extra_instructions: spec.extra,
       tool_id: "adapt-authentic",
-      title: normalized.value.title,
+      title: checked.title,
       material,
-      dropped_items: normalized.value.dropped,
+      dropped_items: checked.dropped,
       model_id: generated.model,
       prompt_version: HUB_MATERIAL_PROMPT_VERSION,
       response_id: generated.responseId,
       provider_usage: {
         ...(generated.usage ?? {}),
         source_type: source.type,
+        quality_check: quality.report,
       },
     })
     .select("id,created_at")
@@ -1646,7 +1670,7 @@ async function handleHubAdaptAuthentic(
   await commitHubReservation(reservationState);
   return jsonResponse(200, {
     material_id: row.id,
-    title: normalized.value.title,
+    title: checked.title,
     kind: spec.kind,
     niche: spec.niche,
     level: spec.level,
@@ -1654,11 +1678,91 @@ async function handleHubAdaptAuthentic(
     goal: spec.goal,
     audience: spec.audience,
     material,
-    dropped: normalized.value.dropped,
+    dropped: checked.dropped,
     tool_id: "adapt-authentic",
     created_at: row.created_at,
     idempotent: false,
   });
+}
+
+// 2ª passada de qualidade (24/11/2026): o modelo revisa a própria saída contra
+// a checklist pedagógica e devolve o material corrigido no mesmo schema. Roda
+// sobre a saída CRUA (formato do schema); se a correção não normalizar, fica o
+// original. Grafia britânica é corrigida sem IA; áudio prometido ou
+// comparativo errado que sobrar reprova (502, a reserva é liberada).
+interface HubVerifiedMaterial {
+  value: NormalizedHubMaterial;
+  report: JsonObject;
+}
+
+async function verifyHubMaterial(
+  apiKey: string,
+  spec: HubMaterialSpec,
+  raw: unknown,
+  first: NormalizedHubMaterial,
+  userId: string,
+  base: ProviderGenerationOptions,
+): Promise<HubVerifiedMaterial> {
+  const before = hubMaterialQualityIssues((raw ?? {}) as JsonObject);
+  let chosenRaw: unknown = raw;
+  let modelIssues = 0;
+  let verifyStatus = "ok";
+  if (Deno.env.get("HUB_MATERIAL_VERIFY")?.trim() !== "off") {
+    try {
+      const verified = await callOpenRouter(
+        apiKey,
+        redactDirectIdentifiers(
+          buildHubVerifyPrompt(spec, (raw ?? {}) as JsonObject, before),
+        ),
+        hubUsageSink(userId, "hub_educator_material_verify"),
+        {
+          ...base,
+          responseSchema: hubVerifySchema(hubMaterialResponseSchema(spec.kind)),
+          responseSchemaName: `wise_wolf_verify_${spec.kind}`,
+          temperature: 0.2,
+        },
+      );
+      const result = verified.result as JsonObject | null;
+      modelIssues = Array.isArray(result?.issues) ? result!.issues.length : 0;
+      if (result && normalizeHubMaterial(spec, result.material).ok) {
+        chosenRaw = result.material;
+      } else {
+        verifyStatus = "correction_rejected";
+      }
+    } catch (error) {
+      // Revisão fora do ar não derruba a geração: seguem as checagens sem IA.
+      verifyStatus = "verify_failed";
+      console.warn("Hub material verify pass failed", {
+        kind: spec.kind,
+        code: error instanceof HttpError ? error.code : "UNKNOWN",
+      });
+    }
+  } else {
+    verifyStatus = "disabled";
+  }
+  const fixedRaw = americanizeSpelling(chosenRaw);
+  const renormalized = normalizeHubMaterial(spec, fixedRaw);
+  const value = renormalized.ok ? renormalized.value : first;
+  const after = hubMaterialQualityIssues(
+    (renormalized.ok ? fixedRaw : raw ?? {}) as JsonObject,
+  ).filter((issue) => issue.code !== "BRITISH_SPELLING");
+  const blocking = after.filter((issue) =>
+    BLOCKING_QUALITY_CODES.has(issue.code)
+  );
+  const report = {
+    status: verifyStatus,
+    model_issues: modelIssues,
+    automatic_before: before.map((issue) => issue.code),
+    automatic_after: after.map((issue) => issue.code),
+  };
+  if (blocking.length) {
+    console.error("Hub material failed quality gate", {
+      kind: spec.kind,
+      report,
+    });
+    throw new HttpError(502, "MATERIAL_QUALITY_FAILED");
+  }
+  return { value, report };
 }
 
 const HUB_MATERIAL_ACTION = "material";
@@ -1876,6 +1980,15 @@ async function handleHubMaterialGenerate(
     });
     throw new HttpError(502, "AI_PROVIDER_INVALID_RESPONSE");
   }
+  const quality = await verifyHubMaterial(
+    apiKey,
+    spec,
+    generated.result,
+    normalized.value,
+    userId,
+    providerOptions(economyModel),
+  );
+  normalized = { ok: true, value: quality.value };
 
   reservationState.releaseReason = "PERSISTENCE_FAILED";
   const { data: row, error: rowError } = await client
@@ -1905,6 +2018,7 @@ async function handleHubMaterialGenerate(
       provider_usage: {
         ...(generated.usage ?? {}),
         quality_retry: qualityRetried,
+        quality_check: quality.report,
       },
     })
     .select("id,created_at")

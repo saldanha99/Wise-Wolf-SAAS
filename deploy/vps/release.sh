@@ -731,6 +731,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/safe-fetch.test.ts \
   supabase/functions/pedagogical-content/hub-cefr.ts \
   supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-quality.ts \
+  supabase/functions/pedagogical-content/hub-quality.test.ts \
   supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
@@ -967,6 +969,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/_shared/tutor-voice.test.ts \
   supabase/functions/_shared/safe-fetch.test.ts \
   supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-quality.test.ts \
   supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \

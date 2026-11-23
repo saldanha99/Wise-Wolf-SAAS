@@ -66,6 +66,13 @@ select pg_temp.assert_true(
   ),
   'gabarito de tipo novo vazou para a mesa do aluno');
 
+-- "Cuidados" estruturados (v4 do gerador) também ficam só com o professor
+select pg_temp.assert_true(
+  (select not ((v -> 'grammar_focus') ? 'watch_out') and not ((v -> 'grammar_focus') ? 'watch_out_pt')
+          and (v -> 'grammar_focus') ->> 'point' = 'Comparatives'
+     from (select private.hub_strip_answer_keys('{"grammar_focus":{"point":"Comparatives","watch_out":[{"wrong_en":"more busy","right_en":"busier","why_pt":"x"}],"watch_out_pt":["x"]}}'::jsonb) as v) as stripped),
+  'cuidado estruturado vazou para a mesa do aluno');
+
 -- Os tipos antigos continuam como antes
 select pg_temp.assert_true(
   (select not (private.hub_strip_answer_keys('{"questions":[{"prompt":"p","options":["a","b"],"correct":0}],"teacher_notes_pt":"n"}'::jsonb) -> 'questions' -> 0 ? 'correct')

@@ -75,9 +75,10 @@ begin
     end if;
   end loop;
 
-  -- Foco gramatical: os "cuidados" são para o professor
+  -- Foco gramatical: os "cuidados" são para o professor (texto e, desde a v4
+  -- do gerador, a versão estruturada errado/certo)
   if pg_catalog.jsonb_typeof(v -> 'grammar_focus') = 'object' then
-    v := pg_catalog.jsonb_set(v, '{grammar_focus}', (v -> 'grammar_focus') - 'watch_out_pt');
+    v := pg_catalog.jsonb_set(v, '{grammar_focus}', (v -> 'grammar_focus') - 'watch_out_pt' - 'watch_out');
   end if;
 
   -- Leitura: scanning perde a resposta, chunking perde a tradução (o aluno traduz)
