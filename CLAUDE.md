@@ -1,3 +1,47 @@
+### 23/11/2026 (noite, 2) — Hub Fase 1 no ar: teste Pro sem cartão, Google, logo/Word, atividade por link/QR e correção por IA
+
+- **O quê (pedido do Chefe d03e7683 + defeitos do E2E de 23/11):** teste **Pro de 7 dias sem cartão** (o claim dá
+  `PROFESSOR_PRO` TRIALING; ao vencer, `expire_hub_trials_internal` dá `DISCOVERY` ACTIVE até 2099, `provider = internal`,
+  metadata `hub_free_after_trial`); **entrar com Google** no `HubAuthDialog`; **logo do professor** (`hub_account_branding`,
+  data URL ≤ 400 KB) no PDF e no **Word** (`hubExport.ts`, MHTML; só o logo vira anexo); **atividade por link/QR** sem
+  cadastro (edge nova `hub-material-share`; banco guarda só o sha256 do token; 30 dias; 30 links vivos por material;
+  aluno vê `hub_strip_answer_keys`); **correção** — fechadas por código, abertas pela IA em pt-BR, cota
+  `educator_ai.correct` (Gratuito 30, Pro 600, Escola 2000, Institucional 5000/mês) **reservada antes da IA**
+  (`hub_material_share_reserve_ai`, trava por conta, reserva de 5 min, liberada na falha); por link 20 envios/min e
+  300/dia; modo do gabarito `after_submit` | `never` gravado na criação do link (`hub_material_share_create` de 4
+  argumentos). No `never` a resposta-modelo não vai à IA e o aluno não recebe esperado, explicação nem frase corrigida;
+  o professor vê tudo em "Ver respostas".
+- **Defeitos do E2E:** aluno convidado tomava **403 no Wolfie** (perfil STUDENT sem escola; gatilho
+  `hub_memberships_promote_tenantless` → NON_STUDENT, migration `190000`) e agora o Wolfie dele **abre na tarefa do
+  professor** (`hub_learner_desk`: última tarefa aberta, recado e objetivo); **cartão no checkout do Hub** (iframe do
+  formulário do site `https://wisewolflanguage.com.br/pagamento/cartao.html`; o site liberou o Hub no `frame-ancestors`,
+  commit `550ede4` do institucional); "Para escolas" fora do menu do professor; `?cadastro=1` abre o cadastro direto
+  (os "Criar conta grátis" do site apontam para lá); títulos crus da biblioteca com nome de vitrine (`hubDisplayTitle`);
+  nenhum texto do checkout cita o Asaas.
+- **No ar (19:47–19:52 UTC):** migrations `20261123150000`–`190000` (uma transação, marcadas em `.migration-checksums`);
+  funções `hub-material-share` (nova, `7dd325e3…`) e `wolf-tutor-api` (`f1f259a6…`) no `.published-functions.md5`;
+  front `index-DaTkBHa2.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Revisor: 0 Bloqueia
+  (2ª rodada). E2E em produção a 390 px: `/data/OpenBot/Shared/wisewolf/hub-fase1-20261123/`.
+- **Rollback:** backup `/opt/wisewolf/backup-hub-fase1-20261123T194728Z/` (`postgres.dump`, `functions/wolf-tutor-api`,
+  `published-functions.md5`, `migration-checksums.list`, `frontend-dist.md5`). Front: `cd /opt/wisewolf/frontend/src && mv
+  dist dist.fase1 && mv dist.prev19-hub-fase1 dist && cd .. && docker compose restart frontend`. Funções: `rm -rf
+  volumes/functions/hub-material-share`, copiar `functions/wolf-tutor-api` do backup, devolver o
+  `published-functions.md5`, `docker restart supabase-edge-functions`. Banco (aditivo; só se preciso): `drop function`
+  das `hub_material_share_*` (create de 3 e 4 argumentos, view, revoke, for_grading, reserve_ai, release_ai, record,
+  results), `drop table public.hub_material_share_ai_reservations, public.hub_material_share_submissions,
+  public.hub_material_share_links, public.hub_account_branding;` `delete from hub_plan_entitlements where feature_key =
+  'educator_ai.correct';` `drop trigger hub_memberships_promote_tenantless on public.hub_memberships;` + as 2 funções do
+  claim/expiração de volta pela definição do dump + apagar os 5 `.sha256`.
+- **Hotfix 20:22 UTC (`7010245`, Revisor Ok):** quem estava no teste Pro levava 409
+  `SUBSCRIPTION_RECONCILIATION_REQUIRED` ao assinar (o teste não tem provedor). `_shared/hub-billing-safety.ts`
+  (`9f66577e…`) isenta TRIALING sem provedor e sem id no provedor. Rollback: `cp -a
+  /opt/wisewolf/backup-hub-assinar-teste-20261123T202212Z/hub-billing-safety.ts volumes/functions/_shared/` +
+  `docker restart supabase-edge-functions`. ⚠️ Se um teste interno passar a gravar `provider = 'internal'`, aceite-o aqui.
+- **E2E em produção (390 px):** cadastro em 1 clique, teste Pro, geração, logo, link/QR, correção nos 2 modos, convite,
+  envio de material, Wolfie do aluno convidado (200, abre na tarefa) e o formulário do cartão dentro do Hub (sem pagar).
+  Asaas de teste apagado (deleted=true); 54 linhas das 2 contas apagadas, cópia em
+  `/opt/wisewolf/backup-hub-fase1-e2e-limpeza-20261123T202514Z/rows.tsv`; varredura final 0.
+
 ### 23/11/2026 (noite) — Recebedor do pagamento (MEI) antes do PIX, no e-mail e nos Termos do Hub v2026-11-23
 
 - **Por quê (decisão do Vinícius):** a conta Asaas é o MEI "55.806.029 DEBORA ALVES FERNANDES", sem nome fantasia (em MEI a
