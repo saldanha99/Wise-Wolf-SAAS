@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, Loader2, Printer } from 'lucide-react';
 import { HubMaterialView, type HubMaterialRecord } from './HubMaterialGenerator';
 import { viewHubSharedMaterial, type HubAccountBranding } from './hubService';
+import HubShareAnswerForm from './HubShareAnswerForm';
 
 const MESSAGES: Record<string, string> = {
   LINK_EXPIRED: 'Este link de atividade venceu. Peça um link novo ao seu professor.',
@@ -44,6 +45,7 @@ const HubSharedActivity: React.FC<{ token: string }> = ({ token }) => {
               <button type="button" onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black"><Printer size={15} />Imprimir / salvar PDF</button>
             </div>
             <HubMaterialView record={record} teacher={false} branding={branding} />
+            <HubShareAnswerForm token={token} material={record.material as Record<string, unknown>} />
           </>
         )}
       </div>

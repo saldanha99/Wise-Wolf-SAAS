@@ -284,3 +284,28 @@ export const revokeHubMaterialShares = (materialId: string) =>
 
 export const viewHubSharedMaterial = (token: string) =>
   invokeShare<{ ok: true; material: unknown; branding: HubAccountBranding | null; expiresAt: string }>({ action: 'view', token });
+
+// ── Correção das respostas da atividade do link (Fase 1) ─────────────────────
+export interface HubGradedItem {
+  section: string;
+  index: number;
+  kind: 'mcq' | 'gap' | 'open';
+  given: string;
+  correct: boolean | null;
+  expected?: string;
+  explanation_pt?: string;
+  feedback_pt?: string;
+  verdict?: 'good' | 'partial' | 'needs_work';
+  corrected_en?: string;
+}
+export interface HubShareResult { items: HubGradedItem[]; right: number; total: number; keyMode: 'after_submit' | 'never' }
+export interface HubShareSubmission { id: string; studentName: string | null; createdAt: string; closedRight: number; closedTotal: number; result: HubShareResult }
+
+export const submitHubSharedAnswers = (token: string, studentName: string, answers: Record<string, Array<number | string | null>>) =>
+  invokeShare<HubShareResult>({ action: 'submit', token, studentName, answers });
+
+export const loadHubShareResults = (materialId: string) =>
+  invokeShare<{ submissions: HubShareSubmission[] }>({ action: 'results', materialId });
+
+export const createHubMaterialShareWithMode = (materialId: string, answerKeyMode: 'after_submit' | 'never') =>
+  invokeShare<HubMaterialShare>({ action: 'create', materialId, answerKeyMode });

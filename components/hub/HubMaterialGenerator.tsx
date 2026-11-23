@@ -24,12 +24,14 @@ import {
 import { supabase } from '../../lib/supabase';
 import type { HubBootstrap } from './types';
 import {
-  createHubMaterialShare,
+  createHubMaterialShareWithMode,
   loadHubAccountBranding,
+  loadHubShareResults,
   revokeHubMaterialShares,
   saveHubAccountBranding,
   type HubAccountBranding,
   type HubMaterialShare,
+  type HubShareSubmission,
 } from './hubService';
 import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hubExport';
 
@@ -527,6 +529,17 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
   const [share, setShare] = useState<HubMaterialShare | null>(null);
   const [shareMessage, setShareMessage] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [showKeyAfter, setShowKeyAfter] = useState(true);
+  const [submissions, setSubmissions] = useState<HubShareSubmission[] | null>(null);
+
+  const loadResults = async () => {
+    if (!current) return;
+    try {
+      setSubmissions((await loadHubShareResults(current.id)).submissions);
+    } catch {
+      setShareMessage('Não consegui carregar as respostas agora.');
+    }
+  };
 
   const SHARE_ERRORS: Record<string, string> = {
     SUBSCRIPTION_REQUIRED: 'Seu plano não inclui o Educador IA agora.',
@@ -539,7 +552,8 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
     setSharing(true);
     setShareMessage('');
     try {
-      setShare(await createHubMaterialShare(current.id));
+      setShare(await createHubMaterialShareWithMode(current.id, showKeyAfter ? 'after_submit' : 'never'));
+      setSubmissions(null);
     } catch (err) {
       setShareMessage(SHARE_ERRORS[(err as Error).message] ?? 'Não consegui gerar o link agora.');
     } finally {
@@ -797,6 +811,10 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
                 {teacherVersion ? <EyeOff size={15} /> : <Eye size={15} />}{teacherVersion ? 'Ver versão do aluno' : 'Ver versão do professor (gabarito)'}
               </button>
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Printer size={15} />Imprimir / salvar PDF</button>
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-3 py-2 text-xs font-bold text-brand-text">
+                <input type="checkbox" checked={showKeyAfter} onChange={(event) => setShowKeyAfter(event.target.checked)} />
+                Gabarito ao aluno depois de enviar
+              </label>
               <button type="button" onClick={() => void openShare()} disabled={sharing} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text disabled:opacity-60"><Link2 size={15} />{sharing ? 'Gerando link...' : 'Link e QR para os alunos'}</button>
               <button type="button" onClick={exportWord} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Download size={15} />Baixar Word</button>
               {isManager && (
@@ -818,14 +836,34 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
                 <div className="min-w-0 space-y-2">
                   <p className="text-sm font-black">Os alunos abrem pelo QR ou pelo link, sem criar conta. Eles veem a versão do aluno, sem o gabarito.</p>
                   <p className="break-all rounded-xl bg-brand-surface-2 p-2 text-xs">{share.url}</p>
-                  <p className="text-[11px] text-brand-muted">Vale até {new Date(share.expiresAt).toLocaleDateString('pt-BR')}.</p>
+                  <p className="text-[11px] text-brand-muted">Vale até {new Date(share.expiresAt).toLocaleDateString('pt-BR')}. {showKeyAfter ? 'O aluno vê o gabarito e a explicação depois de enviar.' : 'O aluno vê só certo/errado e o retorno; o gabarito fica com você.'}</p>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void navigator.clipboard.writeText(share.url)} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-tenant-primary px-4 py-2 text-xs font-black text-white"><Copy size={14} />Copiar link</button>
                     <a href={`https://wa.me/?text=${encodeURIComponent(`Atividade de inglês: ${current.title}\n${share.url}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border px-4 py-2 text-xs font-black">Enviar no WhatsApp</a>
+                    <button type="button" onClick={() => void loadResults()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border px-4 py-2 text-xs font-black">Ver respostas</button>
                     <button type="button" onClick={() => void revokeShares()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-red-600">Desativar links</button>
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {submissions && (
+            <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 print:hidden" aria-label="Respostas recebidas">
+              <p className="text-sm font-black">Respostas recebidas: {submissions.length}</p>
+              {submissions.length === 0 && <p className="mt-1 text-xs text-brand-muted">Ninguém respondeu ainda.</p>}
+              <ul className="mt-3 space-y-3">
+                {submissions.map((sub) => (
+                  <li key={sub.id} className="rounded-2xl bg-brand-surface-2 p-3 text-xs">
+                    <p className="font-black">{sub.studentName || 'Aluno sem nome'} · {sub.closedRight} de {sub.closedTotal} · {new Date(sub.createdAt).toLocaleString('pt-BR')}</p>
+                    {sub.result.items.filter((it) => it.kind === 'open' && it.given).map((it) => (
+                      <div key={`${it.section}-${it.index}`} className="mt-2">
+                        <p><span className="font-bold">Aberta {it.index + 1}:</span> {it.given}</p>
+                        {it.feedback_pt && <p className="text-brand-muted">Retorno: {it.feedback_pt}</p>}
+                      </div>
+                    ))}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <HubMaterialView record={current} teacher={teacherVersion} branding={branding} onGenerateWeek={prefillFromWeek} />
