@@ -260,6 +260,30 @@ Deno.test("paid replacements require a cancellable prior provider schedule", () 
     ),
     "the free Discovery trial has no provider schedule to cancel",
   );
+  assert(
+    !hubReplacementNeedsProviderReconciliation(
+      {
+        status: "TRIALING",
+        planCode: "PROFESSOR_PRO",
+        provider: null,
+        providerSubscriptionId: null,
+      },
+      "ALLOW_REPLACEMENT",
+    ),
+    "the card-free Pro trial lives only in our database and can be paid",
+  );
+  assert(
+    hubReplacementNeedsProviderReconciliation(
+      {
+        status: "TRIALING",
+        planCode: "PROFESSOR_PRO",
+        provider: "ASAAS",
+        providerSubscriptionId: null,
+      },
+      "ALLOW_REPLACEMENT",
+    ),
+    "a trial that already touched the provider still needs reconciliation",
+  );
 });
 
 Deno.test("paid replacements cancel only a distinct prior Asaas subscription", () => {
