@@ -4,10 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HubPlan } from './types';
 
 const invoke = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
+const sessionStatus = vi.hoisted(() => ({ value: 'PENDING' }));
 
 vi.mock('../../lib/supabase', () => ({
+  SUPABASE_URL: 'https://api.wisewolflanguage.com.br',
+  SUPABASE_ANON_KEY: 'anon-fixture',
   supabase: {
     functions: { invoke },
+    auth: { getSession },
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { status: sessionStatus.value } }) }) }),
+    }),
   },
 }));
 
@@ -54,7 +62,7 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
   it('revisa os dados e cria somente a cobrança selecionada', async () => {
     renderCheckout();
 
-    expect(screen.getByRole('button', { name: /anual/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^anual/i })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(screen.getByLabelText(/nome completo/i), {
       target: { value: 'Marina Professora' },
     });
@@ -74,7 +82,7 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
     expect(screen.getByText(/Final 0181/i)).toBeTruthy();
     // O recebedor (MEI) aparece ANTES de gerar a cobrança e de novo junto do QR.
     expect(screen.getByText(/Pagamento processado por 55\.806\.029 Debora Alves Fernandes \(CNPJ 55\.806\.029\/0001-57\), empresa responsável pela Wise Wolf\./)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /gerar pix no asaas/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^gerar pix$/i }));
 
     await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
     expect(invoke).toHaveBeenCalledWith('create-hub-checkout', {
@@ -119,7 +127,7 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /Termos de Uso/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Política de Privacidade/i }));
     fireEvent.click(screen.getByRole('button', { name: /revisar assinatura/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /gerar pix no asaas/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^gerar pix$/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/conta está suspensa ou encerrada/i);
     expect(screen.queryByRole('heading', { name: /agora falta confirmar o pagamento/i })).toBeNull();
@@ -140,5 +148,33 @@ describe('Checkout do Hub até a fronteira segura do Asaas', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(/Termos de Uso e a Política de Privacidade/i);
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('cartão: cria a cobrança sem cartão e abre o formulário isolado do site', async () => {
+    getSession.mockResolvedValue({ data: { session: { access_token: 'jwt-fixture' } } });
+    invoke.mockResolvedValue({ data: { checkoutId: '00000000-0000-4000-8000-000000000301', amount: 1190 }, error: null });
+    renderCheckout();
+    fireEvent.change(screen.getByLabelText(/cpf ou cnpj/i), { target: { value: '11222333000181' } });
+    fireEvent.change(screen.getByLabelText(/telefone com ddd/i), { target: { value: '11999990000' } });
+    fireEvent.click(screen.getByRole('button', { name: /cartão de crédito/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Termos de Uso/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Política de Privacidade/i }));
+    fireEvent.click(screen.getByRole('button', { name: /revisar assinatura/i }));
+    expect(screen.getByText('Cartão de crédito')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /continuar para o cartão/i }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    const body = invoke.mock.calls[0]?.[1]?.body;
+    expect(body).toMatchObject({ billingType: 'CREDIT_CARD' });
+    expect(body).not.toHaveProperty('card');
+    const frame = await screen.findByTitle('Dados do cartão de crédito');
+    expect(frame).toHaveAttribute('src', 'https://wisewolflanguage.com.br/pagamento/cartao.html');
+    expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-forms');
+    expect(screen.getByTestId('hub-payment-processor')).toHaveTextContent('CNPJ 55.806.029/0001-57');
+  });
+
+  it('nenhum texto do checkout fala em Asaas', () => {
+    renderCheckout();
+    expect(document.body.textContent).not.toMatch(/asaas/i);
   });
 });

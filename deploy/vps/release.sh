@@ -716,6 +716,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/pedagogical-content/hub-material.test.ts \
   supabase/functions/pedagogical-content/content-bot.ts \
   supabase/functions/pedagogical-content/content-bot.test.ts \
+  supabase/functions/hub-material-share/core.ts \
+  supabase/functions/hub-material-share/core.test.ts \
+  supabase/functions/hub-material-share/grade.ts \
+  supabase/functions/hub-material-share/grade.test.ts \
+  supabase/functions/hub-material-share/index.ts \
   supabase/functions/gamma-book-generator/book-spec.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/gamma-book-generator/index.ts \
@@ -941,6 +946,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-lesson-track/core.test.ts \
   supabase/functions/wolfie-lesson-track/opener.test.ts \
   supabase/functions/hub-card-payment/core.test.ts \
+  supabase/functions/hub-material-share/core.test.ts \
+  supabase/functions/hub-material-share/grade.test.ts \
   supabase/functions/asaas-webhook/hub-purchase-capi.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
@@ -1063,6 +1070,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/submit-quiz/index.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/hub-library-access/index.ts \
+  supabase/functions/hub-material-share/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
   supabase/functions/create-hub-checkout/due-date.ts \
@@ -1695,6 +1703,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
   "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
   "supabase/migrations/20261123131000_conteudo_bot_plano_ativo.sql"
+  "supabase/migrations/20261123150000_hub_teste_pro_e_gratuito_permanente.sql"
+  "supabase/migrations/20261123160000_hub_logo_do_professor.sql"
+  "supabase/migrations/20261123170000_hub_atividade_por_link.sql"
+  "supabase/migrations/20261123180000_hub_correcao_por_ia.sql"
+  "supabase/migrations/20261123190000_hub_aluno_convidado_sem_escola.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1914,6 +1927,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/hub_aprovacao_comercial_em_lote.sql"
   "supabase/tests/ia_teto_mensal_anthropic.sql"
   "supabase/tests/conteudo_bot_fichas_no_hub.sql"
+  "supabase/tests/hub_teste_pro_e_gratuito.sql"
+  "supabase/tests/hub_logo_do_professor.sql"
+  "supabase/tests/hub_atividade_por_link.sql"
+  "supabase/tests/hub_correcao_por_ia.sql"
+  "supabase/tests/hub_aluno_convidado_sem_escola.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -2080,6 +2098,7 @@ HARDENED_FUNCTIONS=(
   whatsapp-notificacao-wise
   wolfie-healthcheck
   gamma-book-generator
+  hub-material-share
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -4914,6 +4933,12 @@ wait_for_http_status 401 "autenticação da biblioteca do Hub" \
   -X POST "$api_url/functions/v1/hub-library-access" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_http_status 200 "preflight da atividade por link do Hub" \
+  -X OPTIONS "$api_url/functions/v1/hub-material-share"
+wait_for_http_status 404 "link inválido da atividade do Hub" \
+  -X POST "$api_url/functions/v1/hub-material-share" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"view","token":"invalido"}'
 wait_for_http_status 200 "preflight da sincronização de materiais do Hub" \
   -X OPTIONS "$api_url/functions/v1/sync-hub-material"
 wait_for_http_status 401 "autenticação da sincronização de materiais do Hub" \

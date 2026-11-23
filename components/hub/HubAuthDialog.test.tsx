@@ -7,6 +7,7 @@ import { createHubCheckoutIntent } from './hubCheckoutIntent';
 const authMocks = vi.hoisted(() => ({
   signUp: vi.fn(),
   signInWithPassword: vi.fn(),
+  signInWithOAuth: vi.fn(),
 }));
 
 vi.mock('../../lib/supabase', () => ({
@@ -84,5 +85,15 @@ describe('Cadastro pelo convite do professor', () => {
     await waitFor(() => expect(authMocks.signUp).toHaveBeenCalledTimes(1));
     expect(authMocks.signUp.mock.calls[0][0].options.data.hub_audience).toBe('LEARNER');
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith('LEARNER', 'Pedro Alves'));
+  });
+
+  it('entra com Google voltando para a raiz do Hub (único endereço liberado)', async () => {
+    authMocks.signInWithOAuth.mockResolvedValue({ data: {}, error: null });
+    render(<HubAuthDialog initialMode="login" initialAudience="EDUCATOR" onClose={vi.fn()} onAuthenticated={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Continuar com Google/i }));
+    await waitFor(() => expect(authMocks.signInWithOAuth).toHaveBeenCalledTimes(1));
+    const call = authMocks.signInWithOAuth.mock.calls[0][0];
+    expect(call.provider).toBe('google');
+    expect(new URL(call.options.redirectTo).origin).toBe(window.location.origin);
   });
 });

@@ -207,7 +207,7 @@ const HubLearnersPanel: React.FC<HubLearnersPanelProps> = ({ bootstrap }) => {
                   {learner.objective && <p className="text-xs text-brand-muted">{learner.objective}</p>}
                 </div>
                 <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${learner.seat === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : learner.seat === 'INVITED' ? 'bg-amber-100 text-amber-800' : 'bg-brand-surface-2 text-brand-muted'}`}>
-                  {learner.seat === 'ACTIVE' ? 'Dentro da plataforma' : learner.seat === 'INVITED' ? 'Convite enviado' : 'Sem convite'}
+                  {learner.seat === 'ACTIVE' ? 'Dentro da plataforma' : learner.seat === 'INVITED' ? 'Convite pronto: envie o link' : 'Sem convite'}
                 </span>
               </div>
 

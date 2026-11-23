@@ -5,10 +5,13 @@ import {
   Check,
   ClipboardList,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FileText,
+  ImagePlus,
   Layers,
+  Link2,
   ListChecks,
   Map,
   MessageSquare,
@@ -20,6 +23,17 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { HubBootstrap } from './types';
+import {
+  createHubMaterialShareWithMode,
+  loadHubAccountBranding,
+  loadHubShareResults,
+  revokeHubMaterialShares,
+  saveHubAccountBranding,
+  type HubAccountBranding,
+  type HubMaterialShare,
+  type HubShareSubmission,
+} from './hubService';
+import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hubExport';
 import { FASE2_KIND_LABELS, Fase2MaterialSections, fase2MaterialText, MaterialSourceNote } from './hubMaterialFase2';
 
 // Gerador de material do Hub: o professor autônomo escolhe tipo × nicho × nível
@@ -282,10 +296,18 @@ const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string; hideRigh
   </table>
 );
 
-export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, onGenerateWeek }) => {
+export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; branding?: HubAccountBranding | null; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, branding, onGenerateWeek }) => {
   const m = record.material;
   return (
     <article id="hub-material-print" className="rounded-4xl border border-brand-border bg-white p-6 text-slate-900 shadow-xs print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-8">
+      {(branding?.logo_data_url || branding?.display_name) && (
+        <table className="brand mb-4 w-full border-b border-slate-200 pb-3" role="presentation">
+          <tbody><tr>
+            <td className="pb-3 text-sm font-black text-slate-700">{branding.display_name}</td>
+            <td className="pb-3 text-right">{branding.logo_data_url && <img src={branding.logo_data_url} alt={branding.display_name ? `Logo de ${branding.display_name}` : 'Logo'} className="ml-auto max-h-14 max-w-[180px] object-contain" />}</td>
+          </tr></tbody>
+        </table>
+      )}
       <header className="border-b border-brand-border pb-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tenant-primary print:text-black">{kindLabel(record.kind)} · {record.level_tag} · {nicheLabel(record.niche)}</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight">{record.title}</h2>
@@ -487,6 +509,84 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
   const [history, setHistory] = useState<HubMaterialRecord[]>([]);
   const [historyError, setHistoryError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [branding, setBranding] = useState<HubAccountBranding | null>(null);
+  const [brandingMessage, setBrandingMessage] = useState('');
+  const isManager = ['OWNER', 'ADMIN'].includes(String(bootstrap.membership?.membership_role ?? ''));
+
+  useEffect(() => {
+    let alive = true;
+    loadHubAccountBranding(bootstrap.account.id).then((value) => { if (alive) setBranding(value); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [bootstrap.account.id]);
+
+  const uploadLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setBrandingMessage('');
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) throw new Error('Entre de novo para salvar o logo.');
+      const logo = await resizeLogo(file);
+      const next = { logo_data_url: logo, display_name: branding?.display_name || bootstrap.account.name || null };
+      await saveHubAccountBranding(bootstrap.account.id, data.user.id, next);
+      setBranding(next);
+      setBrandingMessage('Logo salvo. Ele aparece na impressão, no PDF e no Word.');
+    } catch (err) {
+      setBrandingMessage(err instanceof Error ? err.message : 'Não consegui salvar o logo.');
+    }
+  };
+
+  const [share, setShare] = useState<HubMaterialShare | null>(null);
+  const [shareMessage, setShareMessage] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [showKeyAfter, setShowKeyAfter] = useState(true);
+  const [submissions, setSubmissions] = useState<HubShareSubmission[] | null>(null);
+
+  const loadResults = async () => {
+    if (!current) return;
+    try {
+      setSubmissions((await loadHubShareResults(current.id)).submissions);
+    } catch {
+      setShareMessage('Não consegui carregar as respostas agora.');
+    }
+  };
+
+  const SHARE_ERRORS: Record<string, string> = {
+    SUBSCRIPTION_REQUIRED: 'Seu plano não inclui o Educador IA agora.',
+    MATERIAL_ACCESS_DENIED: 'Só quem criou o material ou administra a conta pode gerar o link.',
+    SHARE_LIMIT_REACHED: 'Este material já tem links demais ativos. Desative os antigos e tente de novo.',
+  };
+
+  const openShare = async () => {
+    if (!current) return;
+    setSharing(true);
+    setShareMessage('');
+    try {
+      setShare(await createHubMaterialShareWithMode(current.id, showKeyAfter ? 'after_submit' : 'never'));
+      setSubmissions(null);
+    } catch (err) {
+      setShareMessage(SHARE_ERRORS[(err as Error).message] ?? 'Não consegui gerar o link agora.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const revokeShares = async () => {
+    if (!current) return;
+    try {
+      const result = await revokeHubMaterialShares(current.id);
+      setShare(null);
+      setShareMessage(`${result.revoked} ${result.revoked === 1 ? 'link desativado' : 'links desativados'}. Quem tiver o link antigo não abre mais.`);
+    } catch {
+      setShareMessage('Não consegui desativar os links agora.');
+    }
+  };
+
+  const exportWord = () => {
+    const node = document.getElementById('hub-material-print');
+    if (!node || !current) return;
+    const blob = buildWordDocument(current.title, node.outerHTML, branding?.logo_data_url);
+    downloadBlob(blob, `${safeFileName(current.title)}${teacherVersion ? '-professor' : '-aluno'}.doc`);
+  };
 
   const remaining = useMemo(() => {
     if (!entitlement) return 0;
@@ -720,11 +820,62 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
                 {teacherVersion ? <EyeOff size={15} /> : <Eye size={15} />}{teacherVersion ? 'Ver versão do aluno' : 'Ver versão do professor (gabarito)'}
               </button>
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Printer size={15} />Imprimir / salvar PDF</button>
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-3 py-2 text-xs font-bold text-brand-text">
+                <input type="checkbox" checked={showKeyAfter} onChange={(event) => setShowKeyAfter(event.target.checked)} />
+                Gabarito ao aluno depois de enviar
+              </label>
+              <button type="button" onClick={() => void openShare()} disabled={sharing} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text disabled:opacity-60"><Link2 size={15} />{sharing ? 'Gerando link...' : 'Link e QR para os alunos'}</button>
+              <button type="button" onClick={exportWord} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Download size={15} />Baixar Word</button>
+              {isManager && (
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text">
+                  <ImagePlus size={15} />{branding?.logo_data_url ? 'Trocar meu logo' : 'Colocar meu logo'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => void uploadLogo(event.target.files?.[0])} />
+                </label>
+              )}
               <button type="button" onClick={() => void copyText()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text">{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Copiado' : 'Copiar texto'}</button>
             </div>
             {current.dropped_items > 0 && <p className="text-xs text-brand-muted">{current.dropped_items} {current.dropped_items === 1 ? 'questão foi descartada' : 'questões foram descartadas'} na verificação do gabarito.</p>}
           </div>
-          <HubMaterialView record={current} teacher={teacherVersion} onGenerateWeek={prefillFromWeek} />
+          {brandingMessage && <p role="status" className="text-xs font-bold text-brand-muted print:hidden">{brandingMessage}</p>}
+          {shareMessage && <p role="status" className="text-xs font-bold text-brand-muted print:hidden">{shareMessage}</p>}
+          {share && (
+            <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 print:hidden" aria-label="Link da atividade para os alunos">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(share.qrSvg)}`} alt="QR code da atividade" className="size-40 shrink-0 rounded-xl bg-white p-2" />
+                <div className="min-w-0 space-y-2">
+                  <p className="text-sm font-black">Os alunos abrem pelo QR ou pelo link, sem criar conta. Eles veem a versão do aluno, sem o gabarito.</p>
+                  <p className="break-all rounded-xl bg-brand-surface-2 p-2 text-xs">{share.url}</p>
+                  <p className="text-[11px] text-brand-muted">Vale até {new Date(share.expiresAt).toLocaleDateString('pt-BR')}. {showKeyAfter ? 'O aluno vê o gabarito e a explicação depois de enviar.' : 'O aluno vê só certo/errado e o retorno; o gabarito fica com você.'}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(share.url)} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-tenant-primary px-4 py-2 text-xs font-black text-white"><Copy size={14} />Copiar link</button>
+                    <a href={`https://wa.me/?text=${encodeURIComponent(`Atividade de inglês: ${current.title}\n${share.url}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border px-4 py-2 text-xs font-black">Enviar no WhatsApp</a>
+                    <button type="button" onClick={() => void loadResults()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-brand-border px-4 py-2 text-xs font-black">Ver respostas</button>
+                    <button type="button" onClick={() => void revokeShares()} className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-red-600">Desativar links</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {submissions && (
+            <div className="rounded-3xl border border-brand-border bg-brand-surface p-5 print:hidden" aria-label="Respostas recebidas">
+              <p className="text-sm font-black">Respostas recebidas: {submissions.length}</p>
+              {submissions.length === 0 && <p className="mt-1 text-xs text-brand-muted">Ninguém respondeu ainda.</p>}
+              <ul className="mt-3 space-y-3">
+                {submissions.map((sub) => (
+                  <li key={sub.id} className="rounded-2xl bg-brand-surface-2 p-3 text-xs">
+                    <p className="font-black">{sub.studentName || 'Aluno sem nome'} · {sub.closedRight} de {sub.closedTotal} · {new Date(sub.createdAt).toLocaleString('pt-BR')}</p>
+                    {sub.result.items.filter((it) => it.kind === 'open' && it.given).map((it) => (
+                      <div key={`${it.section}-${it.index}`} className="mt-2">
+                        <p><span className="font-bold">Aberta {it.index + 1}:</span> {it.given}</p>
+                        {it.feedback_pt && <p className="text-brand-muted">Retorno: {it.feedback_pt}</p>}
+                      </div>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <HubMaterialView record={current} teacher={teacherVersion} branding={branding} onGenerateWeek={prefillFromWeek} />
         </section>
       )}
 

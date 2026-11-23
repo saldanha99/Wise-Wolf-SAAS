@@ -46,6 +46,7 @@ import HubLibraryFilters, { EMPTY_HUB_CATALOG_FILTERS, filterHubCatalog, type Hu
 import GuidedTour from '../tour/GuidedTour';
 import { HUB_FASE2_TOUR_ID, HUB_FASE2_TOUR_STEPS, useHubFeatureTour } from './hubFeatureTour';
 import HubPersonalization from './HubPersonalization';
+import { hubDisplayTitle } from './hubDisplayTitle';
 import { resolveSystemAppUrl } from './hubRoutes';
 
 const HubEducatorPlanner = React.lazy(() => import('./HubEducatorPlanner'));
@@ -83,7 +84,7 @@ const NAV_ITEMS: Array<SidebarMenuItem & { id: HubTab }> = [
   { id: 'library', label: 'Biblioteca', icon: Library, primary: true },
   { id: 'educator', label: 'Educador IA', icon: Sparkles },
   { id: 'wolfie', label: 'Wolfie', icon: Bot, primary: true },
-  { id: 'saas', label: 'SaaS Escolar', icon: Building2 },
+  { id: 'saas', label: 'Para escolas', icon: Building2 },
   { id: 'plans', label: 'Planos', icon: BarChart3 },
 ];
 
@@ -160,7 +161,7 @@ const HubOverview: React.FC<{
               <>
                 <button onClick={() => onNavigate('library')} className="rounded-2xl bg-tenant-primary px-5 py-3 text-sm font-black text-white">Explorar biblioteca</button>
                 {canUseEducator && <button onClick={() => onNavigate('educator')} className="rounded-2xl border border-brand-border bg-brand-surface-2 px-5 py-3 text-sm font-black text-brand-text">Criar com IA</button>}
-                <button onClick={() => onNavigate('wolfie')} className="rounded-2xl border border-brand-border bg-brand-surface-2 px-5 py-3 text-sm font-black text-brand-text">Entrar em um universo Wolfie</button>
+                <button onClick={() => onNavigate('wolfie')} className="rounded-2xl border border-brand-border bg-brand-surface-2 px-5 py-3 text-sm font-black text-brand-text">Praticar com o Wolfie</button>
               </>
             ) : (
               <button onClick={() => onNavigate('plans')} className="rounded-2xl bg-tenant-primary px-5 py-3 text-sm font-black text-white">Escolher plano e retomar</button>
@@ -305,7 +306,7 @@ const HubLibrary: React.FC<{
   const filtered = useMemo(() => filterHubCatalog(content, filters), [content, filters]);
   const materials = useMemo<MaterialItem[]>(() => filtered.map((item) => ({
     id: item.id,
-    title: item.title,
+    title: hubDisplayTitle(item.title),
     type: item.content_type,
     level_tag: item.level_tag || undefined,
     niche: item.niche,
@@ -319,7 +320,7 @@ const HubLibrary: React.FC<{
       if (!item.collection_id || seen.has(item.collection_id)) continue;
       seen.set(item.collection_id, {
         id: item.collection_id,
-        title: item.collection_name || 'Coleção',
+        title: item.collection_name ? hubDisplayTitle(item.collection_name) : 'Coleção',
         niche: item.niche,
         level_tag: item.level_tag || undefined,
         cover_url: item.cover_url,
@@ -385,7 +386,7 @@ const HubLibrary: React.FC<{
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-tenant-primary">Acervo licenciado</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-brand-text sm:text-4xl">Biblioteca Wise Wolf</h1>
-          <p className="mt-2 text-brand-muted">{hasFullAccess ? 'Seu plano libera o acervo completo.' : `${remainingPreviews ?? 0} prévias disponíveis no seu teste.`}</p>
+          <p className="mt-2 text-brand-muted">{hasFullAccess ? 'Seu plano libera o acervo completo.' : `${remainingPreviews ?? 0} ${(remainingPreviews ?? 0) === 1 ? 'prévia disponível' : 'prévias disponíveis'} no seu teste.`}</p>
         </div>
         {!hasFullAccess && <button onClick={onUpgrade} className="rounded-2xl bg-tenant-primary px-5 py-3 text-sm font-black text-white">Liberar biblioteca completa</button>}
       </div>
@@ -496,7 +497,7 @@ const HubPlans: React.FC<{
               <p className="mt-3 min-h-12 text-sm leading-6 text-brand-muted">{plan.description}</p>
               <ul className="mt-5 space-y-3 text-sm">{(plan.features || []).map((feature) => <li key={feature} className="flex gap-2"><Check size={16} className="mt-0.5 shrink-0 text-emerald-600" />{feature}</li>)}</ul>
               <button onClick={() => choose(plan)} disabled={!isManager || checkoutUnavailable} className="mt-6 w-full rounded-2xl bg-tenant-primary px-4 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-brand-surface-2 disabled:text-brand-muted">
-                {!isManager ? 'Fale com o responsável da conta' : !catalogReady && !salesAssisted ? 'Abertura em breve' : salesAssisted ? 'Falar com especialista' : isCurrentPlan ? alternativeCycleAvailable ? 'Alterar ciclo' : 'Plano atual' : activePlan ? 'Trocar para este plano' : 'Assinar com Asaas'}
+                {!isManager ? 'Fale com o responsável da conta' : !catalogReady && !salesAssisted ? 'Abertura em breve' : salesAssisted ? 'Falar com especialista' : isCurrentPlan ? alternativeCycleAvailable ? 'Alterar ciclo' : 'Plano atual' : activePlan ? 'Trocar para este plano' : 'Assinar este plano'}
               </button>
             </article>
           );
@@ -687,8 +688,11 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
   const visibleNavItems = useMemo(
     () => isInvitedLearner
       ? NAV_ITEMS.filter((item) => item.id === 'desk' || (item.id === 'wolfie' && wolfieAvailable))
-      : NAV_ITEMS.filter((item) => item.id !== 'desk' && (item.id !== 'educator' || canUseEducator)),
-    [canUseEducator, isInvitedLearner, wolfieAvailable],
+      : NAV_ITEMS.filter((item) => item.id !== 'desk'
+        && (item.id !== 'educator' || canUseEducator)
+        // Professor não vê "Para escolas" (o sistema escolar é venda para instituição).
+        && (item.id !== 'saas' || bootstrap.account.audience === 'INSTITUTION')),
+    [bootstrap.account.audience, canUseEducator, isInvitedLearner, wolfieAvailable],
   );
   const hubTenant = useMemo<Tenant>(() => ({
     id: bootstrap.account.id,

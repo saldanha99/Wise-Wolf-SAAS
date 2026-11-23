@@ -1,3 +1,4 @@
+import HubSharedActivity from './HubSharedActivity';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Bot, Building2, Compass, Loader2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -226,7 +227,16 @@ const HubApp: React.FC = () => {
   const [bootstrap, setBootstrap] = useState<HubBootstrap | null>(null);
   const [accounts, setAccounts] = useState<HubAccountSummary[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [authDialog, setAuthDialog] = useState<AuthDialogState>(null);
+  // `?cadastro=1` (botão "Criar conta grátis" do site) abre o cadastro direto: 1 clique.
+  const [authDialog, setAuthDialog] = useState<AuthDialogState>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('cadastro') === '1'
+        ? { mode: 'signup', audience: 'EDUCATOR' }
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [accountLoading, setAccountLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -552,6 +562,12 @@ const HubApp: React.FC = () => {
     } catch {}
     setPlanIntent(null);
   }, []);
+
+  // Atividade por link/QR: o aluno abre sem login (Fase 1).
+  const sharedActivityToken = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('atividade')?.trim() || ''
+    : '';
+  if (sharedActivityToken) return <HubSharedActivity token={sharedActivityToken} />;
 
   if (!marketingPage) return <HubNotFound />;
 
