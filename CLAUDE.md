@@ -18,6 +18,11 @@
 - **Rollback:** `/opt/wisewolf/backup-livros-motor-20261123T211111Z/` — copiar `functions/gamma-book-generator`, apagar
   `volumes/functions/_shared/exercise-validator.ts`, devolver `published-functions.md5`, `docker restart
   supabase-edge-functions`. Banco: as colunas podem ficar (livro sem `content` segue o fluxo antigo).
+- **Correção 21:26 UTC (`24237f4`, Revisor Ok), achada no 1º livro real (TOEFL B1, job `6ea0e6d5`, falhou sem gastar
+  Gamma):** o aviso de palavra extra do banco é do código (`Word bank (N extra)`; frase da IA sobre isso sai da
+  instrução); na última tentativa o bloco segue sem os itens apontados; job FAILED devolve `failure` (bloco, tentativas,
+  até 3 problemas; sem conteúdo nem gabarito). Rollback: pasta + md5 de
+  `/opt/wisewolf/backup-livros-palavra-extra-20261123T212651Z/` + restart.
 
 ### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
 
