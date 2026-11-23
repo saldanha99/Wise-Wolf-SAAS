@@ -106,13 +106,14 @@ Deno.test("normaliza, valida e devolve feedback quando o gabarito não bate", ()
   assert(ok.ok);
   const bad = goodPage(4);
   bad.exercises[0].items[0].answer_index = 5;
-  bad.exercises[1].items[0].answer = "Where is gate?";
+  (bad.exercises[1].items[0] as unknown as { words: string[] }).words = ["totally", "wrong"]; // ignorado: sai da resposta
   bad.body += " Look at the picture on page 2.";
   const res = normalizeChunk({ pages: [bad] }, chunk, 1);
   assert(!res.ok);
   const text = (res as { feedback: string[] }).feedback.join("\n");
   assert(text.includes("MCQ_ANSWER_NOT_IN_OPTIONS"));
-  assert(text.includes("REORDER_WORDS_MISMATCH"));
+  assert(!text.includes("REORDER_WORDS_MISMATCH"));
+  assert(text.includes('current item: "I ___ my passport."'));
   assert(text.includes("REFERENCE_TO_MISSING_MEDIA"));
   assert(text.includes("REFERENCE_TO_PAGE"));
   assert(!normalizeChunk({ pages: [] }, chunk, 1).ok);
@@ -133,7 +134,7 @@ Deno.test("página e gabarito: mesma numeração e frase completa", () => {
   assert(page.includes("## Exercise 1 — Choose"));
   assert(page.includes("1. I ___ my passport."));
   assert(page.includes("a) have   b) has   c) having"));
-  assert(page.includes("1. is / the / gate / where"));
+  assert(page.includes("1. is / gate / where / the"));
   const [key] = renderAnswerPages(
     res.pages,
     bookOutline(spec).filter((p) => p.kind === "answers"),

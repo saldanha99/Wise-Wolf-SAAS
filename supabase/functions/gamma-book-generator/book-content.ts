@@ -322,7 +322,10 @@ export function normalizeChunk(
               }
               : {}),
             ...(type !== "mcq" ? { answer: str(it.answer, 600) } : {}),
-            ...(type === "reorder" ? { words } : {}),
+            // Reordenação: as palavras saem da resposta (a fonte da verdade), embaralhadas por código.
+            ...(type === "reorder"
+              ? { words: scramble(str(it.answer, 600)) || words }
+              : {}),
           };
         },
       );
@@ -353,7 +356,7 @@ export function normalizeChunk(
       const title = str(ex.title, 120) || `Exercise ${k + 1}`;
       const result = validateExercise(exercise, { units });
       for (const err of result.errors) {
-        feedback.push(describe(expected, k + 1, err));
+        feedback.push(describe(expected, k + 1, err, exercise));
       }
       if (TEACHER_ADDRESS.test(exercise.instruction)) {
         feedback.push(
@@ -374,11 +377,70 @@ export function normalizeChunk(
   return feedback.length ? { ok: false, feedback } : { ok: true, pages };
 }
 
-function describe(page: number, k: number, e: ValidationError): string {
-  const item = e.n ? ` item ${e.n}` : "";
-  return `Page ${page} exercise ${k}${item}: ${e.code}${
+const HINTS: Record<string, string> = {
+  MCQ_DUPLICATE_OPTIONS:
+    "two options are the same; make every option different",
+  MCQ_OPTIONS_COUNT: "give 3 or 4 options",
+  MCQ_ANSWER_NOT_IN_OPTIONS:
+    "answer_index must point to the one correct option",
+  WRONG_COMPARATIVE_AS_ANSWER:
+    "'more + short adjective' is wrong; use the -er form",
+  GAP_COUNT: "the prompt must contain exactly one ___",
+  GAP_ANSWER_NOT_IN_BANK: "the answer must be in the word bank",
+  NUMBERING_GAP: "number the items 1..N with no gaps",
+  EMPTY_PROMPT: "write the item",
+  MISSING_ANSWER: "give the answer",
+  MISSING_MODEL_ANSWER: "give a short model answer",
+  MATCH_DUPLICATE_LEFT: "every left term must be different",
+  MATCH_NOT_ONE_TO_ONE: "every answer must be different (one to one)",
+  TF_ANSWER_INVALID: 'answer must be "true" or "false"',
+  TF_NEEDS_BOTH: "include both true and false statements",
+  ANSWER_SAME_AS_PROMPT:
+    "the answer must be a different (rewritten or corrected) sentence",
+  REORDER_EMPTY: "give the correct sentence as the answer",
+  REFERENCE_TO_MISSING_MEDIA:
+    "remove the reference to pictures, audio or recordings",
+  REFERENCE_TO_PAGE: "remove the page reference",
+  REFERENCE_TO_MISSING_UNIT:
+    "remove the reference to a unit that does not exist",
+};
+
+function describe(
+  page: number,
+  k: number,
+  e: ValidationError,
+  ex?: Exercise,
+): string {
+  const item = e.n ? ex?.items.find((it) => it.n === e.n) : undefined;
+  const shown = item
+    ? ` — current item: "${item.prompt}"${
+      item.options?.length
+        ? ` options: ${item.options.map((o) => `"${o}"`).join(", ")}`
+        : ""
+    }${item.answer ? ` answer: "${item.answer}"` : ""}`
+    : "";
+  const hint = `${HINTS[e.code] ?? e.code} [${e.code}]`;
+  return `Page ${page} exercise ${k}${e.n ? ` item ${e.n}` : ""}: ${hint}${
     e.detail ? ` (${e.detail})` : ""
-  }.`;
+  }${shown}.`;
+}
+
+/** Palavras da resposta embaralhadas de forma determinística (nunca na ordem certa). */
+export function scramble(answer: string): string[] {
+  const tokens = answer.replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean)
+    .map((
+      w,
+      i,
+    ) => (i === 0 && w !== "I" && !/^[A-Z]{2,}/.test(w)
+      ? w[0].toLowerCase() + w.slice(1)
+      : w)
+    );
+  if (tokens.length < 2) return tokens;
+  const out = [
+    ...tokens.filter((_, i) => i % 2 === 1),
+    ...tokens.filter((_, i) => i % 2 === 0),
+  ];
+  return out.join(" ") === tokens.join(" ") ? [...tokens].reverse() : out;
 }
 
 const LETTERS = "abcdefghij";
