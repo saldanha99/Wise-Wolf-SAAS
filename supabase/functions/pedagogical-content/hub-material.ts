@@ -13,7 +13,7 @@ import { auditQuestionKey } from "../wolfie-activity/answer-key-audit.ts";
 
 import { HUB_QUALITY_RULES, isNotARealError } from "./hub-quality.ts";
 
-export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-24.v4.1";
+export const HUB_MATERIAL_PROMPT_VERSION = "hub-material-2026-11-24.v4.2";
 
 export const HUB_MATERIAL_KINDS = [
   "worksheet",
@@ -694,8 +694,35 @@ const normalizeMcQuestions = (
     kept.push({ prompt, options, correct, explanation_pt });
     if (kept.length >= max) break;
   }
-  return { kept, dropped };
+  return { kept: balanceCorrectPositions(kept), dropped };
 };
+
+// O modelo põe a certa quase sempre na mesma letra (medido 24/11: 47 de 64 na B,
+// nenhuma na D; uma ficha com as 8 na B). A certa passa a girar de posição por
+// questão (início pelo enunciado, determinístico). Explicação que cita a letra
+// ("alternativa B") fica como veio, para não mentir.
+const CITES_LETTER =
+  /\b(alternativa|letra|op[çc][ãa]o|option|answer)\s*\(?[a-e]\)?(?![\p{L}])/iu;
+
+export function balanceCorrectPositions(questions: McQuestion[]): McQuestion[] {
+  if (questions.length < 2) return questions;
+  let seed = 0;
+  for (const char of questions[0].prompt) {
+    seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return questions.map((question, index) => {
+    if (CITES_LETTER.test(question.explanation_pt)) return question;
+    const size = question.options.length;
+    const target = (seed + index) % size;
+    if (target === question.correct) return question;
+    const options = [...question.options];
+    [options[target], options[question.correct]] = [
+      options[question.correct],
+      options[target],
+    ];
+    return { ...question, options, correct: target };
+  });
+}
 
 const pairList = (value: unknown, a: string, b: string, max = 20) =>
   Array.isArray(value)

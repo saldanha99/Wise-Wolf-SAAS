@@ -461,3 +461,30 @@ Deno.test("corte de texto: nunca no meio da palavra (shadowing.focus_pt do lote 
   );
   assert(clipText("curto", 50) === "curto", "texto curto não muda");
 });
+
+Deno.test("gabarito: a certa gira de letra e a explicação que cita letra não muda", async () => {
+  const { balanceCorrectPositions } = await import("./hub-material.ts");
+  const qs = Array.from(
+    { length: 8 },
+    (_, i) => ({
+      prompt: `Q${i} ___`,
+      options: ["right", "w1", "w2", "w3"].map((o) => `${o}${i}`),
+      correct: 0,
+      explanation_pt: `A certa é right${i}.`,
+    }),
+  );
+  const out = balanceCorrectPositions(qs);
+  const positions = out.map((q) => q.correct);
+  assert(new Set(positions).size === 4, `posições ${positions}`);
+  out.forEach((q, i) =>
+    assert(
+      q.options[q.correct] === `right${i}` && new Set(q.options).size === 4,
+      `questão ${i}`,
+    )
+  );
+  const letter = balanceCorrectPositions([{
+    ...qs[0],
+    explanation_pt: "É a alternativa A.",
+  }, qs[1]]);
+  assert(letter[0].correct === 0, "explicação com letra não pode mudar");
+});
