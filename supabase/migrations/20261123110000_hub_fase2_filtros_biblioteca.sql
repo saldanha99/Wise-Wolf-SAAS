@@ -15,19 +15,19 @@ alter table public.hub_content_items
 
 do $constraints$
 begin
-  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_skills_check') then
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_skills_check' and conrelid = 'public.hub_content_items'::regclass) then
     alter table public.hub_content_items add constraint hub_content_items_skills_check
       check (skills is null or skills <@ array['reading', 'vocabulary', 'speaking', 'writing', 'grammar', 'listening']::text[]);
   end if;
-  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_theme_check') then
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_theme_check' and conrelid = 'public.hub_content_items'::regclass) then
     alter table public.hub_content_items add constraint hub_content_items_theme_check
       check (theme is null or theme in ('dia_a_dia', 'trabalho', 'tecnologia', 'viagem', 'saude', 'provas', 'infantil', 'conversacao', 'sociedade'));
   end if;
-  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_age_group_check') then
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_age_group_check' and conrelid = 'public.hub_content_items'::regclass) then
     alter table public.hub_content_items add constraint hub_content_items_age_group_check
       check (age_group is null or age_group in ('kids', 'teens', 'adults', 'all'));
   end if;
-  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_duration_check') then
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'hub_content_items_duration_check' and conrelid = 'public.hub_content_items'::regclass) then
     alter table public.hub_content_items add constraint hub_content_items_duration_check
       check (duration_minutes is null or duration_minutes between 5 and 600);
   end if;

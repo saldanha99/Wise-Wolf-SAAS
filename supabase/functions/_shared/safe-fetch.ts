@@ -35,6 +35,37 @@ const parseIpv4 = (ip: string): number[] | null => {
     : null;
 };
 
+// IPv6 em 8 hextets (aceita "::", zona e IPv4 no fim); inválido = null.
+export function parseIpv6(raw: string): number[] | null {
+  let ip = raw.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  if (!ip.includes(":")) return null;
+  const tail = ip.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (tail) {
+    const v4 = parseIpv4(tail[1]);
+    if (!v4) return null;
+    ip = ip.slice(0, -tail[1].length) +
+      `${((v4[0] << 8) | v4[1]).toString(16)}:${
+        ((v4[2] << 8) | v4[3]).toString(16)
+      }`;
+  }
+  const halves = ip.split("::");
+  if (halves.length > 2) return null;
+  const part = (text: string) => (text ? text.split(":") : []);
+  const head = part(halves[0]);
+  const rest = halves.length === 2 ? part(halves[1]) : [];
+  const missing = 8 - head.length - rest.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const groups = [
+    ...head,
+    ...Array(halves.length === 2 ? missing : 0).fill("0"),
+    ...rest,
+  ];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) {
+    return null;
+  }
+  return groups.map((g) => parseInt(g, 16));
+}
+
 export function isPublicIp(ip: string): boolean {
   const v4 = parseIpv4(ip);
   if (v4) {
@@ -49,15 +80,20 @@ export function isPublicIp(ip: string): boolean {
     if (a >= 224) return false; // multicast e reservado
     return true;
   }
-  const v6 = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!v6.includes(":")) return false;
-  if (v6 === "::" || v6 === "::1") return false;
-  const mapped = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPublicIp(mapped[1]);
-  if (/^f[cd]/.test(v6)) return false; // ULA
-  if (/^fe[89ab]/.test(v6)) return false; // link-local
-  if (/^ff/.test(v6)) return false; // multicast
-  if (v6.startsWith("64:ff9b:")) return false; // NAT64
+  const v6 = parseIpv6(ip);
+  if (!v6) return false;
+  // ::ffff:a.b.c.d (IPv4 mapeado), em qualquer grafia (o new URL() normaliza
+  // para hex: [::ffff:7f00:1]): vale a regra do IPv4.
+  if (v6.slice(0, 5).every((h) => h === 0) && v6[5] === 0xffff) {
+    return isPublicIp(
+      `${v6[6] >> 8}.${v6[6] & 0xff}.${v6[7] >> 8}.${v6[7] & 0xff}`,
+    );
+  }
+  // Só unicast global (2000::/3), fora documentação, 6to4 e Teredo.
+  if ((v6[0] & 0xe000) !== 0x2000) return false;
+  if (v6[0] === 0x2001 && v6[1] === 0x0db8) return false;
+  if (v6[0] === 0x2002) return false;
+  if (v6[0] === 0x2001 && v6[1] === 0x0000) return false;
   return true;
 }
 

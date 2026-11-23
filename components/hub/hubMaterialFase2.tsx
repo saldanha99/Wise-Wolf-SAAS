@@ -36,10 +36,10 @@ const Paragraphs: React.FC<{ text: string }> = ({ text }) => (
   <>{text.split(/\n+/).filter(Boolean).map((paragraph, index) => <p key={index} className="mt-3 text-[15px] leading-7">{paragraph}</p>)}</>
 );
 const Pairs: React.FC<{ rows: Json[]; a: string; b: string; left: string; right: string }> = ({ rows, a, b, left, right }) => (
-  <table className="mt-3 w-full border-collapse text-sm">
+  <div className="mt-3 overflow-x-auto"><table className="w-full border-collapse text-sm">
     <thead><tr className="text-left text-[10px] font-black uppercase tracking-widest text-brand-muted print:text-black"><th className="border-b border-brand-border py-1.5 pr-3">{left}</th><th className="border-b border-brand-border py-1.5">{right}</th></tr></thead>
-    <tbody>{rows.map((row, index) => <tr key={index} className="align-top"><td className="border-b border-brand-border/60 py-1.5 pr-3 font-bold">{s(row[a])}</td><td className="border-b border-brand-border/60 py-1.5">{s(row[b])}</td></tr>)}</tbody>
-  </table>
+    <tbody>{rows.map((row, index) => <tr key={index} className="align-top"><td className="break-words border-b border-brand-border/60 py-1.5 pr-3 font-bold">{s(row[a])}</td><td className="break-words border-b border-brand-border/60 py-1.5">{s(row[b])}</td></tr>)}</tbody>
+  </table></div>
 );
 
 const McQuestions: React.FC<{ rows: Json[]; teacher: boolean }> = ({ rows, teacher }) => (
@@ -72,9 +72,9 @@ export const Fase2MaterialSections: React.FC<{ kind: string; material: Json; tea
       const key = Array.isArray(m.answer_key) ? m.answer_key.map(Number) : [];
       return (<>
         {instructions}
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <ol className="space-y-2">{left.map((item, index) => <li key={index} className="rounded-xl border border-brand-border px-3 py-2 font-bold">{index + 1}. {item}{teacher && Number.isInteger(key[index]) && <Key>{letter(key[index])}</Key>}</li>)}</ol>
-          <ol className="space-y-2">{right.map((item, index) => <li key={index} className="rounded-xl border border-brand-border px-3 py-2"><span className="mr-2 font-black">{letter(index)})</span>{item}</li>)}</ol>
+        <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 print:grid-cols-2">
+          <ol className="min-w-0 space-y-2">{left.map((item, index) => <li key={index} className="break-words rounded-xl border border-brand-border px-3 py-2 font-bold">{index + 1}. {item}{teacher && Number.isInteger(key[index]) && <Key>{letter(key[index])}</Key>}</li>)}</ol>
+          <ol className="min-w-0 space-y-2">{right.map((item, index) => <li key={index} className="break-words rounded-xl border border-brand-border px-3 py-2"><span className="mr-2 font-black">{letter(index)})</span>{item}</li>)}</ol>
         </div>
       </>);
     }

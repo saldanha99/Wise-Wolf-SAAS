@@ -55,7 +55,7 @@ const MESSAGES: Record<string, string> = {
   URL_TOO_MANY_REDIRECTS: 'Essa página redireciona demais. Cole o texto ou use um print.',
   IMAGE_INVALID: 'Envie uma imagem JPG, PNG ou WebP.',
   IMAGE_TOO_LARGE: 'A imagem passou de 5 MB. Recorte o print e tente de novo.',
-  IMAGE_NO_READABLE_TEXT: 'Não achamos texto em inglês legível no print. Nada foi cobrado.',
+  IMAGE_NO_READABLE_TEXT: 'Não achamos texto em inglês legível no print. A leitura do print conta como 1 adaptação; tente um print mais nítido ou cole o texto.',
 };
 
 export function hubAiErrorMessage(error: unknown, fallback = 'Não foi possível concluir agora. Tente de novo.'): string {

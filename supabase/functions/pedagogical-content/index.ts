@@ -10,6 +10,7 @@ import {
   extractReadableText,
   SafeFetchError,
   safeFetchText,
+  validatePublicUrl,
 } from "../_shared/safe-fetch.ts";
 import {
   buildHubCefrPrompt,
@@ -1339,11 +1340,10 @@ interface HubAuthenticSource {
   image: string | null;
 }
 
-// Lê a fonte sem IA (texto e link). O print só é validado aqui; a leitura
-// dele pela IA acontece depois da reserva, porque custa.
-async function readHubAuthenticSource(
-  body: JsonObject,
-): Promise<HubAuthenticSource> {
+// Valida a entrada SEM rede (texto, formato do link, tamanho do print). A busca
+// do link e a leitura do print só acontecem depois da reserva da cota: quem
+// não tem plano não usa o servidor para abrir páginas.
+function validateHubAuthenticInput(body: JsonObject): HubAuthenticSource {
   const type = body.sourceType;
   if (type === "text") {
     const text = sanitizeSourceText(body.sourceText, HUB_CEFR_MAX_TEXT);
@@ -1357,25 +1357,10 @@ async function readHubAuthenticSource(
       throw new HttpError(400, "URL_INVALID");
     }
     try {
-      const page = await safeFetchText(body.url);
-      const extracted = page.contentType.startsWith("text/plain")
-        ? { title: "", text: page.body }
-        : extractReadableText(page.body);
-      const text = sanitizeSourceText(extracted.text, HUB_CEFR_MAX_TEXT);
-      if (countWords(text) < 30) {
-        throw new HttpError(422, "URL_NO_READABLE_TEXT");
-      }
-      return {
-        type,
-        text,
-        url: page.finalUrl,
-        pageTitle: extracted.title || null,
-        image: null,
-      };
+      const url = validatePublicUrl(body.url).href;
+      return { type, text: "", url, pageTitle: null, image: null };
     } catch (error) {
-      if (error instanceof SafeFetchError) {
-        throw new HttpError(422, error.code);
-      }
+      if (error instanceof SafeFetchError) throw new HttpError(400, error.code);
       throw error;
     }
   }
@@ -1389,6 +1374,30 @@ async function readHubAuthenticSource(
     return { type, text: "", url: null, pageTitle: null, image };
   }
   throw new HttpError(400, "INVALID_SOURCE_TYPE");
+}
+
+// Busca o link (com a proteção do safe-fetch). Texto e print passam direto.
+async function readHubAuthenticSource(
+  input: HubAuthenticSource,
+): Promise<HubAuthenticSource> {
+  if (input.type !== "url" || !input.url) return input;
+  try {
+    const page = await safeFetchText(input.url);
+    const extracted = page.contentType.startsWith("text/plain")
+      ? { title: "", text: page.body }
+      : extractReadableText(page.body);
+    const text = sanitizeSourceText(extracted.text, HUB_CEFR_MAX_TEXT);
+    if (countWords(text) < 30) throw new HttpError(422, "URL_NO_READABLE_TEXT");
+    return {
+      ...input,
+      text,
+      url: page.finalUrl,
+      pageTitle: extracted.title || null,
+    };
+  } catch (error) {
+    if (error instanceof SafeFetchError) throw new HttpError(422, error.code);
+    throw error;
+  }
 }
 
 async function handleHubAdaptAuthentic(
@@ -1411,7 +1420,7 @@ async function handleHubAdaptAuthentic(
     sourceText: "word ".repeat(40),
   });
   if (!probe.ok) throw new HttpError(400, probe.code);
-  const source = await readHubAuthenticSource(body);
+  const input = validateHubAuthenticInput(body);
 
   const accountId = parseOptionalUuid(
     plannerValue(body, "accountId", "account_id"),
@@ -1430,9 +1439,13 @@ async function handleHubAdaptAuthentic(
     audience: probe.spec.audience,
     niche: probe.spec.niche,
     count: probe.spec.count,
-    source: source.type === "image"
-      ? { type: "image", sha: await sha256Hex(source.image ?? "") }
-      : { type: source.type, url: source.url, text: source.text },
+    topic: probe.spec.topic,
+    goal: probe.spec.goal,
+    bilingual: probe.spec.bilingual,
+    extra: probe.spec.extra,
+    source: input.type === "image"
+      ? { type: "image", sha: await sha256Hex(input.image ?? "") }
+      : { type: input.type, url: input.url, text: input.text },
   }));
 
   // Replay: a mesma requisição devolve o material já gerado.
@@ -1461,6 +1474,7 @@ async function handleHubAdaptAuthentic(
       audience: prior.audience,
       material: prior.material,
       dropped: prior.dropped_items,
+      tool_id: "adapt-authentic",
       created_at: prior.created_at,
       idempotent: true,
     });
@@ -1492,6 +1506,9 @@ async function handleHubAdaptAuthentic(
     await commitHubReservation(reservationState);
     return prior;
   }
+
+  // Só agora a rede: link com falha libera a reserva no finally.
+  const source = await readHubAuthenticSource(input);
 
   const apiKey = textAiKey();
   if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
@@ -1530,7 +1547,9 @@ async function handleHubAdaptAuthentic(
     const result = read.result as JsonObject | null;
     sourceText = sanitizeSourceText(result?.text, HUB_CEFR_MAX_TEXT);
     if (countWords(sourceText) < 30) {
-      // Nada legível: libera a reserva (o finally devolve a cota).
+      // A leitura do print já custou: conta como 1 adaptação (senão um loop de
+      // prints ilegíveis gastaria IA sem limite).
+      await commitHubReservation(reservationState);
       throw new HttpError(422, "IMAGE_NO_READABLE_TEXT");
     }
   }

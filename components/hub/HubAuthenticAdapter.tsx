@@ -28,7 +28,11 @@ export async function shrinkImage(file: File): Promise<string> {
   canvas.height = Math.round(bitmap.height * scale);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('IMAGE_INVALID');
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  try {
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  } finally {
+    bitmap.close();
+  }
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 

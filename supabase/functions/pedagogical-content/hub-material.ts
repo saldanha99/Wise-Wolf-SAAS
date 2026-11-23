@@ -188,6 +188,8 @@ export const sanitizeSourceText = (
   if (typeof value !== "string") return "";
   return value
     .replace(/[<>{}]/g, " ")
+    // O texto vai entre """ no prompt: não pode fechar o bloco.
+    .replace(/"{3,}/g, '""')
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => collapse(line))

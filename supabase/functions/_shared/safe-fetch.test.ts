@@ -157,3 +157,49 @@ Deno.test("extração: prefere o artigo, tira script/nav e decodifica entidades"
   );
   assert(text.includes("& more ’s"), `entidades: ${text.slice(-30)}`);
 });
+
+Deno.test("ip: IPv4 mapeado em hex (como o new URL() normaliza) e faixas IPv6 não globais", () => {
+  for (
+    const raw of [
+      "http://[::ffff:169.254.169.254]/",
+      "http://[::ffff:127.0.0.1]/",
+      "http://[::ffff:10.0.0.1]/",
+    ]
+  ) {
+    const host = new URL(raw).hostname;
+    assert(!isPublicIp(host), `${raw} → ${host} passou`);
+  }
+  for (
+    const ip of [
+      "::ffff:7f00:1",
+      "::ffff:a9fe:a9fe",
+      "0:0:0:0:0:ffff:a00:1",
+      "2001:db8::1",
+      "2002::1",
+      "2001::1",
+      "100::1",
+      "::",
+      "fe80::1%eth0",
+      "3fff::1:2:3:4:5:6:7:8",
+    ]
+  ) {
+    assert(!isPublicIp(ip), `${ip} passou`);
+  }
+  assert(isPublicIp("::ffff:808:808"), "8.8.8.8 mapeado é público");
+  assert(isPublicIp("2606:4700:4700::1111"), "IPv6 global bloqueado");
+});
+
+Deno.test("fetch: URL com IPv6 mapeado para loopback é recusada sem DNS", async () => {
+  let fetched = false;
+  await rejects(
+    safeFetchText("http://[::ffff:127.0.0.1]/", {
+      resolve: async () => ["8.8.8.8"],
+      fetchImpl: async () => {
+        fetched = true;
+        return new Response("x");
+      },
+    }),
+    "URL_HOST_NOT_ALLOWED",
+  );
+  assert(!fetched, "chegou a buscar");
+});
