@@ -1,3 +1,4 @@
+import { HUB_PAYMENT_PROCESSOR_NOTICE } from "../_shared/hub-payment-processor.ts";
 export const MAX_FULFILLMENT_ATTEMPTS = 8;
 export const DEFAULT_HUB_PUBLIC_URL =
   "https://system.wisewolflanguage.com.br/hub";
@@ -139,6 +140,9 @@ export function buildHubFulfillmentEmail(input: {
           <p style="margin:0;color:#bac8db;line-height:1.7">Olá, ${name}. Confirmamos seu pagamento e liberamos o plano <strong style="color:#fff">${plan}</strong> no ${product}.</p>
           <p style="margin:30px 0"><a href="${url}" style="display:inline-block;background:#7c9cff;color:#07111f;padding:15px 23px;border-radius:13px;text-decoration:none;font-weight:900">Acessar agora</a></p>
           <p style="margin:0;color:#8293aa;font-size:13px;line-height:1.65">Entre com o mesmo e-mail usado na compra. Se precisar de ajuda, responda a este e-mail.</p>
+          <p style="margin:18px 0 0;color:#8293aa;font-size:12px;line-height:1.6">${
+      escapeHtml(HUB_PAYMENT_PROCESSOR_NOTICE)
+    }</p>
         </div>
       </div>`,
   };

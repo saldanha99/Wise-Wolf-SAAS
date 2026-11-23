@@ -14,6 +14,7 @@ export {
   HUB_CORE_TERMS_VERSION,
   hubCoreLegalSnapshotsMatchExpectedHashes,
 } from "./legal-documents.ts";
+export { HUB_PAYMENT_PROCESSOR_NOTICE } from "../_shared/hub-payment-processor.ts";
 
 type HubCoreLegalAcceptanceInput = {
   acceptedTerms: unknown;
