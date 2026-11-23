@@ -10,7 +10,7 @@ describe('Hub legal public documents', () => {
     render(<HubLegalPage page="terms" />);
 
     expect(screen.getByRole('heading', { level: 1, name: /Termos de Uso do Wise Wolf Hub/i })).toBeInTheDocument();
-    expect(screen.getByText('Versão 2026-08-24')).toBeInTheDocument();
+    expect(screen.getByText('Versão 2026-11-23')).toBeInTheDocument();
     expect(screen.getByText(/não representa autorização para marketing/i)).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /Política de Privacidade/i }).at(-1)).toHaveAttribute('href', '/hub/privacidade');
   });

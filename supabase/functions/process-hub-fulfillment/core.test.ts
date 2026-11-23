@@ -110,3 +110,16 @@ Deno.test("Hub fulfillment retries exponentially and stops", () => {
     "eighth attempt must stop",
   );
 });
+
+Deno.test("e-mail de confirmação diz quem processou o pagamento (MEI da responsável)", () => {
+  const email = buildHubFulfillmentEmail({
+    recipientName: "Marina",
+    productFamily: "HUB_CORE",
+    planName: "Pro",
+  });
+  if (
+    !email.html.includes(
+      "Pagamento processado por 55.806.029 Debora Alves Fernandes (CNPJ 55.806.029/0001-57), empresa responsável pela Wise Wolf.",
+    )
+  ) throw new Error("aviso do recebedor ausente no e-mail");
+});
