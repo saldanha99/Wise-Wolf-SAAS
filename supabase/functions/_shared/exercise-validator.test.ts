@@ -155,6 +155,20 @@ Deno.test("referências a mídia, página e unidade inexistentes reprovam", () =
   assertEquals(validateText("Escute o áudio.").map((e) => e.code), [
     "REFERENCE_TO_MISSING_MEDIA",
   ]);
+  assertEquals(
+    validateText(
+      "Look at the figures: the picture is less clear-cut. See the big picture.",
+    ),
+    [],
+  );
+  assertEquals(
+    validateText("Observe a imagem e responda.").map((e) => e.code),
+    ["REFERENCE_TO_MISSING_MEDIA"],
+  );
+  assertEquals(
+    validateText("The photo above shows a market.").map((e) => e.code),
+    ["REFERENCE_TO_MISSING_MEDIA"],
+  );
 });
 
 Deno.test("grafia americana por lista fechada", () => {

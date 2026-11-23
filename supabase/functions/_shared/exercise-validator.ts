@@ -115,8 +115,16 @@ const WRONG_COMPARATIVE =
 /** Referência a coisa que o livro não tem (imagem, áudio, QR, página). */
 const B = "(?<![\\p{L}\\d])";
 const E = "(?![\\p{L}\\d])";
+// Áudio, gravação, QR e faixa: sempre. Imagem/foto: só quando o texto APONTA para uma imagem
+// ("look at the picture", "the photo above", "na imagem") — "the big picture" é idioma e passa.
 const MISSING_MEDIA = new RegExp(
-  `${B}(?:picture|image|photo|illustration|audio|recording|qr ?code|play the track|track \\d+|imagem|figura|foto|áudio|gravação|faixa \\d+)${E}`,
+  [
+    `${B}(?:audio|recording|qr ?code|play the track|track \\d+|áudio|gravação|faixa \\d+)${E}`,
+    `${B}(?:look at|see|in|on|describe|use|study|check) (?:the|this|that|each|these|those|your|a) (?:pictures?|images?|photos?|photographs?|illustrations?|drawings?)${E}`,
+    `${B}(?:the )?(?:pictures?|images?|photos?|illustrations?) (?:above|below|on the (?:left|right)|on this page|shows?)${E}`,
+    `${B}(?:veja|observe|olhe|descreva|use) (?:a|as|o|os|esta|estas) (?:imagem|imagens|figuras?|fotos?|ilustraç(?:ão|ões))${E}`,
+    `${B}(?:na|nas|no|nos|da|das) (?:imagem|imagens|figuras?|fotos?|ilustraç(?:ão|ões))${E}`,
+  ].join("|"),
   "iu",
 );
 const PAGE_REF = new RegExp(`${B}(?:page|p\\.|página|pág\\.)\\s*\\d+`, "iu");
