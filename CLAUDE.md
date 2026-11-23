@@ -32,6 +32,15 @@
   public.hub_material_share_links, public.hub_account_branding;` `delete from hub_plan_entitlements where feature_key =
   'educator_ai.correct';` `drop trigger hub_memberships_promote_tenantless on public.hub_memberships;` + as 2 funções do
   claim/expiração de volta pela definição do dump + apagar os 5 `.sha256`.
+- **Hotfix 20:22 UTC (`7010245`, Revisor Ok):** quem estava no teste Pro levava 409
+  `SUBSCRIPTION_RECONCILIATION_REQUIRED` ao assinar (o teste não tem provedor). `_shared/hub-billing-safety.ts`
+  (`9f66577e…`) isenta TRIALING sem provedor e sem id no provedor. Rollback: `cp -a
+  /opt/wisewolf/backup-hub-assinar-teste-20261123T202212Z/hub-billing-safety.ts volumes/functions/_shared/` +
+  `docker restart supabase-edge-functions`. ⚠️ Se um teste interno passar a gravar `provider = 'internal'`, aceite-o aqui.
+- **E2E em produção (390 px):** cadastro em 1 clique, teste Pro, geração, logo, link/QR, correção nos 2 modos, convite,
+  envio de material, Wolfie do aluno convidado (200, abre na tarefa) e o formulário do cartão dentro do Hub (sem pagar).
+  Asaas de teste apagado (deleted=true); 54 linhas das 2 contas apagadas, cópia em
+  `/opt/wisewolf/backup-hub-fase1-e2e-limpeza-20261123T202514Z/rows.tsv`; varredura final 0.
 
 ### 23/11/2026 (noite) — Recebedor do pagamento (MEI) antes do PIX, no e-mail e nos Termos do Hub v2026-11-23
 
