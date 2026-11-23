@@ -1,3 +1,20 @@
+### 22/11/2026 (noite, 15) — Celular, lote 2 (professor e aluno) e EduCore → WiseCore na tela
+
+- **Lote 2 (`6a2746d`):** 29 telas de professor e aluno sem rolagem lateral em 390/360 px; toque de 44 px,
+  `aria-label` nos botões só-ícone, rodapé do login acima do link do professor (`bottom-20 sm:bottom-6`) e as duas
+  sobras do lote 1 (Atualizar do DRE refaz a tendência; modal de reprovação com safe-area e Esc).
+- **WiseCore (`dff0d5b`):** `lib/platformBrand.ts`. Título da aba = só o nome da escola; menus do Super Admin dizem
+  WiseCore; assinatura "WiseCore — criada pela Wise Wolf" só em `school-wise-wolf` e no login sem `brand`. Nenhum
+  termo, contrato, e-mail ou PDF citava EduCore. Nomes internos e a conta `a***n@educore.io` ficam.
+- **No ar (00:01 UTC de 23/11):** front `index-B1VIN9To.js`, 56 arquivos fora de `assets/` iguais; `assets/` antigos
+  (`BNKTiySB`, `C_yXf57c`, `Dsyra5g4`, `9flpOzQs`) mantidos para quem tem a aba aberta.
+- ⚠️ **Incidente de ~2 min (403 em todo o site):** o `rsync -a` do worktree levou `dist/` com modo 700 e
+  `index.html` com 600, e o nginx não lia. Depois de copiar, rode sempre
+  `find dist -type d -exec chmod 755 {} + && find dist -type f -exec chmod 644 {} +` (ou `rsync --chmod=D755,F644`)
+  e confira `curl -s -o /dev/null -w '%{http_code}' https://system.wisewolflanguage.com.br/` = 200.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular2 && mv dist.prev15-celular2 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote2-20261123T000111Z/`.
+
 ### 22/11/2026 (noite, 14) — Celular, lote 1: telas do diretor
 
 - **Medido em 390 e 360 px** (login da diretora): nenhuma das 7 telas (Início, Mapa de Aulas, Alunos, Dinheiro,
