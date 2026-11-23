@@ -1,3 +1,23 @@
+### 23/11/2026 — Hotfix do Hub: nenhum material da biblioteca abria (fix/hub-biblioteca-url-publica)
+
+- **Achado no teste de ponta a ponta de 23/11 (professor novo):** a edge `hub-library-access` devolvia a URL assinada
+  do Storage com o host interno `http://kong:8000` (o cliente admin fala pela rede do Docker), que o navegador não
+  alcança — **nenhum material da biblioteca abria, em nenhum aparelho**. Agora `public-url.ts` troca só a origem pela
+  `SUPABASE_PUBLIC_URL` (mesma regra de `_shared/tenant-legal-assets.ts`; o token assina o caminho, não a origem).
+- **iPhone:** `HubPortal.openMaterial` fazia `window.open` depois do `await` — o Safari do iOS bloqueia. A aba abre no
+  toque (`window.open('', '_blank')`, título "Abrindo material…") e recebe a URL por `location.replace` com
+  `opener = null`; pedido velho ou com erro fecha a aba vazia; aba fechada pelo usuário não reabre.
+- **No ar (~16:23–16:26 UTC):** função copiada (3 arquivos, dono 501:50) + linha no `.published-functions.md5`
+  (`64504df9…`, mesmo método do `function-drift-guard.sh`), `docker restart supabase-edge-functions`; front
+  `index-BlLvJKIt.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Conferido em produção: a aba
+  nova pede `https://api.wisewolflanguage.com.br/storage/v1/object/sign/hub-library/…` e recebe `200 application/pdf`.
+  ⚠️ No navegador sem leitor de PDF (headless) a aba fica `about:blank` e o PDF vira download — não é defeito.
+- **Rollback:** função: `cp -a /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/functions/hub-library-access/index.ts
+  /opt/wisewolf/supabase-docker/volumes/functions/hub-library-access/` + apagar `public-url.ts`/`public-url.test.ts` +
+  `cp /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/published-functions.md5 /opt/wisewolf/releases/.published-functions.md5`
+  + `docker restart supabase-edge-functions`. Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-biblioteca &&
+  mv dist.prev16-hub-biblioteca dist && cd .. && docker compose restart frontend`.
+
 ### 22/11/2026 (noite, 15) — Celular, lote 2 (professor e aluno) e EduCore → WiseCore na tela
 
 - **Lote 2 (`6a2746d`):** 29 telas de professor e aluno sem rolagem lateral em 390/360 px; toque de 44 px,
