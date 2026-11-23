@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Copy, Loader2, Mic, QrCode, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { HUB_PAYMENT_PROCESSOR_NOTICE } from '../supabase/functions/_shared/hub-payment-processor';
 
 /**
  * Compra de minutos de conversa ao vivo DENTRO do app (22/11/2026).
@@ -195,6 +196,7 @@ export const WolfieTopupModal: React.FC<{
             <p className="text-sm text-slate-400">
               {charge.minutes} minutos por <strong className="text-white">{brl(Number(charge.value))}</strong>. Abra o app do banco e pague pelo QR ou pelo copia-e-cola.
             </p>
+            <p data-testid="wolfie-topup-payment-processor" className="mt-2 rounded-xl bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200">{HUB_PAYMENT_PROCESSOR_NOTICE}</p>
             {charge.pixQrCode ? (
               <img
                 src={`data:image/png;base64,${charge.pixQrCode}`}
@@ -264,7 +266,7 @@ export const WolfieTopupModal: React.FC<{
               {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <QrCode size={16} aria-hidden="true" />}
               Gerar PIX
             </button>
-            <p className="mt-3 text-center text-[11px] text-slate-500">Pagamento por PIX, processado pelo Asaas. Os minutos entram assim que o pagamento é confirmado.</p>
+            <p className="mt-3 text-center text-[11px] text-slate-500">Pagamento por PIX. {HUB_PAYMENT_PROCESSOR_NOTICE} Os minutos entram assim que o pagamento é confirmado.</p>
           </div>
         )}
       </div>

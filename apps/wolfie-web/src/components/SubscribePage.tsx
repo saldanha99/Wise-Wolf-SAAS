@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { supabase } from "../../../../lib/supabase";
+import { HUB_PAYMENT_PROCESSOR_NOTICE } from "../../../../supabase/functions/_shared/hub-payment-processor";
 import {
   formatWolfiePrice,
   resolveWolfiePlan,
@@ -399,6 +400,7 @@ export function SubscribePage() {
                 <h2 className="mt-6 font-display text-3xl font-extrabold">Falta confirmar o pagamento</h2>
                 <p className="mx-auto mt-3 max-w-lg leading-7 text-[#6d727c]">O acesso ao Wolfie será liberado automaticamente somente depois que o pagamento for confirmado.</p>
 
+                <p data-testid="wolfie-payment-processor" className="mx-auto mt-5 max-w-lg rounded-2xl bg-[#f3eee6] px-4 py-3 text-sm font-semibold text-[#202126]">{HUB_PAYMENT_PROCESSOR_NOTICE}</p>
                 {qrSource ? <img src={qrSource} alt="QR Code para pagamento por PIX" width={224} height={224} className="mx-auto mt-7 h-56 w-56 rounded-[24px] border border-black/10 bg-white p-3" /> : null}
                 {result.pix?.copyPaste ? (
                   <button type="button" onClick={() => void copyPix()} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#202126] px-6 py-3 text-sm font-extrabold text-white">
@@ -467,6 +469,7 @@ export function SubscribePage() {
                   <div className="py-4"><dt className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#92959c]">Pagamento</dt><dd className="mt-1 font-bold">{paymentLabel(billingType)} · recorrência mensal</dd></div>
                   <div className="py-4"><dt className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#92959c]">Franquia</dt><dd className="mt-1 font-bold">{plan.liveMinutes} minutos de voz por mês</dd></div>
                 </dl>
+                <p className="mt-4 rounded-2xl bg-[#f3eee6] px-4 py-3 text-sm font-semibold text-[#202126]">{HUB_PAYMENT_PROCESSOR_NOTICE}</p>
                 {error ? <p role="alert" className="mt-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700"><CircleAlert size={17} className="mt-0.5 shrink-0" />{error}</p> : null}
                 <button type="button" onClick={() => void submitCheckout()} disabled={checkoutLoading} className="mt-6 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-[#e72d3d] px-7 py-4 font-extrabold text-white disabled:cursor-wait disabled:opacity-65">{checkoutLoading ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}{checkoutLoading ? "Gerando cobrança..." : `Confirmar e gerar ${paymentLabel(billingType)}`}</button>
                 <button type="button" onClick={() => { setReviewing(false); setError(""); }} disabled={checkoutLoading} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 text-sm font-extrabold text-[#6d727c]"><ArrowLeft size={16} /> Corrigir dados</button>
@@ -502,7 +505,7 @@ export function SubscribePage() {
                 </label>
                 {error ? <p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700"><CircleAlert size={17} className="mt-0.5 shrink-0" />{error}</p> : null}
                 <button type="submit" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#202126] px-7 py-4 font-extrabold text-white"><ShieldCheck size={18} /> Revisar assinatura</button>
-                <p className="text-center text-xs leading-5 text-[#8b8f98]">A Wise Wolf não solicita dados de cartão nesta fase. A cobrança é processada pelo Asaas.</p>
+                <p className="text-center text-xs leading-5 text-[#8b8f98]">A Wise Wolf não solicita dados de cartão nesta fase. {HUB_PAYMENT_PROCESSOR_NOTICE}</p>
               </form>
             )}
           </section>
