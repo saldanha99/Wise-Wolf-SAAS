@@ -714,6 +714,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/pedagogical-content/content-bot.ts \
+  supabase/functions/pedagogical-content/content-bot.test.ts \
   supabase/functions/gamma-book-generator/book-spec.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/gamma-book-generator/index.ts \
@@ -958,6 +960,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/pedagogical-content/content-bot.test.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/tenant-domain-allowed/host.test.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
@@ -1687,6 +1690,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122260000_ia_teto_mensal_anthropic.sql"
   "supabase/migrations/20261123100000_hub_fase2_ferramentas.sql"
   "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
+  "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1905,6 +1909,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/white_label_dominio.sql"
   "supabase/tests/hub_aprovacao_comercial_em_lote.sql"
   "supabase/tests/ia_teto_mensal_anthropic.sql"
+  "supabase/tests/conteudo_bot_fichas_no_hub.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

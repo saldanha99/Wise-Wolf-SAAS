@@ -295,6 +295,7 @@ async function startGeneration(
       spec,
       branding.brand,
       schoolBrand.accentHex,
+      branding.imageStyle,
     ),
     textMode: "generate",
     format: "document",

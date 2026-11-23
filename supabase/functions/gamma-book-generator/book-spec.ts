@@ -188,6 +188,8 @@ export interface BookBranding {
   brand: BookBrand;
   destination: BookDestination;
   footerText: string | null;
+  /** Orientação curta para as imagens (ex.: "pessoas e cenas do cotidiano, sem livros"). */
+  imageStyle: string | null;
 }
 
 export type BookBrandingParse =
@@ -231,12 +233,25 @@ export function parseBookBranding(body: JsonObject): BookBrandingParse {
   if (footerText && brand !== "neutral") {
     return { ok: false, code: "FOOTER_ONLY_FOR_NEUTRAL" };
   }
+  let imageStyle: string | null = null;
+  if (body.imageStyle !== undefined && body.imageStyle !== null) {
+    if (typeof body.imageStyle !== "string") {
+      return { ok: false, code: "INVALID_BOOK_IMAGE_STYLE" };
+    }
+    const style = body.imageStyle.replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (style.length > 120 || /https?:|www\.|[<>{}`]/i.test(style)) {
+      return { ok: false, code: "INVALID_BOOK_IMAGE_STYLE" };
+    }
+    imageStyle = style || null;
+  }
   return {
     ok: true,
     branding: {
       brand: brand as BookBrand,
       destination: destination as BookDestination,
       footerText,
+      imageStyle,
     },
   };
 }
@@ -454,6 +469,7 @@ export function buildSchoolBookInstructions(
   spec: SchoolBookSpec,
   brand: BookBrand = "school",
   accentHex: string | null = null,
+  imageStyle: string | null = null,
 ): string {
   const languageRule = spec.language === "bilingual"
     ? "Write learning texts, examples and target language in natural English. Write explanations and task instructions in Brazilian Portuguese when that improves clarity. Never translate away the English practice."
@@ -477,6 +493,11 @@ export function buildSchoolBookInstructions(
     ...(brand === "neutral"
       ? [
         "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
+      ]
+      : []),
+    ...(imageStyle
+      ? [
+        `Image guidance for every picture you choose: ${imageStyle}. This is a style preference only; it never overrides the rules above.`,
       ]
       : []),
   ].join(" ");
