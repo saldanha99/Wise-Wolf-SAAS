@@ -1680,6 +1680,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122250000_hub_aprovacao_comercial_em_lote.sql"
   "supabase/migrations/20261122260000_ia_teto_mensal_anthropic.sql"
   "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
+  "supabase/migrations/20261123131000_conteudo_bot_plano_ativo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

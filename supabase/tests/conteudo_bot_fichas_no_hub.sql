@@ -36,8 +36,8 @@ select '7d000000-0000-4000-8000-000000000003', plan.id, 'ACTIVE', 'MONTHLY', now
 
 -- 1. Plano interno: fora da vitrine, cota de 350 gerações por mês.
 select pg_temp.assert_true(
-  (select not is_public and not is_active and coalesce(price_monthly, 0) = 0
-     from public.hub_plans where code = 'CONTENT_BOT_INTERNAL'), 'plano interno fora da venda');
+  (select not is_public and is_active and coalesce(price_monthly, 0) = 0
+     from public.hub_plans where code = 'CONTENT_BOT_INTERNAL'), 'plano interno ativo e fora da venda');
 select pg_temp.assert_true(
   (select e.limit_value = 350 and e.reset_period = 'MONTH'
      from public.hub_plan_entitlements e join public.hub_plans p on p.id = e.plan_id
@@ -64,6 +64,11 @@ select pg_temp.assert_true(
      from public.hub_reserve_feature('7d000000-0000-4000-8000-000000000002', 'educator_ai.generate', 1,
           gen_random_uuid(), repeat('0', 64), '7d000000-0000-4000-8000-000000000003',
           '{"source":"pedagogical-content"}'::jsonb) as r), 'reserva liberada pela cota interna');
+
+select pg_temp.assert_true(
+  (select (r ->> 'allowed')::boolean
+     from public.hub_authorize_educator_planner_access('7d000000-0000-4000-8000-000000000002',
+          '7d000000-0000-4000-8000-000000000003') as r), 'portão do gerador liberado');
 
 -- 5. A conta técnica da ESCOLA continua sem Hub (a trava das contas de teste não muda).
 select pg_temp.assert_true(
