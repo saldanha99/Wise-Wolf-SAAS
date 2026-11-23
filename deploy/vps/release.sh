@@ -730,6 +730,12 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/tutor-persona.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
   supabase/functions/_shared/tutor-voice.ts \
+  supabase/functions/_shared/exercise-validator.ts \
+  supabase/functions/_shared/hub-payment-processor.ts \
+  supabase/functions/_shared/exercise-validator.test.ts \
+  supabase/functions/gamma-book-generator/book-content.ts \
+  supabase/functions/gamma-book-generator/book-content.test.ts \
+  supabase/functions/gamma-book-generator/content-runner.ts \
   supabase/functions/_shared/tutor-voice.test.ts \
   supabase/functions/_shared/hub-tools.ts \
   supabase/functions/_shared/safe-fetch.ts \
@@ -973,6 +979,8 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/tenant-domain-allowed/host.test.ts \
   supabase/functions/_shared/tutor-persona.test.ts \
+  supabase/functions/_shared/exercise-validator.test.ts \
+  supabase/functions/gamma-book-generator/book-content.test.ts \
   supabase/functions/_shared/tutor-voice.test.ts \
   supabase/functions/_shared/safe-fetch.test.ts \
   supabase/functions/pedagogical-content/hub-cefr.test.ts \
@@ -1703,6 +1711,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
   "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
   "supabase/migrations/20261123131000_conteudo_bot_plano_ativo.sql"
+  "supabase/migrations/20261123140000_livros_conteudo_estruturado.sql"
   "supabase/migrations/20261123150000_hub_teste_pro_e_gratuito_permanente.sql"
   "supabase/migrations/20261123160000_hub_logo_do_professor.sql"
   "supabase/migrations/20261123170000_hub_atividade_por_link.sql"
@@ -1979,6 +1988,8 @@ SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
 SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
 SHARED_TUTOR_PERSONA_RELATIVE="supabase/functions/_shared/tutor-persona.ts"
 SHARED_TUTOR_VOICE_RELATIVE="supabase/functions/_shared/tutor-voice.ts"
+SHARED_EXERCISE_VALIDATOR_RELATIVE="supabase/functions/_shared/exercise-validator.ts"
+SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE="supabase/functions/_shared/hub-payment-processor.ts"
 SHARED_HUB_TOOLS_RELATIVE="supabase/functions/_shared/hub-tools.ts"
 SHARED_SAFE_FETCH_RELATIVE="supabase/functions/_shared/safe-fetch.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
@@ -2163,6 +2174,8 @@ done
 [[ -s "$SHARED_AI_GATEWAY_RELATIVE" ]] || die "ponte de IA compartilhada ausente"
 [[ -s "$SHARED_TUTOR_PERSONA_RELATIVE" ]] || die "persona do tutor compartilhada ausente"
 [[ -s "$SHARED_TUTOR_VOICE_RELATIVE" ]] || die "voz do tutor compartilhada ausente"
+[[ -s "$SHARED_EXERCISE_VALIDATOR_RELATIVE" ]] || die "validador de exercícios compartilhado ausente"
+[[ -s "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" ]] || die "aviso do recebedor compartilhado ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2294,6 +2307,8 @@ append_release_input_checksum() {
     "$SHARED_AI_GATEWAY_RELATIVE" \
     "$SHARED_TUTOR_PERSONA_RELATIVE" \
     "$SHARED_TUTOR_VOICE_RELATIVE" \
+    "$SHARED_EXERCISE_VALIDATOR_RELATIVE" \
+    "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
@@ -2483,6 +2498,10 @@ rsync -a -- "$SHARED_TUTOR_PERSONA_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-persona.ts"
 rsync -a -- "$SHARED_TUTOR_VOICE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-voice.ts"
+rsync -a -- "$SHARED_EXERCISE_VALIDATOR_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/exercise-validator.ts"
+rsync -a -- "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-payment-processor.ts"
 rsync -a -- "$SHARED_HUB_TOOLS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-tools.ts"
 rsync -a -- "$SHARED_SAFE_FETCH_RELATIVE" \
@@ -2695,6 +2714,8 @@ payment_email_shared_swapped=0
 ai_gateway_shared_swapped=0
 tutor_persona_shared_swapped=0
 tutor_voice_shared_swapped=0
+exercise_validator_shared_swapped=0
+hub_payment_processor_shared_swapped=0
 hub_tools_shared_swapped=0
 safe_fetch_shared_swapped=0
 payment_notice_core_shared_swapped=0
@@ -2878,6 +2899,8 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
 [[ -s "$release_dir/functions/_shared/tutor-persona.ts" ]]
 [[ -s "$release_dir/functions/_shared/tutor-voice.ts" ]]
+[[ -s "$release_dir/functions/_shared/exercise-validator.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-payment-processor.ts" ]]
 [[ -s "$release_dir/functions/_shared/hub-tools.ts" ]]
 [[ -s "$release_dir/functions/_shared/safe-fetch.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
@@ -3191,6 +3214,22 @@ restore_previous_release() {
         "$functions_dir/_shared/tutor-voice.ts"
     else
       rm -f -- "$functions_dir/_shared/tutor-voice.ts"
+    fi
+  fi
+  if [[ "$exercise_validator_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/exercise-validator.ts" ]]; then
+      cp -a -- "$backup_dir/exercise-validator.ts" \
+        "$functions_dir/_shared/exercise-validator.ts"
+    else
+      rm -f -- "$functions_dir/_shared/exercise-validator.ts"
+    fi
+  fi
+  if [[ "$hub_payment_processor_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/hub-payment-processor.ts" ]]; then
+      cp -a -- "$backup_dir/hub-payment-processor.ts" \
+        "$functions_dir/_shared/hub-payment-processor.ts"
+    else
+      rm -f -- "$functions_dir/_shared/hub-payment-processor.ts"
     fi
   fi
   if [[ "$hub_tools_shared_swapped" = "1" ]]; then
@@ -4624,6 +4663,20 @@ fi
 tutor_voice_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/tutor-voice.ts" \
   "$functions_dir/_shared/tutor-voice.ts"
+if [[ -f "$functions_dir/_shared/exercise-validator.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/exercise-validator.ts" \
+    "$backup_dir/exercise-validator.ts"
+fi
+exercise_validator_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/exercise-validator.ts" \
+  "$functions_dir/_shared/exercise-validator.ts"
+if [[ -f "$functions_dir/_shared/hub-payment-processor.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/hub-payment-processor.ts" \
+    "$backup_dir/hub-payment-processor.ts"
+fi
+hub_payment_processor_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/hub-payment-processor.ts" \
+  "$functions_dir/_shared/hub-payment-processor.ts"
 if [[ -f "$functions_dir/_shared/hub-tools.ts" ]]; then
   cp -a -- "$functions_dir/_shared/hub-tools.ts" \
     "$backup_dir/hub-tools.ts"
