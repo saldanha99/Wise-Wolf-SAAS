@@ -1691,6 +1691,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123100000_hub_fase2_ferramentas.sql"
   "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
   "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
+  "supabase/migrations/20261123131000_conteudo_bot_plano_ativo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

@@ -1,3 +1,34 @@
+### 23/11/2026 — Agente de conteúdo gera fichas no Hub (conta do acervo) e `imageStyle` no Gamma (feat/conteudo-bot-fichas)
+
+- **O quê (pedido do Chefe c90c9912):** o agente de conteúdo chama o `pedagogical-content` com o header
+  `x-content-bot-token` (o mesmo do `gamma-book-generator`, token no Vault `WISEWOLF_CONTENT_BOT_TOKEN`). Só
+  `hubMode: true` + `action: "material"` passa (`content-bot.ts`); outra ação → 403 `CONTENT_BOT_ACTION_FORBIDDEN`,
+  token inválido → 401. O `accountId` do corpo é trocado pelo da conta do acervo.
+- **Conta do acervo, não a de teste:** `content_bot_hub_identity` (service_role) reaproveita `content_bot_authenticate` e
+  leva à conta do Hub "Acervo Wise Wolf (interno)" — usuário técnico `1aea2939-bbba-45e7-a88f-b188e5d40da4`
+  (`acervo-hub-bot@…`, banido no Auth, sem senha, NON_STUDENT ativo, NÃO `is_test_account`), conta
+  `6a634db9-482e-4aac-9225-f7009cb02c0a`, assinatura ACTIVE até 2099, `provider = 'internal'`, plano
+  `CONTENT_BOT_INTERNAL` (ativo, **não público**, preço 0; cota `educator_ai.generate` **350/mês**). A `conteudo-bot` da
+  escola segue offboarded + `is_test_account`: a trava `AI_DISABLED_FOR_TEST_FIXTURE` das contas de QA não mudou.
+  ⚠️ Plano interno precisa de `is_active = true` (o `hub_user_has_educator_planner_access` exige; 1ª chamada deu 402).
+  Fica fora da venda porque vitrine e checkout exigem `is_public`. ⚠️ Contagem futura de "assinantes ativos do Hub"
+  tem de filtrar `provider <> 'internal'`. Mudar a cota = migration nova.
+- **Fichas ficam em `hub_educator_materials`** da conta do acervo (nascem privadas; o catálogo só por aprovação de
+  2º ator). O Dev Wise Wolf Hub migra pelos ids para `hub_ready_lessons`.
+- **Custo medido (23/11):** quiz A2 de 8 questões, 12,8 s, 2.228 tokens de entrada + 2.008 de saída (Haiku 5.5 pela
+  ponte, ~US$ 0,0012 por ficha; 350 fichas ≈ US$ 0,42/mês). `ai_usage_events.feature = hub_educator_material`,
+  `user_id` = usuário técnico. Replay pelo mesmo `requestKey` não cobra de novo.
+- **Gamma:** `imageStyle` opcional (≤ 120, texto puro, sem URL) vira uma linha das `additionalInstructions`
+  ("Image guidance…"), subordinada às regras; o Pexels continua a fonte (não há campo de estilo para banco de imagem).
+- **No ar (~17:00 UTC):** migrations `20261123130000` e `20261123131000` marcadas; usuário técnico pelo admin do Auth;
+  one-shot `deploy/vps/one-shots/20261123-conteudo-bot-conta-do-hub.sql`; `pedagogical-content` (`35e88b41…`) e
+  `gamma-book-generator` (`7b035412…`) no `.published-functions.md5`; `docker restart supabase-edge-functions`.
+- **Rollback:** `/opt/wisewolf/backup-conteudo-bot-fichas-20261123T165939Z/` (`postgres.dump`, `functions/` das 2 pastas,
+  `published-functions.md5`). Funções: copiar as 2 pastas do backup (e apagar `content-bot*.ts`) + devolver o md5 +
+  restart. Desligar só o bot: `delete from private.content_bot_hub_identities;`. Banco (aditivo, se preciso):
+  `update hub_plans set is_active = false where code = 'CONTENT_BOT_INTERNAL'; drop function public.content_bot_hub_identity(text);
+  drop table private.content_bot_hub_identities;` + apagar os 2 `.sha256`.
+
 ### 23/11/2026 — Hotfix do Hub: nenhum material da biblioteca abria (fix/hub-biblioteca-url-publica)
 
 - **Achado no teste de ponta a ponta de 23/11 (professor novo):** a edge `hub-library-access` devolvia a URL assinada
