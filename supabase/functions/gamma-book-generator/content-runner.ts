@@ -140,8 +140,8 @@ export async function advanceContent(
     try {
       raw = await callModel(
         fixing
-          ? buildFixPrompt(spec, chunk, state.units)
-          : buildChunkPrompt(spec, chunk, state.units),
+          ? buildFixPrompt(spec, chunk, state.units, state.sourceNotes)
+          : buildChunkPrompt(spec, chunk, state.units, state.sourceNotes),
         CHUNK_RESPONSE_SCHEMA,
         "wise_wolf_book_pages",
         // 1ª escrita no Haiku (barato); correção pontual no Sonnet (não reintroduz erro).
@@ -188,7 +188,7 @@ export async function advanceContent(
   let raw: unknown;
   try {
     raw = await callModel(
-      buildCheckPrompt(spec, chunk.content ?? []),
+      buildCheckPrompt(spec, chunk.content ?? [], state.sourceNotes),
       CHECK_RESPONSE_SCHEMA,
       "wise_wolf_book_check",
       CHECK_MODEL,

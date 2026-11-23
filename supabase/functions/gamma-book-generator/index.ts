@@ -20,6 +20,7 @@ import {
   buildFinalInput,
   buildPreserveInstructions,
   initialContentState,
+  parseSourceNotes,
 } from "./book-content.ts";
 import { advanceContent } from "./content-runner.ts";
 
@@ -188,6 +189,13 @@ async function startGeneration(
   const parsed = parseSchoolBookSpec(body);
   if (!parsed.ok) return json(400, { error: parsed.code, code: parsed.code });
   const spec = parsed.spec;
+  const sourceNotes = parseSourceNotes(body.sourceNotes);
+  if (sourceNotes === false) {
+    return json(400, {
+      error: "INVALID_SOURCE_NOTES",
+      code: "INVALID_SOURCE_NOTES",
+    });
+  }
   const brandingParsed = parseBookBranding(body);
   if (!brandingParsed.ok) {
     return json(400, { error: brandingParsed.code, code: brandingParsed.code });
@@ -278,7 +286,7 @@ async function startGeneration(
       created_via: isBot ? "CONTENT_BOT" : "APP",
       image_style: branding.imageStyle,
       // Conteúdo escrito e validado por nós antes do Gamma (que só diagrama).
-      content: initialContentState(spec, branding.imageStyle),
+      content: initialContentState(spec, branding.imageStyle, sourceNotes),
     })
     .select(JOB_COLUMNS)
     .single();
@@ -944,7 +952,7 @@ serve(async (req) => {
   let body: JsonObject;
   try {
     const raw = await req.text();
-    if (new TextEncoder().encode(raw).byteLength > 12_000) {
+    if (new TextEncoder().encode(raw).byteLength > 32_000) {
       return json(413, {
         error: "REQUEST_TOO_LARGE",
         code: "REQUEST_TOO_LARGE",
