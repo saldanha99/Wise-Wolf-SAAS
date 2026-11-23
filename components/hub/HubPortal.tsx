@@ -305,14 +305,34 @@ const HubLibrary: React.FC<{
       return;
     }
     const requestEpoch = ++openRequestEpochRef.current;
+    // A aba abre AQUI, ainda dentro do toque: o Safari do iPhone bloqueia
+    // window.open feito depois de um await. Ela recebe o endereço quando a
+    // URL assinada chega, ou é fechada se o pedido falhar ou ficar velho.
+    const pendingTab = window.open('', '_blank');
+    const closePendingTab = () => {
+      try {
+        pendingTab?.close();
+      } catch {
+        // aba já fechada pelo usuário
+      }
+    };
     setOpeningId(item.id);
     setError('');
     try {
       const { signedUrl } = await openHubContent(bootstrap.account.id, item.id, asset);
-      if (requestEpoch !== openRequestEpochRef.current) return;
-      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      if (requestEpoch !== openRequestEpochRef.current) {
+        closePendingTab();
+        return;
+      }
+      if (pendingTab && !pendingTab.closed) {
+        pendingTab.opener = null;
+        pendingTab.location.replace(signedUrl);
+      } else {
+        window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      }
       await onRefresh();
     } catch (caught) {
+      closePendingTab();
       if (requestEpoch !== openRequestEpochRef.current) return;
       setError(friendlyAccessError(caught));
     } finally {

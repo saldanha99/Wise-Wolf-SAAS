@@ -139,7 +139,8 @@ describe('Biblioteca do Hub herda o módulo da escola', () => {
   it('não abre uma URL antiga depois que o ambiente foi desmontado', async () => {
     let releaseAccess!: (value: { signedUrl: string }) => void;
     openHubContent.mockReturnValueOnce(new Promise((resolve) => { releaseAccess = resolve; }));
-    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const pendingTab = { closed: false, opener: {} as unknown, close: vi.fn(), location: { replace: vi.fn() } };
+    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => pendingTab as unknown as Window);
     const portal = renderPortal();
     fireEvent.click((await screen.findAllByRole('button', { name: /biblioteca/i }))[0]);
     const materialButtons = await screen.findAllByRole('button', { name: /Business English in Use/i });
@@ -152,7 +153,41 @@ describe('Biblioteca do Hub herda o módulo da escola', () => {
       await Promise.resolve();
     });
 
-    expect(openWindow).not.toHaveBeenCalled();
+    // A aba nasce no toque (iPhone), mas nunca recebe a URL antiga: é fechada.
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(openWindow).toHaveBeenCalledWith('', '_blank');
+    expect(pendingTab.location.replace).not.toHaveBeenCalled();
+    expect(pendingTab.close).toHaveBeenCalledTimes(1);
+    openWindow.mockRestore();
+  });
+
+  it('abre a aba no toque e só depois põe a URL assinada nela (Safari do iPhone)', async () => {
+    const pendingTab = { closed: false, opener: {} as unknown, close: vi.fn(), location: { replace: vi.fn() } };
+    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => pendingTab as unknown as Window);
+    renderPortal();
+    fireEvent.click((await screen.findAllByRole('button', { name: /biblioteca/i }))[0]);
+    const materialButtons = await screen.findAllByRole('button', { name: /Business English in Use/i });
+    fireEvent.click(materialButtons[materialButtons.length - 1]);
+
+    expect(openWindow).toHaveBeenCalledWith('', '_blank');
+    await waitFor(() => expect(pendingTab.location.replace).toHaveBeenCalledWith('https://exemplo.invalid/assinada'));
+    expect(pendingTab.opener).toBeNull();
+    expect(pendingTab.close).not.toHaveBeenCalled();
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    openWindow.mockRestore();
+  });
+
+  it('fecha a aba vazia quando a liberação do material falha', async () => {
+    openHubContent.mockRejectedValueOnce(new Error('LIBRARY_PREVIEW_LIMIT_REACHED'));
+    const pendingTab = { closed: false, opener: {} as unknown, close: vi.fn(), location: { replace: vi.fn() } };
+    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => pendingTab as unknown as Window);
+    renderPortal();
+    fireEvent.click((await screen.findAllByRole('button', { name: /biblioteca/i }))[0]);
+    const materialButtons = await screen.findAllByRole('button', { name: /Business English in Use/i });
+    fireEvent.click(materialButtons[materialButtons.length - 1]);
+
+    await waitFor(() => expect(pendingTab.close).toHaveBeenCalledTimes(1));
+    expect(pendingTab.location.replace).not.toHaveBeenCalled();
     openWindow.mockRestore();
   });
 });
