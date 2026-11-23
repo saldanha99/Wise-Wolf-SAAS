@@ -71,6 +71,9 @@ as $function$
       else array['reading', 'vocabulary', 'speaking', 'writing', 'grammar']
     end,
     case
+      -- Livro de vocabulário cobre vários temas no mesmo volume ("Work, Health
+      -- and Travel"): tema de nicho seria enganoso.
+      when niche = 'VOCABULARY' or title ~ 'word power' then 'dia_a_dia'
       when niche = 'KIDS' or title ~ 'kids|little explorers' then 'infantil'
       when niche = 'TOEFL_IELTS' or title ~ 'toefl|ielts|test skills' then 'provas'
       when niche = 'TECH' or title ~ '\m(it|tech)\M|cyber' then 'tecnologia'
