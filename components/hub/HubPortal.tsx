@@ -337,14 +337,41 @@ const HubLibrary: React.FC<{
       return;
     }
     const requestEpoch = ++openRequestEpochRef.current;
+    // A aba abre AQUI, ainda dentro do toque: o Safari do iPhone bloqueia
+    // window.open feito depois de um await. Ela recebe o endereço quando a
+    // URL assinada chega, ou é fechada se o pedido falhar ou ficar velho.
+    const pendingTab = window.open('', '_blank');
+    try {
+      if (pendingTab) pendingTab.document.title = 'Abrindo material…';
+    } catch {
+      // aba de outra origem ou já fechada
+    }
+    const closePendingTab = () => {
+      try {
+        pendingTab?.close();
+      } catch {
+        // aba já fechada pelo usuário
+      }
+    };
     setOpeningId(item.id);
     setError('');
     try {
       const { signedUrl } = await openHubContent(bootstrap.account.id, item.id, asset);
-      if (requestEpoch !== openRequestEpochRef.current) return;
-      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      if (requestEpoch !== openRequestEpochRef.current) {
+        closePendingTab();
+        return;
+      }
+      if (!pendingTab) {
+        // Pop-up do toque bloqueado: tenta do jeito de antes.
+        window.open(signedUrl, '_blank', 'noopener,noreferrer');
+      } else if (!pendingTab.closed) {
+        pendingTab.opener = null;
+        pendingTab.location.replace(signedUrl);
+      }
+      // Aba fechada pelo usuário durante a espera: não reabre.
       await onRefresh();
     } catch (caught) {
+      closePendingTab();
       if (requestEpoch !== openRequestEpochRef.current) return;
       setError(friendlyAccessError(caught));
     } finally {

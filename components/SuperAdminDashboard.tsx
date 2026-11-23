@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, Users, Database, CreditCard,
-  Briefcase, Building2, Server, LogOut, GraduationCap, TrendingUp
+  Briefcase, Building2, Server, LogOut, GraduationCap, TrendingUp, BookCheck
 } from 'lucide-react';
 
 // Sub Components
@@ -15,13 +15,14 @@ import SaasPlansManager from './SaasPlansManager';
 import SaasBilling from './saas/SaasBilling';
 import TeacherLeadsPanel from './saas/TeacherLeadsPanel';
 import SaasCommandCenter from './SaasCommandCenter';
+import HubBulkApproval from './saas/HubBulkApproval';
 
 interface SuperAdminDashboardProps {
   onLogout?: () => void;
 }
 
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'command' | 'global' | 'tenants' | 'crm' | 'infra' | 'billing' | 'teachers'>('command');
+  const [activeTab, setActiveTab] = useState<'command' | 'global' | 'tenants' | 'crm' | 'infra' | 'billing' | 'teachers' | 'hub'>('command');
   const [loading, setLoading] = useState(true);
 
   // Global Stats for the Dashboard Tab
@@ -82,6 +83,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
       case 'infra': return <SaasPlansManager />;
       case 'billing': return <SaasBilling />;
       case 'teachers': return <TeacherLeadsPanel />;
+      case 'hub': return <HubBulkApproval />;
       default: return <SaasCommandCenter />;
     }
   };
@@ -149,6 +151,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
             <GraduationCap size={20} />
             Teachers Empreend.
           </button>
+          <button
+            onClick={() => setActiveTab('hub')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'hub' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
+          >
+            <BookCheck size={20} />
+            Aprovações do Hub
+          </button>
         </nav>
 
         <div className="p-4 border-t border-brand-border dark:border-brand-border space-y-4">
@@ -182,6 +191,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
               {activeTab === 'billing' && 'Financeiro'}
               {activeTab === 'crm' && 'Funil de Vendas'}
               {activeTab === 'teachers' && 'Teachers Empreendedores'}
+              {activeTab === 'hub' && 'Aprovações do Hub'}
             </h1>
             <p className="text-brand-muted">Bem-vindo ao painel de controle mestre.</p>
           </div>

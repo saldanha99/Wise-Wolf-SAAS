@@ -646,7 +646,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                         disabled={studentRows.length === 0}
                         aria-label="Baixar folha por aluno em CSV"
                         title={studentRows.length > 0 ? 'Baixar folha por aluno em CSV' : 'Nenhuma aula para exportar'}
-                        className="rounded-lg bg-brand-surface-2 p-2 text-brand-muted transition-colors hover:text-tenant-primary disabled:cursor-not-allowed disabled:opacity-40"
+                        className="grid h-11 w-11 place-items-center rounded-lg bg-brand-surface-2 text-brand-muted transition-colors hover:text-tenant-primary disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto sm:w-auto sm:p-2"
                     >
                         <Download size={18} />
                     </button>

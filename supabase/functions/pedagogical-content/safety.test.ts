@@ -54,7 +54,9 @@ Deno.test({
       "reservation commit is not service-role-only",
     );
     assert(
-      handler.includes("buildStudentComplementaryPrompt(") &&
+      handler.includes("buildStudentPackPrompt(") &&
+        handler.includes("loadStudentPackLessonContext(admin, profile)") &&
+        edge.includes('.from("class_logs")') &&
         handler.includes('.from("profiles")') &&
         handler.includes('.from("wolf_intelligence")'),
       "the prompt context is not assembled from server-owned data",
@@ -121,7 +123,7 @@ Deno.test({
       "async function enforceStudentBillingAccess",
     );
     const promptStart = edge.indexOf(
-      "function buildStudentComplementaryPrompt",
+      "function normalizeStudentGeneratedActivities",
       billingStart,
     );
     assert(

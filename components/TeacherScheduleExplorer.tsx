@@ -871,7 +871,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               value={specFilter}
               onChange={e => setSpecFilter(e.target.value)}
               aria-label="Filtrar por especialidade"
-              className="w-full px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
+              className="w-full min-h-11 sm:min-h-0 px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
             >
               <option value="">Todas as especialidades</option>
               {TEACHER_SPECIALIZATIONS.map(s => (
@@ -882,7 +882,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               value={teacherSort}
               onChange={e => setTeacherSort(e.target.value as TeacherSort)}
               aria-label="Ordenar professores"
-              className="w-full px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
+              className="w-full min-h-11 sm:min-h-0 px-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-[11px] font-bold text-brand-text focus:ring-2 focus:ring-tenant-primary outline-hidden"
             >
               <option value="name">Nome (A–Z)</option>
               <option value="free">Mais horários livres</option>
@@ -961,7 +961,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                       type="button"
                       onClick={() => setWeekOffset(w => w - 1)}
                       aria-label="Semana anterior"
-                      className="h-8 w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
+                      className="h-11 w-11 sm:h-8 sm:w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -980,7 +980,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                       type="button"
                       onClick={() => setWeekOffset(w => w + 1)}
                       aria-label="Próxima semana"
-                      className="h-8 w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
+                      className="h-11 w-11 sm:h-8 sm:w-8 grid place-items-center rounded-xl text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
                     >
                       <ChevronRight size={16} />
                     </button>

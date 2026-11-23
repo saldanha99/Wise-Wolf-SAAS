@@ -191,7 +191,7 @@ const DreCategorizer: React.FC<Props> = ({ onChanged }) => {
                     defaultValue=""
                     onChange={e => void escolherNaMao(p, e.target.value)}
                     disabled={aplicando}
-                    className="text-xs bg-brand-surface text-brand-text rounded-lg px-2 py-1.5 border border-brand-border"
+                    className="min-h-11 sm:min-h-0 text-xs bg-brand-surface text-brand-text rounded-lg px-2 py-1.5 border border-brand-border"
                   >
                     <option value="">Escolher conta…</option>
                     {contas.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}

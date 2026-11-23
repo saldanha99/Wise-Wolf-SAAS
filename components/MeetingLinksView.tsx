@@ -285,8 +285,9 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                         </button>
                                         <button
                                             onClick={() => openEditModal(student)}
-                                            className="px-3 py-3 bg-brand-surface-2 text-brand-muted rounded-xl hover:bg-brand-surface-2 dark:hover:bg-slate-700 hover:text-tenant-primary transition-all flex items-center gap-2"
+                                            className="min-h-11 min-w-11 justify-center px-3 py-3 bg-brand-surface-2 text-brand-muted rounded-xl hover:bg-brand-surface-2 dark:hover:bg-slate-700 hover:text-tenant-primary transition-all flex items-center gap-2"
                                             title="Editar Link Permanente"
+                                            aria-label={`Editar link permanente de ${student.full_name || 'aluno'}`}
                                         >
                                             <Edit2 size={14} />
                                         </button>

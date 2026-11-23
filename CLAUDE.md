@@ -1,3 +1,139 @@
+### 23/11/2026 — Hotfix do Hub: nenhum material da biblioteca abria (fix/hub-biblioteca-url-publica)
+
+- **Achado no teste de ponta a ponta de 23/11 (professor novo):** a edge `hub-library-access` devolvia a URL assinada
+  do Storage com o host interno `http://kong:8000` (o cliente admin fala pela rede do Docker), que o navegador não
+  alcança — **nenhum material da biblioteca abria, em nenhum aparelho**. Agora `public-url.ts` troca só a origem pela
+  `SUPABASE_PUBLIC_URL` (mesma regra de `_shared/tenant-legal-assets.ts`; o token assina o caminho, não a origem).
+- **iPhone:** `HubPortal.openMaterial` fazia `window.open` depois do `await` — o Safari do iOS bloqueia. A aba abre no
+  toque (`window.open('', '_blank')`, título "Abrindo material…") e recebe a URL por `location.replace` com
+  `opener = null`; pedido velho ou com erro fecha a aba vazia; aba fechada pelo usuário não reabre.
+- **No ar (~16:23–16:26 UTC):** função copiada (3 arquivos, dono 501:50) + linha no `.published-functions.md5`
+  (`64504df9…`, mesmo método do `function-drift-guard.sh`), `docker restart supabase-edge-functions`; front
+  `index-BlLvJKIt.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Conferido em produção: a aba
+  nova pede `https://api.wisewolflanguage.com.br/storage/v1/object/sign/hub-library/…` e recebe `200 application/pdf`.
+  ⚠️ No navegador sem leitor de PDF (headless) a aba fica `about:blank` e o PDF vira download — não é defeito.
+- **Rollback:** função: `cp -a /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/functions/hub-library-access/index.ts
+  /opt/wisewolf/supabase-docker/volumes/functions/hub-library-access/` + apagar `public-url.ts`/`public-url.test.ts` +
+  `cp /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/published-functions.md5 /opt/wisewolf/releases/.published-functions.md5`
+  + `docker restart supabase-edge-functions`. Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-biblioteca &&
+  mv dist.prev16-hub-biblioteca dist && cd .. && docker compose restart frontend`.
+
+### 22/11/2026 (noite, 15) — Celular, lote 2 (professor e aluno) e EduCore → WiseCore na tela
+
+- **Lote 2 (`6a2746d`):** 29 telas de professor e aluno sem rolagem lateral em 390/360 px; toque de 44 px,
+  `aria-label` nos botões só-ícone, rodapé do login acima do link do professor (`bottom-20 sm:bottom-6`) e as duas
+  sobras do lote 1 (Atualizar do DRE refaz a tendência; modal de reprovação com safe-area e Esc).
+- **WiseCore (`dff0d5b`):** `lib/platformBrand.ts`. Título da aba = só o nome da escola; menus do Super Admin dizem
+  WiseCore; assinatura "WiseCore — criada pela Wise Wolf" só em `school-wise-wolf` e no login sem `brand`. Nenhum
+  termo, contrato, e-mail ou PDF citava EduCore. Nomes internos e a conta `a***n@educore.io` ficam.
+- **No ar (00:01 UTC de 23/11):** front `index-B1VIN9To.js`, 56 arquivos fora de `assets/` iguais; `assets/` antigos
+  (`BNKTiySB`, `C_yXf57c`, `Dsyra5g4`, `9flpOzQs`) mantidos para quem tem a aba aberta.
+- ⚠️ **Incidente de ~2 min (403 em todo o site):** o `rsync -a` do worktree levou `dist/` com modo 700 e
+  `index.html` com 600, e o nginx não lia. Depois de copiar, rode sempre
+  `find dist -type d -exec chmod 755 {} + && find dist -type f -exec chmod 644 {} +` (ou `rsync --chmod=D755,F644`)
+  e confira `curl -s -o /dev/null -w '%{http_code}' https://system.wisewolflanguage.com.br/` = 200.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular2 && mv dist.prev15-celular2 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote2-20261123T000111Z/`.
+
+### 22/11/2026 (noite, 14) — Celular, lote 1: telas do diretor
+
+- **Medido em 390 e 360 px** (login da diretora): nenhuma das 7 telas (Início, Mapa de Aulas, Alunos, Dinheiro,
+  WhatsApp, Biblioteca/Aprovar, Relatórios) tem rolagem lateral. Corrigido: toque de 44 px no celular (setas da
+  semana e filtros do Mapa, recibo e filtros do Dinheiro, Editar/Excluir das despesas fixas), busca de Alunos que
+  passava da caixa (`min-w-0`), Aprovar Materiais sem `prompt()`/`alert()` (modal em tela cheia no celular com Esc +
+  aviso curto; o `alert()` travava a tela no iPhone) e a tendência de 6 meses do DRE, que desenhava **R$ 0 falso**
+  quando o `dre_gerencial` de um mês falhava (agora tenta de novo e tira o mês com aviso; o Atualizar refaz).
+  Lista e prints: `/data/OpenBot/Shared/wisewolf/celular/lote1-diretor/`.
+- **Números espaçados ("R$ 5 . 0 7 1")** são da fonte do navegador do servidor (CSS: fonte do aparelho,
+  letter-spacing −0,5 px). Não é defeito do sistema.
+- **No ar (23:44 UTC):** front `index-BNKTiySB.js` (commits `cfff097` + `fd36a00`), 56 arquivos fora de `assets/` iguais.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular1 && mv dist.prev14-celular1 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote1-20261122T234415Z/`.
+
+### 22/11/2026 (noite, 13) — Teto da Anthropic só avisa; senhas de demo fora do código; 49 do Hub aprovados
+
+- **Teto só avisa (decisão do Vinícius, substitui a "noite, 11"):** acima de `ANTHROPIC_MONTHLY_BUDGET_USD` o chat
+  **continua na Anthropic**; o `_shared/ai-gateway.ts` só grava o gasto e dá `console.warn` quando o total passa do
+  teto (sem leitura antes de cada chamada, sem desvio ao OpenRouter). `ANTHROPIC_ROUTING=off` segue como chave manual.
+  Vigia: `scripts/ops/anthropic-spend-alert.sh [host]` (somente leitura; saída 0 OK, 1 ALERTA em ≥ US$ 40 / ≥ US$ 50,
+  2 erro), cópia em `/data/OpenBot/Shared/wisewolf/ops/`. Commits `e474c4b` + `6c5898c`.
+- **No ar (22:29 UTC):** só `_shared/ai-gateway.ts` (md5 `efc9b74c…`); `functions` recriado, healthy. Sem front.
+- **Rollback:** `/opt/wisewolf/backup-teto-so-aviso-20261122T222912Z/functions/_shared/ai-gateway.ts` → volume +
+  `docker compose up -d --no-deps --force-recreate functions`.
+- **Segurança (`a3b1aba`):** saiu do código o bloco comentado de "Demo Quick Access" (`sign-in-card-2.tsx`), o
+  `MOCK_ACCOUNTS` (`constants.tsx`) e o `SupabaseSeeder.tsx` (sem uso). A senha do `SUPER_ADMIN` `a***n@educore.io` foi
+  trocada no banco por uma aleatória que ninguém guarda (a conta fica: é o `hub_rights_verified_by` do Hub). Nada muda
+  no bundle (o bloco já não chegava ao front). Ainda com 123456, por decisão do Vinícius: as contas de demo dos
+  tenants de teste e o `scripts/test-edge-functions.mjs` (aluno demo).
+- **Hub:** os 49 pendentes foram aprovados no servidor pela RPC `hub_approve_commercial_publications` (identidade da
+  conta da plataforma) + `sync-hub-material` em lotes de 5; catálogo 42 → 91. Autorização em `public.audit_logs`
+  (`action = hub_commercial_approval_bulk`). Backup: `/data/OpenBot/Shared/wisewolf/conteudo/lote/aprovacao-20261122/`.
+
+### 22/11/2026 (noite, 11) — Teto de US$ 50/mês da Anthropic e Lançador (escolher professor / só gerar link)
+
+- **Teto da Anthropic (decisão do Vinícius):** a chave é a mesma do Lei Prova (que tem contador próprio de US$ 50). O
+  `_shared/ai-gateway.ts` mede cada chat (usage × preço oficial: Haiku 5.5 0,10/0,50 por 1M, acima de 100K tokens
+  0,50/2,50; Sonnet 5.5 2/10) e soma em `private.ai_provider_monthly_spend` (mês UTC; RPCs `ai_provider_spend_add` /
+  `ai_provider_spend_month`, só service_role; migration `20261122260000`). Até `ANTHROPIC_MONTHLY_BUDGET_USD` (=50 no
+  `.env.functions`) nada muda; acima, o chat vai ao **OpenRouter** até virar o mês (o corpo original da função, como
+  antes de 19/11). `ANTHROPIC_ROUTING=off` manda tudo ao OpenRouter. Contador fora do ar = segue na Anthropic. O
+  Sonnet continua só no comercial (decisão de 22/11). `OPENROUTER_API_KEY` voltou a ser lida pelo functions (linha
+  descomentada); falha da Anthropic abaixo do teto NÃO cai no OpenRouter. Consultar: `select * from
+  private.ai_provider_monthly_spend;`. ⚠️ Antes do teto não havia medição: novembro até 22/11 só tem o registro
+  parcial do `ai_usage_events` (~US$ 0,77 em 299 chamadas registradas).
+- **Lançador → Aula experimental:** "Como disparar" com 3 opções — todos os professores ativos (como antes), escolher
+  professor (`dispatch_mode: "teacher"` + `target_teacher_id`, conferido ANTES de criar a vaga pela mesma régua,
+  `409 target_teacher_not_eligible`) e só gerar o link (`link_only`: cria a vaga, devolve o link, não manda nada).
+  O aceite segue no `accept-opportunity` (professor ativo e logado, o primeiro leva). Data/hora mostradas em pt-BR
+  24 h por cima do seletor nativo (`lib/ptBrDateTime.ts`; no iPhone vazavam e saíam em AM/PM); gaveta `z-[90]`
+  acima da barra de baixo (`z-[80]`, ModernSidebar) e botão do raio acima dela no celular. Tour
+  `2026-11-24-lancador-escolher-professor`. Prints: `/data/OpenBot/Shared/wisewolf/lancador/prints-20261122/`.
+- **No ar (21:59–22:04 UTC):** migration aplicada e marcada; `_shared/ai-gateway.ts` e `broadcast-opportunity`
+  copiados (linha do `broadcast-opportunity` no `.published-functions.md5` atualizada); `functions` recriado; front
+  `index-C_yXf57c.js` (56 arquivos fora de `assets/` iguais).
+- **Backup/rollback:** `/opt/wisewolf/backup-teto-lancador-20261122T215904Z/` (`postgres.dump`, `functions/_shared/ai-gateway.ts`,
+  `functions/broadcast-opportunity/index.ts`, `published-functions.md5`, `env.functions`, `frontend-dist.md5`). Funções:
+  copiar os 2 arquivos de volta + `published-functions.md5` → `releases/.published-functions.md5` + `env.functions` →
+  `.env.functions` e `docker compose up -d --no-deps --force-recreate functions`. Front: `src/dist.prev13-lancador`
+  (antes do Lançador) ou `src/dist.lancador-v1` (Lançador sem o ajuste de camadas). Banco (aditivo): `drop function
+  public.ai_provider_spend_add(text, numeric), public.ai_provider_spend_month(text); drop table
+  private.ai_provider_monthly_spend;` + apagar o `.sha256` de `20261122260000`.
+
+### 22/11/2026 (noite, 10) — Hub: "Aprovações do Hub" do Super Admin (aprovação comercial em lote)
+
+- **Por quê:** o `SUPER_ADMIN` só vê o `SuperAdminDashboard` (App.tsx) e a RLS de UPDATE de `pedagogical_materials` exige
+  `tenant_id = _my_tenant_id()` — ele **nunca conseguiu** dar a 2ª aprovação pela tela da Biblioteca. 49 livros neutros
+  pedidos pela diretora (prévia de 3 páginas "AMOSTRA · WISE WOLF HUB" em `/data/OpenBot/Shared/wisewolf/conteudo/lote/previas-hub/`)
+  esperavam isso.
+- **O quê:** aba "Aprovações do Hub" (`components/saas/HubBulkApproval.tsx`): lista, confirmação marcada, aprova em
+  blocos de 200 e copia ao Hub (`sync-hub-material`) em lotes de 5. RPCs `hub_pending_commercial_approvals()` e
+  `hub_approve_commercial_publications(uuid[])` (migration `20261122250000`, SECURITY DEFINER, só `is_super_admin()`);
+  o verificador continua vindo do gatilho `hub_b_guard_material_publication_consent` (`auth.uid()`), e quem pediu não aprova.
+  Teste `supabase/tests/hub_aprovacao_comercial_em_lote.sql`. ⚠️ A tela do Super Admin é só desktop (lateral fixa de 256 px).
+- **Super Admin:** uma conta só, `a***n@educore.io` (tenant `master`); senha esquecida → "Recuperar senha?" no login.
+- **No ar (21:44 UTC):** migration aplicada (supabase_admin, transação única) e marcada; teste OK; front `index-Dsyra5g4.js`
+  (`npm run build` com as `VITE_*` do `.env.production` da VPS + `VITE_HUB_PUBLIC_VIDEOS=true`; 56 arquivos fora de
+  `assets/` iguais ao dist anterior). Inclui o plural "cartões" do Dinheiro.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-aprovacao-20261122T214241Z/` (`postgres.dump`, `frontend-dist.md5`,
+  `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-aprovacao && mv
+  dist.prev12-hub-aprovacao dist && cd .. && docker compose restart frontend`. Banco (aditivo): `drop function
+  public.hub_approve_commercial_publications(uuid[]), public.hub_pending_commercial_approvals();` + apagar o `.sha256` de
+  `20261122250000`. Aprovação já feita se desfaz pela revogação normal (desligar o opt-in na Biblioteca).
+
+### 22/11/2026 (noite, 9) — DNS curinga `*.wisewolflanguage.com.br` (escolas clientes sem registro manual)
+
+- **Criado (21:01 UTC, autorizado pelo Vinícius):** Cloudflare, zona `0ee31aac9562bf09783613a7ef0a01fc`, registro
+  `12f824e703ea11797e2e0692bf3ba1c5` = `A * → 179.236.255.4`, DNS only (nuvem cinza), TTL Auto. Nenhum outro registro
+  mudou (40 antes, 41 depois; id, conteúdo e `modified_on` iguais). Nomes explícitos (hub, system, raiz, www, api, app,
+  wolfie, demo-escola, cPanel) têm prioridade sobre o curinga.
+- **Certificado:** o Caddy (`on_demand` + `ask` `tenant-domain-allowed`) só emite para escola cadastrada. Teste: um
+  subdomínio sem escola resolve para a VPS, mas recebe `tlsv1 alert internal error` / `no peer certificate`. Hub,
+  system, raiz e demo-escola seguem 200 com Let's Encrypt. Evidência: `/data/OpenBot/Shared/wisewolf/white-label/curinga/`.
+- **Escola nova:** basta cadastrar o subdomínio no tenant; não precisa mais criar registro na Cloudflare.
+- **Rollback:** apagar só esse registro (painel DNS > `*` > Delete, ou
+  `DELETE /client/v4/zones/0ee31aac9562bf09783613a7ef0a01fc/dns_records/12f824e703ea11797e2e0692bf3ba1c5`). Caddy e sistema
+  não mudaram. Depois do rollback, cada escola nova volta a precisar do seu registro A.
+
 ### 22/11/2026 (noite, 8) — White label: a escola escolhe a voz do tutor (`tenants.branding.tutorVoice`)
 
 - **O quê (decisão do Vinícius):** Configurações da escola → Marca → "Voz do tutor" (`components/settings/TutorVoicePicker.tsx`):

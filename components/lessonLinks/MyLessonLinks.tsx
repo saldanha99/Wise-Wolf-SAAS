@@ -35,7 +35,7 @@ export default function MyLessonLinks({ role }: { role: 'STUDENT' | 'TEACHER' })
           </div>
         </div>
         <button type="button" onClick={() => { void reload(); }} aria-label="Atualizar links"
-          className="rounded-xl border border-brand-border p-2 text-brand-muted hover:bg-brand-bg">
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-brand-border text-brand-muted hover:bg-brand-bg sm:h-auto sm:w-auto sm:p-2">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>

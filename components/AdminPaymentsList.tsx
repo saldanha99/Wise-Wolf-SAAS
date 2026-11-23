@@ -136,7 +136,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const actionsFor = (p: any) => (
         <>
             {p.invoice_url && (
-                <a href={p.invoice_url} target="_blank" rel="noopener noreferrer" className="ww-lift inline-grid h-9 w-9 place-items-center rounded-xl border border-brand-border bg-brand-surface text-brand-muted hover:text-tenant-primary dark:hover:text-brand-accent" title="Ver Recibo/Boleto" aria-label={`Ver recibo ou boleto de ${p.profiles?.full_name || 'aluno'}`}>
+                <a href={p.invoice_url} target="_blank" rel="noopener noreferrer" className="ww-lift inline-grid h-11 w-11 sm:h-9 sm:w-9 place-items-center rounded-xl border border-brand-border bg-brand-surface text-brand-muted hover:text-tenant-primary dark:hover:text-brand-accent" title="Ver Recibo/Boleto" aria-label={`Ver recibo ou boleto de ${p.profiles?.full_name || 'aluno'}`}>
                     <Download size={16} />
                 </a>
             )}
@@ -180,7 +180,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     tone="sky"
                     label="Aguardando crédito"
                     value={money(summary.byBucket.CONFIRMED.total)}
-                    hint={`${summary.byBucket.CONFIRMED.count} cartão${summary.byBucket.CONFIRMED.count === 1 ? '' : 'ões'} aprovado${summary.byBucket.CONFIRMED.count === 1 ? '' : 's'}, ainda sem crédito`}
+                    hint={`${summary.byBucket.CONFIRMED.count} ${summary.byBucket.CONFIRMED.count === 1 ? 'cartão' : 'cartões'} aprovado${summary.byBucket.CONFIRMED.count === 1 ? '' : 's'}, ainda sem crédito`}
                 />
                 <Kpi3D
                     icon={<CalendarClock size={20} />}
@@ -217,7 +217,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                     onChange={e => setSearch(e.target.value)}
                                     placeholder="Buscar aluno…"
                                     aria-label="Buscar aluno"
-                                    className="w-full pl-9 pr-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-48"
+                                    className="w-full min-h-11 sm:min-h-0 pl-9 pr-3 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-48"
                                 />
                             </div>
                             <input
@@ -225,13 +225,13 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                 value={month}
                                 onChange={e => setMonth(e.target.value)}
                                 aria-label="Mês de vencimento"
-                                className="w-full px-4 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-auto"
+                                className="w-full min-h-11 sm:min-h-0 px-4 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-auto"
                             />
                             <select
                                 value={statusFilter}
                                 onChange={e => setStatusFilter(e.target.value as StatusFilter)}
                                 aria-label="Filtrar por status"
-                                className="w-full px-4 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-auto"
+                                className="w-full min-h-11 sm:min-h-0 px-4 py-2 bg-brand-surface-2/70 border border-brand-border rounded-xl text-sm font-bold text-brand-text sm:w-auto"
                             >
                                 <option value="ALL">Todos os Status</option>
                                 <option value="SETTLED">Pagos</option>

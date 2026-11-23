@@ -30,3 +30,18 @@ describe('SignInCard2 — recuperar senha', () => {
         expect(await screen.findByRole('status')).toHaveTextContent('Não foi possível enviar agora');
     });
 });
+
+// WiseCore (22/11/2026): a assinatura da plataforma só aparece no login da própria
+// Wise Wolf (sem marca de escola). Escola cliente (white label) não vê WiseCore.
+describe('SignInCard2 — assinatura da plataforma', () => {
+    it('mostra "WiseCore — criada pela Wise Wolf" sem marca de escola', () => {
+        render(<SignInCard2 onLogin={vi.fn()} isLoading={false} />);
+        expect(screen.getByTestId("platform-signature")).toHaveTextContent('WiseCore — criada pela Wise Wolf');
+    });
+
+    it('escola cliente não vê WiseCore no login', () => {
+        const { container } = render(<SignInCard2 onLogin={vi.fn()} isLoading={false} brand={{ name: 'Escola Demo' }} />);
+        expect(container.querySelector('[data-testid="platform-signature"]')).toBeNull();
+        expect(container.textContent).not.toMatch(/WiseCore|EduCore/);
+    });
+});

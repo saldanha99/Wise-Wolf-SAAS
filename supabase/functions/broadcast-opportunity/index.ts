@@ -341,6 +341,55 @@ function calendarDayOfWeek(date: string): number {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
+type TeacherRecipient = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+};
+
+/** Professores que podem receber convite: vínculo ACTIVE, ciclo ativo, sem status inativo e com telefone. */
+async function loadActiveTeacherRecipients(
+  supabaseAdmin: any,
+  tenantId: string,
+): Promise<TeacherRecipient[]> {
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("role", "TEACHER")
+    .eq("status", "ACTIVE");
+
+  if (membershipsError) {
+    throw new Error("DB Error (memberships): " + membershipsError.message);
+  }
+  const activeTeacherIds = (memberships || []).map(
+    (membership: { user_id: string }) => membership.user_id,
+  );
+  const { data: teachers, error: teachersErr } = activeTeacherIds.length
+    ? await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, status")
+      .in("id", activeTeacherIds)
+      .eq("lifecycle_status", "active")
+      .eq("tenant_id", tenantId)
+      .eq("role", "TEACHER")
+    : { data: [], error: null };
+
+  if (teachersErr) {
+    throw new Error("DB Error (teachers): " + teachersErr.message);
+  }
+
+  const recipients = (teachers || [])
+    .filter((t: any) => !INACTIVE_STATUS.includes(t.status || ""))
+    .map((t: any) => ({
+      id: t.id,
+      name: t.full_name,
+      phone: cleanTeacherPhone(t.phone || ""),
+    }))
+    .filter((t: any) => !!t.phone);
+  return recipients;
+}
+
 function cleanTeacherPhone(raw: string): string | null {
   let p = (raw || "").replace(/\D/g, "");
   if (p.length === 10 || p.length === 11) p = "55" + p;
@@ -434,6 +483,7 @@ serve(async (req) => {
       "opportunity_id",
       "kind",
       "dispatch_mode",
+      "target_teacher_id",
     ]);
     if (Object.keys(body).some((field) => !allowedFields.has(field))) {
       return json({ error: "Unexpected opportunity field" }, 400);
@@ -468,6 +518,20 @@ serve(async (req) => {
       : "";
     let oppKind = body.kind === "TRAINING" ? "TRAINING" : "TRIAL";
     const mode = "individual"; // Shared groups cannot exclude suspended teachers.
+    // Como disparar (22/11/2026, pedido do Vinícius):
+    //   individual = convite privado a cada professor ativo (padrão; "group" antigo cai aqui);
+    //   teacher    = convite privado só ao professor escolhido (mesma checagem de situação);
+    //   link_only  = cria a vaga e devolve o link, sem mandar nada a ninguém.
+    // Em todos, o aceite segue o accept-opportunity: professor ativo e logado, o primeiro leva.
+    const dispatch: "individual" | "teacher" | "link_only" =
+      body.dispatch_mode === "teacher"
+        ? "teacher"
+        : body.dispatch_mode === "link_only"
+        ? "link_only"
+        : "individual";
+    const targetTeacherId = typeof body.target_teacher_id === "string"
+      ? body.target_teacher_id.trim()
+      : "";
     if (
       !student_name ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -480,7 +544,11 @@ serve(async (req) => {
         body.kind !== "TRAINING") ||
       (body.dispatch_mode !== undefined &&
         body.dispatch_mode !== "group" &&
-        body.dispatch_mode !== "individual") ||
+        body.dispatch_mode !== "individual" &&
+        body.dispatch_mode !== "teacher" &&
+        body.dispatch_mode !== "link_only") ||
+      (dispatch === "teacher" && !UUID_PATTERN.test(targetTeacherId)) ||
+      (dispatch !== "teacher" && body.target_teacher_id !== undefined) ||
       (opportunity_id && body.kind === "TRAINING") ||
       (rawPreferredSlots !== null && !Array.isArray(rawPreferredSlots)) ||
       (Array.isArray(rawPreferredSlots) && rawPreferredSlots.length > 12) ||
@@ -511,7 +579,7 @@ serve(async (req) => {
         400,
       );
     }
-    if (!API_KEYS.length) {
+    if (dispatch !== "link_only" && !API_KEYS.length) {
       return json({ error: "WhatsApp provider is unavailable" }, 503);
     }
 
@@ -572,7 +640,30 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[Broadcast] 🚀 Disparando oportunidade no modo ${mode}`);
+    // Professor escolhido: conferido ANTES de criar a vaga, pela mesma régua da lista.
+    if (dispatch === "teacher") {
+      const eligible = await loadActiveTeacherRecipients(
+        supabaseAdmin,
+        tenantId,
+      );
+      const target = eligible.find((t) => t.id === targetTeacherId);
+      if (
+        !target ||
+        !await teacherMayReceiveOpportunity(supabaseAdmin, tenantId, target.id)
+      ) {
+        return json(
+          {
+            error: "Teacher cannot receive opportunities",
+            error_code: "target_teacher_not_eligible",
+          },
+          409,
+        );
+      }
+    }
+
+    console.log(
+      `[Broadcast] 🚀 Disparando oportunidade no modo ${mode}/${dispatch}`,
+    );
 
     // Date Logic
     const dayOfWeek = calendarDayOfWeek(date);
@@ -805,41 +896,22 @@ serve(async (req) => {
     //    desligado) recebia o convite. Agora o sistema escolhe a lista — desligado/
     //    suspenso NUNCA entra (mesma regra do is_teacher_notifiable). "O primeiro a
     //    clicar garante" continua valendo: o accept-opportunity tem trava atômica.
-    const { data: memberships, error: membershipsError } = await supabaseAdmin
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("role", "TEACHER")
-      .eq("status", "ACTIVE");
-
-    if (membershipsError) {
-      throw new Error("DB Error (memberships): " + membershipsError.message);
-    }
-    const activeTeacherIds = (memberships || []).map(
-      (membership: { user_id: string }) => membership.user_id,
-    );
-    const { data: teachers, error: teachersErr } = activeTeacherIds.length
-      ? await supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, phone, status")
-        .in("id", activeTeacherIds)
-        .eq("lifecycle_status", "active")
-        .eq("tenant_id", tenantId)
-        .eq("role", "TEACHER")
-      : { data: [], error: null };
-
-    if (teachersErr) {
-      throw new Error("DB Error (teachers): " + teachersErr.message);
+    if (dispatch === "link_only") {
+      return json({
+        success: true,
+        id: oppData.id,
+        mode: "link_only",
+        claim_link: claimLink,
+        recipients: 0,
+        total_active_teachers: 0,
+        failed: 0,
+      });
     }
 
-    const recipients = (teachers || [])
-      .filter((t: any) => !INACTIVE_STATUS.includes(t.status || ""))
-      .map((t: any) => ({
-        id: t.id,
-        name: t.full_name,
-        phone: cleanTeacherPhone(t.phone || ""),
-      }))
-      .filter((t: any) => !!t.phone);
+    const recipients = (await loadActiveTeacherRecipients(
+      supabaseAdmin,
+      tenantId,
+    )).filter((t) => dispatch !== "teacher" || t.id === targetTeacherId);
 
     let sent = 0;
     const failed: string[] = [];

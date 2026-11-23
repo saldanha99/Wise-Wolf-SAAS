@@ -1090,7 +1090,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           <label className="flex min-h-11 flex-1 items-center gap-3 rounded-2xl border border-brand-border bg-brand-surface px-4 focus-within:ring-2 focus-within:ring-tenant-primary/30">
             <Search size={17} className="text-brand-muted" />
             <input
-              className="flex-1 bg-transparent text-sm font-semibold text-brand-text outline-hidden placeholder:text-brand-muted"
+              className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-brand-text outline-hidden placeholder:text-brand-muted"
               placeholder={isDirectorUser ? 'Buscar por aluno, professor ou profissão' : 'Buscar aluno'}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}

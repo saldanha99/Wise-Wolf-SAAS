@@ -13,7 +13,8 @@ values (
     'primaryColor', '#6D28D9', 'secondaryColor', '#A78BFA',
     'logoUrl', '', 'logoPath', '', 'faviconUrl', '', 'faviconPath', '',
     'tutorName', 'Luna', 'appName', 'Escola Demo'),
-  jsonb_build_object('nome', 'Escola Demo', 'demo', true))
+  -- Só chaves aceitas pelo tenant-settings-admin (schoolInfoKeys); outras dão 400 ao salvar.
+  jsonb_build_object('name', 'Escola Demo'))
 on conflict (id) do nothing;
 
 update public.profiles p

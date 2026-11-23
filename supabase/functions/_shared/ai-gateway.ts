@@ -3,12 +3,15 @@
  *
  * 19/11/2026: Claude Haiku 5.5 em todas as funções (Sonnet onde o código pede
  * Sonnet), com o OpenRouter como reserva.
- * 22/11/2026 (decisão do Vinícius): o OpenRouter SAIU da Wise Wolf — nem
- * provedor, nem reserva, nem chave no fluxo. As funções continuam montando o
+ * 22/11/2026 (decisão do Vinícius): o OpenRouter saiu como provedor e como
+ * reserva de falha. 22/11/2026, noite: o teto mensal da Anthropic
+ * (ANTHROPIC_MONTHLY_BUDGET_USD, padrão US$ 50) só AVISA (log + vigia diária),
+ * sem mudar a rota (decisão do Vinícius). O OpenRouter só volta com a chave
+ * manual de emergência ANTHROPIC_ROUTING=off. As funções continuam montando o
  * pedido no formato do chat do OpenRouter (é o formato OpenAI) e importam este
  * módulo como `fetch`:
  *   * chat (openrouter.ai/.../chat/completions) → Anthropic; falhou, volta erro
- *     503 no formato que as funções já tratam (não há mais reserva);
+ *     503 no formato que as funções já tratam (falha não cai no OpenRouter);
  *   * embeddings (openrouter.ai/.../embeddings) → OpenAI direto, mesmo modelo
  *     (text-embedding-3-small), com a OPENAI_API_KEY que o realtime já usa;
  *   * qualquer outro endereço do openrouter.ai → bloqueado (410), sem rede.
@@ -81,7 +84,13 @@ const OPENAI_EMBEDDINGS = "https://api.openai.com/v1/embeddings";
  * Authorization que a função manda e usa a própria chave).
  */
 export function textAiKey(): string {
-  return (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim();
+  const anthropic = (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim();
+  if (anthropic) return anthropic;
+  // Com ANTHROPIC_ROUTING=off a chave da Anthropic pode nem existir: as funções
+  // só checam se há chave antes de chamar, e o chat vai ao OpenRouter.
+  const routingOff = (Deno.env.get("ANTHROPIC_ROUTING") ?? "").trim()
+    .toLowerCase() === "off";
+  return routingOff ? (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim() : "";
 }
 
 function errorResponse(
@@ -129,6 +138,222 @@ async function embeddingsViaOpenAI(init?: RequestInit): Promise<Response> {
   });
 }
 
+// ── Teto mensal da Anthropic (22/11/2026, decisão do Vinícius) ─────────────
+// A chave é compartilhada com o Lei Prova (que tem o próprio contador). A Wise
+// Wolf mede cada chamada (usage × preço) e soma por mês UTC em
+// private.ai_provider_monthly_spend. Acima do teto o chat CONTINUA na Anthropic:
+// só registra um aviso no log, e a vigia diária (scripts/ops/
+// anthropic-spend-alert.sh) alerta em US$ 40 e US$ 50. Falha ao gravar o
+// contador nunca bloqueia a resposta.
+// ANTHROPIC_ROUTING=off manda tudo para o OpenRouter (chave manual de emergência).
+
+/** US$ por 1M de tokens (preço oficial, 22/11/2026). */
+const ANTHROPIC_PRICES: Record<
+  string,
+  {
+    input: number;
+    output: number;
+    cacheRead: number;
+    long?: { input: number; output: number; cacheRead: number };
+  }
+> = {
+  // Haiku 5.5: prompts acima de 100K tokens custam mais.
+  "claude-haiku-5-5": {
+    input: 0.10,
+    output: 0.50,
+    cacheRead: 0.01,
+    long: { input: 0.50, output: 2.50, cacheRead: 0.05 },
+  },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.10 },
+};
+const LONG_PROMPT_TOKENS = 100_000;
+const DEFAULT_MONTHLY_BUDGET_USD = 50;
+const SPEND_RPC_TIMEOUT_MS = 1_000;
+
+/** Custo em US$ de uma resposta do chat da Anthropic (formato OpenAI). */
+export function anthropicCostUsd(model: string, usage: unknown): number | null {
+  if (!usage || typeof usage !== "object") return null;
+  const u = usage as Record<string, unknown>;
+  const prompt = Number(u.prompt_tokens);
+  const completion = Number(u.completion_tokens);
+  if (!Number.isFinite(prompt) || !Number.isFinite(completion)) return null;
+  const details = u.prompt_tokens_details as
+    | Record<string, unknown>
+    | undefined;
+  const cached = Math.min(
+    Math.max(Number(details?.cached_tokens) || 0, 0),
+    prompt,
+  );
+  // Modelo desconhecido: preço do Sonnet (o mais caro) para o teto não furar.
+  const base = ANTHROPIC_PRICES[model] ?? ANTHROPIC_PRICES["claude-sonnet-5-5"];
+  const price = prompt > LONG_PROMPT_TOKENS && base.long ? base.long : base;
+  return ((prompt - cached) * price.input + cached * price.cacheRead +
+    Math.max(completion, 0) * price.output) / 1_000_000;
+}
+
+/** Teto mensal em US$. "off" = sem teto; valor inválido = padrão (50). */
+export function monthlyBudgetUsd(): number {
+  const raw = (Deno.env.get("ANTHROPIC_MONTHLY_BUDGET_USD") ?? "").trim();
+  if (raw.toLowerCase() === "off") return Number.POSITIVE_INFINITY;
+  const value = Number(raw);
+  return raw && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_MONTHLY_BUDGET_USD;
+}
+
+export function anthropicRoutingOff(): boolean {
+  return (Deno.env.get("ANTHROPIC_ROUTING") ?? "").trim().toLowerCase() ===
+    "off";
+}
+
+/** Gasto conhecido acima do teto? Sem leitura (null) não bloqueia. */
+export function overBudget(
+  spentUsd: number | null,
+  budgetUsd: number,
+): boolean {
+  return spentUsd !== null && Number.isFinite(budgetUsd) &&
+    spentUsd >= budgetUsd;
+}
+
+// EdgeRuntime é injetado pelo runtime do Supabase (sem tipagem padrão).
+declare const EdgeRuntime:
+  | { waitUntil: (promise: Promise<unknown>) => void }
+  | undefined;
+
+/** Gravação do gasto fora do caminho da resposta; sem EdgeRuntime, só dispara. */
+function runInBackground(task: Promise<unknown>): void {
+  const guarded = task.catch(() => undefined);
+  try {
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(guarded);
+    }
+  } catch {
+    // Sem waitUntil a promessa segue sozinha.
+  }
+}
+
+function isStreamBody(body: unknown): boolean {
+  if (typeof body !== "string") return false;
+  try {
+    return JSON.parse(body)?.stream === true;
+  } catch {
+    return false;
+  }
+}
+
+
+async function spendRpc(
+  fn: string,
+  args: Record<string, unknown>,
+): Promise<number | null> {
+  const url = (Deno.env.get("SUPABASE_URL") ?? "").trim();
+  const key = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
+  if (!url || !key) return null;
+  try {
+    const resp = await nativeFetch(`${url}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+        "apikey": key,
+      },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(SPEND_RPC_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(
+        `[ai-gateway] contador de gasto HTTP ${resp.status} (${fn})`,
+      );
+      return null;
+    }
+    const value = Number(await resp.json());
+    return Number.isFinite(value) ? value : null;
+  } catch (error) {
+    console.warn(
+      `[ai-gateway] contador de gasto falhou (${fn}): ${
+        (error as Error)?.name
+      }`,
+    );
+    return null;
+  }
+}
+
+async function recordAnthropicSpend(
+  resp: Response,
+  model: string,
+): Promise<void> {
+  try {
+    const data = await resp.clone().json();
+    const cost = anthropicCostUsd(model, data?.usage);
+    if (cost === null) {
+      console.warn(
+        `[ai-gateway] resposta sem usage; gasto não medido (model=${model})`,
+      );
+      return;
+    }
+    const total = await spendRpc("ai_provider_spend_add", {
+      p_provider: "anthropic",
+      p_usd: Number(cost.toFixed(6)),
+    });
+    if (total !== null) {
+      // Acima do teto continua na Anthropic: só avisa (a vigia diária alerta).
+      const budget = monthlyBudgetUsd();
+      if (overBudget(total, budget)) {
+        console.warn(
+          `[ai-gateway] teto mensal da Anthropic passou: US$ ${
+            total.toFixed(2)
+          } de ${budget} (rota mantida)`,
+        );
+      }
+    }
+  } catch {
+    // Medição nunca derruba a resposta.
+  }
+}
+
+/** Chat pelo OpenRouter (provedor de antes), com o corpo original da função. */
+async function chatViaOpenRouter(
+  init: RequestInit,
+  reason: string,
+): Promise<Response> {
+  const key = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  if (!key) {
+    console.warn(
+      `[ai-gateway] ${reason}: sem OPENROUTER_API_KEY, sem reserva.`,
+    );
+    return errorResponse(
+      503,
+      "ai_not_configured",
+      "Anthropic routing off and no OpenRouter key configured",
+    );
+  }
+  console.log(`[ai-gateway] chat pelo OpenRouter (${reason})`);
+  const resp = await nativeFetch(OPENROUTER_CHAT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${key}`,
+    },
+    body: init.body,
+    signal: init.signal,
+  });
+  if (resp.ok && !isStreamBody(init.body)) {
+    try {
+      const data = await resp.clone().json();
+      const cost = Number(data?.usage?.cost);
+      if (Number.isFinite(cost) && cost >= 0 && cost <= 100) {
+        runInBackground(spendRpc("ai_provider_spend_add", {
+          p_provider: "openrouter",
+          p_usd: Number(cost.toFixed(6)),
+        }));
+      }
+    } catch {
+      // Medição nunca derruba a resposta.
+    }
+  }
+  return resp;
+}
+
 export async function aiFetch(
   input: string | URL | Request,
   init?: RequestInit,
@@ -147,6 +372,9 @@ export async function aiFetch(
     );
   }
 
+  if (typeof init?.body === "string" && anthropicRoutingOff()) {
+    return chatViaOpenRouter(init, "routing_off");
+  }
   const key = textAiKey();
   if (!key || typeof init?.body !== "string") {
     return errorResponse(503, "ai_not_configured", "Anthropic API key missing");
@@ -173,6 +401,9 @@ export async function aiFetch(
       signal: init.signal,
     });
     if (resp.ok) {
+      if (body.stream !== true) {
+        runInBackground(recordAnthropicSpend(resp, model));
+      }
       console.log(
         `[ai-gateway] anthropic ok model=${model} asked=${parsed.model} ms=${
           Date.now() - started
