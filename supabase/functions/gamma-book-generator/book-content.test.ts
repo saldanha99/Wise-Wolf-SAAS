@@ -10,6 +10,7 @@ import {
   checkFeedback,
   initialContentState,
   normalizeChunk,
+  pruneFlaggedItems,
   renderAnswerPages,
   renderPage,
 } from "./book-content.ts";
@@ -106,7 +107,10 @@ Deno.test("normaliza, valida e devolve feedback quando o gabarito não bate", ()
   assert(ok.ok);
   const bad = goodPage(4);
   bad.exercises[0].items[0].answer_index = 5;
-  (bad.exercises[1].items[0] as unknown as { words: string[] }).words = ["totally", "wrong"]; // ignorado: sai da resposta
+  (bad.exercises[1].items[0] as unknown as { words: string[] }).words = [
+    "totally",
+    "wrong",
+  ]; // ignorado: sai da resposta
   bad.body += " Look at the picture on page 2.";
   const res = normalizeChunk({ pages: [bad] }, chunk, 1);
   assert(!res.ok);
@@ -134,7 +138,7 @@ Deno.test("página e gabarito: mesma numeração e frase completa", () => {
   assert(page.includes("## Exercise 1 — Choose"));
   assert(page.includes("1. I ___ my passport."));
   assert(page.includes("a) have   b) has   c) having"));
-  assert(page.includes("1. is / gate / where / the"));
+  assert(page.includes("1. is / gate / Where / the  ( … ? )"));
   const [key] = renderAnswerPages(
     res.pages,
     bookOutline(spec).filter((p) => p.kind === "answers"),
@@ -174,4 +178,50 @@ Deno.test("2ª verificação: lista de problemas vira feedback; resposta inváli
     ],
   );
   assertEquals(checkFeedback({ nope: 1 }), null);
+});
+
+Deno.test("poda: tira só os itens apontados e renumera; problema de página não poda", () => {
+  const chunk = {
+    key: "x",
+    pages: [4],
+    state: "todo" as const,
+    attempts: 1,
+    feedback: [],
+    content: null,
+  };
+  const page = goodPage(4);
+  page.exercises[0].items.push(
+    item(2, {
+      prompt: "She ___ a ticket.",
+      options: ["has", "have", "having"],
+      answer_index: 0,
+    }),
+    item(3, {
+      prompt: "We ___ late.",
+      options: ["are", "is", "be"],
+      answer_index: 0,
+    }),
+  );
+  const res = normalizeChunk({ pages: [page] }, chunk, 1);
+  if (!res.ok) throw new Error("normalize");
+  const pruned = pruneFlaggedItems(res.pages, [{
+    page: 4,
+    exercise: 1,
+    n: 2,
+    text: "two options fit",
+  }]);
+  if (!pruned) throw new Error("prune");
+  assertEquals(pruned[0].exercises[0].items.map((it) => [it.n, it.prompt]), [
+    [1, "I ___ my passport."],
+    [2, "We ___ late."],
+  ]);
+  assertEquals(
+    pruneFlaggedItems(res.pages, [{
+      page: 4,
+      exercise: 0,
+      n: 0,
+      text: "page refers to audio",
+    }]),
+    null,
+  );
 });

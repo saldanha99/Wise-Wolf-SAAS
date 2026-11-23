@@ -138,7 +138,7 @@ export function buildChunkPrompt(
     "2. Every exercise lives only in exercises[]. Items are numbered 1..N inside each exercise, with no gaps.",
     "3. mcq: 3 or 4 options, answer_index = the ONLY correct option; every distractor must be clearly wrong in standard English (also in informal speech). If the prompt has a blank (___), each option must fit the blank grammatically as a single choice; never offer a contraction of words that are already in the sentence.",
     "4. gap: exactly one ___ per item; answer = the exact words that fill it. A word bank is optional; when used, put the SAME complete bank in options of EVERY item of that exercise (all the answers plus at most 2 extra words), with no duplicates, and the answer is in the bank. The printed page shows one shared bank.",
-    "5. reorder: words = the shuffled words of the answer, exactly the same words (no extra, none missing); answer = the correct sentence.",
+    "5. reorder: answer = the correct sentence (the words are shuffled by the system; the first word keeps its capital letter and the final punctuation is shown). Choose sentences with ONLY ONE acceptable order: avoid if/when/because clauses that could come first or last, and avoid two nouns that could swap places.",
     "6. match: prompt = left term, answer = its match; one to one, no repeated terms.",
     '7. tf: answer = "true" or "false"; include both true and false items; the statement must be checkable from the body text of the same page.',
     "8. transform / correct_error: prompt = the original sentence; answer = the full rewritten or corrected sentence, different from the prompt. In correct_error the original must contain a REAL error — never mark a valid English construction (e.g. a correct third conditional, 'Did you ever…?') as wrong.",
@@ -427,14 +427,8 @@ function describe(
 
 /** Palavras da resposta embaralhadas de forma determinística (nunca na ordem certa). */
 export function scramble(answer: string): string[] {
-  const tokens = answer.replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean)
-    .map((
-      w,
-      i,
-    ) => (i === 0 && w !== "I" && !/^[A-Z]{2,}/.test(w)
-      ? w[0].toLowerCase() + w.slice(1)
-      : w)
-    );
+  // A maiúscula da 1ª palavra e a pontuação final (mostrada na página) indicam o começo e o fim.
+  const tokens = answer.replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return tokens;
   const out = [
     ...tokens.filter((_, i) => i % 2 === 1),
@@ -485,7 +479,12 @@ export function renderPage(p: ContentPage): string {
           }`,
         );
       } else if (ex.type === "reorder") {
-        out.push(`${it.n}. ${(it.words ?? []).join(" / ")}`);
+        const end = (it.answer ?? "").trim().match(/[.!?]$/)?.[0] ?? "";
+        out.push(
+          `${it.n}. ${(it.words ?? []).join(" / ")}${
+            end ? `  ( … ${end} )` : ""
+          }`,
+        );
       } else if (ex.type === "tf") {
         out.push(`${it.n}. ${it.prompt} (True / False)`);
       } else {
@@ -597,6 +596,81 @@ export function buildCheckPrompt(
     "",
     ...blocks,
   ].join("\n");
+}
+
+export interface CheckProblem {
+  page: number;
+  exercise: number;
+  n: number;
+  text: string;
+}
+
+/** Problemas "blocker" da 2ª verificação, estruturados (página, exercício, item). */
+export function checkProblems(raw: unknown): CheckProblem[] | null {
+  if (!isObj(raw) || !Array.isArray(raw.problems)) return null;
+  return raw.problems.filter(isObj).filter((p) => p.severity !== "minor").map((
+    p,
+  ) => ({
+    page: typeof p.page === "number" ? p.page : 0,
+    exercise: typeof p.exercise === "number" ? p.exercise : 0,
+    n: typeof p.n === "number" ? p.n : 0,
+    text: str(p.problem, 400),
+  })).slice(0, 40);
+}
+
+/**
+ * Último recurso para convergir: tira os itens apontados (renumerando) em vez de reescrever o
+ * bloco. Só quando todo problema é de item; exercício que fica com menos de 2 itens sai inteiro.
+ * Devolve null se algum problema for de página/exercício (esse precisa de correção).
+ */
+export function pruneFlaggedItems(
+  pages: ContentPage[],
+  problems: CheckProblem[],
+): ContentPage[] | null {
+  if (!problems.length || problems.some((p) => p.n <= 0 || p.exercise <= 0)) {
+    return null;
+  }
+  return pages.map((page) => ({
+    ...page,
+    exercises: page.exercises.map((ex, k) => {
+      const drop = new Set(
+        problems.filter((p) => p.page === page.page && p.exercise === k + 1)
+          .map((p) => p.n),
+      );
+      if (!drop.size) return ex;
+      const kept = ex.items.filter((it) => !drop.has(it.n)).map((it, i) => ({
+        ...it,
+        n: i + 1,
+      }));
+      return { ...ex, items: kept };
+    }).filter((ex) =>
+      ex.items.length >= 2 || (ex.type === "open" && ex.items.length >= 1)
+    ),
+  }));
+}
+
+/** Volta as páginas ao formato do schema (para a correção pontual depois de uma poda). */
+export function toRawChunk(pages: ContentPage[]): unknown {
+  return {
+    pages: pages.map((p) => ({
+      page: p.page,
+      title: p.title,
+      body: p.body,
+      exercises: p.exercises.map((ex) => ({
+        title: (ex as Exercise & { title?: string }).title ?? "",
+        type: ex.type,
+        instruction: ex.instruction,
+        items: ex.items.map((it) => ({
+          n: it.n,
+          prompt: it.prompt,
+          options: it.options ?? [],
+          answer_index: it.answerIndex ?? -1,
+          answer: it.answer ?? "",
+          words: it.words ?? [],
+        })),
+      })),
+    })),
+  };
 }
 
 export function checkFeedback(raw: unknown): string[] | null {

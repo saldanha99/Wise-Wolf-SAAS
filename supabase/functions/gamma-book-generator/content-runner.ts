@@ -10,9 +10,12 @@ import {
   buildFixPrompt,
   CHECK_RESPONSE_SCHEMA,
   checkFeedback,
+  checkProblems,
   CHUNK_RESPONSE_SCHEMA,
   MAX_CHUNK_ATTEMPTS,
   normalizeChunk,
+  pruneFlaggedItems,
+  toRawChunk,
 } from "./book-content.ts";
 import type { SchoolBookSpec } from "./book-spec.ts";
 
@@ -212,6 +215,19 @@ export async function advanceContent(
         ? "ready"
         : "progress",
     };
+  }
+  // Depois de 3 correções sem convergir, tira os itens apontados (se forem só itens) e confere de novo.
+  const structured = checkProblems(raw) ?? [];
+  const prunes = (chunk as { prunes?: number }).prunes ?? 0;
+  if (chunk.attempts >= 4 && prunes < 2 && chunk.content) {
+    const pruned = pruneFlaggedItems(chunk.content, structured);
+    if (pruned) {
+      chunk.content = pruned;
+      chunk.draft = toRawChunk(pruned);
+      (chunk as { prunes?: number }).prunes = prunes + 1;
+      chunk.feedback = [];
+      return { state, outcome: "progress" };
+    }
   }
   chunk.feedback = problems;
   chunk.state = "todo";
