@@ -1684,6 +1684,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261122230000_wolfie_abertura_personalizada.sql"
   "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
   "supabase/migrations/20261123100000_hub_fase2_ferramentas.sql"
+  "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"

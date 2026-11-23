@@ -163,4 +163,36 @@ select pg_temp.assert_sqlstate(
   '23514', 'tipo fora do catálogo foi aceito');
 reset role;
 
+-- 5. Filtros da biblioteca (migration 20261123110000)
+select pg_temp.assert_true(
+  (select skills = array['vocabulary'] and theme = 'dia_a_dia' and age_group = 'all' and duration_minutes = 60
+     from private.hub_catalog_default_tags('VOCABULARY', 'Word Power A2: Work, Health and Travel', 'Livro neutro para o Hub (IA) · Parte 1')),
+  'regra de tags do Word Power');
+select pg_temp.assert_true(
+  (select theme = 'infantil' and age_group = 'kids' and duration_minutes = 90
+     from private.hub_catalog_default_tags('KIDS', 'KIDS VOLUME A1 PART 2', 'General · Parte 2')),
+  'regra de tags do Kids');
+select pg_temp.assert_true(
+  (select theme = 'trabalho' and age_group = 'adults' and skills @> array['writing']
+     from private.hub_catalog_default_tags('BUSINESS', 'Office English A2: Emails and Calls', null)),
+  'regra de tags do Business');
+select pg_temp.assert_true(
+  (select duration_minutes = 45 from private.hub_catalog_default_tags('GENERAL', 'EXPERIMENTAL A1 A2', 'General')),
+  'aula avulsa estimada em 45 min');
+select pg_temp.assert_true(
+  not exists (select 1 from public.hub_content_items where is_active
+               and (skills is null or theme is null or age_group is null or duration_minutes is null)),
+  'item ativo do catálogo sem tag de filtro');
+select pg_temp.assert_true(
+  exists (select 1 from pg_catalog.pg_trigger where tgname = 'hub_content_items_fill_tags'
+           and tgrelid = 'public.hub_content_items'::regclass),
+  'gatilho das tags ausente');
+select pg_temp.assert_true(
+  pg_catalog.has_column_privilege('anon', 'public.hub_content_items', 'skills', 'SELECT')
+  and pg_catalog.has_column_privilege('authenticated', 'public.hub_content_items', 'duration_minutes', 'SELECT'),
+  'colunas de filtro sem grant de leitura');
+select pg_temp.assert_sqlstate(
+  $statement$ update public.hub_content_items set theme = 'inventado' where id = (select id from public.hub_content_items limit 1) $statement$,
+  '23514', 'tema fora da lista foi aceito');
+
 rollback;

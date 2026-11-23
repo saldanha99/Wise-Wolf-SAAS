@@ -61,6 +61,11 @@ export interface HubContentItem {
   preview_enabled: boolean;
   license_summary: string | null;
   author_name: string | null;
+  // Filtros da Fase 2 (migration 20261123110000); ausentes em banco antigo.
+  skills?: string[] | null;
+  theme?: string | null;
+  age_group?: string | null;
+  duration_minutes?: number | null;
   metadata: Record<string, unknown>;
 }
 

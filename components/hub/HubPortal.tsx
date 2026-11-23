@@ -42,6 +42,7 @@ import type {
   HubSettings,
 } from './types';
 import HubCheckoutDialog from './HubCheckoutDialog';
+import HubLibraryFilters, { EMPTY_HUB_CATALOG_FILTERS, filterHubCatalog, type HubCatalogFilters } from './HubLibraryFilters';
 import GuidedTour from '../tour/GuidedTour';
 import { HUB_FASE2_TOUR_ID, HUB_FASE2_TOUR_STEPS, useHubFeatureTour } from './hubFeatureTour';
 import HubPersonalization from './HubPersonalization';
@@ -300,7 +301,9 @@ const HubLibrary: React.FC<{
   // Só o que é específico do Hub fica aqui — franquia, prévia e a abertura
   // assinada. `file_url` de propósito NÃO é mapeado: no Hub o caminho do arquivo
   // nunca chega ao navegador.
-  const materials = useMemo<MaterialItem[]>(() => content.map((item) => ({
+  const [filters, setFilters] = useState<HubCatalogFilters>(EMPTY_HUB_CATALOG_FILTERS);
+  const filtered = useMemo(() => filterHubCatalog(content, filters), [content, filters]);
+  const materials = useMemo<MaterialItem[]>(() => filtered.map((item) => ({
     id: item.id,
     title: item.title,
     type: item.content_type,
@@ -308,11 +311,11 @@ const HubLibrary: React.FC<{
     niche: item.niche,
     collection_id: item.collection_id ?? null,
     part_number: item.part_number ?? null,
-  })), [content]);
+  })), [filtered]);
 
   const collections = useMemo<CollectionItem[]>(() => {
     const seen = new Map<string, CollectionItem>();
-    for (const item of content) {
+    for (const item of filtered) {
       if (!item.collection_id || seen.has(item.collection_id)) continue;
       seen.set(item.collection_id, {
         id: item.collection_id,
@@ -323,7 +326,7 @@ const HubLibrary: React.FC<{
       });
     }
     return [...seen.values()];
-  }, [content]);
+  }, [filtered]);
 
   const openMaterial = async (material: MaterialItem) => {
     const item = content.find((candidate) => candidate.id === material.id);
@@ -361,12 +364,19 @@ const HubLibrary: React.FC<{
       </div>
       {error && <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900"><span>{error}</span><button onClick={onUpgrade} className="shrink-0 text-tenant-primary">Ver planos</button></div>}
       {openingId && <p className="mt-4 text-sm font-bold text-brand-muted">Liberando acesso ao material...</p>}
+      {content.some((item) => Array.isArray(item.skills)) && (
+        <div className="mt-6">
+          <HubLibraryFilters value={filters} onChange={setFilters} total={content.length} shown={filtered.length} />
+        </div>
+      )}
       <div className="mt-7">
         <MaterialsLibrary
           materials={materials}
           collections={collections.length > 0 ? collections : undefined}
           onOpenMaterial={openMaterial}
-          emptyText="Os materiais só são publicados depois da validação de autoria e licença. O catálogo aparece aqui automaticamente."
+          emptyText={content.length > 0 && filtered.length === 0
+            ? 'Nenhum material com esses filtros. Limpe um filtro ou gere um material sob medida no Educador IA.'
+            : 'Os materiais só são publicados depois da validação de autoria e licença. O catálogo aparece aqui automaticamente.'}
         />
       </div>
     </div>
