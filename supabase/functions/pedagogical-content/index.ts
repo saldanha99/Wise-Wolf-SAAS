@@ -5,6 +5,7 @@ import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
+import { findHubTool } from "../_shared/hub-tools.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
   filterRecommendedMaterials,
@@ -1388,7 +1389,20 @@ async function handleHubMaterialGenerate(
   body: JsonObject,
   reservationState: HubReservationState,
 ): Promise<Response> {
-  const parsed = parseHubMaterialSpec(body);
+  // Ferramenta do catálogo (Fase 2): o tipo e o preset vêm do servidor; o
+  // navegador só manda o id. Id desconhecido é recusado, não ignorado.
+  const rawToolId = plannerValue(body, "toolId", "tool_id");
+  const tool = rawToolId === undefined || rawToolId === null || rawToolId === ""
+    ? null
+    : findHubTool(rawToolId);
+  if (rawToolId && !tool) throw new HttpError(400, "INVALID_HUB_TOOL");
+  if (tool?.sourceTextRequired && typeof body.sourceText !== "string") {
+    throw new HttpError(400, "MATERIAL_SOURCE_TEXT_REQUIRED");
+  }
+  const parsed = parseHubMaterialSpec(
+    tool ? { ...body, kind: tool.kind } : body,
+    tool?.preset ?? "",
+  );
   if (!parsed.ok) throw new HttpError(400, parsed.code);
   const spec: HubMaterialSpec = parsed.spec;
   const accountId = parseOptionalUuid(
@@ -1403,6 +1417,7 @@ async function handleHubMaterialGenerate(
     feature: "educator_ai.generate",
     action: HUB_MATERIAL_ACTION,
     accountId,
+    toolId: tool?.id ?? null,
     spec,
   }));
 
@@ -1600,6 +1615,7 @@ async function handleHubMaterialGenerate(
       item_count: spec.count,
       bilingual: spec.bilingual,
       extra_instructions: spec.extra,
+      tool_id: tool?.id ?? null,
       title: normalized.value.title,
       material: normalized.value.material,
       dropped_items: normalized.value.dropped,
@@ -1631,6 +1647,7 @@ async function handleHubMaterialGenerate(
     audience: spec.audience,
     material: normalized.value.material,
     dropped: normalized.value.dropped,
+    tool_id: tool?.id ?? null,
     created_at: row.created_at,
     idempotent: false,
   });
