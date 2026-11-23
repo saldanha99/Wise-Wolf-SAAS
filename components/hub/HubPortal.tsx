@@ -42,11 +42,17 @@ import type {
   HubSettings,
 } from './types';
 import HubCheckoutDialog from './HubCheckoutDialog';
+import HubLibraryFilters, { EMPTY_HUB_CATALOG_FILTERS, filterHubCatalog, type HubCatalogFilters } from './HubLibraryFilters';
+import GuidedTour from '../tour/GuidedTour';
+import { HUB_FASE2_TOUR_ID, HUB_FASE2_TOUR_STEPS, useHubFeatureTour } from './hubFeatureTour';
 import HubPersonalization from './HubPersonalization';
 import { resolveSystemAppUrl } from './hubRoutes';
 
 const HubEducatorPlanner = React.lazy(() => import('./HubEducatorPlanner'));
 const HubMaterialGenerator = React.lazy(() => import('./HubMaterialGenerator'));
+const HubToolsCatalog = React.lazy(() => import('./HubToolsCatalog'));
+const HubCefrChecker = React.lazy(() => import('./HubCefrChecker'));
+const HubAuthenticAdapter = React.lazy(() => import('./HubAuthenticAdapter'));
 const HubLearnersPanel = React.lazy(() => import('./HubLearnersPanel'));
 const HubStudentDesk = React.lazy(() => import('./HubStudentDesk'));
 const HubWolfieStudio = React.lazy(() => import('./HubWolfieStudio'));
@@ -207,23 +213,41 @@ const HubOverview: React.FC<{
   );
 };
 
-// Educador IA tem duas ferramentas com a mesma cota (`educator_ai.generate`):
+// Educador IA: ferramentas por habilidade, gerador, verificador CEFR, adaptação,
+// planner e alunos. Cotas: `educator_ai.generate` (ferramentas, gerador e
+// planner), `educator_ai.cefr_check` e `educator_ai.adapt`. Antes eram duas:
 // o gerador de material por nicho × nível (sem aluno — é o produto de entrada)
 // e o planner de aula (com perfil de aluno). Uma aba, um seletor.
-type HubEducatorMode = 'materials' | 'planner' | 'learners';
+// Fase 2 (23/11/2026): ferramentas por habilidade, verificador CEFR e adaptação
+// de material autêntico entram como modos da mesma aba.
+type HubEducatorMode = 'tools' | 'materials' | 'cefr' | 'adapt' | 'planner' | 'learners';
 
 const HubEducatorWorkspace: React.FC<{
   bootstrap: HubBootstrap;
+  userId?: string;
   userEmail: string;
   onRefresh: () => Promise<void>;
   onUpgrade: () => void;
-}> = ({ bootstrap, userEmail, onRefresh, onUpgrade }) => {
-  const [mode, setMode] = useState<HubEducatorMode>('materials');
+}> = ({ bootstrap, userId, userEmail, onRefresh, onUpgrade }) => {
+  const [mode, setMode] = useState<HubEducatorMode>('tools');
+  const tour = useHubFeatureTour(userId, HUB_FASE2_TOUR_ID);
   return (
     <div className="space-y-5">
-      <div role="tablist" aria-label="Ferramentas do Educador IA" className="inline-flex rounded-2xl border border-brand-border bg-brand-surface p-1 print:hidden">
+      {tour.pending && (
+        <GuidedTour
+          steps={HUB_FASE2_TOUR_STEPS}
+          activeTab={mode}
+          setActiveTab={(value) => setMode(value as HubEducatorMode)}
+          onFinish={tour.markSeen}
+          onClose={tour.close}
+        />
+      )}
+      <div role="tablist" aria-label="Ferramentas do Educador IA" data-tour="hub-educator-modes" className="flex max-w-full gap-1 overflow-x-auto rounded-2xl border border-brand-border bg-brand-surface p-1 print:hidden sm:inline-flex">
         {([
+          ['tools', 'Ferramentas'],
           ['materials', 'Gerar material'],
+          ['cefr', 'Verificar nível'],
+          ['adapt', 'Adaptar material'],
           ['planner', 'Planner de aula'],
           ['learners', 'Meus alunos'],
         ] as Array<[HubEducatorMode, string]>).map(([value, label]) => (
@@ -233,14 +257,20 @@ const HubEducatorWorkspace: React.FC<{
             role="tab"
             aria-selected={mode === value}
             onClick={() => setMode(value)}
-            className={`rounded-xl px-4 py-2 text-xs font-black transition ${mode === value ? 'bg-tenant-primary text-white' : 'text-brand-muted hover:text-brand-text'}`}
+            className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-black transition ${mode === value ? 'bg-tenant-primary text-white' : 'text-brand-muted hover:text-brand-text'}`}
           >
             {label}
           </button>
         ))}
       </div>
       <React.Suspense fallback={<HubModuleLoading />}>
-        {mode === 'materials'
+        {mode === 'tools'
+          ? <HubToolsCatalog bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
+          : mode === 'cefr'
+            ? <HubCefrChecker bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
+            : mode === 'adapt'
+              ? <HubAuthenticAdapter bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
+              : mode === 'materials'
           ? <HubMaterialGenerator bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={onUpgrade} />
           : mode === 'learners'
             ? <HubLearnersPanel bootstrap={bootstrap} />
@@ -271,7 +301,9 @@ const HubLibrary: React.FC<{
   // Só o que é específico do Hub fica aqui — franquia, prévia e a abertura
   // assinada. `file_url` de propósito NÃO é mapeado: no Hub o caminho do arquivo
   // nunca chega ao navegador.
-  const materials = useMemo<MaterialItem[]>(() => content.map((item) => ({
+  const [filters, setFilters] = useState<HubCatalogFilters>(EMPTY_HUB_CATALOG_FILTERS);
+  const filtered = useMemo(() => filterHubCatalog(content, filters), [content, filters]);
+  const materials = useMemo<MaterialItem[]>(() => filtered.map((item) => ({
     id: item.id,
     title: item.title,
     type: item.content_type,
@@ -279,11 +311,11 @@ const HubLibrary: React.FC<{
     niche: item.niche,
     collection_id: item.collection_id ?? null,
     part_number: item.part_number ?? null,
-  })), [content]);
+  })), [filtered]);
 
   const collections = useMemo<CollectionItem[]>(() => {
     const seen = new Map<string, CollectionItem>();
-    for (const item of content) {
+    for (const item of filtered) {
       if (!item.collection_id || seen.has(item.collection_id)) continue;
       seen.set(item.collection_id, {
         id: item.collection_id,
@@ -294,7 +326,7 @@ const HubLibrary: React.FC<{
       });
     }
     return [...seen.values()];
-  }, [content]);
+  }, [filtered]);
 
   const openMaterial = async (material: MaterialItem) => {
     const item = content.find((candidate) => candidate.id === material.id);
@@ -359,12 +391,19 @@ const HubLibrary: React.FC<{
       </div>
       {error && <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900"><span>{error}</span><button onClick={onUpgrade} className="shrink-0 text-tenant-primary">Ver planos</button></div>}
       {openingId && <p className="mt-4 text-sm font-bold text-brand-muted">Liberando acesso ao material...</p>}
+      {content.some((item) => Array.isArray(item.skills)) && (
+        <div className="mt-6">
+          <HubLibraryFilters value={filters} onChange={setFilters} total={content.length} shown={filtered.length} />
+        </div>
+      )}
       <div className="mt-7">
         <MaterialsLibrary
           materials={materials}
           collections={collections.length > 0 ? collections : undefined}
           onOpenMaterial={openMaterial}
-          emptyText="Os materiais só são publicados depois da validação de autoria e licença. O catálogo aparece aqui automaticamente."
+          emptyText={content.length > 0 && filtered.length === 0
+            ? 'Nenhum material com esses filtros. Limpe um filtro ou gere um material sob medida no Educador IA.'
+            : 'Os materiais só são publicados depois da validação de autoria e licença. O catálogo aparece aqui automaticamente.'}
         />
       </div>
     </div>
@@ -715,7 +754,7 @@ const HubPortal: React.FC<HubPortalProps> = ({ bootstrap, accounts = [], plans, 
     if (!hasCurrentAccess && ['library', 'educator', 'wolfie'].includes(tab)) return <HubAccessRequired onChoosePlan={() => navigate('plans')} />;
     if (tab === 'educator' && !canUseEducator) return <HubAccessRequired onChoosePlan={() => navigate('overview')} />;
     if (tab === 'library') return <HubLibrary bootstrap={bootstrap} content={content} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
-    if (tab === 'educator') return <HubEducatorWorkspace bootstrap={bootstrap} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
+    if (tab === 'educator') return <HubEducatorWorkspace bootstrap={bootstrap} userId={userId} userEmail={userEmail} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} />;
     if (tab === 'wolfie') return <React.Suspense fallback={<HubModuleLoading />}><HubWolfieStudio bootstrap={bootstrap} onRefresh={onRefresh} onUpgrade={() => navigate('plans')} /></React.Suspense>;
     if (tab === 'saas') return <HubSchoolSystemAccess bootstrap={bootstrap} settings={settings} />;
     if (tab === 'plans') return <><HubPlans plans={plans} settings={settings} accountId={bootstrap.account.id} accountAudience={bootstrap.account.audience} activePlan={activePaidPlan} activeBillingCycle={activeBillingCycle} isManager={bootstrap.isManager === true} accountName={bootstrap.account.name} email={userEmail} initialPlanIntent={initialPlanIntent} onPlanIntentConsumed={onPlanIntentConsumed} catalogReady={isHubCatalogReady(settings, content)} /><HubSubscriptionCancellation bootstrap={bootstrap} onRefresh={onRefresh} /></>;

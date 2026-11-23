@@ -92,12 +92,7 @@ export async function loadHubPublicData(): Promise<{
       .eq('is_public', true)
       .order('display_order'),
     supabase.rpc('hub_get_public_settings'),
-    supabase
-      .from('hub_content_items')
-      .select('id, slug, title, description, content_type, level_tag, niche, collection_name, collection_id, part_number, cover_url, preview_enabled, license_summary, author_name')
-      .eq('is_active', true)
-      .order('published_at', { ascending: false })
-      .limit(60),
+    loadHubCatalog(),
   ]);
 
   if (plansResult.error) throw plansResult.error;
@@ -107,8 +102,31 @@ export async function loadHubPublicData(): Promise<{
   return {
     plans: ((plansResult.data ?? []) as HubPlan[]).filter(isHubCorePlan),
     settings: (settingsResult.data as HubSettings | null) ?? DEFAULT_HUB_SETTINGS,
-    content: (contentResult.data ?? []).map((item) => ({ ...item, metadata: {} })) as HubContentItem[],
+    content: ((contentResult.data ?? []) as unknown as Array<Record<string, unknown>>).map((item) => ({ ...item, metadata: {} })) as unknown as HubContentItem[],
   };
+}
+
+const HUB_CATALOG_COLUMNS = 'id, slug, title, description, content_type, level_tag, niche, collection_name, collection_id, part_number, cover_url, preview_enabled, license_summary, author_name';
+const HUB_CATALOG_FILTER_COLUMNS = 'skills, theme, age_group, duration_minutes';
+// Teto de leitura do catálogo. Era 60 e o catálogo passou disso (91 em
+// 23/11/2026): o que ficava depois do 60º nunca aparecia.
+export const HUB_CATALOG_LIMIT = 500;
+
+// Lê o catálogo com as colunas de filtro; banco sem a migration da Fase 2
+// (coluna inexistente ou sem grant) cai na leitura antiga — a biblioteca nunca
+// some por causa do filtro.
+async function loadHubCatalog() {
+  const query = (columns: string) => supabase
+    .from('hub_content_items')
+    .select(columns)
+    .eq('is_active', true)
+    .order('published_at', { ascending: false })
+    .limit(HUB_CATALOG_LIMIT);
+  const withFilters = await query(`${HUB_CATALOG_COLUMNS}, ${HUB_CATALOG_FILTER_COLUMNS}`);
+  if (!withFilters.error) return withFilters;
+  const code = (withFilters.error as { code?: string }).code;
+  if (code === '42703' || code === '42501' || code === 'PGRST204') return query(HUB_CATALOG_COLUMNS);
+  return withFilters;
 }
 
 export async function claimHubTrial(

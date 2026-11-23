@@ -19,6 +19,7 @@ import {
   HUB_CORE_PRIVACY_VERSION,
   HUB_CORE_TERMS_SHA256,
   HUB_CORE_TERMS_VERSION,
+  HUB_PAYMENT_PROCESSOR_NOTICE,
 } from '../../supabase/functions/create-hub-checkout/legal';
 import { hubMarketingPath } from './hubRoutes';
 import { HUB_CORE_PRODUCT_FAMILY, isHubCorePlan } from './hubService';
@@ -264,6 +265,7 @@ const HubCheckoutDialog: React.FC<HubCheckoutDialogProps> = ({
               <span className="hub-checkout-result__icon"><CheckCircle2 size={30} /></span>
               <h3>Agora falta confirmar o pagamento.</h3>
               <p>A confirmação do Asaas inicia o processamento seguro da liberação do plano.{replacingSubscription ? ' Sua assinatura atual continua válida até a troca ser concluída.' : ''}</p>
+              <p className="hub-checkout-info" data-testid="hub-payment-processor">{HUB_PAYMENT_PROCESSOR_NOTICE}</p>
               {result.pix?.qrCode && <img src={`data:image/png;base64,${result.pix.qrCode}`} alt="QR Code para pagamento por PIX" className="hub-checkout-result__qr" />}
               <div className="hub-checkout-result__actions">
                 {result.pix?.copyPaste && <button type="button" onClick={() => navigator.clipboard.writeText(result.pix?.copyPaste || '')} className="hub-button hub-button--primary"><Copy size={15} />Copiar PIX</button>}
@@ -286,6 +288,7 @@ const HubCheckoutDialog: React.FC<HubCheckoutDialogProps> = ({
                 <div><dt>Documentos legais</dt><dd>Termos e Privacidade · versão {HUB_CORE_TERMS_VERSION}</dd></div>
               </dl>
               {replacingSubscription && <p className="hub-checkout-info">A troca só entra em vigor após o pagamento. Até lá, seu acesso atual permanece intacto.</p>}
+              <p className="hub-checkout-info">{HUB_PAYMENT_PROCESSOR_NOTICE}</p>
               {error && <p className="hub-checkout-error" role="alert">{error}</p>}
               <button type="button" onClick={() => void submit()} disabled={loading} className="hub-button hub-button--primary hub-checkout-submit">
                 {loading ? <Loader2 className="hub-checkout-spinner" size={18} /> : <ShieldCheck size={18} />}{loading ? 'Criando cobrança segura...' : `Gerar ${billingType === 'PIX' ? 'PIX' : 'boleto'} no Asaas`}

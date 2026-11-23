@@ -1,3 +1,20 @@
+### 23/11/2026 (noite) — Recebedor do pagamento (MEI) antes do PIX, no e-mail e nos Termos do Hub v2026-11-23
+
+- **Por quê (decisão do Vinícius):** a conta Asaas é o MEI "55.806.029 DEBORA ALVES FERNANDES", sem nome fantasia (em MEI a
+  razão social é o nome da pessoa; não muda por API). O PIX/boleto/fatura mostram esse nome e assustavam o comprador.
+- **O quê:** constante única `_shared/hub-payment-processor.ts` ("Pagamento processado por 55.806.029 Debora Alves Fernandes
+  (CNPJ 55.806.029/0001-57), empresa responsável pela Wise Wolf."): no checkout do Hub (revisão antes de gerar a cobrança e
+  junto do QR), no e-mail de confirmação (`process-hub-fulfillment`) e na cláusula 4 dos **Termos v2026-11-23** (hash
+  `890ccbc3…`; Privacidade continua 2026-08-24). ⚠️ O site (`wisewolf-institucional/components/solucoes/SolutionCheckout.tsx`)
+  fixa `termsVersion`/`termsSha256`: mudou os Termos → o site sobe junto (Dev Next.js, `feat/aviso-recebedor` ff210e0), senão
+  a venda pelo site é recusada. O Wolfie avulso usa a mesma conta Asaas e ainda NÃO mostra o aviso (decisão pendente).
+- **No ar (18:45 UTC):** `create-hub-checkout` (`7b2fc322…`) e `process-hub-fulfillment` (`dab80167…`) + `_shared/hub-payment-processor.ts`;
+  front `index-y3AJxfqv.js` (Fase 2 do Hub + aviso; 56 arquivos fora de `assets/` iguais). Revisor: 0 Bloqueia.
+- **Rollback:** funções: copiar `functions/create-hub-checkout` e `functions/process-hub-fulfillment` de
+  `/opt/wisewolf/backup-aviso-recebedor-20261123T184331Z/`, devolver `published-functions.md5`, `docker restart supabase-edge-functions`
+  (e o site volta para a versão anterior junto). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.aviso && mv
+  dist.prev18-aviso-recebedor dist && cd .. && docker compose restart frontend`.
+
 ### 23/11/2026 — Agente de conteúdo gera fichas no Hub (conta do acervo) e `imageStyle` no Gamma (feat/conteudo-bot-fichas)
 
 - **O quê (pedido do Chefe c90c9912):** o agente de conteúdo chama o `pedagogical-content` com o header

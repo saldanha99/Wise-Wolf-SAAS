@@ -34,6 +34,7 @@ import {
   type HubShareSubmission,
 } from './hubService';
 import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hubExport';
+import { FASE2_KIND_LABELS, Fase2MaterialSections, fase2MaterialText, MaterialSourceNote } from './hubMaterialFase2';
 
 // Gerador de material do Hub: o professor autônomo escolhe tipo × nicho × nível
 // × tema e recebe um material pronto para usar com o aluno dele — sem perfil de
@@ -43,7 +44,9 @@ import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hub
 // Aqui só existe o que é do navegador: formulário, histórico, renderização e
 // impressão (versão do aluno ou versão do professor, com gabarito).
 
-export type HubMaterialKind = 'worksheet' | 'quiz' | 'vocab_cards' | 'grammar_drill' | 'reading' | 'conversation' | 'journey';
+export type HubMaterialKind = 'worksheet' | 'quiz' | 'vocab_cards' | 'grammar_drill' | 'reading' | 'conversation' | 'journey'
+  // Fase 2 (ferramentas por habilidade)
+  | 'matching' | 'gap_fill' | 'true_false' | 'discussion' | 'writing_prompt' | 'error_correction' | 'sentence_transformation' | 'text_questions';
 
 interface McQuestion { prompt: string; options: string[]; correct: number; explanation_pt: string }
 interface Pair { en: string; pt: string }
@@ -105,6 +108,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   SUBSCRIPTION_REQUIRED: 'Seu teste terminou. Escolha um plano para continuar gerando material.',
   AI_PROVIDER_INVALID_RESPONSE: 'A IA não entregou um material dentro do padrão (gabarito ou seções incompletas). Nada foi cobrado — tente de novo ou ajuste o tema.',
   AI_PROVIDER_UNAVAILABLE: 'O provedor de IA está indisponível agora. Tente novamente em instantes; nada foi cobrado.',
+  MATERIAL_QUALITY_FAILED: 'O material não passou na revisão de qualidade (inglês ou gabarito). Nada foi cobrado — gere de novo.',
   MATERIAL_TOPIC_REQUIRED: 'Descreva o tema do material (mínimo 3 caracteres).',
   INVALID_MATERIAL_COUNT: 'Escolha entre 4 e 15 itens.',
   HUB_ACCESS_UNAVAILABLE: 'Não foi possível confirmar seu acesso. Recarregue a página e tente de novo.',
@@ -122,7 +126,7 @@ const friendlyError = (value: unknown): string => {
   return ERROR_MESSAGES[code] || 'Não foi possível gerar o material agora. Tente de novo.';
 };
 
-const kindLabel = (kind: string) => HUB_MATERIAL_KIND_OPTIONS.find((option) => option.value === kind)?.label || kind;
+const kindLabel = (kind: string) => HUB_MATERIAL_KIND_OPTIONS.find((option) => option.value === kind)?.label || FASE2_KIND_LABELS[kind] || kind;
 const nicheLabel = (niche: string) => HUB_MATERIAL_NICHE_OPTIONS.find((option) => option.value === niche)?.label || niche;
 const letter = (index: number) => String.fromCharCode(65 + index);
 
@@ -243,6 +247,8 @@ export const materialAsText = (record: HubMaterialRecord): string => {
       strList(m.practice_questions).forEach((item, index) => lines.push(`Pratique ${index + 1}: ${item}`));
       if (typeof m.teacher_notes_pt === 'string' && m.teacher_notes_pt) lines.push('', `Notas para o professor: ${m.teacher_notes_pt}`);
       break;
+    default:
+      lines.push(...fase2MaterialText(record.kind, m));
   }
   const homework = Array.isArray(m.ai_homework) ? m.ai_homework.filter(isRecord) : [];
   if (homework.length) {
@@ -306,6 +312,7 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tenant-primary print:text-black">{kindLabel(record.kind)} · {record.level_tag} · {nicheLabel(record.niche)}</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight">{record.title}</h2>
         <p className="mt-1 text-sm text-slate-500">Tema: {record.topic}{record.goal ? ` · Objetivo: ${record.goal}` : ''}{teacher ? ' · versão do professor (com gabarito)' : ' · versão do aluno'}</p>
+        <MaterialSourceNote material={m} />
       </header>
 
       {typeof m.opportunity_pt === 'string' && m.opportunity_pt && (
@@ -458,6 +465,8 @@ export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boo
         {strList(m.practice_questions).length > 0 && (<><SectionTitle>Agora sem roteiro</SectionTitle><ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{strList(m.practice_questions).map((item, index) => <li key={index}>{item}</li>)}</ul></>)}
         {teacher && typeof m.teacher_notes_pt === 'string' && m.teacher_notes_pt && (<><SectionTitle>Notas para o professor</SectionTitle><p className="mt-2 rounded-2xl bg-amber-50 p-4 text-sm print:bg-white print:p-0">{m.teacher_notes_pt}</p></>)}
       </>)}
+
+      <Fase2MaterialSections kind={record.kind} material={m} teacher={teacher} />
 
       {Array.isArray(m.ai_homework) && m.ai_homework.filter(isRecord).length > 0 && (
         <section className="mt-6 rounded-2xl border border-dashed border-brand-border p-4 print:break-inside-avoid">
