@@ -52,6 +52,8 @@ export interface BookContentState {
   chunks: ContentChunk[];
   /** Restrições de quem pediu (fatos obrigatórios, erros do original a não repetir, escopo). */
   sourceNotes?: string | null;
+  /** Por que a escrita parou (bloco, tentativas e os problemas que sobraram), para quem pediu. */
+  failure?: { chunk: string; attempts: number; reasons: string[] } | null;
 }
 
 export const MAX_CHUNK_ATTEMPTS = 6;
@@ -163,7 +165,7 @@ export function buildChunkPrompt(
     "1. body = the page text in Markdown (explanations, examples, reading text, listening script), 120–350 words, no exercise items, no answers, no teacher notes, no level-1 heading (the title is printed separately).",
     "2. Every exercise lives only in exercises[]. Items are numbered 1..N inside each exercise, with no gaps.",
     "3. mcq: 3 or 4 options, answer_index = the ONLY correct option; every distractor must be clearly wrong in standard English (also in informal speech). If the prompt has a blank (___), each option must fit the blank grammatically as a single choice; never offer a contraction of words that are already in the sentence.",
-    "4. gap: exactly one ___ per item; answer = the exact words that fill it. A word bank is optional; when used, put the SAME complete bank in options of EVERY item of that exercise (all the answers plus at most 2 extra words), with no duplicates, and the answer is in the bank. The printed page shows one shared bank.",
+    "4. gap: exactly one ___ per item; answer = the exact words that fill it. A word bank is optional; when used, put the SAME complete bank in options of EVERY item of that exercise (all the answers plus at most 2 extra words), with no duplicates, and the answer is in the bank. The printed page shows one shared bank. Never say in the instruction how many words are left over or which word is extra: the system prints that note.",
     "5. reorder: answer = the correct sentence (the words are shuffled by the system; the first word keeps its capital letter and the final punctuation is shown). Choose sentences with ONLY ONE acceptable order: avoid if/when/because clauses that could come first or last, and avoid two nouns that could swap places.",
     "6. match: prompt = left term, answer = its match; one to one, no repeated terms.",
     '7. tf: answer = "true" or "false"; include both true and false items; the statement must be checkable from the body text of the same page.',
@@ -315,6 +317,17 @@ export function instructionLooksEnglish(text: string): boolean {
 
 const ANSWER_MAX = 1200;
 
+const EXTRA_WORD_NOTE =
+  /\b(?:palavras?|words?)\b.*\b(?:extras?|sobra\w*|a mais|left over|not used)\b|\b(?:extras?|sobra\w*)\b.*\b(?:palavras?|words?)\b/i;
+
+/** O aviso de palavra que sobra no banco é escrito pelo código (a IA errava a conta e travava o livro). */
+export function stripExtraWordNote(instruction: string): string {
+  const sentences = instruction.match(/[^.!?]+[.!?]*/g) ?? [instruction];
+  const kept = sentences.filter((part) => !EXTRA_WORD_NOTE.test(part));
+  const cleaned = kept.join(" ").replace(/\s{2,}/g, " ").trim();
+  return cleaned.length >= 8 ? cleaned : instruction;
+}
+
 export function normalizeChunk(
   raw: unknown,
   chunk: ContentChunk,
@@ -406,7 +419,7 @@ export function normalizeChunk(
       }
       const exercise = normalizeExercise({
         type,
-        instruction: str(ex.instruction, 600),
+        instruction: stripExtraWordNote(str(ex.instruction, 600)),
         items,
       });
       const title = str(ex.title, 120) || `Exercise ${k + 1}`;
@@ -618,7 +631,15 @@ export function renderPage(p: ContentPage): string {
     }
     if (ex.type === "gap" && ex.items.some((it) => it.options?.length)) {
       const bank = [...new Set(ex.items.flatMap((it) => it.options ?? []))];
-      out.push("", `Word bank: ${bank.join(" · ")}`);
+      const answers = new Set(
+        ex.items.map((it) => (it.answer ?? "").trim().toLowerCase()),
+      );
+      const extra = bank.filter((w) => !answers.has(w.trim().toLowerCase()))
+        .length;
+      out.push(
+        "",
+        `Word bank${extra ? ` (${extra} extra)` : ""}: ${bank.join(" · ")}`,
+      );
     }
   });
   return out.join("\n");

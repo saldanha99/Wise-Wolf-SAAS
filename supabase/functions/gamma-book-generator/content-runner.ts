@@ -156,6 +156,11 @@ export async function advanceContent(
 
   if (chunk.state === "todo") {
     if (chunk.attempts >= MAX_CHUNK_ATTEMPTS) {
+      state.failure = {
+        chunk: chunk.key,
+        attempts: chunk.attempts,
+        reasons: chunk.feedback.slice(0, 3).map((p) => p.slice(0, 300)),
+      };
       return { state, outcome: "failed", errorCode: "BOOK_CONTENT_INVALID" };
     }
     chunk.attempts += 1;
@@ -245,7 +250,7 @@ export async function advanceContent(
   // Depois de 3 correções sem convergir, tira os itens apontados (se forem só itens) e confere de novo.
   const structured = checkProblems(raw) ?? [];
   const prunes = (chunk as { prunes?: number }).prunes ?? 0;
-  if (chunk.attempts >= 4 && prunes < 2 && chunk.content) {
+  if (chunk.attempts >= 4 && prunes < 3 && chunk.content) {
     const pruned = pruneFlaggedItems(chunk.content, structured);
     if (pruned) {
       chunk.content = pruned;
@@ -255,10 +260,30 @@ export async function advanceContent(
       return { state, outcome: "progress" };
     }
   }
+  // Última tentativa: se só sobraram itens apontados, o bloco segue sem eles (o resto já foi conferido).
+  if (chunk.attempts >= MAX_CHUNK_ATTEMPTS && chunk.content) {
+    const pruned = pruneFlaggedItems(chunk.content, structured);
+    if (pruned) {
+      chunk.content = pruned;
+      chunk.state = "done";
+      chunk.feedback = [];
+      return {
+        state,
+        outcome: state.chunks.every((c) => c.state === "done")
+          ? "ready"
+          : "progress",
+      };
+    }
+  }
   chunk.feedback = problems;
   chunk.state = "todo";
   chunk.content = null; // o rascunho (draft) fica para a correção pontual
   if (chunk.attempts >= MAX_CHUNK_ATTEMPTS) {
+    state.failure = {
+      chunk: chunk.key,
+      attempts: chunk.attempts,
+      reasons: problems.slice(0, 3).map((p) => p.slice(0, 300)),
+    };
     return { state, outcome: "failed", errorCode: "BOOK_CONTENT_REJECTED" };
   }
   return { state, outcome: "progress" };

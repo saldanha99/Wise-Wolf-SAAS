@@ -16,6 +16,7 @@ import {
   renderAnswerPages,
   renderPage,
   requestedWords,
+  stripExtraWordNote,
   wordCount,
 } from "./book-content.ts";
 import { bookOutline, parseSchoolBookSpec } from "./book-spec.ts";
@@ -269,5 +270,22 @@ Deno.test("resposta-modelo: tamanho pedido e instrução em português", () => {
     !instructionLooksEnglish(
       "Escreva uma nota curta para o seu colega sobre a reunião.",
     ),
+  );
+});
+
+Deno.test("banco de palavras: o aviso de palavra que sobra é do código, não da IA", () => {
+  assertEquals(
+    stripExtraWordNote(
+      "Complete as frases com o banco. Há uma palavra extra que você não vai usar.",
+    ),
+    "Complete as frases com o banco.",
+  );
+  assertEquals(
+    stripExtraWordNote("Complete with the bank. One word is extra."),
+    "Complete with the bank.",
+  );
+  assertEquals(
+    stripExtraWordNote("Escolha a palavra correta."),
+    "Escolha a palavra correta.",
   );
 });

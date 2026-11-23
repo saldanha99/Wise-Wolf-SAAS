@@ -627,7 +627,13 @@ const WRITE_LEASE_SECONDS = 150;
 function progressOf(state: BookContentState | null) {
   if (!state) return null;
   const done = state.chunks.filter((c) => c.state === "done").length;
-  return { stage: "WRITING", done, total: state.chunks.length };
+  return {
+    stage: "WRITING",
+    done,
+    total: state.chunks.length,
+    // Motivo da parada (bloco e problemas restantes), sem dado pessoal: só texto do livro.
+    ...(state.failure ? { failure: state.failure } : {}),
+  };
 }
 
 function specOfJob(job: JsonObject): SchoolBookSpec {
@@ -772,7 +778,15 @@ async function refreshGeneration(
   if (String(job.status) === "STARTING") {
     return await advanceWriting(admin, job);
   }
-  if (["COMPLETED", "FAILED", "FINALIZING"].includes(String(job.status))) {
+  if (String(job.status) === "FAILED") {
+    // Livro que parou na escrita: devolve o motivo (bloco e problemas), sem o conteúdo nem o gabarito.
+    const { data: saved } = await admin.from("school_book_generations")
+      .select("content").eq("id", jobId).maybeSingle();
+    const failure = (saved?.content as BookContentState | null)?.failure ??
+      null;
+    return json(200, { job, ...(failure ? { failure } : {}) });
+  }
+  if (["COMPLETED", "FINALIZING"].includes(String(job.status))) {
     return json(200, { job });
   }
 
