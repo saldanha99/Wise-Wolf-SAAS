@@ -221,3 +221,34 @@ export async function openHubContent(
   }
   return data as { signedUrl: string; expiresIn: number };
 }
+
+// ── Logo do professor nos materiais exportados (Fase 1, 23/11/2026) ──────────
+export interface HubAccountBranding {
+  logo_data_url: string | null;
+  display_name: string | null;
+}
+
+export async function loadHubAccountBranding(accountId: string): Promise<HubAccountBranding | null> {
+  const { data, error } = await supabase
+    .from('hub_account_branding')
+    .select('logo_data_url, display_name')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as HubAccountBranding | null;
+}
+
+export async function saveHubAccountBranding(
+  accountId: string,
+  userId: string,
+  branding: HubAccountBranding,
+): Promise<void> {
+  const { error } = await supabase.from('hub_account_branding').upsert({
+    account_id: accountId,
+    logo_data_url: branding.logo_data_url,
+    display_name: branding.display_name?.trim() || null,
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}

@@ -5,9 +5,11 @@ import {
   Check,
   ClipboardList,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FileText,
+  ImagePlus,
   Layers,
   ListChecks,
   Map,
@@ -20,6 +22,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { HubBootstrap } from './types';
+import { loadHubAccountBranding, saveHubAccountBranding, type HubAccountBranding } from './hubService';
+import { buildWordDocument, downloadBlob, resizeLogo, safeFileName } from './hubExport';
 
 // Gerador de material do Hub: o professor autônomo escolhe tipo × nicho × nível
 // × tema e recebe um material pronto para usar com o aluno dele — sem perfil de
@@ -276,10 +280,18 @@ const PairTable: React.FC<{ pairs: Pair[]; left: string; right: string; hideRigh
   </table>
 );
 
-export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, onGenerateWeek }) => {
+export const HubMaterialView: React.FC<{ record: HubMaterialRecord; teacher: boolean; branding?: HubAccountBranding | null; onGenerateWeek?: (week: { week: number; theme: string; material_kind: HubMaterialKind }) => void }> = ({ record, teacher, branding, onGenerateWeek }) => {
   const m = record.material;
   return (
     <article id="hub-material-print" className="rounded-4xl border border-brand-border bg-white p-6 text-slate-900 shadow-xs print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-8">
+      {(branding?.logo_data_url || branding?.display_name) && (
+        <table className="brand mb-4 w-full border-b border-slate-200 pb-3" role="presentation">
+          <tbody><tr>
+            <td className="pb-3 text-sm font-black text-slate-700">{branding.display_name}</td>
+            <td className="pb-3 text-right">{branding.logo_data_url && <img src={branding.logo_data_url} alt={branding.display_name ? `Logo de ${branding.display_name}` : 'Logo'} className="ml-auto max-h-14 max-w-[180px] object-contain" />}</td>
+          </tr></tbody>
+        </table>
+      )}
       <header className="border-b border-brand-border pb-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-tenant-primary print:text-black">{kindLabel(record.kind)} · {record.level_tag} · {nicheLabel(record.niche)}</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight">{record.title}</h2>
@@ -478,6 +490,38 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
   const [history, setHistory] = useState<HubMaterialRecord[]>([]);
   const [historyError, setHistoryError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [branding, setBranding] = useState<HubAccountBranding | null>(null);
+  const [brandingMessage, setBrandingMessage] = useState('');
+  const isManager = ['OWNER', 'ADMIN'].includes(String(bootstrap.membership?.membership_role ?? ''));
+
+  useEffect(() => {
+    let alive = true;
+    loadHubAccountBranding(bootstrap.account.id).then((value) => { if (alive) setBranding(value); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [bootstrap.account.id]);
+
+  const uploadLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setBrandingMessage('');
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) throw new Error('Entre de novo para salvar o logo.');
+      const logo = await resizeLogo(file);
+      const next = { logo_data_url: logo, display_name: branding?.display_name || bootstrap.account.name || null };
+      await saveHubAccountBranding(bootstrap.account.id, data.user.id, next);
+      setBranding(next);
+      setBrandingMessage('Logo salvo. Ele aparece na impressão, no PDF e no Word.');
+    } catch (err) {
+      setBrandingMessage(err instanceof Error ? err.message : 'Não consegui salvar o logo.');
+    }
+  };
+
+  const exportWord = () => {
+    const node = document.getElementById('hub-material-print');
+    if (!node || !current) return;
+    const blob = buildWordDocument(current.title, node.outerHTML, branding?.logo_data_url);
+    downloadBlob(blob, `${safeFileName(current.title)}${teacherVersion ? '-professor' : '-aluno'}.doc`);
+  };
 
   const remaining = useMemo(() => {
     if (!entitlement) return 0;
@@ -711,11 +755,19 @@ const HubMaterialGenerator: React.FC<HubMaterialGeneratorProps> = ({ bootstrap, 
                 {teacherVersion ? <EyeOff size={15} /> : <Eye size={15} />}{teacherVersion ? 'Ver versão do aluno' : 'Ver versão do professor (gabarito)'}
               </button>
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Printer size={15} />Imprimir / salvar PDF</button>
+              <button type="button" onClick={exportWord} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text"><Download size={15} />Baixar Word</button>
+              {isManager && (
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text">
+                  <ImagePlus size={15} />{branding?.logo_data_url ? 'Trocar meu logo' : 'Colocar meu logo'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => void uploadLogo(event.target.files?.[0])} />
+                </label>
+              )}
               <button type="button" onClick={() => void copyText()} className="inline-flex items-center gap-2 rounded-2xl border border-brand-border bg-brand-surface px-4 py-2.5 text-xs font-black text-brand-text">{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Copiado' : 'Copiar texto'}</button>
             </div>
             {current.dropped_items > 0 && <p className="text-xs text-brand-muted">{current.dropped_items} {current.dropped_items === 1 ? 'questão foi descartada' : 'questões foram descartadas'} na verificação do gabarito.</p>}
           </div>
-          <HubMaterialView record={current} teacher={teacherVersion} onGenerateWeek={prefillFromWeek} />
+          {brandingMessage && <p role="status" className="text-xs font-bold text-brand-muted print:hidden">{brandingMessage}</p>}
+          <HubMaterialView record={current} teacher={teacherVersion} branding={branding} onGenerateWeek={prefillFromWeek} />
         </section>
       )}
 
