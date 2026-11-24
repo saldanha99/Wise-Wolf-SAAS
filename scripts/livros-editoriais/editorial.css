@@ -1,0 +1,124 @@
+@page { size: A4 landscape; margin: 0 }
+* { box-sizing: border-box }
+body {
+  --ink: #152e28;
+  --accent: #885320;
+  --paper: #f8f5ed;
+  --tint: #eee3d0;
+  --rule: #d5c7aa;
+  --muted: #435750;
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  font: 13px/1.36 "DejaVu Sans", sans-serif;
+  print-color-adjust: exact;
+}
+body.school {
+  --ink: #111f38;
+  --accent: #cc213b;
+  --paper: #f7f7f8;
+  --tint: #fae8eb;
+  --rule: #d8dce4;
+  --muted: #46546a;
+}
+.sheet {
+  width: 297mm;
+  height: 210mm;
+  padding: 9mm 15mm 9mm;
+  display: flex;
+  flex-direction: column;
+  break-after: page;
+  position: relative;
+}
+.sheet:last-child { break-after: auto }
+.top, footer, .cover-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .09em;
+}
+.top {
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  padding-top: 9px;
+  margin-bottom: 12px;
+}
+.top img, .cover-brand img { display: block; width: 31px; height: auto }
+footer {
+  margin-top: auto;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+  color: var(--muted);
+}
+.folio { font-size: 13px; color: var(--ink) }
+h1, h2 {
+  font-family: "Nimbus Roman", "DejaVu Serif", serif;
+  font-weight: 700;
+  line-height: .99;
+  margin: 0;
+  text-wrap: balance;
+}
+h1 { font-size: 48px; letter-spacing: -.024em }
+.heading { margin-bottom: 17px; display: flex; align-items: flex-start; gap: 14px }
+.skill { width: 24px; height: 24px; color: var(--accent); margin-top: 5px; flex-shrink: 0 }
+.heading .subheading { color: var(--accent); font-weight: 700; font-size: 17px; margin-top: 5px }
+.art {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+  object-position: center;
+  height: 25mm;
+  margin-bottom: 13px;
+}
+.opener { background: var(--ink); color: var(--paper) }
+.opener .top, .opener footer, .opener .folio { color: var(--paper) }
+.opener .subheading, .opener .skill { color: #f5c98a }
+.school .opener .subheading, .school .opener .skill { color: #ffb3be }
+.opener .art { height: 43mm }
+.columns {
+  line-height: 1.27;
+  column-count: 2;
+  column-gap: 10mm;
+  column-rule: 1px solid var(--rule);
+  margin-bottom: 10px;
+  flex: 0 0 auto;
+}
+.block { margin: 0 0 .34em; overflow-wrap: anywhere; orphans: 2; widows: 2 }
+.block.section {
+  font-size: 1.13em;
+  font-weight: 700;
+  margin-top: .62em;
+  margin-bottom: .36em;
+  break-after: avoid-column;
+  break-inside: avoid;
+  color: var(--accent);
+}
+.opener .block.section { color: #f5c98a }
+.school .opener .block.section { color: #ffb3be }
+.block.section.exercise, .block.vocabulary {
+  background: var(--tint);
+  color: var(--ink);
+  padding: .45em .68em;
+  border-left: 2px solid var(--accent);
+}
+.row { display: flex; flex-wrap: nowrap; gap: .7em; break-inside: avoid }
+.row > span { flex: 1; min-width: 0 }
+.row.numbered > span:first-child { flex: 0 0 2em }
+.cover { color: #fff; background: var(--ink); padding-top: 10mm }
+.cover-brand { color: #fff; margin-bottom: 9px }
+.cover .art { height: 78mm; object-fit: cover; margin: 0 0 13px }
+.cover h1 { font-size: 53px; text-wrap: unset; max-width: 97%; margin-bottom: 9px }
+.cover .columns { color: #fff; margin-bottom: 5px; column-rule-color: #ffffff54 }
+.cover .block.section { color: #fff }
+.cover footer, .cover .folio { color: #fff }
+.section-start { break-inside: avoid }
+.key .columns {
+  font-family: "Nimbus Sans", "DejaVu Sans", sans-serif;
+  line-height: 1.08;
+}
+.key .block { margin-bottom: .08em }
+.key .block.section { margin-top: .23em; padding-block: .17em; break-after: auto }
+.key .section-start { break-inside: auto }
