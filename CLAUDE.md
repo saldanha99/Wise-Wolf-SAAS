@@ -1,3 +1,39 @@
+### 24/11/2026 — Feriado nacional e recesso: escola fechada, aula remunerada (feat/feriados-e-recesso)
+
+- **Regra (Vinícius, 24/11):** feriado NACIONAL (`national_holidays`, Páscoa calculada) e recesso
+  (`public.school_recess_periods`, configurável; Wise Wolf: 24/12/2026–01/01/2027, os dois dias) = sem aula para
+  ninguém. Só escola com linha em `private.school_closure_settings` (nasce só a Wise Wolf, `effective_from` 24/11/2026:
+  feriado passado não muda). Período de recesso que já começou não muda nem some (gatilho); novo só para o futuro.
+- **Agenda:** `public.booking_schedule_on_date` virou embrulho de `private.booking_schedule_on_date_raw` (o corpo
+  anterior, copiado da definição viva): em dia fechado devolve `valid=false` + `school_closed` (`HOLIDAY`/`RECESS`),
+  mantendo dia e horário. Assim lembrete de 30 min, confirmação/link de auditoria, sala do Meet, pendentes do
+  professor, cobertura e lançamento manual param sozinhos. ⚠️ Quem precisar da agenda "como era" (aviso D7/D1 do
+  feriado, o próprio job) usa a crua. Remendos por âncora: `fill_class_log_occurrence_time` (×4, via
+  `private.booking_schedule_for_class_log`), `national_holiday_recipients`, `get_teacher_closing_report_unchecked`
+  (`feriados_remunerados`, fora de `faltas_aluno`), `get_teacher_activity_report` (`school_closed_paid`) e
+  `lesson_history_rows` (categoria `HOLIDAY`). Quem recriar essas funções mantém os remendos.
+- **Lançamento automático:** cron `wisewolf-school-closed-classes` (min 20) → `private.log_school_closed_classes()`:
+  aula da agenda crua com aluno, 30 min depois do horário, vira `class_logs` `presence = 'SCHOOL_HOLIDAY'`,
+  `subtype` `FERIADO`/`RECESSO`, APPROVED, `verification_status = 'SCHOOL_CLOSED'`, professor = quem dá a aula
+  (cobertura confirmada vence). Olha 7 dias para trás; idempotente pelo único `(booking_id, class_date)`. Paga ao
+  professor (`v_payable_class_logs`), conta como aula do período de TODOS os alunos (contrato antigo e novo, sem
+  reposição nem abatimento), não é presença nem falta (sem resumo, trilha do Wolfie, reposição, cobrança). Só o job
+  grava a marca (`trg_a_guard_school_closed_class_log`, flag local `wisewolf.school_closure_job`). Reposição,
+  antecipação e experimental marcadas DE PROPÓSITO num dia fechado não são tocadas.
+- **Tela:** `lib/schoolClosure.ts` — "Feriado (remunerada)" / "Recesso (remunerada)" em violeta nos relatórios do
+  professor, fechamento, Financeiro, perfis e histórico. Tour `2026-11-24-zz-feriado-e-recesso-remunerados`.
+- **Contrato do aluno v3** (só contratos NOVOS e rematrículas pela página): Cláusula 9 — Dos Feriados e do Recesso
+  (aviso do recesso com 30 dias; aulas desses dias são parte regular do período, sem reposição nem abatimento), Foro
+  na 10; avulso não traz. `tenant_contract_terms` da Wise Wolf (STUDENT) 2 → 3. Quem assinou v1/v2 não muda.
+- **Teste:** `supabase/tests/feriados_e_recesso_remunerados.sql` (25/12, recesso, contrato antigo × novo, professor
+  com e sem aula, guardas, nenhuma mensagem/reposição/confirmação/trilha).
+- **Rollback:** desligar sem desfazer nada: `update private.school_closure_settings set enabled = false where tenant_id
+  = 'school-wise-wolf'; select cron.unschedule('wisewolf-school-closed-classes');` (a agenda volta a ser a crua na
+  hora). Completo: `functions-before.sql` do backup `/opt/wisewolf/backup-feriados-recesso-<ts>/` com `psql -U
+  supabase_admin`, `drop trigger trg_a_guard_school_closed_class_log on public.class_logs;`, contrato `update
+  tenant_contract_terms set terms_version = 2 where tenant_id = 'school-wise-wolf' and contract_kind = 'STUDENT';`
+  (aceite v3 já gravado fica). Front: `src/dist.prev*-feriados` (ver a publicação).
+
 ### 24/11/2026 — Wolfie: botão "Conversar em tempo real" e confirmação de fala (fix/wolfie-ao-vivo-confirmacao)
 
 - **Erro 1 (aluna real, B1):** o início rápido abria a prática sem gravar o nível e o overlay do tutor só montava com
