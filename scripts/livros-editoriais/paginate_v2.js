@@ -147,11 +147,15 @@ function layOut(section) {
       continue;
     }
     let placed = count;
-    const lastColumn = columns.findLast(column => column.lastElementChild);
-    if (count >= 3 && lastColumn && todo.length === count + 1 &&
-        todo[count].textContent.trim().split(/\s+/).length <= 22) {
-      lastColumn.lastElementChild.remove();
-      placed -= 1;
+    const wordCount = items => items.reduce((n, item) => n + (item.textContent.match(/\S+/g)?.length || 0), 0);
+    if (count < todo.length && wordCount(todo.slice(count)) < 45) {
+      let lastColumn = columns.findLast(column => column.lastElementChild);
+      while (lastColumn && placed > 2 && wordCount(todo.slice(placed)) < 70 &&
+             wordCount(todo.slice(0, placed - 1)) >= 55) {
+        lastColumn.lastElementChild.remove();
+        placed -= 1;
+        lastColumn = columns.findLast(column => column.lastElementChild);
+      }
     }
     todo.splice(0, placed);
     if (columns.length > 1) rebalance(columns[0], columns[1], limit);

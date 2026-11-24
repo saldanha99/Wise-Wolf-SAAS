@@ -45,7 +45,7 @@ TOPIC = re.compile(
 TABLE_HEADER = re.compile(
     r"^(?:Expressão|Estrutura|Verbo(?: \(base\))?|Pronome|Palavra(?: / Expressão)?|"
     r"Critério|Função|Situação|Singular|Categoria|Cumprimentos e despedidas|"
-    r"#|Q|Afirmação|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Exercício / Item|Ponto gramatical)$", re.I,
+    r"#|Q|Afirmação|Frase|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Exercício / Item|Ponto gramatical)$", re.I,
 )
 TIP = re.compile(r"^(?:[💡⚠⭐✅️ ]*)(?:Common errors|Erros comuns|Exemplo de início|Reciclar vocabulário)", re.I)
 GOALS = re.compile(r"^(?:[✅️ ]*)(?:Your goals|Can-do goals|Can-do outcomes)", re.I)
@@ -406,7 +406,7 @@ def detected_tables(page, raw, key=False):
         box = pymupdf.Rect(table.bbox)
         indices = [
             index for index, group in enumerate(raw)
-            if all(box.contains(pymupdf.Point(line["spans"][0]["origin"])) for line in group)
+            if group and all(box.contains(pymupdf.Point(line["spans"][0]["origin"])) for line in group)
         ]
         if not indices or indices != list(range(indices[0], indices[-1] + 1)):
             continue
@@ -431,8 +431,10 @@ def detected_tables(page, raw, key=False):
     # Some Gamma tables use shaded cards without visible rules.
     occupied = {i for a, b, _ in ranges for i in range(a, b)}
     for i, group in enumerate(raw):
+        if i in occupied or len(group) < 2:
+            continue
         label = re.sub(r"^[^\w#]+", "", line_text(group[0]).strip())
-        if i in occupied or len(group) < 2 or not TABLE_HEADER.fullmatch(label):
+        if not TABLE_HEADER.fullmatch(label):
             continue
         top = group[0]["spans"][0]["origin"][1]
         cols = [line["bbox"][0] for line in group if abs(line["spans"][0]["origin"][1] - top) < 3]
@@ -464,6 +466,25 @@ def detected_tables(page, raw, key=False):
     return sorted(ranges, key=lambda match: match[0])
 
 
+def learning_cycle(groups):
+    if len(groups) < 12:
+        return groups, ""
+    tail = groups[-12:]
+    steps = [(tail[0], tail[1:3]), (tail[3], tail[4:6]), (tail[6], tail[7:8]), (tail[8] + tail[9], tail[10:12])]
+    if [block_text(title) for title, _ in steps] != [
+        "Gramática", "Falar e Escrever", "Vocabulário", "Leitura e Audição",
+    ]:
+        return groups, ""
+    cards = []
+    for title, subtitles in steps:
+        description = " ".join(runs(group) for group in subtitles)
+        cards.append(
+            f'<section>{icon(block_text(title))}<h3>{runs(title)}</h3>'
+            f'<p>{description}</p><div class="cycle-lines" aria-hidden="true"><i></i><i></i></div></section>'
+        )
+    return groups[:-12], '<div class="table-bundle learning-cycle">' + "".join(cards) + "</div>"
+
+
 def wave_section(page, raw, key):
     size = Counter(round(l["spans"][0]["size"], 1) for unit in raw[1:] for l in unit).most_common(1)
     size = size[0][0] if size else 10
@@ -479,7 +500,10 @@ def wave_section(page, raw, key):
             units.append(f'<div class="table-bundle">{leader}{table}</div>')
             leader = ""
         start = right
-    units.extend(group_markup(raw[start:], size, key))
+    tail, cycle = learning_cycle(raw[start:]) if not key else (raw[start:], "")
+    units.extend(group_markup(tail, size, key))
+    if cycle:
+        units.append(cycle)
     result = []
     headings = []
     for unit in units:
