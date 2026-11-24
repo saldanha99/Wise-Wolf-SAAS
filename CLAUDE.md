@@ -1,3 +1,19 @@
+### 24/11/2026 — Hub: 5 livros neutros redesenhados entram como versão nova; originais fora da vitrine
+
+- **O quê (Vinícius via Chefe, msg f120ab12: «cada livro aprovado pelo Revisor entra no hub como versão nova; o antigo
+  sai da vitrine sem ser apagado»):** 5 PDFs de `/data/OpenBot/Shared/wisewolf/conteudo/redesign-editorial/` (piloto-v4 e
+  onda-01-v3, OK do Revisor) publicados pelo trilho normal: upload em `materials` com provenance, `pedagogical_materials`
+  novo copiando metadados do original, prévia de 3 páginas separada, consentimento da diretora + 2ª aprovação
+  (`hub_approve_commercial_publications`, audit_logs cita f120ab12), `sync-hub-material` 5/5. Executou o Plataforma
+  05:26–05:28 UTC. Catálogo ativo: 21 → 24.
+- **Original → material novo → item do Hub:** 2d605ea6 → daf8611d → b83947b2 · 58316b1c → 9d3ed3ec → 5f34285e ·
+  078b5f5e → 33c9d73f → 8d5bad41 · c2f56c53 → d9a88d3d → 27275ff2 · 2192d5f7 → b4eb4d5f → ccc61434.
+- **Originais:** opt-in false, item inativo; linhas e arquivos mantidos (escola segue APPROVED). Nenhuma atribuição,
+  favorito ou link apontava para os itens antigos. ⚠️ Os itens do Hub (antigos e novos) não têm `collection_id`/`part_number`.
+- **Rollback:** `/opt/wisewolf/backup-hub-5-neutros-20261124T052439Z/` (jsonl antes, approve.sql, withdraw.sql). Novos fora:
+  como diretora, `hub_catalog_opt_in = false` nos 5 novos (o gatilho desativa o item). Originais de volta: opt-in + 2ª
+  aprovação + `sync-hub-material`.
+
 ### 23/11/2026 (noite, 4) — Livros: conteúdo escrito e validado por nós; o Gamma só diagrama (gamma-book-generator)
 
 - **O quê (pedido do Chefe 87c4e46c):** o `gamma-book-generator` escreve o livro em blocos (capa/abertura, unidades,
