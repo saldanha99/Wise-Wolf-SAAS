@@ -65,7 +65,7 @@ def source_groups(page, title):
             continue
         label = block_text(lines)
         x, y, _, _ = block["bbox"]
-        if x < 18 and y < 24 and label == title:
+        if x < 18 and y < 24 and (label == title or (title and re.fullmatch(re.escape(title) + r"\s+[ABC][12]", label))):
             continue
         if y > page.rect.height - 28 and (
             label.startswith("Uso em aula pelo professor assinante") or label == str(page.number + 1)
@@ -206,8 +206,10 @@ def group_markup(raw, size, key):
     separated = []
     for group in raw:
         start = 0
-        for i, line in enumerate(group[1:], 1):
-            if key and ANSWER.match(line_text(line).strip()):
+        for i, line in enumerate(group):
+            value = line_text(line).strip()
+            split = (key and ANSWER.match(value)) or STEP.fullmatch(value) or re.match(r"^Etapa \d", value, re.I)
+            if split and i > start:
                 separated.append(group[start:i])
                 start = i
         separated.append(group[start:])
@@ -226,12 +228,12 @@ def group_markup(raw, size, key):
 
     for group in groups:
         text = block_text(group)
-        mark = "answer" if key and ANSWER.match(text) else ""
+        mark = "answer" if key and (ANSWER.match(text) or re.match(r"^Exercício \d.+:\s*$", text, re.I)) else ""
         if not key:
             label = re.sub(r"^[^\w]+", "", text)
-            if EXERCISE.match(text) or re.match(r"^(Prática controlada|Atividade de (recordação|fixação)|Atividade \d)", label, re.I):
+            if EXERCISE.match(text) or re.match(r"^(Prática controlada|Atividade de (recordação|fixação)|Atividade \d|[A-D] — Compreensão)", label, re.I):
                 mark = "exercise"
-            elif re.match(r"^(Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|Linguagem (útil|de apoio)|Suporte para planejamento|Apoio para o planejamento)", label, re.I):
+            elif re.match(r"^(Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|Linguagem (útil|de apoio)|Suporte para planejamento|Apoio para o planejamento|Etapa \d|Autoavaliação|Estratégias de comunicação)", label, re.I):
                 mark = "topic"
             elif TIP.match(text):
                 mark = "tip"
@@ -387,7 +389,7 @@ def detected_tables(page, raw):
         if len(rows) > 1 and any(rows[0]) and any(any(row) for row in rows[1:]):
             ranges.append((indices[0], indices[-1] + 1, rows))
     # Some Gamma tables use shaded cards without visible rules.
-    header = re.compile(r"^(Expressão|Verbo \(base\)|Palavra|Critério|#|Afirmação|Item|Nº)$", re.I)
+    header = re.compile(r"^(Expressão|Verbo \(base\)|Palavra|Critério|#|Afirmação|Item|Nº|Parte|Coluna A|Ponto gramatical)$", re.I)
     occupied = {i for a, b, _ in ranges for i in range(a, b)}
     for i, group in enumerate(raw):
         if i in occupied or len(group) < 2 or not header.fullmatch(line_text(group[0]).strip()):

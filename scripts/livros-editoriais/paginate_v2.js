@@ -70,6 +70,19 @@ function splitArticle(article) {
   return rest;
 }
 
+function splitTable(unit) {
+  const table = unit.querySelector("table");
+  if (!table || table.tBodies[0].rows.length < 2) return null;
+  const rest = unit.cloneNode(true);
+  const remaining = rest.querySelector("table").tBodies[0];
+  const original = table.tBodies[0];
+  const middle = Math.ceil(original.rows.length / 2);
+  [...original.rows].slice(middle).forEach(row => row.remove());
+  [...remaining.rows].slice(0, middle).forEach(row => row.remove());
+  rest.querySelectorAll("article").forEach(article => article.remove());
+  return rest;
+}
+
 function rebalance(column, other, limit) {
   if (!other || !column.firstElementChild || !other.firstElementChild) return;
   while (column.children.length > 1) {
@@ -126,7 +139,7 @@ function layOut(section) {
     }
     const {page, columns, limit, mode, count} = selected;
     if (!count) {
-      const continuation = splitArticle(todo[0]);
+      const continuation = splitTable(todo[0]) || splitArticle(todo[0]);
       if (!continuation) throw new Error(`Bloco maior que uma página na origem ${section.origin}: ${todo[0].innerText}`);
       page.remove();
       todo.splice(1, 0, continuation);
