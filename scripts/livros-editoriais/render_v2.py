@@ -53,7 +53,8 @@ def block_text(lines):
 
 
 def runs(lines):
-    return normalize(BODY("".join(span_html(span) for span in line["spans"]).strip() for line in lines))
+    markup = normalize(BODY("".join(span_html(span) for span in line["spans"]).strip() for line in lines))
+    return re.sub(r"/[^/<>\s]+/", lambda m: f'<span class="phonetic">{m[0]}</span>', markup)
 
 
 def source_groups(page, title):
@@ -133,9 +134,11 @@ def plain_html(lines):
 
 
 def blank_lines(markup):
-    return re.sub(r"_{3,}", lambda m: (
-        f'<span class="blank" style="--length:{min(len(m[0]), 30)}em"></span>'
-    ), markup)
+    def ruled(match):
+        blank, punctuation = match.groups()
+        line = f'<span class="blank" style="--length:{min(len(blank), 25)}em"></span>'
+        return f'<span class="ruled-answer">{line}{punctuation}</span>'
+    return re.sub(r"(_{3,})\s*([.,?!:]?)", ruled, markup)
 
 
 def merged_paragraphs(raw):
@@ -149,7 +152,10 @@ def merged_paragraphs(raw):
             size = prev["spans"][0]["size"]
             if (
                 abs(x - nx) < 1 and 0 < ny - y < size * 1.8
-                and line_text(prev).endswith(" ")
+                and (line_text(prev).endswith(" ") or (
+                    len(line_text(line).split()) <= 3 and line_text(line).lstrip()[:1].islower()
+                    and not line_text(prev).rstrip().endswith((".", "!", "?", ":"))
+                ))
                 and abs(size - line["spans"][0]["size"]) < .22
                 and not any(NUMBER.fullmatch(line_text(l).strip()) for l in result[-1])
             ):
@@ -328,8 +334,59 @@ def grouped_section(page_number, raw, school, key):
     return list(group_markup(body, size, key))
 
 
-def construct(source, images, theme, level):
-    title = source_title(source)
+def detected_tables(page, raw):
+    tables = page.find_tables(strategy="lines_strict").tables
+    ranges = []
+    for table in tables:
+        if table.row_count < 2 or table.col_count < 2:
+            continue
+        box = pymupdf.Rect(table.bbox)
+        indices = [
+            index for index, group in enumerate(raw)
+            if all(box.contains(pymupdf.Point(line["spans"][0]["origin"])) for line in group)
+        ]
+        if not indices or indices != list(range(indices[0], indices[-1] + 1)):
+            continue
+        rows = []
+        for row in table.rows:
+            cells = []
+            for bounds in row.cells:
+                if bounds is None:
+                    cells.append("")
+                    continue
+                cell = pymupdf.Rect(bounds)
+                lines = [
+                    line for index in indices for line in raw[index]
+                    if cell.contains(pymupdf.Point(line["spans"][0]["origin"]))
+                ]
+                cells.append(runs(lines))
+            rows.append(cells)
+        if len(rows) > 1 and any(rows[0]) and any(any(row) for row in rows[1:]):
+            ranges.append((indices[0], indices[-1] + 1, rows))
+    return sorted(ranges, key=lambda match: match[0])
+
+
+def wave_section(page, raw, key):
+    size = Counter(round(l["spans"][0]["size"], 1) for unit in raw[1:] for l in unit).most_common(1)
+    size = size[0][0] if size else 10
+    units = []
+    start = 1
+    for left, right, rows in detected_tables(page, raw):
+        if left < start:
+            continue
+        units.extend(group_markup(raw[start:left], size, key))
+        leader = units.pop() if units and units[-1].startswith('<article class="unit-card answer"') else ""
+        for i in range(1, len(rows), 6):
+            table = table_markup([rows[0], *rows[i:i + 6]])
+            units.append(f'<div class="table-bundle">{leader}{table}</div>')
+            leader = ""
+        start = right
+    units.extend(group_markup(raw[start:], size, key))
+    return units
+
+
+def construct(source, images, theme, level, wave_title, openers):
+    title = wave_title or source_title(source)
     school = theme == "school"
     imprint = "Wise Wolf Language" if school else "Uso em aula pelo professor assinante"
     logo = ""
@@ -341,16 +398,24 @@ def construct(source, images, theme, level):
         original = pg.number + 1
         raw = list(source_groups(pg, title))
         first, subtitles = split_title(raw[0])
+        if original == 1 and wave_title:
+            title_index = next((i for i, group in enumerate(raw) if block_text(group) == wave_title), 0)
+            raw[0], raw[title_index] = raw[title_index], raw[0]
+            cover_lines = raw[0]
+            if len(cover_lines) > 1 and any(line_text(line).strip() == wave_title for line in cover_lines):
+                raw = [[line for line in cover_lines if line_text(line).strip() == wave_title],
+                       [line for line in cover_lines if line_text(line).strip() != wave_title], *raw[1:]]
         key = re.search(r"^(Answer key|Gabarito)", first, re.I) is not None
         art_path = images / f"orig-{original:02d}.webp"
         if original == 1:
             # Retain the previous cover text in the opening spread, under the original folio.
             first = title
-        units = grouped_section(original, raw, school, key)
+        units = wave_section(pg, raw, key) if wave_title else grouped_section(original, raw, school, key)
         if not school and original == 3:
             units = [re.sub(r"Nominalisatio(?:</strong>)?\s+(?:<strong>)?n(?=</strong>|<)", "Nominalisation", u) for u in units]
         sections.append({
             "origin": original, "title": first, "subtitle": " · ".join(subtitles), "key": key, "units": units,
+            "opener": original in openers,
             "art": art_path.as_uri() if art_path.exists() else "",
             "skill": icon(first),
         })
@@ -368,8 +433,8 @@ def construct(source, images, theme, level):
     )
 
 
-def verify(source, rendered, mapping):
-    title = source_title(source)
+def verify(source, rendered, mapping, wave_title):
+    title = wave_title or source_title(source)
     if len(rendered) != len(mapping):
         raise ValueError(f"Paginação divergente: {len(mapping)} planejadas, {len(rendered)} renderizadas")
     for pg in rendered:
@@ -378,7 +443,15 @@ def verify(source, rendered, mapping):
         for line in pg.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
             for row in line["lines"]:
                 if "".join(span["text"] for span in row["spans"]).strip() == ".":
-                    raise ValueError(f"Página {pg.number + 1}: ponto isolado em linha")
+                    dot_x, dot_y = row["spans"][0]["origin"]
+                    adjacent_rule = any(
+                        item["rect"].width > 12
+                        and abs(dot_x - item["rect"].x1) < 4
+                        and abs(dot_y - item["rect"].y0) < 4
+                        for item in pg.get_drawings()
+                    )
+                    if not adjacent_rule:
+                        raise ValueError(f"Página {pg.number + 1} (orig. {mapping[pg.number]}): ponto isolado em {dot_x:.1f}, {dot_y:.1f}")
                 for span in row["spans"]:
                     if span["text"].strip() and span["size"] < 9.93:
                         raise ValueError(f"Página {pg.number + 1}: {span['text']!r} em {span['size']:.2f} pt")
@@ -418,8 +491,10 @@ def main():
     cli.add_argument("source", type=Path)
     cli.add_argument("output", type=Path)
     cli.add_argument("--theme", choices=("hub", "school"), required=True)
-    cli.add_argument("--level", choices=("C1", "A2"), required=True)
+    cli.add_argument("--level", choices=("A1", "A2", "B1", "B2", "C1", "C2"), required=True)
     cli.add_argument("--chromium", required=True)
+    cli.add_argument("--wave-title", help="Título validado da fonte para importar tabelas por geometria")
+    cli.add_argument("--unit-opener", type=int, action="append")
     cli.add_argument("--puppeteer-module", default="puppeteer-core")
     args = cli.parse_args()
     out = args.output.resolve()
@@ -432,14 +507,14 @@ def main():
         html = working / "livro.html"
         pdf = working / "livro.pdf"
         map_path = working / "paginas.json"
-        html.write_text(construct(src, out, args.theme, args.level), encoding="utf-8")
+        html.write_text(construct(src, out, args.theme, args.level, args.wave_title, set(args.unit_opener or [4])), encoding="utf-8")
         subprocess.run([
             "node", str(HERE / "print.mjs"), str(html), str(pdf), str(working / "profile"),
             args.chromium, args.puppeteer_module, str(map_path),
         ], check=True, timeout=90)
         report = json.loads(map_path.read_text())
         with pymupdf.open(pdf) as result:
-            verify(src, result, [page["origin"] for page in report])
+            verify(src, result, [page["origin"] for page in report], args.wave_title)
             previews(result, out)
             first_for = {}
             for index, page in enumerate(report, 1):

@@ -13,14 +13,14 @@ function node(markup) {
 }
 
 function photoPage(section) {
-  const opener = section.origin === 4;
+  const opener = section.opener;
   const sheet = node(`<section class="sheet bleed ${opener ? "opener" : ""}">
     <img class="hero" alt="" src="${opener ? section.art : model.cover}">
     ${model.logo}
     <div class="cover-copy">
       ${opener ? "" : `<span class="level">${model.level}</span>`}
       <h1>${html(opener ? section.title : model.title)}</h1>
-    </div><div class="cover-footer">${html(opener ? (model.school ? "Referência original 04" : "Original page 04") : model.imprint)}</div>
+    </div><div class="cover-footer">${html(opener ? ((model.school ? "Referência original " : "Original page ") + String(section.origin).padStart(2, "0")) : model.imprint)}</div>
   </section>`);
   book.append(sheet);
   mapping.push({origin: section.origin, style: opener ? "opener" : "cover"});
@@ -110,9 +110,9 @@ function trial(section, part, mode, todo) {
 
 function layOut(section) {
   const todo = section.units.map(node);
-  let photo = Boolean(section.art) && section.origin !== 4;
+  let photo = Boolean(section.art) && !section.opener;
   let part = 1;
-  if (section.origin === 4) {
+  if (section.opener) {
     photoPage(section);
     part += 1;
   }
@@ -199,7 +199,7 @@ function addIndex() {
 window.fitEditorialPages = async () => {
   photoPage(model.sections[0]);
   for (const section of model.sections) {
-    if (section.origin === 4 && mapping.length % 2 === 0) addIndex();
+    if (section.opener && mapping.length % 2 === 0) addIndex();
     layOut(section);
   }
   await Promise.all([...document.images].map(img => img.decode()));

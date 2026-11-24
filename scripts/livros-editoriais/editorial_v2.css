@@ -93,7 +93,7 @@ h3 {
 .wide-band { min-width: 0; flex: 0 0 auto }
 .wide-band:empty { display: none }
 .unit-card, .table-bundle { break-inside: avoid; margin: 0 0 calc(3mm + var(--room, 0px)); display: flow-root; min-width: 0 }
-.para { margin: 0 0 1.4mm; overflow-wrap: anywhere }
+.para { margin: 0 0 1.4mm; overflow-wrap: break-word }
 .para:last-child { margin-bottom: 0 }
 .exercise, .tip, .goals, .answer {
   background: var(--light);
@@ -114,7 +114,7 @@ h3 {
 .numbered > b { flex: 0 0 auto; min-width: 5mm; white-space: nowrap; color: var(--accent) }
 .table-card { border: 1px solid var(--line); border-radius: 2mm; overflow: hidden; margin-bottom: 3mm }
 table { border-collapse: collapse; width: 100%; table-layout: fixed; font: inherit }
-td, th { padding: 1.8mm 2.6mm; text-align: left; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--line) }
+td, th { padding: 1.8mm 2.6mm; text-align: left; vertical-align: top; overflow-wrap: break-word; border-bottom: 1px solid var(--line) }
 th { color: var(--ink); background: var(--wash); font-weight: 700 }
 td:first-child { font-weight: 700 }
 tr:nth-child(even) { background: var(--light) }
@@ -152,3 +152,8 @@ tr:last-child td { border-bottom: 0 }
 .dialogue-turn p { margin: 0 0 1mm }
 .pairing { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm }
 .pairing b { color: var(--accent) }
+
+.ruled-answer { display: inline-block; white-space: nowrap; max-width: 100% }
+.index-entry { padding-block: 1.6mm }
+
+.phonetic { white-space: nowrap }
