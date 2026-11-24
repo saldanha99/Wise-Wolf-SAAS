@@ -28,7 +28,7 @@ SCHOOL_TABLES = {
 NUMBER = re.compile(r"^\d+[.)]$")
 STEP = re.compile(r"^\d{1,2}(?:\s*[–-]\s*\d{1,2})?$")
 EXERCISE = re.compile(
-    r"^(?:(?:[\W_]+ )?(?:Exercise|Exercício|Atividade|Tarefa)\s*(?:\d+\b|de recuperação)"
+    r"^(?:(?:[\W_]+ )?(?:Exercise|Exercício|Atividade|Tarefa)\s*(?:\d+\b|[A-E]\s*[—:-]|de recuperação)"
     r"|Parte [A-D] —|Prática controlada\b)", re.I,
 )
 ANSWER = re.compile(r"^(?:Page|Página) \d+\s*[·—]", re.I)
@@ -56,7 +56,7 @@ def block_text(lines):
 def runs(lines):
     markup = normalize(BODY("".join(span_html(span) for span in line["spans"]).strip() for line in lines))
     pronunciation = re.sub(r"(?<![\w/])/[^/<>\s]+/(?![\w/])", lambda m: f'<span class="phonetic">{m[0]}</span>', markup)
-    return re.sub(r"\b[A-Za-z]+(?:/[A-Za-z]+){2,}\b", lambda m: f'<span class="phonetic">{m[0]}</span>', pronunciation)
+    return re.sub(r"\b[A-Za-z]+(?:/[A-Za-z]+){2,}\b[.,?!;:]?", lambda m: f'<span class="phonetic">{m[0]}</span>', pronunciation)
 
 
 def source_groups(page, title):
