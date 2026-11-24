@@ -1516,10 +1516,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // how to speak again (push-to-talk needs the learner's own gesture).
   const retryPendingTranscript = useCallback(
     (review: PendingTranscriptReview) => {
+      // A confirmation already in flight owns the dialog: closing it here
+      // (e.g. an Escape or a second tap racing the save) would hide the result.
+      if (review.source === "realtime" && isConfirmingRealtimeTranscriptRef.current) return;
       setPendingTranscriptReview(null);
       setError(null);
       if (review.source === "realtime") {
-        if (isConfirmingRealtimeTranscriptRef.current) return;
         markRealtimeConfirmationPending(false);
         setSubtitle(brandText("Pode falar de novo: o Wolfie está ouvindo."));
       } else {
