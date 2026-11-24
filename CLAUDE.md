@@ -1,3 +1,30 @@
+### 24/11/2026 — Wolfie: botão "Conversar em tempo real" e confirmação de fala (fix/wolfie-ao-vivo-confirmacao)
+
+- **Erro 1 (aluna real, B1):** o início rápido abria a prática sem gravar o nível e o overlay do tutor só montava com
+  `selectedLevel` → "Conversar em tempo real sobre este tema" não fazia nada. Agora o nível vem da seleção, da sessão
+  ou do perfil (`WolfiePracticeFlow`). Vale também para o app avulso do Wolfie (mesmo componente).
+- **Erro 2:** no ao vivo, "Falar novamente" era recusado e o aviso ficava atrás do modal. Agora descarta a fala (sem
+  memória nem correção) e reabre o microfone; erro aparece dentro do modal com "Tentar de novo"; frase editável.
+- **Regra de confirmação (`transcriptConfirmationDecision`, `wolfie-brain/factual-integrity.ts` + app):** dado
+  pessoal (fato biográfico, e-mail, telefone, CPF) sempre confirma, sem envio automático; palavra que só abre a frase
+  ("Ok, vamos lá") não conta como nome; confiança < 0,70 só para com 4+ palavras ou nome/número; 0,70–0,86 só com
+  nome/número e envia sozinha em 5 s (não envia se as alternativas divergem); eco da instrução do ASR abre vazio.
+  Medido em 118 falas ao vivo de 60 dias: 30 paravam, agora 18 (+4 em 5 s). Revisor: Ok (`c9cee04` + `1ef5fb5`).
+- **No ar (01:05–01:07 UTC):** `wolfie-brain` (`index.ts` `733b3488…`, `factual-integrity.ts` `761396c5…` + teste;
+  linha no `.published-functions.md5` = `7442f6f4…`), `docker restart supabase-edge-functions`; front do sistema
+  `index-CDCDsiwv.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos); app do Wolfie release
+  `20261124T010455Z-wolfie-ao-vivo` (`index-C_YJaTZz.js`). E2E com o aluno do `demo-escola` (desktop e 390 px):
+  prática gerada em 10,6 s e o botão abre o tutor. Prints: `/data/OpenBot/Shared/wisewolf/bugs/wolfie-2026-11-24/teste-producao/`.
+- **Rollback:** backup `/opt/wisewolf/backup-wolfie-ao-vivo-20261124T010455Z/`. Função: `cp -a` da pasta
+  `functions/wolfie-brain` do backup para `volumes/functions/` + devolver `published-functions.md5` em
+  `/opt/wisewolf/releases/.published-functions.md5` + `docker restart supabase-edge-functions`. Sistema: `cd
+  /opt/wisewolf/frontend/src && mv dist dist.wolfie-ao-vivo && mv dist.prev21-wolfie-ao-vivo dist && cd .. && docker
+  compose restart frontend`. Wolfie: `cd /opt/wisewolf/wolfie-frontend && ln -sfn
+  /opt/wisewolf/wolfie-frontend/releases/20261123T203636Z-wolfie-aviso-recebedor/dist current && echo
+  20261123T203636Z-wolfie-aviso-recebedor > ACTIVE_RELEASE && docker compose up -d --force-recreate`.
+- ⚠️ **Release completo travado por dívida anterior:** `lib/releaseSharedImports.test.ts` reprova desde a Fase 2/aviso
+  do recebedor — `_shared/hub-payment-processor.ts`, `hub-tools.ts` e `safe-fetch.ts` faltam nas listas do `release.sh`.
+
 ### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
 
 - **Aviso do recebedor no Wolfie (decisão do Chefe/Vinícius, `8e4c33a`, Revisor Ok):** a mesma constante
