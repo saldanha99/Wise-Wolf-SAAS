@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Printer, Loader2, ChevronDown, ChevronRight, GraduationCap, AlertCircle, Pencil, Check, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { isSchoolClosedLog, schoolClosedLabel } from '../lib/schoolClosure';
 
 // Relatório unificado de pagamento por professor — mesmo formato da folha manual da
 // escola: uma linha por aluno (frequência, total de aulas, valor), experimentais
@@ -53,6 +54,7 @@ const money = (v: number) =>
     `R$ ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
 const presenceLabel = (p: string, subtype: string | null) => {
+    if (isSchoolClosedLog(p)) return schoolClosedLabel(subtype);
     let base: string;
     switch (p) {
         case 'COMPLETED': base = 'Presença'; break;
@@ -247,7 +249,9 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
                                                                         return (
                                                                             <div key={d.id || i} className={`flex items-center justify-between gap-3 text-[11px] font-bold px-3 py-2 rounded-lg border ${d.presence === 'COMPLETED'
                                                                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                                                                : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                                                                                : isSchoolClosedLog(d.presence)
+                                                                                    ? 'bg-violet-50 text-violet-800 border-violet-200'
+                                                                                    : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
                                                                                 <span>
                                                                                     {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · {presenceLabel(d.presence, d.subtype)}
                                                                                 </span>

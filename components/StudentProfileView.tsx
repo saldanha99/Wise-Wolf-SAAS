@@ -14,6 +14,7 @@ import StudentPlanChangeModal from './StudentPlanChangeModal';
 import StudentRenewalModal from './StudentRenewalModal';
 import StudentManualPixManager from './StudentManualPixManager';
 import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
+import { isSchoolClosedLog, schoolClosedLabel, SCHOOL_CLOSED_BADGE_CLASS } from '../lib/schoolClosure';
 
 interface Props {
   studentId: string;
@@ -373,7 +374,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   <LessonHistoryPanel user={user} initialStudentId={studentId} defaultTeacherId={p.professor_id} />
                   {(data.classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (data.classes || []).map((c: any, i: number) => {
-                      const pl = PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };
+                      const pl = isSchoolClosedLog(c.presence) ? { txt: schoolClosedLabel(c.subtype), cls: SCHOOL_CLOSED_BADGE_CLASS } : (PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' });
                       const classDate = c.date || c.class_date;
                       const rawTime = c.time || c.class_time || c.time_slot || c.booking_time || c.reschedule_time || c.start_time;
                       const classTime = fmtClassTime(rawTime);
