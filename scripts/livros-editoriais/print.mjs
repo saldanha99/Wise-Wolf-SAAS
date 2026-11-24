@@ -1,6 +1,7 @@
+import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const [html, pdf, profile, executablePath, puppeteerModule = "puppeteer-core"] = process.argv.slice(2);
+const [html, pdf, profile, executablePath, puppeteerModule = "puppeteer-core", mapPath] = process.argv.slice(2);
 const specifier = puppeteerModule.startsWith("/") ? pathToFileURL(puppeteerModule).href : puppeteerModule;
 const { default: puppeteer } = await import(specifier);
 const browser = await puppeteer.launch({
@@ -21,6 +22,7 @@ try {
   });
   if (problems.length) throw new Error(`Elementos sem espaço ou imagem indisponível: ${problems.join(", ")}`);
   await page.pdf({ path: pdf, preferCSSPageSize: true, printBackground: true });
+  if (mapPath) await writeFile(mapPath, JSON.stringify(await page.evaluate(() => window.editorialPageMap)));
 } finally {
   await browser.close();
 }
