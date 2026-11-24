@@ -45,7 +45,7 @@ TOPIC = re.compile(
 TABLE_HEADER = re.compile(
     r"^(?:Expressão|Estrutura|Verbo(?: \(base\))?|Pronome|Palavra(?: / Expressão)?|"
     r"Critério|Função|Situação|Singular|Categoria|Cumprimentos e despedidas|"
-    r"#|Q|Afirmação|Frase|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Exercício / Item|Ponto gramatical)$", re.I,
+    r"#|Q|Afirmação|Frase|Item|Nº|Parte|Papel|Coluna A|A\s*[—-]\s*Expressão|Exercício / Item|Ponto gramatical)$", re.I,
 )
 TIP = re.compile(r"^(?:[💡⚠⭐✅️ ]*)(?:Common errors|Erros comuns|Exemplo de início|Reciclar vocabulário)", re.I)
 GOALS = re.compile(r"^(?:[✅️ ]*)(?:Your goals|Can-do goals|Can-do outcomes)", re.I)
