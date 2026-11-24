@@ -44,8 +44,11 @@ export default function PlatformNotice({ userId, onActiveChange }: {
     setError('');
     const { data, error: rpcError } = await supabase.rpc('acknowledge_platform_notice', { p_notice_id: current.id });
     setSaving(false);
-    const ok = !rpcError && (data as { ok?: boolean } | null)?.ok === true;
-    if (!ok) {
+    const result = data as { ok?: boolean; error?: string } | null;
+    const ok = !rpcError && result?.ok === true;
+    // Janela encerrou com o aviso aberto: não há mais o que confirmar, fecha.
+    const expired = !rpcError && result?.error === 'aviso_indisponivel';
+    if (!ok && !expired) {
       setError('Não consegui registrar agora. Confira a internet e toque em "Tentar de novo".');
       return;
     }
