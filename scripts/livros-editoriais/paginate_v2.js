@@ -139,12 +139,7 @@ function layOut(section) {
       if (!col.lastElementChild) return 0;
       return (col.lastElementChild.getBoundingClientRect().bottom - col.getBoundingClientRect().top) / height;
     }
-    let photoPanel = mode === "illustrated";
-    if (!section.key && section.art && mode === "" && columns.length === 2 && !columns[1].children.length) {
-      columns[1].replaceWith(node(`<figure class="scene"><img src="${section.art}" alt=""></figure>`));
-      columns.pop();
-      photoPanel = true;
-    }
+    const photoPanel = mode === "illustrated";
     if (section.origin === 1 || page.querySelector(".exercise, .goals") || (section.key && !todo.length)) {
       const target = columns.find(col => occupation(col) < .63);
       if (target) {

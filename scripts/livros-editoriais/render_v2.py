@@ -159,8 +159,42 @@ def merged_paragraphs(raw):
     return result
 
 
+def attach_list_numbers(raw):
+    groups = [group.copy() for group in raw]
+    omit = set()
+    for index, group in enumerate(groups):
+        if len(group) != 1 or not NUMBER.fullmatch(line_text(group[0]).strip()):
+            continue
+        marker = group[0]
+        x, y = marker["spans"][0]["origin"]
+        candidates = []
+        for j in range(max(0, index - 8), min(len(groups), index + 5)):
+            if j == index or j in omit:
+                continue
+            target = groups[j][0]
+            tx, ty = target["spans"][0]["origin"]
+            if 4 < tx - x < 34 and abs(ty - y) < 2 and not NUMBER.fullmatch(line_text(target).strip()):
+                candidates.append((abs(ty - y), tx - x, abs(index - j), j))
+        if candidates:
+            target = min(candidates)[-1]
+            if target < index and all(
+                len(groups[j]) <= 3 and abs(groups[j][0]["bbox"][0] - groups[target][0]["bbox"][0]) < 2
+                for j in range(target + 1, index)
+            ):
+                for j in range(target + 1, index):
+                    groups[target].extend(groups[j])
+                    omit.add(j)
+            groups[target].append(marker)
+            omit.add(index)
+    return [group for index, group in enumerate(groups) if index not in omit]
+
+
+def keep_together(units):
+    return '<div class="keep-together">' + "".join(units) + "</div>"
+
+
 def group_markup(raw, size, key):
-    groups = merged_paragraphs(raw)
+    groups = merged_paragraphs(attach_list_numbers(raw))
     pending = []
     header = ""
     kind = "prose"
@@ -196,7 +230,7 @@ def group_markup(raw, size, key):
             if mark == "exercise":
                 number = re.search(r"\d+|(?<=Parte )[A-D]", text)
                 badge = '<span class="exercise-number" aria-hidden="true">' + (number[0] if number else "✎") + "</span>"
-            elif mark in {"tip", "goals"}:
+            elif mark in {"tip", "goals"} and not text.startswith(("⚠", "💡", "⭐", "🌟", "✅")):
                 badge = '<span class="mini-icon" aria-hidden="true">' + ("!" if mark == "tip" else "✓") + "</span>"
             header = f'<h3>{badge}<span>{plain_html(group)}</span></h3>'
         else:
@@ -245,6 +279,24 @@ def grouped_section(page_number, raw, school, key):
                 label = runs(raw[start])
                 copy = runs([line for chunk in raw[start + 1:end] for line in chunk])
                 units.append(f'<article class="unit-card topic"><h3>{label}</h3><p class="para">{copy}</p></article>')
+        elif page_number == 10:
+            units.append(keep_together([
+                f'<article class="unit-card topic"><h3>{runs(raw[21])}</h3>' +
+                "".join(
+                    f'<div class="goal-row"><b>{runs(raw[j])} · {runs(raw[j + 1])}</b>'
+                    f'<p>{runs(raw[j + 2])}</p></div>'
+                    for j in (22, 25, 28, 31)
+                ) + "</article>"
+            ]))
+        elif page_number == 11:
+            left = "".join(f'<div>{item_markup(g)}</div>' for g in raw[13:18])
+            right = "".join(f'<div>{runs([line])}</div>' for line in raw[19])
+            units.append(
+                f'<article class="unit-card exercise"><h3>{runs(raw[10])}</h3><p>{runs(raw[11])}</p>'
+                f'<div class="pairing"><div><b>{runs(raw[12])}</b>{left}</div>'
+                f'<div><b>{runs(raw[18])}</b>{right}</div></div></article>'
+            )
+            units.extend(group_markup(raw[20:], size, key))
         else:
             units.extend(group_markup(raw[first:], size, key))
         return units
@@ -254,8 +306,25 @@ def grouped_section(page_number, raw, school, key):
             card += f'<div class="goal-row"><b>{runs(raw[first])}</b><p>{runs(raw[first + 1])}</p></div>'
         return [*group_markup(raw[1:3], size, key), card + "</article>", *group_markup(raw[10:], size, key)]
     if school and page_number == 7:
-        task = next(i for i, group in enumerate(body) if block_text(group).startswith("Tarefa 4"))
-        body = body[:task] + body[task+2:] + body[task:task+2]
+        reading, listening, reading_title = raw[1]
+        dialogue = "".join(
+            f'<div class="dialogue-turn"><b>{runs(raw[j])}</b><p>{runs(raw[j + 1])}</p></div>'
+            for j in range(15, len(raw), 2)
+        )
+        script = (f'<article class="unit-card topic"><div>{runs([listening])}</div><h3>{runs(raw[11])}</h3>'
+                  f'<p>{runs(raw[12])}</p>{dialogue}</article>')
+        return [
+            *group_markup([[reading], [reading_title], *raw[2:11]], size, key),
+            keep_together([script]), *group_markup(raw[13:15], size, key),
+        ]
+    if not school and page_number == 11:
+        stages = []
+        for start, end in ((23, 26), (26, 30), (30, 32), (32, 35)):
+            heading = re.sub(r"^(\d+)\s+", r"\1 · ", block_text(raw[start]))
+            copy = runs([line for chunk in raw[start + 1:end] for line in chunk])
+            stages.append(f'<div class="goal-row"><b>{escape(heading)}</b><p>{copy}</p></div>')
+        section = f'<article class="unit-card topic"><h3>{runs(raw[22])}</h3>{"".join(stages)}</article>'
+        return [*group_markup(raw[1:22], size, key), keep_together([section]), *group_markup(raw[35:], size, key)]
     return list(group_markup(body, size, key))
 
 
