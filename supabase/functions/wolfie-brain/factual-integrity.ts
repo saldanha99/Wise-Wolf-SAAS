@@ -304,28 +304,212 @@ export function correctionPreservesFactualIntegrity(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Transcript confirmation (24/11/2026)
+//
+// Confidence tiers come from the ASR itself: realtime = exp(mean logprob) of
+// the transcription; classic = the provider's confidence. They are
+// uncalibrated, so the tiers are conservative.
+//   high   >= 0.86  → send as heard (unless it carries personal data)
+//   medium 0.70–0.86 → send as heard; with a name/number, show the review and
+//                      send by itself after 5 s if the learner does nothing
+//   low    <  0.70  → show the review (never auto-send) when the turn has a
+//                      name/number or 4+ words; short social turns pass
+// Personal data (a biographical claim, e-mail, phone, document) always waits
+// for an explicit confirmation: it may become memory.
+// ---------------------------------------------------------------------------
+
+export const TRANSCRIPT_CONFIDENCE_HIGH = 0.86;
+export const TRANSCRIPT_CONFIDENCE_LOW = 0.7;
+export const TRANSCRIPT_AUTO_CONFIRM_MS = 5_000;
+export const TRANSCRIPT_LOW_CONFIDENCE_MIN_WORDS = 4;
+
+export type TranscriptConfirmationReason =
+  | "personal_fact"
+  | "personal_data"
+  | "unreliable_transcript"
+  | "low_confidence"
+  | "uncertain_detail";
+
+export interface TranscriptConfirmationDecision {
+  required: boolean;
+  reason: TranscriptConfirmationReason | null;
+  /** Null = wait for the learner. A number = send by itself after it. */
+  autoConfirmAfterMs: number | null;
+}
+
+// Words that open a turn ("Ok, vamos lá", "Well, I think…") are capitalized
+// only because they start the sentence. They are not names.
+const CONVERSATIONAL_WORDS = new Set([
+  "ok",
+  "okay",
+  "hi",
+  "hello",
+  "hey",
+  "well",
+  "so",
+  "yeah",
+  "yep",
+  "sure",
+  "thanks",
+  "thank",
+  "lets",
+  "let's",
+  "sorry",
+  "good",
+  "great",
+  "nice",
+  "oi",
+  "ola",
+  "olá",
+  "vamos",
+  "bom",
+  "boa",
+  "beleza",
+  "certo",
+  "tudo",
+  "obrigado",
+  "obrigada",
+  "entao",
+  "então",
+  "tipo",
+  "english",
+  "portuguese",
+  "spanish",
+  "ingles",
+  "inglês",
+  "portugues",
+  "português",
+]);
+
+const PERSONAL_DATA_PATTERNS = [
+  /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}/u, // e-mail
+  /(?:\+?\d[\s().-]*){8,}/u, // phone or long id
+  /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/u, // CPF
+];
+
+// The realtime ASR sometimes "hears" its own prompt in silence/noise.
+const ASR_PROMPT_ECHO_PATTERNS = [
+  /english tutoring with brazilian portuguese code[- ]switching/i,
+  /preserve brazilian names,? cities/i,
+  /mark uncertainty instead of guessing/i,
+];
+
+export function transcriptEchoesAsrPrompt(text: string): boolean {
+  return ASR_PROMPT_ECHO_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function transcriptHasPersonalData(text: string): boolean {
+  return PERSONAL_DATA_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Names and numbers that a mishearing could change. A single capitalized word
+ * that only opens a sentence ("Ok", "Today", "We") is not counted.
+ */
+export function transcriptSensitiveDetails(text: string): string[] {
+  const details: string[] = [];
+  const expression =
+    /\b[\p{Lu}][\p{L}\p{M}'’-]*(?:\s+(?:(?:de|da|do|dos|das|of|the)\s+)?[\p{Lu}][\p{L}\p{M}'’-]*)*/gu;
+  for (const match of text.matchAll(expression)) {
+    const entity = match[0].trim();
+    if (!entity || ENTITY_STOPWORDS.has(entity)) continue;
+    const before = text.slice(0, match.index ?? 0).trimEnd();
+    let opensSentence = before === "" || /[.!?…:;"“(]$/u.test(before);
+    // Drop leading words that are capitalized only by position or are
+    // pronouns/fillers ("Yesterday I met…", "Ok I live…").
+    const words = entity.split(/\s+/);
+    while (words.length > 0) {
+      const lowered = words[0].toLocaleLowerCase("pt-BR").replace(/[’]/g, "'");
+      const filler = ENTITY_STOPWORDS.has(words[0]) ||
+        CONVERSATIONAL_WORDS.has(lowered);
+      if (!filler && !(opensSentence && words.length === 1)) break;
+      if (!filler && opensSentence && words.length > 1) break;
+      words.shift();
+      opensSentence = false;
+    }
+    if (words.length === 0) continue;
+    if (opensSentence && words.length === 1) continue;
+    details.push(words.join(" "));
+  }
+  details.push(...extractNumericTokens(text));
+  for (const fact of extractLearnerFacts(text)) details.push(fact.value);
+  return [...new Set(details)].slice(0, 12);
+}
+
+export function transcriptConfirmationDecision(
+  text: string,
+  confidence: number | null | undefined,
+  alternatives: string[] = [],
+): TranscriptConfirmationDecision {
+  const none: TranscriptConfirmationDecision = {
+    required: false,
+    reason: null,
+    autoConfirmAfterMs: null,
+  };
+  if (!text.trim()) return none;
+  if (transcriptEchoesAsrPrompt(text)) {
+    return {
+      required: true,
+      reason: "unreliable_transcript",
+      autoConfirmAfterMs: null,
+    };
+  }
+  // Biographical assertions always need an explicit review when they came
+  // from speech. A high ASR confidence score is not proof that a place or
+  // other personal value was heard correctly.
+  if (extractLearnerFacts(text).length > 0) {
+    return {
+      required: true,
+      reason: "personal_fact",
+      autoConfirmAfterMs: null,
+    };
+  }
+  if (transcriptHasPersonalData(text)) {
+    return {
+      required: true,
+      reason: "personal_data",
+      autoConfirmAfterMs: null,
+    };
+  }
+
+  const normalizedText = normalizeFactualText(text);
+  const alternativesDisagree = alternatives.some((alternative) =>
+    normalizeFactualText(alternative) !== normalizedText
+  );
+  const known = typeof confidence === "number" && confidence > 0;
+  if (!known || confidence! >= TRANSCRIPT_CONFIDENCE_HIGH) {
+    return none;
+  }
+  const hasDetails = transcriptSensitiveDetails(text).length > 0;
+  if (confidence! < TRANSCRIPT_CONFIDENCE_LOW) {
+    // Short social turns ("Ok.", "Hello!", "Let's go!") carry nothing a
+    // mishearing could distort into memory or an unfair correction.
+    const words = text.trim().split(/\s+/u).filter(Boolean).length;
+    if (!hasDetails && words < TRANSCRIPT_LOW_CONFIDENCE_MIN_WORDS) return none;
+    return {
+      required: true,
+      reason: "low_confidence",
+      autoConfirmAfterMs: null,
+    };
+  }
+  if (!hasDetails) return none;
+  return {
+    required: true,
+    reason: "uncertain_detail",
+    autoConfirmAfterMs: alternativesDisagree
+      ? null
+      : TRANSCRIPT_AUTO_CONFIRM_MS,
+  };
+}
+
 export function transcriptionNeedsFactConfirmation(
   text: string,
   confidence: number | null | undefined,
   alternatives: string[] = [],
 ): boolean {
-  // Biographical assertions always need an explicit review when they came
-  // from speech. A high ASR confidence score is not proof that a place or
-  // other personal value was heard correctly.
-  if (extractLearnerFacts(text).length > 0) return true;
-  if (confidence === null || confidence === undefined || confidence >= 0.86) {
-    return false;
-  }
-  const hasProtectedContent = extractProtectedEntities(text).length > 0 ||
-    extractNumericTokens(text).length > 0;
-  if (!hasProtectedContent) return false;
-
-  const normalizedText = normalizeFactualText(text);
-  return confidence < 0.7 ||
-    alternatives.length === 0 ||
-    alternatives.some((alternative) =>
-      normalizeFactualText(alternative) !== normalizedText
-    );
+  return transcriptConfirmationDecision(text, confidence, alternatives)
+    .required;
 }
 
 export function correctionLocksRetry(

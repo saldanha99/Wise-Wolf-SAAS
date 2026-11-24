@@ -939,6 +939,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-activity/personalization.test.ts \
   supabase/functions/wolfie-brain/classic-global-meeting.test.ts \
   supabase/functions/wolfie-brain/realtime-post-turn.test.ts \
+  supabase/functions/wolfie-brain/factual-integrity.test.ts \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
