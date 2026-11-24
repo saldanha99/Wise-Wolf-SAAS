@@ -195,6 +195,13 @@ end $patch$;
 create or replace function private.guard_school_closed_class_log()
 returns trigger language plpgsql set search_path = '' as $$
 begin
+  -- Apagar a marca também só pelo sistema (rollback: set_config local da flag na mesma transação).
+  if tg_op = 'DELETE' then
+    if old.presence = 'SCHOOL_HOLIDAY' and coalesce(current_setting('wisewolf.school_closure_job', true), '') <> 'on' then
+      raise exception using errcode = '42501', message = 'feriado_remunerado_so_pelo_sistema';
+    end if;
+    return old;
+  end if;
   if (new.presence = 'SCHOOL_HOLIDAY' or (tg_op = 'UPDATE' and old.presence = 'SCHOOL_HOLIDAY'))
      and coalesce(current_setting('wisewolf.school_closure_job', true), '') <> 'on' then
     raise exception using errcode = '42501', message = 'feriado_remunerado_so_pelo_sistema';
@@ -210,7 +217,7 @@ begin
 end $$;
 alter function private.guard_school_closed_class_log() owner to postgres;
 drop trigger if exists trg_a_guard_school_closed_class_log on public.class_logs;
-create trigger trg_a_guard_school_closed_class_log before insert or update on public.class_logs
+create trigger trg_a_guard_school_closed_class_log before insert or update or delete on public.class_logs
   for each row execute function private.guard_school_closed_class_log();
 
 -- ---------------------------------------------------------------------------
@@ -344,3 +351,121 @@ update public.tenant_contract_terms
    set terms_version = 3, decided_at = now(),
        note = 'Vinícius, 24/11/2026: contratos novos com a cláusula de feriados nacionais e recesso (v3).'
  where tenant_id = 'school-wise-wolf' and contract_kind = 'STUDENT' and terms_version = 2;
+
+-- ---------------------------------------------------------------------------
+-- 10. Avisos da plataforma (pop-up com "Entendi"), configuráveis, com prova
+-- ---------------------------------------------------------------------------
+-- Decisão do Vinícius (24/11/2026): o aviso do recesso é SÓ pop-up, sem WhatsApp nem
+-- e-mail. Cada aviso tem escola, público (STUDENT/TEACHER), título, texto e janela;
+-- quem clica em "Entendi" fica gravado (usuário, papel, escola, data e hora) e não vê
+-- de novo. Leitura e gravação só pelas RPCs.
+create table if not exists public.platform_notices (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null references public.tenants(id),
+  audience text not null check (audience in ('STUDENT', 'TEACHER')),
+  title text not null check (length(btrim(title)) between 3 and 120),
+  body text not null check (length(btrim(body)) between 10 and 2000),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  active boolean not null default true,
+  slug text not null check (slug ~ '^[a-z0-9-]{3,80}$'),
+  decided_by text not null check (length(btrim(decided_by)) between 8 and 500),
+  created_at timestamptz not null default now(),
+  constraint platform_notices_window check (ends_at > starts_at),
+  constraint platform_notices_slug_uq unique (tenant_id, audience, slug)
+);
+alter table public.platform_notices owner to postgres;
+alter table public.platform_notices enable row level security;
+revoke all on public.platform_notices from public, anon, authenticated, service_role;
+grant select on public.platform_notices to service_role;
+
+create table if not exists public.platform_notice_acknowledgements (
+  notice_id uuid not null references public.platform_notices(id),
+  user_id uuid not null references public.profiles(id),
+  tenant_id text not null,
+  role text not null,
+  acknowledged_at timestamptz not null default now(),
+  primary key (notice_id, user_id)
+);
+alter table public.platform_notice_acknowledgements owner to postgres;
+alter table public.platform_notice_acknowledgements enable row level security;
+revoke all on public.platform_notice_acknowledgements from public, anon, authenticated, service_role;
+grant select on public.platform_notice_acknowledgements to service_role;
+
+-- Prova não muda nem some.
+create or replace function private.platform_notice_ack_immutable()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  raise exception using errcode = '42501', message = 'prova_do_aviso_e_imutavel';
+end $$;
+alter function private.platform_notice_ack_immutable() owner to postgres;
+drop trigger if exists platform_notice_ack_immutable on public.platform_notice_acknowledgements;
+create trigger platform_notice_ack_immutable before update or delete on public.platform_notice_acknowledgements
+  for each row execute function private.platform_notice_ack_immutable();
+
+create or replace function public.my_pending_platform_notices()
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v_uid uuid := auth.uid(); v_tenant text; v_role text;
+begin
+  if v_uid is null then return '[]'::jsonb; end if;
+  select p.tenant_id, upper(coalesce(p.role, '')) into v_tenant, v_role from public.profiles p where p.id = v_uid;
+  if v_tenant is null or v_role not in ('STUDENT', 'TEACHER') then return '[]'::jsonb; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('id', n.id, 'title', n.title, 'body', n.body) order by n.starts_at, n.id)
+      from public.platform_notices n
+     where n.tenant_id = v_tenant and n.audience = v_role and n.active
+       and now() >= n.starts_at and now() < n.ends_at
+       and not exists (select 1 from public.platform_notice_acknowledgements a
+                        where a.notice_id = n.id and a.user_id = v_uid)), '[]'::jsonb);
+end $$;
+alter function public.my_pending_platform_notices() owner to postgres;
+revoke all on function public.my_pending_platform_notices() from public, anon, service_role;
+grant execute on function public.my_pending_platform_notices() to authenticated;
+
+create or replace function public.acknowledge_platform_notice(p_notice_id uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_uid uuid := auth.uid(); v_tenant text; v_role text; v_at timestamptz;
+begin
+  if v_uid is null then return jsonb_build_object('ok', false, 'error', 'nao_autenticado'); end if;
+  select p.tenant_id, upper(coalesce(p.role, '')) into v_tenant, v_role from public.profiles p where p.id = v_uid;
+  if not exists (select 1 from public.platform_notices n where n.id = p_notice_id and n.tenant_id = v_tenant
+                   and n.audience = v_role and n.active and now() >= n.starts_at and now() < n.ends_at) then
+    return jsonb_build_object('ok', false, 'error', 'aviso_indisponivel');
+  end if;
+  insert into public.platform_notice_acknowledgements (notice_id, user_id, tenant_id, role)
+  values (p_notice_id, v_uid, v_tenant, v_role)
+  on conflict (notice_id, user_id) do nothing;
+  select a.acknowledged_at into v_at from public.platform_notice_acknowledgements a
+   where a.notice_id = p_notice_id and a.user_id = v_uid;
+  return jsonb_build_object('ok', true, 'acknowledged_at', v_at);
+end $$;
+alter function public.acknowledge_platform_notice(uuid) owner to postgres;
+revoke all on function public.acknowledge_platform_notice(uuid) from public, anon, service_role;
+grant execute on function public.acknowledge_platform_notice(uuid) to authenticated;
+
+-- Os dois avisos do recesso 2026 (Wise Wolf): de 01/12/2026 00:00 a 02/01/2027 23:59 (Brasília).
+insert into public.platform_notices (tenant_id, audience, slug, title, body, starts_at, ends_at, decided_by)
+select 'school-wise-wolf', x.audience, 'recesso-2026', 'Recesso de fim de ano', x.body,
+       timestamptz '2026-12-01 00:00:00-03', timestamptz '2027-01-03 00:00:00-03',
+       'Vinícius, 24/11/2026: aviso do recesso só por pop-up (sem WhatsApp nem e-mail), de 01/12/2026 a 02/01/2027'
+  from (values
+    ('STUDENT', 'Recesso de fim de ano: de 24/12 (quinta) a 01/01 (sexta) não haverá aulas, incluindo o Natal (25/12) e o Ano-Novo (01/01). As aulas voltam normalmente em 02/01/2027, no seu horário de sempre. As aulas que cairiam nesses dias fazem parte do período regular do seu plano, sem reposição nem desconto na mensalidade. O mesmo vale para os feriados nacionais ao longo do ano. Boas festas! Equipe Wise Wolf'),
+    ('TEACHER', 'Recesso de fim de ano: de 24/12 a 01/01 não haverá aulas, e as aulas voltam em 02/01/2027. As aulas que estavam na sua agenda nesses dias serão lançadas automaticamente como ''Recesso (remunerada)'' ou ''Feriado (remunerada)'' e entram no seu pagamento normalmente. O mesmo vale para os feriados nacionais ao longo do ano. Você não precisa registrar nada nem fazer reposição. Boas festas! Equipe Wise Wolf')
+  ) as x(audience, body)
+ where exists (select 1 from public.tenants where id = 'school-wise-wolf')
+on conflict (tenant_id, audience, slug) do nothing;
+
+-- Sem WhatsApp do feriado nacional (D7/D1): a escola avisa só pela plataforma.
+-- O pop-up do feriado (my_upcoming_national_holiday) continua.
+alter table private.national_holiday_notice_settings add column if not exists whatsapp_enabled boolean not null default true;
+update private.national_holiday_notice_settings set whatsapp_enabled = false where tenant_id = 'school-wise-wolf';
+do $patch$
+declare d text; anchor text := 'for s in select tenant_id from private.national_holiday_notice_settings where enabled loop';
+begin
+  select pg_get_functiondef('private.queue_national_holiday_notices()'::regprocedure) into d;
+  if strpos(d, 'whatsapp_enabled') > 0 then return; end if;
+  if (length(d) - length(replace(d, anchor, ''))) / length(anchor) <> 1 then
+    raise exception 'unexpected_queue_national_holiday_notices_definition';
+  end if;
+  execute replace(d, anchor, 'for s in select tenant_id from private.national_holiday_notice_settings where enabled and whatsapp_enabled loop');
+end $patch$;

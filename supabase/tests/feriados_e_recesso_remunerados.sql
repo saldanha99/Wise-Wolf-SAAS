@@ -136,7 +136,9 @@ begin
   select b.id, b.teacher_id, b.student_id into v_b from public.bookings b
    where b.tenant_id = 'school-wise-wolf' and b.status = 'SCHEDULED' and b.student_id is not null
      and (private.booking_schedule_on_date_raw(b.id, date '2026-12-30')->>'valid')::boolean limit 1;
+  perform set_config('wisewolf.school_closure_job', 'on', true);
   delete from public.class_logs where booking_id = v_b.id::text and class_date = date '2026-12-30';
+  perform set_config('wisewolf.school_closure_job', '', true);
   begin
     insert into public.class_logs (tenant_id, teacher_id, student_id, date, class_date, presence, approval_status, booking_id, start_time)
     values ('school-wise-wolf', v_b.teacher_id, v_b.student_id, date '2026-12-30', date '2026-12-30', 'COMPLETED', 'APPROVED', v_b.id::text, '10:00');
@@ -146,6 +148,68 @@ begin
     if v_err not in ('class_log_booking_origin_invalid', 'class_log_occurrence_time_mismatch', 'aula_ainda_nao_terminou') then raise; end if;
   end;
 end $t$;
+
+-- Apagar a marca à mão também é recusado.
+do $t$ declare v_err text; begin
+  delete from public.class_logs where presence = 'SCHOOL_HOLIDAY' and class_date = date '2026-12-25';
+  raise exception 'guarda falhou: marca apagada à mão';
+exception when others then
+  get stacked diagnostics v_err = message_text;
+  if v_err <> 'feriado_remunerado_so_pelo_sistema' then raise; end if;
+end $t$;
+
+-- Aviso do recesso por pop-up: aluno e professor, de 01/12 a 02/01, com prova do "Entendi".
+select 'avisos' item, audience, title, starts_at at time zone 'America/Sao_Paulo' inicio_brt, ends_at at time zone 'America/Sao_Paulo' fim_brt
+  from public.platform_notices where tenant_id = 'school-wise-wolf' and slug = 'recesso-2026' order by audience;
+do $t$
+declare v_student uuid; v_teacher uuid; v jsonb; v_n uuid; v_err text;
+begin
+  select id into v_student from public.profiles where tenant_id = 'school-wise-wolf' and role = 'STUDENT' limit 1;
+  select id into v_teacher from public.profiles where tenant_id = 'school-wise-wolf' and role = 'TEACHER' limit 1;
+  -- Hoje (antes de 01/12) ninguém vê.
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_student, 'role', 'authenticated')::text, true);
+  if now() < timestamptz '2026-12-01 00:00-03' and jsonb_array_length(public.my_pending_platform_notices()) <> 0 then
+    raise exception 'aviso apareceu antes de 01/12';
+  end if;
+  -- Simula 01/12 abrindo a janela do aviso para agora (só nesta transação).
+  update public.platform_notices set starts_at = now() - interval '1 minute' where slug = 'recesso-2026';
+  v := public.my_pending_platform_notices();
+  if jsonb_array_length(v) <> 1 or v->0->>'body' not like 'Recesso de fim de ano: de 24/12 (quinta)%' then
+    raise exception 'aluno não recebeu o aviso certo: %', v;
+  end if;
+  v_n := (v->0->>'id')::uuid;
+  if not (public.acknowledge_platform_notice(v_n)->>'ok')::boolean then raise exception 'Entendi do aluno falhou'; end if;
+  if jsonb_array_length(public.my_pending_platform_notices()) <> 0 then raise exception 'aviso voltou depois do Entendi'; end if;
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', v_teacher, 'role', 'authenticated')::text, true);
+  v := public.my_pending_platform_notices();
+  if jsonb_array_length(v) <> 1 or v->0->>'body' not like '%lançadas automaticamente como ''Recesso (remunerada)''%' then
+    raise exception 'professor não recebeu o aviso certo: %', v;
+  end if;
+  -- Professor não confirma o aviso do aluno.
+  if (public.acknowledge_platform_notice(v_n)->>'ok')::boolean then raise exception 'professor confirmou aviso de aluno'; end if;
+  perform public.acknowledge_platform_notice((v->0->>'id')::uuid);
+  perform set_config('request.jwt.claims', '', true);
+  -- Prova imutável.
+  begin
+    delete from public.platform_notice_acknowledgements where user_id = v_student;
+    raise exception 'prova apagada';
+  exception when others then
+    get stacked diagnostics v_err = message_text;
+    if v_err <> 'prova_do_aviso_e_imutavel' then raise; end if;
+  end;
+end $t$;
+select 'prova_do_entendi' item, a.role, a.acknowledged_at is not null gravado from public.platform_notice_acknowledgements a
+  join public.platform_notices n on n.id = a.notice_id where n.slug = 'recesso-2026' order by a.role;
+
+-- Sem WhatsApp do feriado: a rotina D7/D1 não enfileira nada para 25/12 (simulando 18/12 pela tabela).
+select 'whatsapp_feriado' item, s.whatsapp_enabled from private.national_holiday_notice_settings s where s.tenant_id = 'school-wise-wolf';
+-- Prova forte: feriado falso amanhã (só nesta transação). Com o WhatsApp desligado, 0 na fila.
+-- private.national_holiday_recipients lê a agenda crua (amanhã não é dia fechado: só confere o envio).
+insert into public.national_holidays (holiday_date, name)
+select (now() at time zone 'America/Sao_Paulo')::date + 1, 'Feriado de teste'
+where not exists (select 1 from public.national_holidays where holiday_date = (now() at time zone 'America/Sao_Paulo')::date + 1);
+select 'destinatarios_amanha' item, count(*) from private.national_holiday_recipients('school-wise-wolf', (now() at time zone 'America/Sao_Paulo')::date + 1);
+select 'fila_whatsapp_desligado' item, private.queue_national_holiday_notices() enfileirados;
 
 -- Nada saiu para aluno ou professor; nenhuma reposição, confirmação ou trilha do Wolfie.
 select 'efeitos' item,
