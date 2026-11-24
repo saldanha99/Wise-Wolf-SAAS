@@ -41,7 +41,16 @@
   hora). Completo: `functions-before.sql` do backup `/opt/wisewolf/backup-feriados-recesso-<ts>/` com `psql -U
   supabase_admin`, `drop trigger trg_a_guard_school_closed_class_log on public.class_logs;`, contrato `update
   tenant_contract_terms set terms_version = 2 where tenant_id = 'school-wise-wolf' and contract_kind = 'STUDENT';`
-  (aceite v3 já gravado fica). Front: `src/dist.prev*-feriados` (ver a publicação).
+  (aceite v3 já gravado fica). Avisos: `update public.platform_notices set active = false where slug = 'recesso-2026';`.
+  Front: `cd /opt/wisewolf/frontend/src && mv dist dist.feriados && mv dist.prev22-feriados dist && cd .. && docker
+  compose restart frontend`.
+- **No ar (24/11, 04:29–04:30 UTC, Revisor Ok nas duas rodadas):** backup `/opt/wisewolf/backup-feriados-recesso-20261124T042841Z/`
+  (`functions-before.sql` com as 7 funções remendadas, `tenant_contract_terms.tsv`, `national_holiday_notice_settings.tsv`,
+  `cron-jobs.txt`, `frontend-dist.md5`, `migration.sql/.out`); front `index-BXPzIEsK.js` primeiro (56 arquivos fora de
+  `assets/` iguais; `assets/` antigos mantidos), migration depois (uma transação, marcada em `.migration-checksums`).
+  Conferido: 25/12 com 0 de 18 aulas válidas, contrato oferecido STUDENT 3, WhatsApp do feriado desligado, 0 na fila.
+  Prints do pop-up (cópia temporária do aviso na `demo-escola`, apagada com a prova): `/data/OpenBot/Shared/wisewolf/feriados-recesso/prints/`.
+  Custo medido do embrulho: +0,02 ms por leitura da agenda (1.792 leituras: 128 → 167 ms).
 
 ### 24/11/2026 — Wolfie: botão "Conversar em tempo real" e confirmação de fala (fix/wolfie-ao-vivo-confirmacao)
 
