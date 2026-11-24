@@ -85,7 +85,8 @@ begin
     and collected_at is null
     and created_at > now() - interval '20 minutes'
   order by created_at desc, request_id desc
-  limit 1;
+  limit 1
+  for update skip locked;
 
   if v_req is null then
     -- Trigger did not run (or was already collected): nothing to judge.
@@ -125,6 +126,8 @@ begin
 end;
 $function$;
 
+alter function public.trigger_wolfie_healthcheck() owner to postgres;
+alter function public.collect_wolfie_healthcheck() owner to postgres;
 revoke all on function public.trigger_wolfie_healthcheck() from public, anon, authenticated;
 revoke all on function public.collect_wolfie_healthcheck() from public, anon, authenticated;
 grant execute on function public.trigger_wolfie_healthcheck() to service_role;

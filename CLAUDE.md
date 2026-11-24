@@ -288,7 +288,7 @@ onClick texto → sendMessage() → unlockAudio()
 - Agora sem resposta, erro de transporte, HTTP ≠ 200 ou `healthy:false` = falha registrada.
 - Migration: `20261124040000_wolfie_health_collect_by_request_id.sql` (aditiva).
 - **Rollback:** `psql -U supabase_admin` com o `functions-before.sql` de
-  `/opt/wisewolf/backup-wolfie-health-collector-<ts>/` (recria as duas funções antigas). A tabela
+  `/opt/wisewolf/backup-wolfie-health-collector-20261124T033049Z/` (publicado 24/11 03:30 UTC; recria as duas funções antigas). A tabela
   nova pode ficar; não tem uso fora dessas funções.
 
 ---
