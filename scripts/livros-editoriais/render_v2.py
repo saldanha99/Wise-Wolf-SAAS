@@ -26,6 +26,7 @@ SCHOOL_TABLES = {
     14: ((15, 21), (27, 32), (37, 42)),
 }
 NUMBER = re.compile(r"^\d+[.)]$")
+STEP = re.compile(r"^\d{1,2}(?:\s*[–-]\s*\d{1,2})?$")
 EXERCISE = re.compile(
     r"^(?:(?:[\W_]+ )?(?:Exercise|Exercício|Atividade|Tarefa)\s*(?:\d+\b|de recuperação)"
     r"|Parte [A-D] —|Prática controlada\b)", re.I,
@@ -241,6 +242,7 @@ def group_markup(raw, size, key):
                   and not re.match(r"^(Coluna [AB]|Tarefa de escuta|Perguntas de Escuta|Perguntas sobre o script)\b", label, re.I)) or re.search(r"Critérios de sucesso", text):
                 mark = "topic"
         if mark:
+            prefix = pending.pop() if pending and 'class="para step-marker"' in pending[-1] else ""
             item = flush()
             if item:
                 yield item
@@ -252,12 +254,12 @@ def group_markup(raw, size, key):
                 badge = '<span class="exercise-number" aria-hidden="true">' + (number[0] if number else "✎") + "</span>"
             elif mark in {"tip", "goals"} and not text.startswith(("⚠", "💡", "⭐", "🌟", "✅")):
                 badge = '<span class="mini-icon" aria-hidden="true">' + ("!" if mark == "tip" else "✓") + "</span>"
-            header = f'<h3>{badge}<span>{plain_html(group)}</span></h3>'
+            header = f'{prefix}<h3>{badge}<span>{plain_html(group)}</span></h3>'
         else:
             markup = plain_html(group)
             if not key:
                 markup = blank_lines(markup)
-            if re.fullmatch(r"\d{1,2}", text):
+            if STEP.fullmatch(text):
                 pending.append(f'<div class="para step-marker">{markup}</div>')
             else:
                 if pending and 'class="para step-marker"' in pending[-1]:
@@ -265,7 +267,7 @@ def group_markup(raw, size, key):
                     pending.append(f'<div class="para keep-together">{marker}{markup}</div>')
                 else:
                     pending.append(f'<div class="para">{markup}</div>')
-            if not header and kind == "prose" and not re.fullmatch(r"\d{1,2}", text):
+            if not header and kind == "prose" and not STEP.fullmatch(text):
                 item = flush()
                 if item:
                     yield item
@@ -428,7 +430,14 @@ def wave_section(page, raw, key):
             leader = ""
         start = right
     units.extend(group_markup(raw[start:], size, key))
-    return units
+    result = []
+    for unit in units:
+        if result and re.fullmatch(r'<article class="unit-card topic"><h3>.*?</h3></article>', result[-1]):
+            previous = result.pop()
+            result.append(keep_together([previous, unit]))
+        else:
+            result.append(unit)
+    return result
 
 
 def construct(source, images, theme, level, wave_title, openers):
