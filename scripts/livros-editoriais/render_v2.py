@@ -377,6 +377,8 @@ def verify(source, rendered, mapping):
             raise ValueError(f"Página {pg.number + 1} fora do A4 paisagem")
         for line in pg.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
             for row in line["lines"]:
+                if "".join(span["text"] for span in row["spans"]).strip() == ".":
+                    raise ValueError(f"Página {pg.number + 1}: ponto isolado em linha")
                 for span in row["spans"]:
                     if span["text"].strip() and span["size"] < 9.93:
                         raise ValueError(f"Página {pg.number + 1}: {span['text']!r} em {span['size']:.2f} pt")

@@ -111,7 +111,7 @@ h3 {
 .blank { display: inline-block; inline-size: clamp(1.8em, var(--length), 100%); height: .88em; border-bottom: 1px solid var(--muted); vertical-align: baseline }
 .response { height: 10mm; border-bottom: 1px solid var(--line); margin-top: 1mm }
 .numbered { display: flex; gap: 2mm; align-items: baseline }
-.numbered > b { min-width: 5mm; color: var(--accent) }
+.numbered > b { flex: 0 0 auto; min-width: 5mm; white-space: nowrap; color: var(--accent) }
 .table-card { border: 1px solid var(--line); border-radius: 2mm; overflow: hidden; margin-bottom: 3mm }
 table { border-collapse: collapse; width: 100%; table-layout: fixed; font: inherit }
 td, th { padding: 1.8mm 2.6mm; text-align: left; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--line) }
