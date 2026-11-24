@@ -52,7 +52,7 @@ export const LEGACY_CONTRACT_TERMS_VERSION = 1;
  * contrato não assinado mostra: isso é a versão que a escola oferece.
  */
 export const CURRENT_CONTRACT_TERMS_VERSION: Readonly<Record<ContractKind, number>> = {
-  STUDENT: 2,
+  STUDENT: 3,
   TEACHER: 3,
 };
 
@@ -61,6 +61,14 @@ export const LESSON_RECORDING_CLAUSE_SINCE: Readonly<Record<ContractKind, number
   STUDENT: 2,
   TEACHER: 2,
 };
+
+/**
+ * Primeira versão do contrato do ALUNO com a cláusula dos feriados nacionais e
+ * do recesso (decisão do Vinícius, 24/11/2026: só contratos novos e
+ * rematrículas; quem já assinou não muda nem reassina). O contrato avulso
+ * (`planDuration = 0`) não traz a cláusula.
+ */
+export const STUDENT_HOLIDAY_CLAUSE_SINCE = 3;
 
 /** Versão conhecida por esta tela (inteira, de 1 até a atual). */
 export function isKnownContractTermsVersion(kind: ContractKind, value: unknown): value is number {
@@ -151,9 +159,15 @@ export function contractIncludesLessonRecording(kind: ContractKind, version: num
   return version >= LESSON_RECORDING_CLAUSE_SINCE[kind];
 }
 
+/** O texto desta versão do contrato do aluno traz a cláusula dos feriados e do recesso? */
+export function contractIncludesHolidayClause(kind: ContractKind, version: number): boolean {
+  return kind === 'STUDENT' && version >= STUDENT_HOLIDAY_CLAUSE_SINCE;
+}
+
 /** Rótulo curto para a direção conferir o que cada pessoa assinou. */
 export function contractTermsLabel(kind: ContractKind, version: number): string {
   if (kind === 'TEACHER' && version >= 3) return `Versão ${version} — PJ, autonomia e transição contratual de 30 dias`;
+  if (contractIncludesHolidayClause(kind, version)) return `Versão ${version} — com o registro das aulas e a cláusula de feriados e recesso`;
   return contractIncludesLessonRecording(kind, version)
     ? `Versão ${version} — com a cláusula do registro das aulas`
     : `Versão ${version} — texto anterior, sem a cláusula do registro das aulas`;

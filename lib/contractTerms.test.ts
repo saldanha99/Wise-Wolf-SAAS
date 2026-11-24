@@ -61,7 +61,8 @@ describe('versão do texto do contrato', () => {
     expect(resolveContractTermsVersion('TEACHER', { signed: false, offeredVersion: 3 })).toBe(3);
     expect(resolveContractTermsVersion('TEACHER', { signed: true, recordedVersion: 2, offeredVersion: 3 })).toBe(2);
     expect(resolveContractTermsVersion('TEACHER', { signed: true, offeredVersion: 3 })).toBe(1);
-    expect(parseContractTermsVersion('STUDENT', 3)).toBeNull();
+    expect(parseContractTermsVersion('STUDENT', 4)).toBeNull();
+    expect(parseContractTermsVersion('STUDENT', 3)).toBe(3);
     expect(parseContractTermsVersion('STUDENT', 2)).toBe(2);
     expect(parseContractTermsVersion('STUDENT', CURRENT_CONTRACT_TERMS_VERSION.STUDENT + 1)).toBeNull();
     expect(parseContractTermsVersion('TEACHER', null)).toBeNull();
@@ -107,7 +108,9 @@ describe('versão do contrato: tela, banco e edge contam a mesma história', () 
     join(ROOT, 'supabase/migrations/20260927150000_versao_do_contrato_no_aceite.sql'),
     'utf8',
   );
-  const migration = legacyMigration + readFileSync(join(ROOT, 'supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql'), 'utf8');
+  const migration = legacyMigration
+    + readFileSync(join(ROOT, 'supabase/migrations/20261026222538_contrato_professor_pj_e_transicao.sql'), 'utf8')
+    + readFileSync(join(ROOT, 'supabase/migrations/20261124120000_feriados_e_recesso_remunerados.sql'), 'utf8');
   const seeded = [...migration.matchAll(/\('(STUDENT|TEACHER)',\s*(\d+),\s*(true|false),/g)]
     .map(([, kind, version, includes]) => ({ kind: kind as ContractKind, version: Number(version), includes: includes === 'true' }));
 
