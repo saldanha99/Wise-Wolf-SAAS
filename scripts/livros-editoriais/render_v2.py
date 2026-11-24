@@ -55,7 +55,8 @@ def block_text(lines):
 
 def runs(lines):
     markup = normalize(BODY("".join(span_html(span) for span in line["spans"]).strip() for line in lines))
-    return re.sub(r"/[^/<>\s]+/", lambda m: f'<span class="phonetic">{m[0]}</span>', markup)
+    pronunciation = re.sub(r"(?<![\w/])/[^/<>\s]+/(?![\w/])", lambda m: f'<span class="phonetic">{m[0]}</span>', markup)
+    return re.sub(r"\b[A-Za-z]+(?:/[A-Za-z]+){2,}\b", lambda m: f'<span class="phonetic">{m[0]}</span>', pronunciation)
 
 
 def source_groups(page, title):
