@@ -136,9 +136,9 @@ def plain_html(lines):
 def blank_lines(markup):
     def ruled(match):
         blank, punctuation = match.groups()
-        line = f'<span class="blank" style="--length:{min(len(blank), 25)}em"></span>'
+        line = f'<span class="blank" style="--length:{min(len(blank), 12)}em"></span>'
         return f'<span class="ruled-answer">{line}{punctuation}</span>'
-    return re.sub(r"(_{3,})\s*([.,?!:]?)", ruled, markup)
+    return re.sub(r"(_{3,})([.,?!:]?)", ruled, markup)
 
 
 def merged_paragraphs(raw):
@@ -151,7 +151,9 @@ def merged_paragraphs(raw):
             nx, ny = line["spans"][0]["origin"]
             size = prev["spans"][0]["size"]
             if (
-                abs(x - nx) < 1 and 0 < ny - y < size * 1.8
+                (abs(x - nx) < 1 or (abs(x - nx) < 22 and len(line_text(line).split()) <= 3
+                    and line_text(prev).endswith(" "))) and 0 < ny - y < size * 1.8
+                and not ANSWER.match(block_text(group))
                 and (line_text(prev).endswith(" ") or (
                     len(line_text(line).split()) <= 3 and line_text(line).lstrip()[:1].islower()
                     and not line_text(prev).rstrip().endswith((".", "!", "?", ":"))
@@ -200,7 +202,15 @@ def keep_together(units):
 
 
 def group_markup(raw, size, key):
-    groups = merged_paragraphs(attach_list_numbers(raw))
+    separated = []
+    for group in raw:
+        start = 0
+        for i, line in enumerate(group[1:], 1):
+            if key and ANSWER.match(line_text(line).strip()):
+                separated.append(group[start:i])
+                start = i
+        separated.append(group[start:])
+    groups = merged_paragraphs(attach_list_numbers(separated))
     pending = []
     header = ""
     kind = "prose"
@@ -217,14 +227,18 @@ def group_markup(raw, size, key):
         text = block_text(group)
         mark = "answer" if key and ANSWER.match(text) else ""
         if not key:
-            if EXERCISE.match(text):
+            label = re.sub(r"^[^\w]+", "", text)
+            if EXERCISE.match(text) or re.match(r"^(Prática controlada|Atividade de (recordação|fixação)|Atividade \d)", label, re.I):
                 mark = "exercise"
+            elif re.match(r"^(Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|Linguagem (útil|de apoio)|Suporte para planejamento|Apoio para o planejamento)", label, re.I):
+                mark = "topic"
             elif TIP.match(text):
                 mark = "tip"
             elif GOALS.match(text):
                 mark = "goals"
             elif (group[0]["spans"][0]["size"] >= size * 1.17 and len(text) < 140
-                  and group[0]["spans"][0]["flags"] & 16) or re.search(r"Critérios de sucesso", text):
+                  and group[0]["spans"][0]["flags"] & 16
+                  and not re.match(r"^(Coluna [AB]|Tarefa de escuta|Perguntas de Escuta|Perguntas sobre o script)\b", label, re.I)) or re.search(r"Critérios de sucesso", text):
                 mark = "topic"
         if mark:
             item = flush()
@@ -243,8 +257,15 @@ def group_markup(raw, size, key):
             markup = plain_html(group)
             if not key:
                 markup = blank_lines(markup)
-            pending.append(f'<div class="para">{markup}</div>')
-            if not header and kind == "prose":
+            if re.fullmatch(r"\d{1,2}", text):
+                pending.append(f'<div class="para step-marker">{markup}</div>')
+            else:
+                if pending and 'class="para step-marker"' in pending[-1]:
+                    marker = pending.pop()
+                    pending.append(f'<div class="para keep-together">{marker}{markup}</div>')
+                else:
+                    pending.append(f'<div class="para">{markup}</div>')
+            if not header and kind == "prose" and not re.fullmatch(r"\d{1,2}", text):
                 item = flush()
                 if item:
                     yield item
@@ -363,6 +384,31 @@ def detected_tables(page, raw):
             rows.append(cells)
         if len(rows) > 1 and any(rows[0]) and any(any(row) for row in rows[1:]):
             ranges.append((indices[0], indices[-1] + 1, rows))
+    # Some Gamma tables use shaded cards without visible rules.
+    header = re.compile(r"^(Expressão|Verbo \(base\)|Palavra|Critério|#|Afirmação|Item|Nº)$", re.I)
+    occupied = {i for a, b, _ in ranges for i in range(a, b)}
+    for i, group in enumerate(raw):
+        if i in occupied or len(group) < 2 or not header.fullmatch(line_text(group[0]).strip()):
+            continue
+        top = group[0]["spans"][0]["origin"][1]
+        cols = [line["bbox"][0] for line in group if abs(line["spans"][0]["origin"][1] - top) < 3]
+        if len(cols) < 2 or min(b - a for a, b in zip(cols, cols[1:])) < 25:
+            continue
+        end = i + 1
+        last_y = top
+        while end < len(raw) and end not in occupied:
+            row = raw[end]
+            x, y = row[0]["spans"][0]["origin"]
+            column = min(range(len(cols)), key=lambda c: abs(cols[c] - x))
+            if (not -1 < y - last_y <= 43 or abs(x-cols[column]) > 6
+                or not all(min(abs(l["bbox"][0] - x0) for x0 in cols) < 7 for l in row)):
+                break
+            end += 1
+            last_y = y
+        rows = table_rows(raw[i:end])
+        if len(rows) > 2:
+            ranges.append((i, end, rows))
+            occupied.update(range(i, end))
     return sorted(ranges, key=lambda match: match[0])
 
 
@@ -375,7 +421,7 @@ def wave_section(page, raw, key):
         if left < start:
             continue
         units.extend(group_markup(raw[start:left], size, key))
-        leader = units.pop() if units and units[-1].startswith('<article class="unit-card answer"') else ""
+        leader = units.pop() if units and re.search(r'<article class="unit-card (answer|topic|exercise)">', units[-1]) else ""
         for i in range(1, len(rows), 6):
             table = table_markup([rows[0], *rows[i:i + 6]])
             units.append(f'<div class="table-bundle">{leader}{table}</div>')
@@ -406,6 +452,11 @@ def construct(source, images, theme, level, wave_title, openers):
                 raw = [[line for line in cover_lines if line_text(line).strip() == wave_title],
                        [line for line in cover_lines if line_text(line).strip() != wave_title], *raw[1:]]
         key = re.search(r"^(Answer key|Gabarito)", first, re.I) is not None
+        if wave_title and key and len(raw[0]) > 1:
+            contents = [line for line in raw[0] if ANSWER.match(line_text(line).strip())]
+            if contents:
+                raw = [[line for line in raw[0] if line not in contents], contents, *raw[1:]]
+                first, subtitles = split_title(raw[0])
         art_path = images / f"orig-{original:02d}.webp"
         if original == 1:
             # Retain the previous cover text in the opening spread, under the original folio.
