@@ -58,8 +58,9 @@ function fits(container, child, bottom) {
   return false;
 }
 
-function splitArticle(article) {
-  if (!article.matches("article.unit-card")) return null;
+function splitArticle(unit) {
+  const article = unit.matches("article.unit-card") ? unit : unit.lastElementChild;
+  if (!article?.matches("article.unit-card")) return null;
   const paragraphs = [...article.querySelectorAll(":scope > .para")];
   if (paragraphs.length < 2) return null;
   const middle = Math.ceil(paragraphs.length / 2);
@@ -145,7 +146,15 @@ function layOut(section) {
       todo.splice(1, 0, continuation);
       continue;
     }
-    todo.splice(0, count);
+    let placed = count;
+    const lastColumn = columns.findLast(column => column.lastElementChild);
+    if (count >= 3 && lastColumn && todo.length === count + 1 &&
+        todo[count].textContent.trim().split(/\s+/).length <= 22 &&
+        !lastColumn.lastElementChild.matches(".table-bundle")) {
+      lastColumn.lastElementChild.remove();
+      placed -= 1;
+    }
+    todo.splice(0, placed);
     if (columns.length > 1) rebalance(columns[0], columns[1], limit);
     const height = page.querySelector(".grid").getBoundingClientRect().height;
     function occupation(col) {

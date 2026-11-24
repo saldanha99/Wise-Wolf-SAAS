@@ -26,12 +26,27 @@ SCHOOL_TABLES = {
     14: ((15, 21), (27, 32), (37, 42)),
 }
 NUMBER = re.compile(r"^\d+[.)]$")
-STEP = re.compile(r"^\d{1,2}(?:\s*[–-]\s*\d{1,2})?$")
+STEP = re.compile(r"^\d{1,2}(?:\s*[–/-]\s*\d{1,2}|\+)?$")
 EXERCISE = re.compile(
     r"^(?:(?:[\W_]+ )?(?:Exercise|Exercício|Atividade|Tarefa)\s*(?:\d+\b|[A-E]\s*[—:-]|de recuperação)"
     r"|Parte [A-D] —|Prática controlada\b)", re.I,
 )
 ANSWER = re.compile(r"^(?:Page|Página) \d+\s*[·—]", re.I)
+ANSWER_EXERCISE = re.compile(r"^(?:Exercício|Ex\.)\s*\d+\s*[—:-]\s*[^:]{1,48}:?\s*$", re.I)
+ANSWER_PART = re.compile(r"^Parte [A-D1-9](?:$|\s*[:—-])", re.I)
+TOPIC = re.compile(
+    r"^(?:Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|"
+    r"Linguagem (?:útil|de apoio)|Suporte para planejamento|Apoio para o planejamento|"
+    r"Etapa \d|Autoavaliação|Estratégias de comunicação|Como as habilidades trabalham juntas|"
+    r"Opções de colaboração|Entregas (?:do projeto|obrigatórias)|Comece assim|"
+    r"Área \d|Parte \d|Parte [A-D] —|Self[- ]check|Quick retrieval|Retrieval activity|"
+    r"Atividade Rápida|Tarefas de Compreensão|Phrasal Verb Glossary|Project Stages)\b", re.I,
+)
+TABLE_HEADER = re.compile(
+    r"^(?:Expressão|Estrutura|Verbo(?: \(base\))?|Pronome|Palavra(?: / Expressão)?|"
+    r"Critério|Função|Situação|Singular|Categoria|Cumprimentos e despedidas|"
+    r"#|Q|Afirmação|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Ponto gramatical)$", re.I,
+)
 TIP = re.compile(r"^(?:[💡⚠⭐✅️ ]*)(?:Common errors|Erros comuns|Exemplo de início|Reciclar vocabulário)", re.I)
 GOALS = re.compile(r"^(?:[✅️ ]*)(?:Your goals|Can-do goals|Can-do outcomes)", re.I)
 BODY = " ".join
@@ -66,13 +81,27 @@ def source_groups(page, title):
             continue
         label = block_text(lines)
         x, y, _, _ = block["bbox"]
-        if x < 18 and y < 24 and (label == title or (title and re.fullmatch(re.escape(title) + r"\s+[ABC][12]", label))):
+        if x < 18 and y < 24 and title and (
+            label == title or label.startswith(title + ":")
+            or label.casefold().replace(" and ", " & ") == title.casefold()
+            or re.fullmatch(re.escape(title) + r"\s+[ABC][12]", label)
+        ):
             continue
         if y > page.rect.height - 28 and (
             label.startswith("Uso em aula pelo professor assinante") or label == str(page.number + 1)
         ):
             continue
+        if y > page.rect.height - 4 and x < 18 and len(lines) > 2 and (
+            line_text(lines[-1]).strip() == str(page.number + 1)
+            and all(len(line_text(line).strip()) == 1 for line in lines[:-1])
+        ):
+            continue
         yield lines
+
+
+def is_answer_heading(group):
+    label = re.sub(r"^[^\w]+", "", block_text(group))
+    return bool(ANSWER.match(label) or ANSWER_PART.match(label))
 
 
 def table_rows(groups):
@@ -94,7 +123,7 @@ def table_rows(groups):
 
 def table_markup(rows):
     def row(cells, tag):
-        return "<tr>" + "".join(f"<{tag}>{cell}</{tag}>" for cell in cells) + "</tr>"
+        return "<tr>" + "".join(f"<{tag}>{blank_lines(cell)}</{tag}>" for cell in cells) + "</tr>"
     return (
         '<div class="table-card"><table><thead>' + row(rows[0], "th") +
         "</thead><tbody>" + "".join(row(cells, "td") for cells in rows[1:]) +
@@ -209,7 +238,11 @@ def group_markup(raw, size, key):
         start = 0
         for i, line in enumerate(group):
             value = line_text(line).strip()
-            split = (key and ANSWER.match(value)) or STEP.fullmatch(value) or re.match(r"^Etapa \d", value, re.I)
+            label = re.sub(r"^[^\w]+", "", value)
+            split = (
+                (key and (ANSWER.match(label) or ANSWER_PART.match(label) or ANSWER_EXERCISE.match(label)))
+                or STEP.fullmatch(value) or TOPIC.match(label)
+            )
             if split and i > start:
                 separated.append(group[start:i])
                 start = i
@@ -229,12 +262,13 @@ def group_markup(raw, size, key):
 
     for group in groups:
         text = block_text(group)
-        mark = "answer" if key and (ANSWER.match(text) or re.match(r"^Exercício \d.+:\s*$", text, re.I)) else ""
+        label = re.sub(r"^[^\w]+", "", text)
+        mark = "answer" if key and (ANSWER.match(label) or ANSWER_PART.match(label) or ANSWER_EXERCISE.match(label)
+                                   or re.match(r"^Exercício \d.+:\s*$", label, re.I)) else ""
         if not key:
-            label = re.sub(r"^[^\w]+", "", text)
             if EXERCISE.match(text) or re.match(r"^(Prática controlada|Atividade de (recordação|fixação)|Atividade \d|[A-D] — Compreensão)", label, re.I):
                 mark = "exercise"
-            elif re.match(r"^(Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|Linguagem (útil|de apoio)|Suporte para planejamento|Apoio para o planejamento|Etapa \d|Autoavaliação|Estratégias de comunicação)", label, re.I):
+            elif TOPIC.match(label):
                 mark = "topic"
             elif TIP.match(text):
                 mark = "tip"
@@ -360,7 +394,7 @@ def grouped_section(page_number, raw, school, key):
     return list(group_markup(body, size, key))
 
 
-def detected_tables(page, raw):
+def detected_tables(page, raw, key=False):
     tables = page.find_tables(strategy="lines_strict").tables
     ranges = []
     for table in tables:
@@ -372,6 +406,8 @@ def detected_tables(page, raw):
             if all(box.contains(pymupdf.Point(line["spans"][0]["origin"])) for line in group)
         ]
         if not indices or indices != list(range(indices[0], indices[-1] + 1)):
+            continue
+        if key and any(is_answer_heading(raw[index]) for index in indices):
             continue
         rows = []
         for row in table.rows:
@@ -390,10 +426,10 @@ def detected_tables(page, raw):
         if len(rows) > 1 and any(rows[0]) and any(any(row) for row in rows[1:]):
             ranges.append((indices[0], indices[-1] + 1, rows))
     # Some Gamma tables use shaded cards without visible rules.
-    header = re.compile(r"^(Expressão|Verbo \(base\)|Palavra|Critério|#|Afirmação|Item|Nº|Parte|Coluna A|Ponto gramatical)$", re.I)
     occupied = {i for a, b, _ in ranges for i in range(a, b)}
     for i, group in enumerate(raw):
-        if i in occupied or len(group) < 2 or not header.fullmatch(line_text(group[0]).strip()):
+        label = re.sub(r"^[^\w#]+", "", line_text(group[0]).strip())
+        if i in occupied or len(group) < 2 or not TABLE_HEADER.fullmatch(label):
             continue
         top = group[0]["spans"][0]["origin"][1]
         cols = [line["bbox"][0] for line in group if abs(line["spans"][0]["origin"][1] - top) < 3]
@@ -403,13 +439,20 @@ def detected_tables(page, raw):
         last_y = top
         while end < len(raw) and end not in occupied:
             row = raw[end]
+            if (key and is_answer_heading(row)) or (
+                len(row) > 1 and TABLE_HEADER.fullmatch(line_text(row[0]).strip())
+                and row[0]["spans"][0]["flags"] & 16
+            ):
+                break
             x, y = row[0]["spans"][0]["origin"]
             column = min(range(len(cols)), key=lambda c: abs(cols[c] - x))
-            if (not -1 < y - last_y <= 43 or abs(x-cols[column]) > 6
+            if (not -1 < y - last_y <= 56 or abs(x-cols[column]) > 6
                 or not all(min(abs(l["bbox"][0] - x0) for x0 in cols) < 7 for l in row)):
                 break
             end += 1
-            last_y = y
+            last_y = max(line["spans"][0]["origin"][1] for line in row if line["spans"])
+            if end < len(raw) and abs(raw[end][0]["spans"][0]["origin"][1] - y) < 3:
+                last_y = y
         rows = table_rows(raw[i:end])
         if len(rows) > 2:
             ranges.append((i, end, rows))
@@ -422,11 +465,11 @@ def wave_section(page, raw, key):
     size = size[0][0] if size else 10
     units = []
     start = 1
-    for left, right, rows in detected_tables(page, raw):
+    for left, right, rows in detected_tables(page, raw, key):
         if left < start:
             continue
         units.extend(group_markup(raw[start:left], size, key))
-        leader = units.pop() if units and re.search(r'<article class="unit-card (answer|topic|exercise)">', units[-1]) else ""
+        leader = units.pop() if units and re.search(r'<article class="unit-card (answer|topic|exercise|tip)">', units[-1]) else ""
         for i in range(1, len(rows), 6):
             table = table_markup([rows[0], *rows[i:i + 6]])
             units.append(f'<div class="table-bundle">{leader}{table}</div>')
@@ -434,12 +477,14 @@ def wave_section(page, raw, key):
         start = right
     units.extend(group_markup(raw[start:], size, key))
     result = []
+    headings = []
     for unit in units:
-        if result and re.fullmatch(r'<article class="unit-card topic"><h3>.*?</h3></article>', result[-1]):
-            previous = result.pop()
-            result.append(keep_together([previous, unit]))
-        else:
-            result.append(unit)
+        if re.fullmatch(r'<article class="unit-card (?:topic|answer|tip|goals)">(?:<div class="para step-marker">.*?</div>)?<h3>.*?</h3></article>', unit):
+            headings.append(unit)
+            continue
+        result.append(keep_together([*headings, unit]) if headings else unit)
+        headings.clear()
+    result.extend(headings)
     return result
 
 
