@@ -32,20 +32,20 @@ EXERCISE = re.compile(
     r"|Parte [A-D] —|Prática controlada\b)", re.I,
 )
 ANSWER = re.compile(r"^(?:Page|Página) \d+\s*[·—]", re.I)
-ANSWER_EXERCISE = re.compile(r"^(?:Exercício|Ex\.)\s*\d+\s*[—:-]\s*[^:]{1,48}:?\s*$", re.I)
-ANSWER_PART = re.compile(r"^Parte [A-D1-9](?:$|\s*[:—-])", re.I)
+ANSWER_EXERCISE = re.compile(r"^(?:Exercício|Ex\.)\s*\d+\s*[—:-]\s*[^\W\d_][^:]{2,47}:?\s*$", re.I)
+ANSWER_PART = re.compile(r"^(?:Part|Parte) [A-D1-9](?:$|\s*[:—-])", re.I)
 TOPIC = re.compile(
     r"^(?:Listening Script|Script de Escuta|Roteiro de escuta|Resultado|Pronúncia —|"
     r"Linguagem (?:útil|de apoio)|Suporte para planejamento|Apoio para o planejamento|"
     r"Etapa \d|Autoavaliação|Estratégias de comunicação|Como as habilidades trabalham juntas|"
-    r"Opções de colaboração|Entregas (?:do projeto|obrigatórias)|Comece assim|"
+    r"Opções de colaboração|Entregas (?:do projeto|obrigatórias)|Comece assim|Estrutura sugerida|Watch out|Rotina(?=:)|"
     r"Área \d|Parte \d|Parte [A-D] —|Self[- ]check|Quick retrieval|Retrieval activity|"
     r"Atividade Rápida|Tarefas de Compreensão|Phrasal Verb Glossary|Project Stages)\b", re.I,
 )
 TABLE_HEADER = re.compile(
     r"^(?:Expressão|Estrutura|Verbo(?: \(base\))?|Pronome|Palavra(?: / Expressão)?|"
     r"Critério|Função|Situação|Singular|Categoria|Cumprimentos e despedidas|"
-    r"#|Q|Afirmação|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Ponto gramatical)$", re.I,
+    r"#|Q|Afirmação|Item|Nº|Parte|Coluna A|A\s*[—-]\s*Expressão|Exercício / Item|Ponto gramatical)$", re.I,
 )
 TIP = re.compile(r"^(?:[💡⚠⭐✅️ ]*)(?:Common errors|Erros comuns|Exemplo de início|Reciclar vocabulário)", re.I)
 GOALS = re.compile(r"^(?:[✅️ ]*)(?:Your goals|Can-do goals|Can-do outcomes)", re.I)
@@ -82,7 +82,7 @@ def source_groups(page, title):
         label = block_text(lines)
         x, y, _, _ = block["bbox"]
         if x < 18 and y < 24 and title and (
-            label == title or label.startswith(title + ":")
+            label == title or label.startswith((title + ":", title + " "))
             or label.casefold().replace(" and ", " & ") == title.casefold()
             or re.fullmatch(re.escape(title) + r"\s+[ABC][12]", label)
         ):
@@ -263,6 +263,7 @@ def group_markup(raw, size, key):
     for group in groups:
         text = block_text(group)
         label = re.sub(r"^[^\w]+", "", text)
+        standalone_marker = STEP.fullmatch(text) or NUMBER.fullmatch(text)
         mark = "answer" if key and (ANSWER.match(label) or ANSWER_PART.match(label) or ANSWER_EXERCISE.match(label)
                                    or re.match(r"^Exercício \d.+:\s*$", label, re.I)) else ""
         if not key:
@@ -276,6 +277,8 @@ def group_markup(raw, size, key):
                 mark = "goals"
             elif (group[0]["spans"][0]["size"] >= size * 1.17 and len(text) < 140
                   and group[0]["spans"][0]["flags"] & 16
+                  and not standalone_marker
+                  and not (kind == "exercise" and label.casefold() in {"verbos", "substantivos"})
                   and not re.match(r"^(Coluna [AB]|Tarefa de escuta|Perguntas de Escuta|Perguntas sobre o script)\b", label, re.I)) or re.search(r"Critérios de sucesso", text):
                 mark = "topic"
         if mark:
@@ -296,7 +299,7 @@ def group_markup(raw, size, key):
             markup = plain_html(group)
             if not key:
                 markup = blank_lines(markup)
-            if STEP.fullmatch(text):
+            if standalone_marker:
                 pending.append(f'<div class="para step-marker">{markup}</div>')
             else:
                 if pending and 'class="para step-marker"' in pending[-1]:
@@ -304,7 +307,7 @@ def group_markup(raw, size, key):
                     pending.append(f'<div class="para keep-together">{marker}{markup}</div>')
                 else:
                     pending.append(f'<div class="para">{markup}</div>')
-            if not header and kind == "prose" and not STEP.fullmatch(text):
+            if not header and kind == "prose" and not standalone_marker:
                 item = flush()
                 if item:
                     yield item
@@ -447,7 +450,8 @@ def detected_tables(page, raw, key=False):
             x, y = row[0]["spans"][0]["origin"]
             column = min(range(len(cols)), key=lambda c: abs(cols[c] - x))
             if (not -1 < y - last_y <= 56 or abs(x-cols[column]) > 6
-                or not all(min(abs(l["bbox"][0] - x0) for x0 in cols) < 7 for l in row)):
+                or not all(min(abs(l["bbox"][0] - x0) for x0 in cols) < 7
+                           or line_text(l).strip() in {"+", "="} for l in row)):
                 break
             end += 1
             last_y = max(line["spans"][0]["origin"][1] for line in row if line["spans"])
@@ -488,6 +492,20 @@ def wave_section(page, raw, key):
     return result
 
 
+def cover_groups(groups, title):
+    for index, group in enumerate(groups):
+        for start in range(len(group)):
+            for end in range(start + 1, len(group) + 1):
+                title_lines = group[start:end]
+                if block_text(title_lines) != title:
+                    continue
+                other = [part for part in (group[:start], group[end:]) if part]
+                return [title_lines, *groups[:index], *other, *groups[index + 1:]]
+    # The cover can use a catalog title that's styled differently in the source.
+    # Keep every original group on the facing page when no exact title matches.
+    return [[], *groups]
+
+
 def construct(source, images, theme, level, wave_title, openers):
     title = wave_title or source_title(source)
     school = theme == "school"
@@ -502,12 +520,8 @@ def construct(source, images, theme, level, wave_title, openers):
         raw = list(source_groups(pg, title))
         first, subtitles = split_title(raw[0])
         if original == 1 and wave_title:
-            title_index = next((i for i, group in enumerate(raw) if block_text(group) == wave_title), 0)
-            raw[0], raw[title_index] = raw[title_index], raw[0]
-            cover_lines = raw[0]
-            if len(cover_lines) > 1 and any(line_text(line).strip() == wave_title for line in cover_lines):
-                raw = [[line for line in cover_lines if line_text(line).strip() == wave_title],
-                       [line for line in cover_lines if line_text(line).strip() != wave_title], *raw[1:]]
+            raw = cover_groups(raw, wave_title)
+            subtitles = []
         key = re.search(r"^(Answer key|Gabarito)", first, re.I) is not None
         if wave_title and key and len(raw[0]) > 1:
             contents = [line for line in raw[0] if ANSWER.match(line_text(line).strip())]
@@ -528,6 +542,8 @@ def construct(source, images, theme, level, wave_title, openers):
             "skill": icon(first),
         })
     css = (HERE / "editorial_v2.css").read_text()
+    symbol_font = (HERE / "fonts" / "NotoSansMath-elocucoes.ttf").as_uri()
+    css += f'\n@font-face {{ font-family: "Editorial Symbols"; src: url("{symbol_font}"); unicode-range: U+2322; }}'
     js = (HERE / "paginate_v2.js").read_text()
     data = json.dumps({
         "title": title, "level": level, "imprint": imprint, "logo": logo,

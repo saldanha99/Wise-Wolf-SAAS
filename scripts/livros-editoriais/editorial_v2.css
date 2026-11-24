@@ -12,7 +12,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--paper);
-  font: 11pt/1.39 "DejaVu Sans", sans-serif;
+  font: 11pt/1.39 "DejaVu Sans", "Editorial Symbols", sans-serif;
   print-color-adjust: exact;
 }
 body.school {

@@ -149,8 +149,7 @@ function layOut(section) {
     let placed = count;
     const lastColumn = columns.findLast(column => column.lastElementChild);
     if (count >= 3 && lastColumn && todo.length === count + 1 &&
-        todo[count].textContent.trim().split(/\s+/).length <= 22 &&
-        !lastColumn.lastElementChild.matches(".table-bundle")) {
+        todo[count].textContent.trim().split(/\s+/).length <= 22) {
       lastColumn.lastElementChild.remove();
       placed -= 1;
     }
@@ -190,6 +189,15 @@ function layOut(section) {
       if (columns.some(col => col.lastElementChild?.getBoundingClientRect().bottom > limit)) {
         page.style.removeProperty("--room");
         page.style.removeProperty("--reading-size");
+      }
+    }
+    if (pageFill() < .4 && !todo.length) {
+      for (const column of columns) {
+        const available = Math.min(290, height * (.72 - occupation(column)));
+        if (available > 65 && !column.querySelector(".notes")) {
+          const rules = "<i></i>".repeat(Math.floor(available / 33));
+          fits(column, node(`<div class="notes" aria-hidden="true" style="height:${available}px">${rules}</div>`), limit);
+        }
       }
     }
     const fill = pageFill();
