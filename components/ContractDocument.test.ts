@@ -257,7 +257,7 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
     expect(v3).toContain('Cláusula 9 — Dos Feriados e do Recesso');
     expect(v3).toContain('Cláusula 10 — Do Foro');
     expect(v3).toMatch(/sem direito a reposição nem a abatimento/);
-    expect(v3).toMatch(/antecedência mínima de (<strong>)?30 \(trinta\) dias/);
+    expect(v3).toMatch(/antecedência mínima de (<strong>)?20 \(vinte\) dias/);
     expect(v3.indexOf('Cláusula 8 — Do Registro das Aulas')).toBeLessThan(v3.indexOf('Cláusula 9 — Dos Feriados e do Recesso'));
     // Quem assinou a v2 continua vendo a v2, sem a cláusula nova.
     const v2Signed = studentClauses(student({ acceptedAt: SIGNED_AT, termsVersion: 2 }));

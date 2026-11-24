@@ -23,8 +23,17 @@
 - **Tela:** `lib/schoolClosure.ts` — "Feriado (remunerada)" / "Recesso (remunerada)" em violeta nos relatórios do
   professor, fechamento, Financeiro, perfis e histórico. Tour `2026-11-24-zz-feriado-e-recesso-remunerados`.
 - **Contrato do aluno v3** (só contratos NOVOS e rematrículas pela página): Cláusula 9 — Dos Feriados e do Recesso
-  (aviso do recesso com 30 dias; aulas desses dias são parte regular do período, sem reposição nem abatimento), Foro
+  (aviso do recesso com 20 dias; aulas desses dias são parte regular do período, sem reposição nem abatimento), Foro
   na 10; avulso não traz. `tenant_contract_terms` da Wise Wolf (STUDENT) 2 → 3. Quem assinou v1/v2 não muda.
+- **Aviso do recesso só por pop-up (Vinícius, 24/11): nada de WhatsApp nem e-mail.** `public.platform_notices` (escola,
+  público STUDENT/TEACHER, título, texto, janela, `slug`) + `public.platform_notice_acknowledgements` (prova do "Entendi":
+  usuário, papel, escola, data e hora; imutável por gatilho). RPCs `my_pending_platform_notices()` e
+  `acknowledge_platform_notice(id)`; modal `components/PlatformNotice.tsx` (aluno e professor, depois do pop-up do feriado e
+  da aula começando; falha ao gravar mantém o aviso com "Tentar de novo"). Recesso 2026: de 01/12/2026 00:00 a 02/01/2027
+  (BRT). Reusar = linha nova na tabela. **WhatsApp do feriado nacional (D7/D1) desligado na Wise Wolf**
+  (`national_holiday_notice_settings.whatsapp_enabled = false`, remendo em `queue_national_holiday_notices`); o pop-up do
+  feriado continua. Religar: `update private.national_holiday_notice_settings set whatsapp_enabled = true where tenant_id =
+  'school-wise-wolf';`.
 - **Teste:** `supabase/tests/feriados_e_recesso_remunerados.sql` (25/12, recesso, contrato antigo × novo, professor
   com e sem aula, guardas, nenhuma mensagem/reposição/confirmação/trilha).
 - **Rollback:** desligar sem desfazer nada: `update private.school_closure_settings set enabled = false where tenant_id

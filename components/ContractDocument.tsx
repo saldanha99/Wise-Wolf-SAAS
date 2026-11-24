@@ -254,7 +254,7 @@ function StudentHolidayClause() {
                 Cláusula 9 — Dos Feriados e do Recesso
             </h3>
             <p className={clauseText}>
-                Não haverá aulas nos feriados nacionais nem no recesso de fim de ano, cujas datas serão informadas pela <strong>CONTRATADA</strong> com antecedência mínima de <strong>30 (trinta) dias</strong>. As aulas previstas nesses dias são consideradas parte regular do período contratado, <strong>sem direito a reposição nem a abatimento</strong> na mensalidade.
+                Não haverá aulas nos feriados nacionais nem no recesso de fim de ano, cujas datas serão informadas pela <strong>CONTRATADA</strong> com antecedência mínima de <strong>20 (vinte) dias</strong>. As aulas previstas nesses dias são consideradas parte regular do período contratado, <strong>sem direito a reposição nem a abatimento</strong> na mensalidade.
             </p>
             <p className={`${clauseText} mt-1`}>
                 <strong>Parágrafo único.</strong> Consideram-se feriados nacionais os definidos em lei federal e a Sexta-feira da Paixão. Feriados estaduais e municipais e pontos facultativos (como o Carnaval e o Corpus Christi) não suspendem as aulas.
