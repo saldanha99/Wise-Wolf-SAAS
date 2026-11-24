@@ -138,9 +138,12 @@ def item_markup(lines):
         visual = sorted(row, key=lambda line: line["bbox"][0])
         number = None
         fragments = []
-        for line in visual:
-            if NUMBER.fullmatch(block_text([line])):
+        for index, line in enumerate(visual):
+            label = block_text([line])
+            if NUMBER.fullmatch(label):
                 number = runs([line])
+            elif index == 0 and len(visual) > 1 and label.isdecimal():
+                number = runs([line]) + "."
             else:
                 fragments.append(runs([line]))
         if number or not items:
@@ -239,9 +242,15 @@ def group_markup(raw, size, key):
         for i, line in enumerate(group):
             value = line_text(line).strip()
             label = re.sub(r"^[^\w]+", "", value)
+            x, y = line["spans"][0]["origin"]
+            paired_number = value.isdecimal() and any(
+                other["spans"][0]["origin"][0] > x + 3
+                and abs(other["spans"][0]["origin"][1] - y) < 2
+                for other in group
+            )
             split = (
                 (key and (ANSWER.match(label) or ANSWER_PART.match(label) or ANSWER_EXERCISE.match(label)))
-                or STEP.fullmatch(value) or TOPIC.match(label)
+                or (STEP.fullmatch(value) and not paired_number) or TOPIC.match(label)
             )
             if split and i > start:
                 separated.append(group[start:i])
