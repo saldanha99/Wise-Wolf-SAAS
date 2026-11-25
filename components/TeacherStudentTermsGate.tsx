@@ -67,11 +67,11 @@ export default function TeacherStudentTermsGate({ blocked, onActiveChange, onLog
           <li>A direção assina o termo e você recebe um aviso no WhatsApp.</li>
           <li>Volte aqui, abra o termo do aluno e toque em <strong>“Assinar esta versão”</strong>.</li>
         </>
-        : <li>A escola já assinou. Abra o termo do aluno abaixo, confira, digite seu nome completo e toque em <strong>“Assinar esta versão”</strong>. Se não puder assumir, use <strong>Recusar</strong>.</li>}
+        : <li>A escola já assinou. Abra o termo do aluno abaixo, confira, digite seu nome completo e toque em <strong>“Assinar esta versão”</strong>. <strong>Não pode assumir este aluno?</strong> Toque em <strong>Recusar</strong> no termo dele: a escola é avisada e procura outro professor.</li>}
     </ol>
     <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">Enquanto isso não for feito, as aulas desse aluno não entram na sua agenda.</p>
     {pending === null ? <p role="status" className="flex items-center gap-2"><Loader2 className="animate-spin" size={18} /> Carregando…</p>
-      : <TeacherStudentTerms openIdentity={needsIdentity} onLoaded={apply} />}
+      : <TeacherStudentTerms openIdentity={needsIdentity} onLoaded={apply} onlyPending />}
     <button type="button" onClick={onLogout} className="mt-5 w-full py-2 text-sm text-slate-500 dark:text-slate-400">Sair da conta do portal</button>
   </dialog>;
 }

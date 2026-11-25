@@ -1,9 +1,11 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import TermSignatureContactCard from './TermSignatureContactCard';
-import {downloadIndividualTermPdf,individualTermPhase,termAgenda,termCanSign,type IndividualTerm,type IndividualTermsData,type ProviderDetails} from '../lib/teacherStudentTerms';
+import {downloadIndividualTermPdf,individualTermPhase,teacherTermsNeedingAction,termAgenda,termCanSign,type IndividualTerm,type IndividualTermsData,type ProviderDetails} from '../lib/teacherStudentTerms';
 const emptyIdentity:ProviderDetails={companyName:'',cnpj:'',companyAddress:'',representativeCpf:''};
-export default function TeacherStudentTerms({compact=false,onLoaded,openIdentity=false,studentId}:{compact?:boolean;onLoaded?:(data:IndividualTermsData)=>void;openIdentity?:boolean;studentId?:string}){
+// onlyPending: o pop-up obrigatório mostra só o que espera o professor; listar os termos já
+// assinados ali fez a Teacher Laís achar que estava presa em contratos antigos (25/11/2026).
+export default function TeacherStudentTerms({compact=false,onLoaded,openIdentity=false,studentId,onlyPending=false}:{compact?:boolean;onLoaded?:(data:IndividualTermsData)=>void;openIdentity?:boolean;studentId?:string;onlyPending?:boolean}){
  const [data,setData]=useState<IndividualTermsData|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState<IndividualTerm|null>(null);
  const [signature,setSignature]=useState(''),[accepted,setAccepted]=useState(false),[authority,setAuthority]=useState(false),[identity,setIdentity]=useState(emptyIdentity),[identityAuthority,setIdentityAuthority]=useState(false),[showIdentity,setShowIdentity]=useState(openIdentity),[showPrepare,setShowPrepare]=useState(false);
  const [justSigned,setJustSigned]=useState(false);
@@ -18,7 +20,7 @@ export default function TeacherStudentTerms({compact=false,onLoaded,openIdentity
  if(!data.enabled&&data.terms.length===0)return null;
  const staff=['SCHOOL_ADMIN','COORDINATOR'].includes(data.role),family=data.role==='STUDENT';
  // Na ficha do aluno: só o que ainda está pendente para ele.
- const terms=studentId?data.terms.filter(t=>t.student_id===studentId&&t.status==='PROPOSED'&&!t.retired_at):compact?data.terms.filter(t=>t.status==='PROPOSED').slice(0,6):data.terms;
+ const terms=studentId?data.terms.filter(t=>t.student_id===studentId&&t.status==='PROPOSED'&&!t.retired_at):onlyPending?teacherTermsNeedingAction(data):compact?data.terms.filter(t=>t.status==='PROPOSED').slice(0,6):data.terms;
  if(studentId&&terms.length===0&&!error)return justSigned?<p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Termo assinado. As aulas fixas entram na agenda em até 2 minutos.</p>:null;
  if(compact&&terms.length===0&&!error)return null;
  const open=(t:IndividualTerm)=>{setSelected(t);setSignature('');setAccepted(false);setAuthority(false);};

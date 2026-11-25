@@ -53,6 +53,20 @@ describe('pendência do termo por aluno do professor', () => {
     expect(screen.queryByText(/aluno novo/)).not.toBeInTheDocument();
   });
 
+  it('mostra só o termo pendente, não os já assinados (caso da Teacher Laís)', async () => {
+    const mixed = data('TEACHER_PENDING');
+    mixed.terms = [
+      { ...base, id: 'pend', student_name: 'Júlio Fixture', phase: 'TEACHER_PENDING' },
+      { ...base, id: 'old', student_name: 'Marcela Antiga', phase: 'EXECUTED', status: 'EXECUTED', teacher_signed_at: '2026-11-11T23:00:00Z' },
+    ];
+    rpc.mockResolvedValue({ data: mixed, error: null });
+    render(<TeacherStudentTermsGate blocked={false} onActiveChange={() => {}} onLogout={() => {}} />);
+    expect(await screen.findByText(/Você tem um aluno novo: Júlio Fixture/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/Júlio Fixture/).length).toBeGreaterThan(1));
+    expect(screen.queryByText(/Marcela Antiga/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Não pode assumir este aluno\?/)).toBeInTheDocument();
+  });
+
   it('espera o pop-up da conta Google', async () => {
     rpc.mockResolvedValue({ data: data('TEACHER_PENDING'), error: null });
     render(<TeacherStudentTermsGate blocked onActiveChange={() => {}} onLogout={() => {}} />);
