@@ -1819,6 +1819,20 @@ onClick texto → sendMessage() → unlockAudio()
 - ⚠️ Nenhuma delas pode ter prefixo `VITE_` nem entrar em arquivo versionado —
   elas vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root)
 
+### Monitor horário do realtime (`wolfie_health_log`) — corrigido em 24/11/2026
+- Cron `wisewolf-wolfie-health` (min 7) chama `trigger_wolfie_healthcheck()`, que dispara o
+  `wolfie-healthcheck` via pg_net e grava o id da requisição em
+  `private.wolfie_healthcheck_requests`. O cron `wisewolf-wolfie-health-collect` (min 9) chama
+  `collect_wolfie_healthcheck()`, que lê **só a resposta desse id** em `net._http_response`.
+- Bug anterior (25/10 → 24/11): o coletor lia a resposta mais nova do pg_net de **qualquer**
+  requisição. O sweeper do `wolfie-realtime-session` (a cada ~10 s) ganhava sempre, e todo check
+  saía `healthy=false`, com um WhatsApp de "Wolfie fora do ar" por dia. Era alarme falso.
+- Agora sem resposta, erro de transporte, HTTP ≠ 200 ou `healthy:false` = falha registrada.
+- Migration: `20261124040000_wolfie_health_collect_by_request_id.sql` (aditiva).
+- **Rollback:** `psql -U supabase_admin` com o `functions-before.sql` de
+  `/opt/wisewolf/backup-wolfie-health-collector-20261124T033049Z/` (publicado 24/11 03:30 UTC; recria as duas funções antigas). A tabela
+  nova pode ficar; não tem uso fora dessas funções.
+
 ---
 
 ## Verificação de Presença (anti-fraude) ✅ FUNCIONANDO
