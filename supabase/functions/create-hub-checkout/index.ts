@@ -224,9 +224,10 @@ function assertExactHubProviderPayment(
 
 /** _fbp/_fbc/página/navegador do checkout, validados e curtos (Purchase do CAPI). */
 function checkoutMarketing(body: Record<string, unknown>, req: Request) {
-  const raw = (body.marketing && typeof body.marketing === "object"
-    ? body.marketing
-    : {}) as Record<string, unknown>;
+  const raw =
+    (body.marketing && typeof body.marketing === "object"
+      ? body.marketing
+      : {}) as Record<string, unknown>;
   const pick = (value: unknown, pattern: RegExp, max: number) =>
     typeof value === "string" && value.length <= max && pattern.test(value)
       ? value
@@ -234,8 +235,13 @@ function checkoutMarketing(body: Record<string, unknown>, req: Request) {
   return {
     fbp: pick(raw.fbp, /^fb\.\d\.\d+\.\d+$/, 200),
     fbc: pick(raw.fbc, /^fb\.\d\.\d+\.[A-Za-z0-9_-]+$/, 300),
-    page_url: pick(raw.pageUrl, /^https:\/\/wisewolflanguage\.com\.br\/[A-Za-z0-9_\-/]*$/, 200),
-    client_user_agent: (req.headers.get("user-agent") ?? "").slice(0, 400) || null,
+    page_url: pick(
+      raw.pageUrl,
+      /^https:\/\/wisewolflanguage\.com\.br\/[A-Za-z0-9_\-/]*$/,
+      200,
+    ),
+    client_user_agent: (req.headers.get("user-agent") ?? "").slice(0, 400) ||
+      null,
   };
 }
 
@@ -362,7 +368,10 @@ serve(async (req) => {
         code: "UNSUPPORTED_BILLING_TYPE",
       });
     }
-    const billingType = requestedBillingType as "PIX" | "BOLETO" | "CREDIT_CARD";
+    const billingType = requestedBillingType as
+      | "PIX"
+      | "BOLETO"
+      | "CREDIT_CARD";
     const customerName = text(body.name, 160);
     const customerEmail = text(auth.context.user?.email || body.email)
       .toLowerCase();
@@ -978,7 +987,9 @@ serve(async (req) => {
       ...(testMode ? { testMode: true } : {}),
       // Atribuição para o Purchase do CAPI (asaas-webhook/hub-purchase-capi.ts): só os
       // identificadores do Meta, a página e o navegador; nada de dado pessoal novo.
-      ...(!resumableCheckout ? { marketing: checkoutMarketing(body, req) } : {}),
+      ...(!resumableCheckout
+        ? { marketing: checkoutMarketing(body, req) }
+        : {}),
       product_family: productFamily,
       provider_subscription_description:
         text(checkoutMetadata.provider_subscription_description, 240) ||

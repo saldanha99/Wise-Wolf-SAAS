@@ -95,7 +95,9 @@ export function classifyAiFailure(diag: readonly string[]): AiFailure {
 export function aiFailureAction(failure: AiFailure): string {
   const steps: string[] = [];
   if (failure.causes.includes("sem_credito")) {
-    steps.push("colocar crédito na Anthropic (console.anthropic.com → Billing)");
+    steps.push(
+      "colocar crédito na Anthropic (console.anthropic.com → Billing)",
+    );
   }
   if (failure.causes.includes("cota_excedida")) {
     steps.push(

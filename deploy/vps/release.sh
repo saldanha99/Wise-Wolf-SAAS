@@ -949,7 +949,6 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
-  supabase/functions/wolfie-realtime-session/tutor-brand.test.ts \
   supabase/functions/wolfie-lesson-track/core.test.ts \
   supabase/functions/wolfie-lesson-track/opener.test.ts \
   supabase/functions/hub-card-payment/core.test.ts \
@@ -965,6 +964,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   scripts/tests/wolfie-experience-catalog.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 npx --yes deno@2.9.5 test --allow-read --frozen \
+  supabase/functions/wolfie-realtime-session/tutor-brand.test.ts \
   scripts/asaas-adjudication/core.test.ts \
   supabase/functions/lesson-planner/source.test.ts \
   supabase/functions/accept-coverage/form-action.test.ts \
