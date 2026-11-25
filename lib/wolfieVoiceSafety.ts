@@ -1,3 +1,8 @@
+import {
+  transcriptConfirmationDecision,
+  type TranscriptConfirmationDecision,
+} from "../supabase/functions/wolfie-brain/factual-integrity.ts";
+
 export interface VoiceTranscriptAssessment {
   transcript: string;
   alternatives?: string[];
@@ -67,18 +72,38 @@ export const uniqueTranscriptAlternatives = (
     .slice(0, 4);
 };
 
-export const shouldConfirmVoiceTranscript = ({
+/**
+ * One rule for classic and live voice (see `transcriptConfirmationDecision`
+ * in the wolfie-brain): personal data waits for the learner, low confidence
+ * on a real sentence waits, a name/number at medium confidence goes by itself
+ * after 5 s, everything else is sent as heard. Alternatives from the ASR that
+ * disagree strongly also open the review (no auto-send).
+ */
+export const voiceTranscriptReviewDecision = ({
   transcript,
   alternatives = [],
   confidence,
-}: VoiceTranscriptAssessment): boolean => {
-  if (!transcript.trim()) return false;
-  if (containsPersonalFactClaim(transcript)) return true;
-  if (typeof confidence === "number" && confidence > 0 && confidence < 0.72) {
-    return true;
+}: VoiceTranscriptAssessment): TranscriptConfirmationDecision => {
+  if (!transcript.trim()) {
+    return { required: false, reason: null, autoConfirmAfterMs: null };
   }
-
-  return uniqueTranscriptAlternatives(transcript, alternatives).some(
+  const decision = transcriptConfirmationDecision(
+    transcript,
+    confidence,
+    alternatives,
+  );
+  if (decision.required) return decision;
+  if (containsPersonalFactClaim(transcript)) {
+    return { required: true, reason: "personal_fact", autoConfirmAfterMs: null };
+  }
+  const divergent = uniqueTranscriptAlternatives(transcript, alternatives).some(
     (candidate) => transcriptSimilarity(transcript, candidate) < 0.64,
   );
+  return divergent
+    ? { required: true, reason: "low_confidence", autoConfirmAfterMs: null }
+    : decision;
 };
+
+export const shouldConfirmVoiceTranscript = (
+  assessment: VoiceTranscriptAssessment,
+): boolean => voiceTranscriptReviewDecision(assessment).required;

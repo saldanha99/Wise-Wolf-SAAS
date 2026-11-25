@@ -27,6 +27,7 @@ import {
   selectCanonicalRetryIndex,
   selectRelevantMemoryItems,
   type StoredLearnerFact,
+  transcriptConfirmationDecision,
   transcriptionNeedsFactConfirmation,
 } from "./factual-integrity.ts";
 import {
@@ -3514,6 +3515,8 @@ interface RealtimePostTurnPersistenceResult {
   scenarioStatus: ScenarioStatus;
   realtimeGuidance: JsonObject | null;
   idempotent: boolean;
+  confirmationReason?: string | null;
+  autoConfirmAfterMs?: number | null;
 }
 
 function persistedRealtimeConfig(
@@ -3671,6 +3674,10 @@ function realtimeMarkerResult(
       ? marker.realtimeGuidance
       : null,
     idempotent: true,
+    confirmationReason: boundedString(marker.confirmationReason, 40) || null,
+    autoConfirmAfterMs: Number.isInteger(marker.autoConfirmAfterMs)
+      ? Math.max(0, Number(marker.autoConfirmAfterMs))
+      : null,
   };
 }
 
@@ -4699,15 +4706,16 @@ async function analyzeAndPersistRealtimeTurn(input: {
         : null,
     } as const;
 
-    if (
+    const confirmationDecision =
       isRealtimeSpeechDerivedInputMethod(input.inputMethod) &&
-      input.transcriptConfirmed !== true &&
-      transcriptionNeedsFactConfirmation(
-        input.learnerTranscript,
-        input.asrConfidence,
-        [],
-      )
-    ) {
+        input.transcriptConfirmed !== true
+        ? transcriptConfirmationDecision(
+          input.learnerTranscript,
+          input.asrConfidence,
+          [],
+        )
+        : null;
+    if (confirmationDecision?.required) {
       const pausedAnalysis = normalizeRealtimePostTurnAnalysis(
         {
           adaptive_level: currentAdaptiveLevel,
@@ -4732,6 +4740,8 @@ async function analyzeAndPersistRealtimeTurn(input: {
         currentStage,
         scenarioStatus: currentScenarioStatus,
         factConfirmationRequired: true,
+        confirmationReason: confirmationDecision.reason,
+        autoConfirmAfterMs: confirmationDecision.autoConfirmAfterMs,
         correctionsCreated: 0,
         factsRecorded: false,
         realtimeGuidance: guidance,
@@ -4752,6 +4762,8 @@ async function analyzeAndPersistRealtimeTurn(input: {
         scenarioStatus: currentScenarioStatus,
         realtimeGuidance: guidance,
         idempotent: false,
+        confirmationReason: confirmationDecision.reason,
+        autoConfirmAfterMs: confirmationDecision.autoConfirmAfterMs,
       };
     }
 
@@ -6181,6 +6193,8 @@ serve(async (req) => {
         factTypes: realtimeFactRecording.factTypes,
         correctionsCreated: postTurn.correctionsCreated,
         realtimeGuidance: postTurn.realtimeGuidance,
+        confirmationReason: postTurn.confirmationReason ?? null,
+        autoConfirmAfterMs: postTurn.autoConfirmAfterMs ?? null,
       });
     }
 

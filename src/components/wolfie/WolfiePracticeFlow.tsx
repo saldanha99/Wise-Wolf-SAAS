@@ -563,6 +563,11 @@ export function WolfiePracticeFlow({
     retry = false,
   ) => {
     setSelection(nextSelection);
+    // The quick-start card skips the level screen. Without these, the
+    // "Conversar em tempo real" button had no level to open the tutor with
+    // and did nothing (24/11/2026).
+    setSelectedSubject(nextSelection.subject);
+    setSelectedLevel(nextSelection.level);
     setGenerationError("");
     setResult(null);
     setCompletedSession(null);
@@ -795,6 +800,8 @@ export function WolfiePracticeFlow({
   };
 
   const beginSessionConversation = (session: WolfieActivitySession) => {
+    setSelectedSubject(session.subject);
+    setSelectedLevel(session.cefr_level);
     const experience = session.activity_content.experience;
     const base = buildConversationBrief({
       subject: session.subject,
@@ -1008,20 +1015,23 @@ export function WolfiePracticeFlow({
     void loadOverview(true);
   };
 
-  const conversationOverlay = conversationBrief && selectedLevel
+  // Never depend on the level screen alone: a session always knows its level.
+  const conversationLevel = selectedLevel ?? activeSession?.cefr_level ??
+    completedSession?.cefr_level ?? profileLevel ?? null;
+  const conversationOverlay = conversationBrief && conversationLevel
     ? (
       <React.Suspense
         fallback={
           <LoadingExperience
             subject={selectedSubject}
-            level={selectedLevel}
+            level={conversationLevel}
           />
         }
       >
         <WolfieConversationTutor
           user={{
             ...user,
-            levelBadge: selectedLevel,
+            levelBadge: conversationLevel,
           }}
           voiceMode
           topic={conversationBrief.topic}

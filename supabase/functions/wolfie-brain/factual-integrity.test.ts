@@ -7,7 +7,9 @@ import {
   factsConflict,
   selectCanonicalRetryIndex,
   selectRelevantMemoryItems,
+  transcriptConfirmationDecision,
   transcriptionNeedsFactConfirmation,
+  transcriptSensitiveDetails,
 } from "./factual-integrity.ts";
 
 function assert(
@@ -185,5 +187,99 @@ Deno.test("memory retrieval excludes dismissed and unconsented sensitive items",
   assertEquals(
     selected.map((item) => item.kind).sort(),
     ["goal", "structure_mastered"],
+  );
+});
+
+Deno.test("confirmation rule (24/11): sentence openers are not names", () => {
+  // Real case: "Ok, vamos lá." at 0.839 opened the review for nothing.
+  for (
+    const text of ["Ok, vamos lá.", "Okay, let's go.", "Well, I think so."]
+  ) {
+    const decision = transcriptConfirmationDecision(text, 0.839);
+    assertEquals(decision.required, false, text);
+  }
+  assertEquals(transcriptSensitiveDetails("Ok, vamos lá."), []);
+  assertEquals(
+    transcriptSensitiveDetails("Yesterday I met Carlos in São Paulo."),
+    ["Carlos", "São Paulo"],
+  );
+});
+
+Deno.test("confirmation rule (24/11): tiers and reasons", () => {
+  // ASR echoing its own prompt is never what the learner said.
+  assertEquals(
+    transcriptConfirmationDecision(
+      "Teach English tutoring with Brazilian Portuguese code-switching. Preserve Brazilian names, cities, states, and proper nouns exactly; mark uncertainty instead of guessing.",
+      0.786,
+    ),
+    {
+      required: true,
+      reason: "unreliable_transcript",
+      autoConfirmAfterMs: null,
+    },
+  );
+  // Personal claims and contact data always wait, even at high confidence.
+  assertEquals(
+    transcriptConfirmationDecision("I live in Nova Iguaçu.", 0.99).reason,
+    "personal_fact",
+  );
+  assertEquals(
+    transcriptConfirmationDecision("My email is ana.souza@gmail.com", 0.99)
+      .reason,
+    "personal_data",
+  );
+  assertEquals(
+    transcriptConfirmationDecision("My number is 21 98765 4321", 0.97).reason,
+    "personal_data",
+  );
+  // High confidence: names and numbers go as heard.
+  assertEquals(
+    transcriptConfirmationDecision("My seat is row 29 and my gate is 22.", 0.9)
+      .required,
+    false,
+  );
+  // Medium confidence + a number: review that sends by itself after 5 s.
+  assertEquals(
+    transcriptConfirmationDecision(
+      "My seat is row 29 and my gate is 22.",
+      0.774,
+    ),
+    { required: true, reason: "uncertain_detail", autoConfirmAfterMs: 5_000 },
+  );
+  // ... unless the ASR alternatives disagree: then it waits.
+  assertEquals(
+    transcriptConfirmationDecision("My seat is row 29.", 0.8, [
+      "My seat is row 19.",
+    ])
+      .autoConfirmAfterMs,
+    null,
+  );
+  // Medium confidence without details: sent as heard.
+  assertEquals(
+    transcriptConfirmationDecision("I think it was a good meeting.", 0.75)
+      .required,
+    false,
+  );
+  // Low confidence: short social turns pass, real sentences wait.
+  for (const text of ["Ok.", "Hello!", "What a pity."]) {
+    assertEquals(
+      transcriptConfirmationDecision(text, 0.3).required,
+      false,
+      text,
+    );
+  }
+  assertEquals(
+    transcriptConfirmationDecision("I washed the skin and attacked all.", 0.41),
+    { required: true, reason: "low_confidence", autoConfirmAfterMs: null },
+  );
+  // Unknown confidence keeps the previous behaviour (only personal data waits).
+  assertEquals(
+    transcriptConfirmationDecision("I washed the skin and attacked all.", null)
+      .required,
+    false,
+  );
+  assertEquals(
+    transcriptionNeedsFactConfirmation("Ok, vamos lá.", 0.839),
+    false,
   );
 });

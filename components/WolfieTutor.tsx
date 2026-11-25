@@ -32,9 +32,10 @@ import {
   splitSpeechSentences,
 } from "../lib/wolfieAudio";
 import {
-  shouldConfirmVoiceTranscript,
   uniqueTranscriptAlternatives,
+  voiceTranscriptReviewDecision,
 } from "../lib/wolfieVoiceSafety";
+import type { TranscriptConfirmationReason } from "../supabase/functions/wolfie-brain/factual-integrity.ts";
 import {
   resolveWolfieLearnerLanguage,
   type WolfieLearnerLanguage,
@@ -314,6 +315,23 @@ const firstNumber = (
   return null;
 };
 
+const TRANSCRIPT_CONFIRMATION_REASONS = new Set<TranscriptConfirmationReason>([
+  "personal_fact",
+  "personal_data",
+  "unreliable_transcript",
+  "low_confidence",
+  "uncertain_detail",
+]);
+
+const realtimeConfirmationReason = (
+  payload: Record<string, unknown>,
+): TranscriptConfirmationReason | null => {
+  const raw = firstString(payload, "confirmationReason", "confirmation_reason");
+  return TRANSCRIPT_CONFIRMATION_REASONS.has(raw as TranscriptConfirmationReason)
+    ? raw as TranscriptConfirmationReason
+    : null;
+};
+
 const normalizeCorrection = (value: unknown): CorrectionData | null => {
   const raw = asRecord(value);
   const original = firstString(
@@ -472,6 +490,10 @@ interface PendingTranscriptReview {
   studentLanguage: SpeechLanguage;
   source?: "classic" | "realtime";
   clientTurnId?: string;
+  /** Why the review opened (copy only). */
+  reason?: TranscriptConfirmationReason | null;
+  /** Medium confidence: the review sends by itself after this delay. */
+  autoConfirmAfterMs?: number | null;
 }
 
 interface SpeechSegment {
@@ -1140,6 +1162,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   ),
                   source: "realtime",
                   clientTurnId: turn.id,
+                  reason: realtimeConfirmationReason(payload),
+                  autoConfirmAfterMs: firstNumber(
+                    payload,
+                    "autoConfirmAfterMs",
+                    "auto_confirm_after_ms",
+                  ) ?? null,
                 }
               );
             }
@@ -1480,6 +1508,31 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       realtime.disconnect,
       resetRealtimeGate,
     ],
+  );
+
+  // "Falar novamente". Live: the turn was already answered by the voice model,
+  // so it stays unconfirmed (no memory, no correction from what was misheard)
+  // and the microphone reopens at once. Classic: drop the transcript and show
+  // how to speak again (push-to-talk needs the learner's own gesture).
+  const retryPendingTranscript = useCallback(
+    (review: PendingTranscriptReview) => {
+      // A confirmation already in flight owns the dialog: closing it here
+      // (e.g. an Escape or a second tap racing the save) would hide the result.
+      if (review.source === "realtime" && isConfirmingRealtimeTranscriptRef.current) return;
+      setPendingTranscriptReview(null);
+      setError(null);
+      if (review.source === "realtime") {
+        markRealtimeConfirmationPending(false);
+        setSubtitle(brandText("Pode falar de novo: o Wolfie está ouvindo."));
+      } else {
+        setState("IDLE");
+        setSubtitle(brandText("Segure o Wolfie e fale de novo."));
+      }
+      window.setTimeout(() => {
+        if (isMountedRef.current) setSubtitle("");
+      }, 4000);
+    },
+    [markRealtimeConfirmationPending],
   );
 
   const releaseAudioStream = useCallback(() => {
@@ -2861,9 +2914,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         source: "classic",
       };
 
-      if (shouldConfirmVoiceTranscript(review)) {
+      const reviewDecision = voiceTranscriptReviewDecision(review);
+      if (reviewDecision.required) {
         stopIOSKeepAlive();
-        setPendingTranscriptReview(review);
+        setPendingTranscriptReview({
+          ...review,
+          reason: reviewDecision.reason,
+          autoConfirmAfterMs: reviewDecision.autoConfirmAfterMs,
+        });
         setState("IDLE");
         setSubtitle("");
         return;
@@ -3141,9 +3199,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             studentLanguage,
             source: "classic",
           };
-          if (shouldConfirmVoiceTranscript(review)) {
+          const reviewDecision = voiceTranscriptReviewDecision(review);
+          if (reviewDecision.required) {
             stopIOSKeepAlive();
-            setPendingTranscriptReview(review);
+            setPendingTranscriptReview({
+              ...review,
+              reason: reviewDecision.reason,
+              autoConfirmAfterMs: reviewDecision.autoConfirmAfterMs,
+            });
             setState("IDLE");
             return;
           }
@@ -5102,6 +5165,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 transcript={pendingTranscriptReview.transcript}
                 alternatives={pendingTranscriptReview.alternatives}
                 confidence={pendingTranscriptReview.confidence}
+                reason={pendingTranscriptReview.reason}
+                autoConfirmAfterMs={pendingTranscriptReview.autoConfirmAfterMs}
+                errorMessage={error}
                 busy={pendingTranscriptReview.source === "realtime" &&
                   isConfirmingRealtimeTranscript}
                 onConfirm={(transcript) => {
@@ -5119,18 +5185,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                     true,
                   );
                 }}
-                onRetry={() => {
-                  if (pendingTranscriptReview.source === "realtime") {
-                    markRealtimeConfirmationPending(true);
-                    setError(
-                      "Este turno já foi respondido. Edite a frase ou confirme-a para manter o histórico consistente.",
-                    );
-                    return;
-                  }
-                  setPendingTranscriptReview(null);
-                  setSubtitle("");
-                  setState("IDLE");
-                }}
+                onRetry={() => retryPendingTranscript(pendingTranscriptReview)}
               />
             </div>
           )}
@@ -5543,6 +5598,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               transcript={pendingTranscriptReview.transcript}
               alternatives={pendingTranscriptReview.alternatives}
               confidence={pendingTranscriptReview.confidence}
+              reason={pendingTranscriptReview.reason}
+              autoConfirmAfterMs={pendingTranscriptReview.autoConfirmAfterMs}
+              errorMessage={error}
               busy={pendingTranscriptReview.source === "realtime" &&
                 isConfirmingRealtimeTranscript}
               onConfirm={(transcript) => {
@@ -5560,18 +5618,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   transcript,
                 }, true);
               }}
-              onRetry={() => {
-                if (pendingTranscriptReview.source === "realtime") {
-                  markRealtimeConfirmationPending(true);
-                  setError(
-                    "Este turno já foi respondido. Edite a frase ou confirme-a para manter o histórico consistente.",
-                  );
-                  return;
-                }
-                setPendingTranscriptReview(null);
-                setSubtitle("");
-                setState("IDLE");
-              }}
+              onRetry={() => retryPendingTranscript(pendingTranscriptReview)}
             />
           </div>
         )}
