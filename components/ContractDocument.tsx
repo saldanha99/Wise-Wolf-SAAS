@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { ShieldCheck, Building2, Printer } from 'lucide-react';
 import { SUPABASE_URL } from '../lib/supabase-config';
-import { contractIncludesLessonRecording, resolveContractTermsVersion } from '../lib/contractTerms';
+import { contractIncludesLessonRecording, contractIncludesHolidayClause, resolveContractTermsVersion } from '../lib/contractTerms';
 import { enrollmentChargeLabel } from '../lib/enrollment';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -243,6 +243,26 @@ export function getSchoolContractIdentity(school?: SchoolInfo | null): SchoolCon
 const clauseTitle = 'font-bold uppercase text-[#002366] text-[9px] tracking-wider mb-1';
 const clauseText = 'text-justify text-gray-700 leading-relaxed';
 
+// Cláusula 9 (versão 3, decisão do Vinícius de 24/11/2026): feriados nacionais
+// e recesso de fim de ano. Só contratos NOVOS (e rematrículas pela página de
+// matrícula); o avulso não traz. ⚠️ Texto assinado não muda: alteração aqui é
+// versão nova em lib/contractTerms.ts (e na tabela contract_terms_versions).
+function StudentHolidayClause() {
+    return (
+        <div data-contract-clause="feriados-e-recesso">
+            <h3 className={clauseTitle}>
+                Cláusula 9 — Dos Feriados e do Recesso
+            </h3>
+            <p className={clauseText}>
+                Não haverá aulas nos feriados nacionais nem no recesso de fim de ano, cujas datas serão informadas pela <strong>CONTRATADA</strong> com antecedência mínima de <strong>20 (vinte) dias</strong>. As aulas previstas nesses dias são consideradas parte regular do período contratado, <strong>sem direito a reposição nem a abatimento</strong> na mensalidade.
+            </p>
+            <p className={`${clauseText} mt-1`}>
+                <strong>Parágrafo único.</strong> Consideram-se feriados nacionais os definidos em lei federal e a Sexta-feira da Paixão. Feriados estaduais e municipais e pontos facultativos (como o Carnaval e o Corpus Christi) não suspendem as aulas.
+            </p>
+        </div>
+    );
+}
+
 function StudentLessonRecordingClause() {
     return (
         <div data-contract-clause="registro-das-aulas">
@@ -323,6 +343,8 @@ export function ContractDocument({
         recordedVersion: termsVersion,
     });
     const withLessonRecording = contractIncludesLessonRecording('STUDENT', contractVersion);
+    // O avulso não traz a cláusula dos feriados (pedido do Vinícius, 24/11/2026).
+    const withHolidayClause = !isOneTime && contractIncludesHolidayClause('STUDENT', contractVersion);
 
     const handlePrint = useReactToPrint({
         contentRef: a4Ref,
@@ -622,11 +644,14 @@ export function ContractDocument({
 
                     {withLessonRecording && <StudentLessonRecordingClause />}
 
+                    {withHolidayClause && <StudentHolidayClause />}
+
                     <div>
                         <h3 className="font-bold uppercase text-[#002366] text-[9px] tracking-wider mb-1">
-                            {/* Na versão com o registro das aulas o Foro passa a ser a 9;
-                                nenhuma cláusula do aluno cita outra pelo número. */}
-                            {withLessonRecording ? 'Cláusula 9 — Do Foro' : 'Cláusula 8 — Do Foro'}
+                            {/* Com o registro das aulas o Foro passa a ser a 9; com a
+                                cláusula dos feriados (v3), a 10. Nenhuma cláusula do
+                                aluno cita outra pelo número. */}
+                            {withHolidayClause ? 'Cláusula 10 — Do Foro' : withLessonRecording ? 'Cláusula 9 — Do Foro' : 'Cláusula 8 — Do Foro'}
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
                             As partes elegem o foro da Comarca de <strong>{s.city} — {s.state}</strong> para dirimir quaisquer controvérsias oriundas deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.

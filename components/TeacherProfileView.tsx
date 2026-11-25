@@ -5,6 +5,7 @@ import {
   UserX, BookOpen, CheckCircle, XCircle, Phone, Wallet, FileDown
 } from 'lucide-react';
 import TeacherActivityReport from './TeacherActivityReport';
+import { isSchoolClosedLog, schoolClosedLabel, SCHOOL_CLOSED_BADGE_CLASS } from '../lib/schoolClosure';
 
 interface Props { teacherId: string; onClose: () => void; }
 
@@ -112,7 +113,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
                 <div className="space-y-2">
                   {(d.recent_classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (d.recent_classes || []).map((c: any, i: number) => {
-                      const pl = PRESENCE[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };
+                      const pl = isSchoolClosedLog(c.presence) ? { txt: schoolClosedLabel(c.subtype), cls: SCHOOL_CLOSED_BADGE_CLASS } : (PRESENCE[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' });
                       return (
                         <div key={i} className="border border-brand-border rounded-xl p-3 flex items-center justify-between gap-2">
                           <div><span className="text-sm font-bold text-brand-text">{fmt(c.date)}</span><span className="text-xs text-brand-muted ml-2">{c.student || ''}</span></div>

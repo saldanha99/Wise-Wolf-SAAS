@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { localMonth, recentMonths } from '../lib/dateUtils';
 import { X, Loader2, Printer } from 'lucide-react';
+import { isSchoolClosedLog, schoolClosedLabel } from '../lib/schoolClosure';
 
 interface Props { teacherId: string; editable?: boolean; onClose: () => void; }
 
@@ -9,6 +10,8 @@ const PRESENCE_PT: Record<string, string> = {
   COMPLETED: 'Realizada', STUDENT_ABSENCE: 'Falta do aluno', TEACHER_ABSENCE: 'Falta do professor',
   EXPIRED: 'Expirada', 'Falta Justificada': 'Falta justificada', Falta: 'Falta',
 };
+const presencePt = (l: { presence: string; subtype?: string | null }) =>
+  isSchoolClosedLog(l.presence) ? schoolClosedLabel(l.subtype) : (PRESENCE_PT[l.presence] || l.presence);
 
 const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, onClose }) => {
   const [month, setMonth] = useState<string>(localMonth());
@@ -43,7 +46,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
     setPrintError('');
     const t = data.teacher; const tot = data.totals || {};
     const rows = (data.lessons || []).map((l: any) => `<tr>
-      <td>${escapeHtml(fmt(l.date))}</td><td>${escapeHtml(l.student || '—')}</td><td>${escapeHtml(PRESENCE_PT[l.presence] || l.presence)}${l.subtype ? ` · ${escapeHtml(l.subtype)}` : ''}</td>
+      <td>${escapeHtml(fmt(l.date))}</td><td>${escapeHtml(l.student || '—')}</td><td>${escapeHtml(presencePt(l))}${l.subtype && !isSchoolClosedLog(l.presence) ? ` · ${escapeHtml(l.subtype)}` : ''}</td>
       <td>${escapeHtml(l.content || '')}</td><td style="text-align:right">${escapeHtml(l.paid ? money(l.value) : '—')}</td></tr>`).join('');
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório ${escapeHtml(t.name)} ${escapeHtml(monthLabel(month))}</title>
     <style>
@@ -65,6 +68,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
       <div class="box grid">
         <div><div class="lbl">Aulas realizadas</div><div class="kpi">${tot.completed || 0}</div></div>
         <div><div class="lbl">Faltas do aluno</div><div class="kpi">${tot.student_absences || 0}</div></div>
+        <div><div class="lbl">Feriado/recesso (remunerada)</div><div class="kpi">${tot.school_closed_paid || 0}</div></div>
         <div><div class="lbl">Faltas do prof.</div><div class="kpi">${tot.teacher_absences || 0}</div></div>
         <div><div class="lbl">Aulas pagas</div><div class="kpi">${tot.paid_lessons || 0}</div></div>
         <div><div class="lbl">Total a receber</div><div class="total">${money(tot.amount)}</div></div>
@@ -150,6 +154,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <Stat label="Realizadas" value={`${tot.completed || 0}`} />
               <Stat label="Faltas aluno" value={`${tot.student_absences || 0}`} />
+              {(tot.school_closed_paid || 0) > 0 && <Stat label="Feriado/recesso (remun.)" value={`${tot.school_closed_paid}`} />}
               <Stat label="Aulas pagas" value={`${tot.paid_lessons || 0}`} />
               <Stat label="A receber" value={money(tot.amount)} accent="text-emerald-600" />
             </div>
@@ -162,7 +167,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
                       <tr key={i} className="border-t border-brand-border">
                         <td className="p-2">{fmt(l.date)}</td>
                         <td className="p-2 truncate max-w-[120px]">{l.student || '—'}</td>
-                        <td className="p-2">{PRESENCE_PT[l.presence] || l.presence}</td>
+                        <td className="p-2">{presencePt(l)}</td>
                         <td className="p-2 text-right">{l.paid ? money(l.value) : '—'}</td>
                       </tr>
                     ))}

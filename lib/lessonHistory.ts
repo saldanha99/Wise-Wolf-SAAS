@@ -1,7 +1,7 @@
 export const HISTORY_CATEGORIES = {
   COMPLETED: 'Aulas realizadas', MAKEUP_COMPLETED: 'Reposições realizadas',
   STUDENT_ABSENCE: 'Faltas dos alunos', TEACHER_ABSENCE: 'Faltas do teacher',
-  TEACHER_CANCELLED: 'Cancelamentos pelo teacher', HOLIDAY: 'Feriados',
+  TEACHER_CANCELLED: 'Cancelamentos pelo teacher', HOLIDAY: 'Feriados e recesso (remunerada)',
   UNFINALIZED: 'Registros não finalizados', SCHEDULED: 'Aulas futuras',
   CANCELLED: 'Canceladas (responsável não informado)', EXCLUDED: 'Excluídas da agenda (motivo registrado)',
   REMOVED: 'Lançamentos removidos com trilha', REASSIGNED: 'Lançamentos reatribuídos a outro teacher',

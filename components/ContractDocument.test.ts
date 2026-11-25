@@ -251,6 +251,25 @@ describe('versão do texto do contrato: a cláusula do registro das aulas', () =
     expect(teacher()).not.toContain('REGISTRO DAS AULAS');
   });
 
+  it('versão 3 (24/11/2026): Cláusula 9 dos feriados e do recesso, Foro na 10; v2 assinada não muda; avulso fica fora', () => {
+    const v3 = studentClauses(student({ termsVersion: 3 }));
+    expect(v3).toContain('Cláusula 8 — Do Registro das Aulas');
+    expect(v3).toContain('Cláusula 9 — Dos Feriados e do Recesso');
+    expect(v3).toContain('Cláusula 10 — Do Foro');
+    expect(v3).toMatch(/sem direito a reposição nem a abatimento/);
+    expect(v3).toMatch(/antecedência mínima de (<strong>)?20 \(vinte\) dias/);
+    expect(v3.indexOf('Cláusula 8 — Do Registro das Aulas')).toBeLessThan(v3.indexOf('Cláusula 9 — Dos Feriados e do Recesso'));
+    // Quem assinou a v2 continua vendo a v2, sem a cláusula nova.
+    const v2Signed = studentClauses(student({ acceptedAt: SIGNED_AT, termsVersion: 2 }));
+    expect(v2Signed).not.toContain('Dos Feriados e do Recesso');
+    expect(v2Signed).toContain('Cláusula 9 — Do Foro');
+    expect(v2Signed).toBe(studentClauses(student({ termsVersion: 2 })));
+    // Avulso na v3: sem a cláusula dos feriados, Foro na 9 (texto da v2).
+    const oneTime = studentClauses(student({ termsVersion: 3, planDuration: 0 }));
+    expect(oneTime).not.toContain('Dos Feriados e do Recesso');
+    expect(oneTime).toBe(studentClauses(student({ termsVersion: 2, planDuration: 0 })));
+  });
+
   it('contrato ainda não assinado na escola que oferece a versão 2: Cláusula 8 do registro e o Foro na 9', () => {
     const html = student({ termsVersion: 2 });
     const clauses = studentClauses(html);

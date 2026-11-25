@@ -15,6 +15,7 @@ const TeacherGoogleConnectionGate = lazy(() => import('./components/TeacherGoogl
 const TeacherStudentTermsGate = lazy(() => import('./components/TeacherStudentTermsGate'));
 const NationalHolidayNotice = lazy(() => import('./components/NationalHolidayNotice'));
 const FinanceNumberNotice = lazy(() => import('./components/FinanceNumberNotice'));
+const PlatformNotice = lazy(() => import('./components/PlatformNotice'));
 /** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
 const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
@@ -382,6 +383,7 @@ const App: React.FC = () => {
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
   const [financeNoticeActive, setFinanceNoticeActive] = useState(false);
   const [lessonSoonActive, setLessonSoonActive] = useState(false);
+  const [platformNoticeActive, setPlatformNoticeActive] = useState(false);
   const [planSuggestionActive, setPlanSuggestionActive] = useState(false);
 
   const handleWhatsappUnreadChange = React.useCallback((count: number) => {
@@ -1996,6 +1998,12 @@ const App: React.FC = () => {
           <FinanceNumberNotice key={user.id} userId={user.id} onActiveChange={setFinanceNoticeActive} />
         </Suspense>
       )}
+      {/* Aviso da escola (pop-up com "Entendi" gravado no servidor), depois do feriado e da aula começando. */}
+      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !lessonSoonActive && !dossierLink.holdsTours && (
+        <Suspense fallback={null}>
+          <PlatformNotice key={user.id} userId={user.id} onActiveChange={setPlatformNoticeActive} />
+        </Suspense>
+      )}
       {/* Aula começando: aviso 10 min antes, com o link da aula (aluno e professor). */}
       {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && (
         <Suspense fallback={null}>
@@ -2008,7 +2016,7 @@ const App: React.FC = () => {
           <LessonPlanSuggestion key={user.id} userId={user.id} onOpenPlanner={() => setActiveTab('lesson-planner-ai')} onActiveChange={setPlanSuggestionActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && !platformNoticeActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}

@@ -1141,6 +1141,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'smart-finder-launch',view:'dashboard',title:'Novidade no Lançador',text:'No botão laranja do raio, em Aula experimental → Como disparar, agora há três jeitos: convite para todos os professores ativos, convite só para o professor que você escolher (com busca) ou só gerar o link, sem mandar nada, para você copiar e colar na conversa com um professor. Em todos, só professor ativo e logado aceita, e o primeiro que aceitar leva a aula.'},
     ],
   },
+  {
+    id:'2026-11-24-zz-feriado-e-recesso-remunerados',title:'Feriado nacional e recesso: aula remunerada sem lançar',roles:['SCHOOL_ADMIN','COORDINATOR','TEACHER'],
+    steps:[
+      {target:'sidebar-nav',view:'dashboard',title:'Novidade: feriado e recesso',text:'Nos feriados nacionais e no recesso de fim de ano não há aula. Na escola que adotou a regra, cada aula que estava na agenda nesses dias entra sozinha como "Feriado (remunerada)" ou "Recesso (remunerada)": o professor não lança nada e recebe por ela. Ela aparece separada de aula dada e de falta, não gera reposição, lembrete nem confirmação, e conta como aula do período do aluno.'},
+    ],
+  },
 ];
 
 /**

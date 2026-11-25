@@ -1720,8 +1720,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123180000_hub_correcao_por_ia.sql"
   "supabase/migrations/20261123190000_hub_aluno_convidado_sem_escola.sql"
   "supabase/migrations/20261124040000_wolfie_health_collect_by_request_id.sql"
+  "supabase/migrations/20261124120000_feriados_e_recesso_remunerados.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/feriados_e_recesso_remunerados.sql"
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
   "supabase/tests/frequencia_pretendida_do_lead.sql"
   "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"

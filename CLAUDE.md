@@ -40,6 +40,60 @@
   até 3 problemas; sem conteúdo nem gabarito). Rollback: pasta + md5 de
   `/opt/wisewolf/backup-livros-palavra-extra-20261123T212651Z/` + restart.
 
+### 24/11/2026 — Feriado nacional e recesso: escola fechada, aula remunerada (feat/feriados-e-recesso)
+
+- **Regra (Vinícius, 24/11):** feriado NACIONAL (`national_holidays`, Páscoa calculada) e recesso
+  (`public.school_recess_periods`, configurável; Wise Wolf: 24/12/2026–01/01/2027, os dois dias) = sem aula para
+  ninguém. Só escola com linha em `private.school_closure_settings` (nasce só a Wise Wolf, `effective_from` 24/11/2026:
+  feriado passado não muda). Período de recesso que já começou não muda nem some (gatilho); novo só para o futuro.
+- **Agenda:** `public.booking_schedule_on_date` virou embrulho de `private.booking_schedule_on_date_raw` (o corpo
+  anterior, copiado da definição viva): em dia fechado devolve `valid=false` + `school_closed` (`HOLIDAY`/`RECESS`),
+  mantendo dia e horário. Assim lembrete de 30 min, confirmação/link de auditoria, sala do Meet, pendentes do
+  professor, cobertura e lançamento manual param sozinhos. ⚠️ Quem precisar da agenda "como era" (aviso D7/D1 do
+  feriado, o próprio job) usa a crua. Remendos por âncora: `fill_class_log_occurrence_time` (×4, via
+  `private.booking_schedule_for_class_log`), `national_holiday_recipients`, `get_teacher_closing_report_unchecked`
+  (`feriados_remunerados`, fora de `faltas_aluno`), `get_teacher_activity_report` (`school_closed_paid`) e
+  `lesson_history_rows` (categoria `HOLIDAY`). Quem recriar essas funções mantém os remendos.
+- **Lançamento automático:** cron `wisewolf-school-closed-classes` (min 20) → `private.log_school_closed_classes()`:
+  aula da agenda crua com aluno, 30 min depois do horário, vira `class_logs` `presence = 'SCHOOL_HOLIDAY'`,
+  `subtype` `FERIADO`/`RECESSO`, APPROVED, `verification_status = 'SCHOOL_CLOSED'`, professor = quem dá a aula
+  (cobertura confirmada vence). Olha 7 dias para trás; idempotente pelo único `(booking_id, class_date)`. Paga ao
+  professor (`v_payable_class_logs`), conta como aula do período de TODOS os alunos (contrato antigo e novo, sem
+  reposição nem abatimento), não é presença nem falta (sem resumo, trilha do Wolfie, reposição, cobrança). Só o job
+  grava a marca (`trg_a_guard_school_closed_class_log`, flag local `wisewolf.school_closure_job`). Reposição,
+  antecipação e experimental marcadas DE PROPÓSITO num dia fechado não são tocadas.
+- **Tela:** `lib/schoolClosure.ts` — "Feriado (remunerada)" / "Recesso (remunerada)" em violeta nos relatórios do
+  professor, fechamento, Financeiro, perfis e histórico. Tour `2026-11-24-zz-feriado-e-recesso-remunerados`.
+- **Contrato do aluno v3** (só contratos NOVOS e rematrículas pela página): Cláusula 9 — Dos Feriados e do Recesso
+  (aviso do recesso com 20 dias; aulas desses dias são parte regular do período, sem reposição nem abatimento), Foro
+  na 10; avulso não traz. `tenant_contract_terms` da Wise Wolf (STUDENT) 2 → 3. Quem assinou v1/v2 não muda.
+- **Aviso do recesso só por pop-up (Vinícius, 24/11): nada de WhatsApp nem e-mail.** `public.platform_notices` (escola,
+  público STUDENT/TEACHER, título, texto, janela, `slug`) + `public.platform_notice_acknowledgements` (prova do "Entendi":
+  usuário, papel, escola, data e hora; imutável por gatilho). RPCs `my_pending_platform_notices()` e
+  `acknowledge_platform_notice(id)`; modal `components/PlatformNotice.tsx` (aluno e professor, depois do pop-up do feriado e
+  da aula começando; falha ao gravar mantém o aviso com "Tentar de novo"). Recesso 2026: de 01/12/2026 00:00 a 02/01/2027
+  (BRT). Reusar = linha nova na tabela. **WhatsApp do feriado nacional (D7/D1) desligado na Wise Wolf**
+  (`national_holiday_notice_settings.whatsapp_enabled = false`, remendo em `queue_national_holiday_notices`); o pop-up do
+  feriado continua. Religar: `update private.national_holiday_notice_settings set whatsapp_enabled = true where tenant_id =
+  'school-wise-wolf';`.
+- **Teste:** `supabase/tests/feriados_e_recesso_remunerados.sql` (25/12, recesso, contrato antigo × novo, professor
+  com e sem aula, guardas, nenhuma mensagem/reposição/confirmação/trilha).
+- **Rollback:** desligar sem desfazer nada: `update private.school_closure_settings set enabled = false where tenant_id
+  = 'school-wise-wolf'; select cron.unschedule('wisewolf-school-closed-classes');` (a agenda volta a ser a crua na
+  hora). Completo: `functions-before.sql` do backup `/opt/wisewolf/backup-feriados-recesso-<ts>/` com `psql -U
+  supabase_admin`, `drop trigger trg_a_guard_school_closed_class_log on public.class_logs;`, contrato `update
+  tenant_contract_terms set terms_version = 2 where tenant_id = 'school-wise-wolf' and contract_kind = 'STUDENT';`
+  (aceite v3 já gravado fica). Avisos: `update public.platform_notices set active = false where slug = 'recesso-2026';`.
+  Front: `cd /opt/wisewolf/frontend/src && mv dist dist.feriados && mv dist.prev22-feriados dist && cd .. && docker
+  compose restart frontend`.
+- **No ar (24/11, 04:29–04:30 UTC, Revisor Ok nas duas rodadas):** backup `/opt/wisewolf/backup-feriados-recesso-20261124T042841Z/`
+  (`functions-before.sql` com as 7 funções remendadas, `tenant_contract_terms.tsv`, `national_holiday_notice_settings.tsv`,
+  `cron-jobs.txt`, `frontend-dist.md5`, `migration.sql/.out`); front `index-BXPzIEsK.js` primeiro (56 arquivos fora de
+  `assets/` iguais; `assets/` antigos mantidos), migration depois (uma transação, marcada em `.migration-checksums`).
+  Conferido: 25/12 com 0 de 18 aulas válidas, contrato oferecido STUDENT 3, WhatsApp do feriado desligado, 0 na fila.
+  Prints do pop-up (cópia temporária do aviso na `demo-escola`, apagada com a prova): `/data/OpenBot/Shared/wisewolf/feriados-recesso/prints/`.
+  Custo medido do embrulho: +0,02 ms por leitura da agenda (1.792 leituras: 128 → 167 ms).
+
 ### 24/11/2026 — Wolfie: botão "Conversar em tempo real" e confirmação de fala (fix/wolfie-ao-vivo-confirmacao)
 
 - **Erro 1 (aluna real, B1):** o início rápido abria a prática sem gravar o nível e o overlay do tutor só montava com

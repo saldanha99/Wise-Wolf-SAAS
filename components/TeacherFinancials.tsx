@@ -29,6 +29,7 @@ import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 import TeacherPayoutDetails from './TeacherPayoutDetails';
 import TeacherPixKey from './TeacherPixKey';
 import NfIssuanceTour from './NfIssuanceTour';
+import { isSchoolClosedLog, schoolClosedLabel } from '../lib/schoolClosure';
 
 // Linha do resumo por aluno (get_teacher_closing_report → students[]).
 interface StudentRow {
@@ -512,6 +513,12 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             <div className="w-2 h-2 rounded-full bg-orange-400" />
                             {lessons.filter(l => l.presence === 'STUDENT_ABSENCE').length} Faltas (Aluno)
                         </div>
+                        {lessons.some(l => isSchoolClosedLog(l.presence)) && (
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-violet-400" />
+                                {lessons.filter(l => isSchoolClosedLog(l.presence)).length} Feriado/recesso (remunerada)
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -715,8 +722,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                         {row.detalhe.map((d, i) => (
                                             <div key={d.id || i} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px] font-bold ${d.presence === 'COMPLETED'
                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                                                : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-                                                <span>{new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                                : isSchoolClosedLog(d.presence)
+                                                    ? 'border-violet-200 bg-violet-50 text-violet-800'
+                                                    : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                                <span>{new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{isSchoolClosedLog(d.presence) ? ` · ${schoolClosedLabel(d.subtype)}` : ''}</span>
                                                 <span>{money(d.valor)}{d.override ? ' ✎' : ''}</span>
                                             </div>
                                         ))}
@@ -867,8 +876,11 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                                             <span key={d.id || i}
                                                                 className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold ${d.presence === 'COMPLETED'
                                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                                                                    : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                                                    : isSchoolClosedLog(d.presence)
+                                                                        ? 'border-violet-200 bg-violet-50 text-violet-800'
+                                                                        : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                                                                 {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                                                {isSchoolClosedLog(d.presence) ? ` · ${schoolClosedLabel(d.subtype)}` : ''}
                                                                 {' · '}{money(d.valor)}{d.override ? ' ✎' : ''}
                                                                 {/* Cobertura: se quem deu a aula foi outro professor, a aula
                                                                     (e o pagamento) muda de dono aqui mesmo. */}
