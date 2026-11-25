@@ -1717,6 +1717,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123170000_hub_atividade_por_link.sql"
   "supabase/migrations/20261123180000_hub_correcao_por_ia.sql"
   "supabase/migrations/20261123190000_hub_aluno_convidado_sem_escola.sql"
+  "supabase/migrations/20261124040000_wolfie_health_collect_by_request_id.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
