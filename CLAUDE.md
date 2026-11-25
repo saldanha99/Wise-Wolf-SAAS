@@ -16,6 +16,13 @@ meses do aluno (sem mês completo: referência × aulas/semana × 8,6), e esse a
 crédito a receber (fechamentos não pagos + mês corrente) para compensar por acordo escrito. Bruna: R$ 290,11 + R$ 275,20
 = R$ 565,31, crédito R$ 695,50. O mural de julho (`open_reallocation_for_teacher`/`claim_student_opportunity`, 0 usos,
 reescrevia os agendamentos antigos) ficou sem EXECUTE. Migration `20261125120000`, teste `saida_do_professor.sql`.
+Aluno com troca já marcada saindo do professor (transferência PENDING/ACCEPTED) não é oferecido nem aceito
+(`20261125130000`, marcador `troca_ja_marcada`). Publicado em 25/11 (releases `20261125T154352Z` e `20261125T162348Z`).
+⚠️ O release da `main` estava travado por dívidas de 22–23/11, corrigidas aqui: 6 functions fora do `deno fmt`,
+`tutor-brand.test.ts` no bloco sem `--allow-read`, conferências do Hub logado (sitemap sem `saas-escolar`, canonical de
+professores em `wisewolflanguage.com.br/para-professores`), `aviso_do_numero_financeiro.sql` sem envelope
+`begin;`/`rollback;`, relatório de feriados (usa `\pset`) fora da suíte e `wolfie_standalone_subscriptions.sql`
+(teste do Hub agora é `PROFESSOR_PRO`). Antes de outro release, rodar os testes SQL um a um na VPS poupa tentativas.
 
 ### 24/11/2026 — Hub: 5 livros neutros redesenhados entram como versão nova; originais fora da vitrine
 
