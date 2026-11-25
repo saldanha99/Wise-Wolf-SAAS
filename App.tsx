@@ -2016,7 +2016,7 @@ const App: React.FC = () => {
           <LessonPlanSuggestion key={user.id} userId={user.id} onOpenPlanner={() => setActiveTab('lesson-planner-ai')} onActiveChange={setPlanSuggestionActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !dossierLink.holdsTours && !lessonSoonActive && !planSuggestionActive && !platformNoticeActive && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !financeNoticeActive && !lessonSoonActive && !planSuggestionActive && !platformNoticeActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}
