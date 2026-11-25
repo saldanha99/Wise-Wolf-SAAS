@@ -23,7 +23,7 @@ export interface HubStudentAssignment {
   material: HubMaterialRecord;
 }
 
-interface DeskState {
+export interface DeskState {
   learner: { id: string; display_name: string; level_tag: string | null; objective: string | null };
   teacher_name: string;
   assignments: HubStudentAssignment[];
@@ -31,7 +31,7 @@ interface DeskState {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const parseDesk = (payload: unknown): DeskState | null => {
+export const parseDesk = (payload: unknown): DeskState | null => {
   if (!isRecord(payload) || payload.ok !== true || !isRecord(payload.learner)) return null;
   const learner = payload.learner;
   const assignments = (Array.isArray(payload.assignments) ? payload.assignments : []).flatMap((item): HubStudentAssignment[] => {

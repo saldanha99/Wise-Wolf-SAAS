@@ -1,4 +1,5 @@
 import React from "react";
+import { brandText } from '../../../../lib/tutorBrand';
 import { AudioLines, Loader2, Mic2 } from "lucide-react";
 import type { WolfieCharacterState } from "./WolfieCharacter";
 
@@ -52,7 +53,7 @@ export function WolfieCaptionBar({
   className = "",
 }: WolfieCaptionBarProps) {
   const normalizedText = text.trim();
-  const visibleText = normalizedText || placeholder || EMPTY_STATE_COPY[state];
+  const visibleText = normalizedText || placeholder || brandText(EMPTY_STATE_COPY[state]);
   const shouldAnnounce = Boolean(
     announceFinal && isFinal && normalizedText,
   );
@@ -76,7 +77,7 @@ export function WolfieCaptionBar({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-200">
             <StateIcon state={state} />
-            <span className="truncate">{speaker || "Wolfie Tutor"}</span>
+            <span className="truncate">{speaker || brandText("Wolfie Tutor")}</span>
             {!isFinal && normalizedText
               ? (
                 <span className="rounded-full bg-white/8 px-2 py-0.5 text-[9px] text-slate-300">

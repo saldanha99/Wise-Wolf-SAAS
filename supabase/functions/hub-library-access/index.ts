@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { publicHubSignedUrl } from "./public-url.ts";
 
 type HubRpcClient = ReturnType<typeof createClient<any>>;
 
@@ -263,7 +264,12 @@ serve(async (req) => {
         code: "CONTENT_DELIVERY_UNAVAILABLE",
       });
     }
-    const deliveryUrl = signed.signedUrl;
+    // A URL assinada sai com o host interno (http://kong:8000); o professor
+    // precisa da origem pública, senão nenhum material da biblioteca abre.
+    const deliveryUrl = publicHubSignedUrl(
+      signed.signedUrl,
+      Deno.env.get("SUPABASE_PUBLIC_URL"),
+    );
     const expiresIn = SIGNED_URL_TTL_SECONDS;
 
     const resolvedAccountId = typeof usage.accountId === "string"

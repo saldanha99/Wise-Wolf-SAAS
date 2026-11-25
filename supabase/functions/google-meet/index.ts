@@ -216,7 +216,7 @@ function config(): Config {
   // Resumo por IA pelo OpenRouter (a mesma chave do wolfie-brain e do
   // lesson-planner). Modelo com barra (fornecedor/modelo); padrão
   // google/gemini-3.6-flash, o único com preço cadastrado em 26/09/2026.
-  const aiKey = env("OPENROUTER_API_KEY"),
+  const aiKey = env("ANTHROPIC_API_KEY"),
     aiModel = summaryModelId(env("GOOGLE_MEET_SUMMARY_MODEL"));
   return {
     clientId: env(names[0]),
@@ -327,6 +327,23 @@ function summaryBackend(
     return isRecord(data) ? data : {};
   };
 }
+/** Marca o claim como reprocessamento de falha por crédito (só a ação de serviço usa). */
+function retryDeps(
+  deps: ReturnType<typeof summaryDeps>,
+): ReturnType<typeof summaryDeps> {
+  return {
+    ...deps,
+    backend: (action, sessionId, payload) =>
+      deps.backend(
+        action,
+        sessionId,
+        action === "claim"
+          ? { ...(payload ?? {}), retry_failed: true }
+          : payload,
+      ),
+  };
+}
+
 function summaryDeps(
   db: SupabaseClient,
   cfg: Config,
@@ -1594,6 +1611,76 @@ serve(async (req: Request) => {
     if (!isRecord(body)) throw new Error("invalid_request");
     const action = text(body.action, 40),
       tenantId = text(body.tenantId, 100) || auth.profile?.tenant_id || "";
+    // 22/11/2026: reprocessa as aulas cujo resumo falhou por falta de crédito no
+    // provedor (19/10–11/11). Só serviço, mesma esteira e teto mensal da escola;
+    // o orçamento desta chamada (≤ US$ 5) para o lote no meio se for atingido.
+    if (auth.isService && action === "retry_failed_summaries") {
+      if (!cfg.aiEnabled) {
+        return json({ error: "google_summary_ai_not_configured" }, 409);
+      }
+      const limit = Math.min(Math.max(Number(body.limit) || 3, 1), 10);
+      const budgetUsd = Math.min(Math.max(Number(body.budgetUsd) || 0, 0), 5);
+      const pricing = await loadSummaryPricing(db, cfg.aiModel);
+      if (!pricing) {
+        return json({ error: "google_summary_pricing_required" }, 409);
+      }
+      const { data: candidates, error: candidatesError } = await db.rpc(
+        "google_meet_summary_retry_candidates",
+        { p_limit: limit },
+      );
+      if (candidatesError) throw new Error("google_meet_storage_unavailable");
+      const started = Date.now();
+      let spentUsd = 0;
+      const results: Record<string, unknown>[] = [];
+      for (const candidate of Array.isArray(candidates) ? candidates : []) {
+        if (!isRecord(candidate)) continue;
+        if (spentUsd >= budgetUsd || Date.now() - started > 90_000) break;
+        const sessionId = text(candidate.lesson_session_id, 40);
+        const { data: found, error: foundError } = await db.rpc(
+          "google_meet_summary_retry_sources",
+          { p_session: sessionId },
+        );
+        if (foundError || !isRecord(found) || found.eligible !== true) {
+          results.push({ session_id: sessionId, status: "SKIPPED" });
+          continue;
+        }
+        const sources: SourceArtifact[] =
+          (Array.isArray(found.sources) ? found.sources : [])
+            .filter(isRecord).map((source) => ({
+              id: text(source.id, 40),
+              kind: text(source.kind, 20),
+              provider_name: text(source.provider_name, 200),
+              source_text: typeof source.source_text === "string"
+                ? source.source_text
+                : "",
+            })).filter((source) => source.id && source.source_text);
+        const outcome = await runSummaryGeneration(
+          {
+            trigger: "AUTOMATIC",
+            sessionId,
+            sources,
+            key: cfg.aiKey,
+            model: cfg.aiModel,
+            pricing,
+            deadline: Date.now() + 60_000,
+          },
+          retryDeps(summaryDeps(db, cfg, text(candidate.tenant_id, 100), null)),
+        );
+        const cost = "cost_usd" in outcome ? Number(outcome.cost_usd) || 0 : 0;
+        spentUsd += cost;
+        // Só estado e custo: o texto da aula não sai daqui.
+        results.push({
+          session_id: sessionId,
+          status: outcome.status,
+          cost_usd: cost,
+          ...(outcome.status === "FAILED" ? { error: outcome.error } : {}),
+          ...(outcome.status === "SKIPPED" || outcome.status === "DEFERRED"
+            ? { reason: outcome.reason }
+            : {}),
+        });
+      }
+      return json({ ok: true, spent_usd: spentUsd, results });
+    }
     if (auth.isService && action === "sync_due" && !tenantId) {
       const tokens: TokenCache = new Map();
       const result = await runDocumentationTick<PendingJob>(

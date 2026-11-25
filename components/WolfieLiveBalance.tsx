@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { brandText } from '../lib/tutorBrand';
 import { Mic, Zap, Infinity as InfinityIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { WolfieTopupModal } from './WolfieTopupModal';
 
 interface LiveBalance {
     enforced: boolean;
@@ -34,6 +36,9 @@ export const WolfieLiveBalance: React.FC<WolfieLiveBalanceProps> = ({
 }) => {
     const [balance, setBalance] = useState<LiveBalance | null>(null);
     const [loading, setLoading] = useState(true);
+    // Sem fluxo externo, a compra abre aqui mesmo (por cima do tutor, sem perder a conversa).
+    const [topupOpen, setTopupOpen] = useState(false);
+    const openUpgrade = onUpgrade ?? (() => setTopupOpen(true));
 
     const load = useCallback(async () => {
         try {
@@ -58,7 +63,7 @@ export const WolfieLiveBalance: React.FC<WolfieLiveBalanceProps> = ({
         return (
             <div className="flex items-center gap-2 text-xs text-slate-500">
                 <InfinityIcon size={13} />
-                <span>Prática ilimitada com o Wolfie</span>
+                <span>{brandText("Prática ilimitada com o Wolfie")}</span>
             </div>
         );
     }
@@ -111,15 +116,21 @@ export const WolfieLiveBalance: React.FC<WolfieLiveBalanceProps> = ({
                         : 'Renova todo dia 1º. A prática por escrita é ilimitada.'}
             </p>
 
-            {(esgotado || acabando) && onUpgrade && (
+            {(esgotado || acabando) && (
                 <button
                     type="button"
-                    onClick={onUpgrade}
+                    onClick={openUpgrade}
                     className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-[#002366] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-900"
                 >
                     <Zap size={13} /> Quero mais minutos
                 </button>
             )}
+            {!esgotado && !acabando && (
+                <button type="button" onClick={openUpgrade} className="mt-2 text-[11px] font-bold text-slate-500 underline-offset-2 hover:underline">
+                    Comprar minutos extras
+                </button>
+            )}
+            <WolfieTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} onCredited={() => void load()} />
         </div>
     );
 };

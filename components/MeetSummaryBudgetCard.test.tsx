@@ -36,7 +36,7 @@ describe('Teto mensal do resumo por IA (direção)', () => {
       pause_reason: 'google_summary_provider_credits' }), error: null });
     render(<MeetSummaryBudgetCard aiEnabled />);
     await screen.findByTestId('summary-cap-reached');
-    expect(screen.getByText(/a conta do OpenRouter está sem créditos/)).toBeTruthy();
+    expect(screen.getByText(/a conta do provedor de IA está sem créditos/)).toBeTruthy();
   });
 
   it('teto fora do limite não vai ao servidor', async () => {

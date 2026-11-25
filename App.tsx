@@ -28,10 +28,12 @@ import {
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2, PanelLeft, PanelTop } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
-import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
+import { applyTenantBranding, applyWhiteLabelAccent, resetTenantBranding } from './lib/tenant-branding';
+import { brandText, setSchoolName, setTutorName } from './lib/tutorBrand';
 import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 import { studentBillingDestination } from './lib/studentBillingNavigation';
 import { useStudentDossierLink } from './lib/studentDossierLink';
+import { documentTitleFor, PLATFORM_NAME } from './lib/platformBrand';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -88,6 +90,10 @@ const FinancialReconciliation = lazy(() => import('./components/FinancialReconci
 const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
 const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
+const UnitEconomicsPanel = lazy(() => import('./components/finance/UnitEconomicsPanel'));
+const PricingPanel = lazy(() => import('./components/finance/PricingPanel'));
+const CashflowProjectionPanel = lazy(() => import('./components/finance/CashflowProjectionPanel'));
+const DreAnualPanel = lazy(() => import('./components/finance/DreAnualPanel'));
 const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
 const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
@@ -219,6 +225,10 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
     { tab: 'payroll-reconciliation', label: 'Caixinha × Folha', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
+    { tab: 'unit-economics', label: 'Margem por plano', group: 'Financeiro', keywords: 'lucro prejuízo margem aluno professor plano imposto asaas' },
+    { tab: 'pricing', label: 'Preços e equilíbrio', group: 'Financeiro', keywords: 'precificação preço mínimo ponto de equilíbrio simular' },
+    { tab: 'cashflow-projection', label: 'Caixa projetado', group: 'Financeiro', keywords: 'fluxo de caixa projeção previsão próximos meses' },
+    { tab: 'dre-12m', label: 'DRE 12 meses', group: 'Financeiro', keywords: 'resultado anual demonstrativo asaas imposto ia' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
     { tab: 'reconciliation', label: 'Reconciliação Financeira', group: 'Financeiro' },
@@ -623,6 +633,10 @@ const App: React.FC = () => {
   useEffect(() => {
     resolveTenantFromHostname().then(tenant => {
       setHostnameTenant(tenant);
+      setTutorName((tenant?.branding as { tutorName?: unknown } | null | undefined)?.tutorName);
+      const hostWhiteLabel = Boolean(tenant && tenant.id !== 'school-wise-wolf' && (tenant.branding as { tutorName?: unknown } | null)?.tutorName);
+      setSchoolName(hostWhiteLabel && tenant ? tenant.name : '');
+      applyWhiteLabelAccent(hostWhiteLabel ? tenant?.branding?.primaryColor : null);
       if (tenant?.branding) {
         // Aplica branding do tenant na tela de login
         applyTenantBranding(tenant.branding.primaryColor, tenant.branding.secondaryColor);
@@ -662,6 +676,10 @@ const App: React.FC = () => {
             resolvedTenantData.branding?.primaryColor,
             resolvedTenantData.branding?.secondaryColor,
           );
+          setTutorName(resolvedTenantData.branding?.tutorName);
+          const tenantWhiteLabel = resolvedTenantData.id !== 'school-wise-wolf' && Boolean(resolvedTenantData.branding?.tutorName);
+          setSchoolName(tenantWhiteLabel ? resolvedTenantData.name : '');
+          applyWhiteLabelAccent(tenantWhiteLabel ? resolvedTenantData.branding?.primaryColor : null);
           setCurrentTenant({
             id: resolvedTenantData.id,
             name: resolvedTenantData.name,
@@ -672,7 +690,7 @@ const App: React.FC = () => {
             whatsapp_enabled: resolvedTenantData.whatsapp_enabled,
             school_info: resolvedTenantData.school_info ?? null,
           });
-          document.title = `${resolvedTenantData.name} - Portal EduCore`;
+          document.title = documentTitleFor(resolvedTenantData.name);
         } else {
           // Rede de segurança: se o tenant não vier (RPC indisponível, permissão nova,
           // rede), NUNCA deixe currentTenant nulo — o id do tenant é a chave que as telas
@@ -1204,7 +1222,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200" role="status">
         <Loader2 className="animate-spin mr-3 text-red-400" aria-hidden="true" />
-        Abrindo o Wolfie AI Tutor...
+        {brandText('Abrindo o Wolfie AI Tutor...')}
       </div>
     );
   }
@@ -1478,6 +1496,10 @@ const App: React.FC = () => {
       'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
       'reconciliation': <FinancialReconciliation user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
+      'unit-economics': <UnitEconomicsPanel user={user} />,
+      'pricing': <PricingPanel user={user} />,
+      'cashflow-projection': <CashflowProjectionPanel />,
+      'dre-12m': <DreAnualPanel />,
       'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
       'verify-rooms': <MeetingLinkVerifier />,
@@ -1603,7 +1625,7 @@ const App: React.FC = () => {
                   <Menu size={22} />
                 </button>
                 <span className="font-bold text-sm text-gray-800 dark:text-white truncate">
-                  {currentTenant?.name || 'EduCore'}
+                  {currentTenant?.name || PLATFORM_NAME}
                 </span>
               </div>
 
@@ -1634,7 +1656,7 @@ const App: React.FC = () => {
                       'pedagogical': 'Pedagógico',
                       'materials': 'Materiais',
                       'financial': 'Financeiro',
-                      'ai-tutor': 'Praticar com o Wolfie',
+                      'ai-tutor': brandText('Praticar com o Wolfie'),
                       'practice': 'Minhas Trilhas',
                       'whatsapp': 'WhatsApp',
                       'automation': 'Conexão do WhatsApp',
@@ -1648,6 +1670,10 @@ const App: React.FC = () => {
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'margin': 'Custo e Margem',
+                      'unit-economics': 'Margem por plano',
+                      'pricing': 'Preços e equilíbrio',
+                      'cashflow-projection': 'Caixa projetado',
+                      'dre-12m': 'DRE 12 meses',
                       'coverage': 'Cobertura de Professor',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',

@@ -1,5 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardList, Sparkles } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { type DeskState, parseDesk } from './HubStudentDesk';
 import WolfieTutor from '../WolfieTutor';
 import {
   getUniverseForExperience,
@@ -38,6 +40,42 @@ const asInterestList = (value: unknown): string[] => {
 const asLevel = (value: unknown): CefrLevel =>
   CEFR_LEVELS.includes(value as CefrLevel) ? value as CefrLevel : 'B1';
 
+export interface TeacherTask {
+  title: string;
+  topic: string;
+  objective: string;
+  note: string;
+  teacherName: string;
+  level: CefrLevel | null;
+}
+
+/** A prática do aluno convidado: a última tarefa ainda aberta do professor (ou a mais recente) + o objetivo. */
+export function teacherTaskFromDesk(desk: DeskState | null): TeacherTask | null {
+  if (!desk) return null;
+  const tasks = desk.assignments.filter((item) => item.material.kind !== 'journey');
+  const task = tasks.find((item) => item.status === 'ASSIGNED') ?? tasks[0];
+  const objective = (desk.learner.objective || '').trim();
+  if (!task && !objective) return null;
+  return {
+    title: task?.material.title || 'Prática com o objetivo do seu professor',
+    topic: task?.material.topic || '',
+    objective,
+    note: (task?.note || '').trim(),
+    teacherName: desk.teacher_name,
+    level: CEFR_LEVELS.includes(desk.learner.level_tag as CefrLevel) ? desk.learner.level_tag as CefrLevel : null,
+  };
+}
+
+export function teacherTaskScenario(task: TeacherTask): string {
+  return [
+    `Prática pedida pelo professor${task.teacherName ? ` ${task.teacherName}` : ''}: ${task.title}.`,
+    task.topic ? `Tema da atividade: ${task.topic}.` : '',
+    task.objective ? `Objetivo do aluno: ${task.objective}.` : '',
+    task.note ? `Recado do professor: ${task.note.slice(0, 300)}` : '',
+    'Comece pela tarefa e pelo objetivo do aluno; não troque por outro cenário.',
+  ].filter(Boolean).join(' ').slice(0, 1200);
+}
+
 const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
   bootstrap,
   onRefresh,
@@ -47,6 +85,29 @@ const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
   const profileName = bootstrap.memberProfile?.display_name || bootstrap.account.name;
   const profileLevel = asLevel(preferences.level);
   const [selectedExperience, setSelectedExperience] = useState<LearningExperience | null>(null);
+  // Aluno convidado (LEARNER na conta do professor): o Wolfie abre na tarefa do professor.
+  const isInvitedLearner = bootstrap.memberProfile?.subjectRole === 'LEARNER' && bootstrap.account.audience !== 'LEARNER';
+  const [teacherTask, setTeacherTask] = useState<TeacherTask | null>(null);
+  const [taskOpen, setTaskOpen] = useState(isInvitedLearner);
+  const [taskLoading, setTaskLoading] = useState(isInvitedLearner);
+  useEffect(() => {
+    if (!isInvitedLearner) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc('hub_learner_desk', { p_account_id: bootstrap.account.id });
+        if (!alive) return;
+        const task = error ? null : teacherTaskFromDesk(parseDesk(data));
+        setTeacherTask(task);
+        if (!task) setTaskOpen(false);
+      } catch {
+        if (alive) setTaskOpen(false);
+      } finally {
+        if (alive) setTaskLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [bootstrap.account.id, isInvitedLearner]);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const entitlement = bootstrap.entitlements['wolfie.turn'];
   const accountContextValid = HUB_ACCOUNT_ID_PATTERN.test(bootstrap.account.id);
@@ -104,6 +165,39 @@ const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
     );
   }
 
+  if (taskLoading) {
+    return <div role="status" className="flex min-h-60 items-center justify-center rounded-3xl border border-brand-border bg-brand-surface text-sm font-bold text-brand-muted">Preparando a prática do seu professor…</div>;
+  }
+
+  if (teacherTask && taskOpen) {
+    const taskLevel = teacherTask.level ?? profileLevel;
+    return (
+      <WolfieTutor
+        key={`${bootstrap.account.id}:teacher-task:${taskLevel}`}
+        user={{
+          ...user,
+          levelBadge: taskLevel,
+          englishFor: teacherTask.objective || user.englishFor,
+          shortTermGoal: teacherTask.objective || user.shortTermGoal,
+          wolfieSettings: { ...user.wolfieSettings, level: taskLevel, goal: teacherTask.objective || user.wolfieSettings?.goal },
+        }}
+        voiceMode={false}
+        topic={teacherTask.title}
+        correctionMode="selective"
+        languageMode="bilingual"
+        difficulty="adaptive"
+        scenario={teacherTaskScenario(teacherTask)}
+        studentGoal={teacherTask.objective || teacherTask.title}
+        targetSkill={teacherTask.topic || undefined}
+        hubContext={{
+          accountId: bootstrap.account.id,
+          onUsageCommitted: onRefresh,
+        }}
+        onClose={() => setTaskOpen(false)}
+      />
+    );
+  }
+
   if (selectedExperience) {
     const universe = getUniverseForExperience(selectedExperience.id);
     const scenario = [
@@ -146,6 +240,12 @@ const HubWolfieStudio: React.FC<HubWolfieStudioProps> = ({
         actionLabel="Meu acesso"
         onAction={onUpgrade}
       />
+      {teacherTask && (
+        <button type="button" onClick={() => setTaskOpen(true)} className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-2xl border border-tenant-primary/30 bg-brand-surface p-4 text-left shadow-xs">
+          <ClipboardList size={20} className="shrink-0 text-tenant-primary" aria-hidden="true" />
+          <span><b className="block text-sm text-brand-text">Praticar a tarefa do professor</b><small className="text-xs text-brand-muted">{teacherTask.title}</small></span>
+        </button>
+      )}
       <WolfieDiscoveryHome
         user={user}
         firstName={firstName}

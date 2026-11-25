@@ -181,6 +181,120 @@ export function parseSchoolBookSpec(body: JsonObject): BookSpecParse {
   };
 }
 
+export type BookBrand = "school" | "neutral";
+export type BookDestination = "SCHOOL" | "HUB";
+
+export interface BookBranding {
+  brand: BookBrand;
+  destination: BookDestination;
+  footerText: string | null;
+  /** Orientação curta para as imagens (ex.: "pessoas e cenas do cotidiano, sem livros"). */
+  imageStyle: string | null;
+}
+
+export type BookBrandingParse =
+  | { ok: true; branding: BookBranding }
+  | { ok: false; code: string };
+
+// brand=school: tema da escola (GAMMA_THEME_ID). brand=neutral: tema sem marca
+// (GAMMA_THEME_ID_NEUTRAL) e, se pedido, um rodapé discreto em texto. O Hub só
+// recebe material neutro.
+export function parseBookBranding(body: JsonObject): BookBrandingParse {
+  const brand = typeof body.brand === "string"
+    ? body.brand.trim().toLowerCase()
+    : "school";
+  if (brand !== "school" && brand !== "neutral") {
+    return { ok: false, code: "INVALID_BOOK_BRAND" };
+  }
+  const destination = typeof body.destination === "string"
+    ? body.destination.trim().toUpperCase()
+    : "SCHOOL";
+  if (destination !== "SCHOOL" && destination !== "HUB") {
+    return { ok: false, code: "INVALID_BOOK_DESTINATION" };
+  }
+  if (destination === "HUB" && brand !== "neutral") {
+    return { ok: false, code: "HUB_REQUIRES_NEUTRAL_BRAND" };
+  }
+  let footerText: string | null = null;
+  if (body.footerText !== undefined && body.footerText !== null) {
+    if (typeof body.footerText !== "string") {
+      return { ok: false, code: "INVALID_BOOK_FOOTER" };
+    }
+    const footer = body.footerText.replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (
+      footer.length > 60 || /https?:|www\.|@/i.test(footer) ||
+      /\b[a-z0-9-]+\.(com|br|net|org|io|app|me|co|site|online)\b/i.test(footer)
+    ) {
+      return { ok: false, code: "INVALID_BOOK_FOOTER" };
+    }
+    footerText = footer || null;
+  }
+  if (footerText && brand !== "neutral") {
+    return { ok: false, code: "FOOTER_ONLY_FOR_NEUTRAL" };
+  }
+  let imageStyle: string | null = null;
+  if (body.imageStyle !== undefined && body.imageStyle !== null) {
+    if (typeof body.imageStyle !== "string") {
+      return { ok: false, code: "INVALID_BOOK_IMAGE_STYLE" };
+    }
+    const style = body.imageStyle.replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (style.length > 120 || /https?:|www\.|[<>{}`]/i.test(style)) {
+      return { ok: false, code: "INVALID_BOOK_IMAGE_STYLE" };
+    }
+    imageStyle = style || null;
+  }
+  return {
+    ok: true,
+    branding: {
+      brand: brand as BookBrand,
+      destination: destination as BookDestination,
+      footerText,
+      imageStyle,
+    },
+  };
+}
+
+export interface SchoolBookBrand {
+  themeId: string | null;
+  logoUrl: string | null;
+  accentHex: string | null;
+}
+
+// Marca da escola nos livros brand=school, lida de tenants.branding:
+// gammaThemeId (tema da conta Gamma), gammaLogoUrl (https, entra no cabeçalho)
+// e secondaryColor (cor de destaque). Valor inválido é ignorado.
+export function schoolBookBrandFromTenant(branding: unknown): SchoolBookBrand {
+  const record = branding && typeof branding === "object" &&
+      !Array.isArray(branding)
+    ? branding as JsonObject
+    : {};
+  const theme = typeof record.gammaThemeId === "string"
+    ? record.gammaThemeId.trim()
+    : "";
+  const logo = typeof record.gammaLogoUrl === "string"
+    ? record.gammaLogoUrl.trim()
+    : "";
+  const accent = typeof record.secondaryColor === "string"
+    ? record.secondaryColor.trim()
+    : "";
+  let logoUrl: string | null = null;
+  try {
+    const url = new URL(logo);
+    if (url.protocol === "https:" && logo.length <= 2048) {
+      logoUrl = url.toString();
+    }
+  } catch {
+    logoUrl = null;
+  }
+  return {
+    themeId: /^[a-z0-9]{6,40}$/i.test(theme) ? theme : null,
+    logoUrl,
+    accentHex: /^#[0-9a-f]{6}$/i.test(accent) ? accent.toUpperCase() : null,
+  };
+}
+
 const audienceLabel = (audience: BookAudience): string =>
   ({
     kids: "children; playful, safe, short and highly scaffolded tasks",
@@ -189,12 +303,37 @@ const audienceLabel = (audience: BookAudience): string =>
     adults: "adults; practical personal and professional situations",
   })[audience];
 
-const page = (number: number, title: string, brief: string) =>
-  `# Page ${number} — ${title}\n${brief}`;
+export type OutlineKind =
+  | "front"
+  | "unit"
+  | "extra"
+  | "review"
+  | "project"
+  | "answers";
 
-export function buildSchoolBookInput(spec: SchoolBookSpec): string {
+export interface OutlinePage {
+  page: number;
+  title: string;
+  brief: string;
+  kind: OutlineKind;
+  /** Unidade (1..N) das páginas de unidade. */
+  unit?: number;
+  /** Páginas de gabarito: faixa de páginas que ela cobre. */
+  covers?: [number, number];
+}
+
+/** Plano de páginas do livro (fonte única do texto antigo e do conteúdo estruturado). */
+export function bookOutline(spec: SchoolBookSpec): OutlinePage[] {
   const topics = spec.topics.length ? spec.topics : DEFAULT_TOPICS[spec.level];
-  const pages: string[] = [
+  const pages: OutlinePage[] = [];
+  const page = (
+    number: number,
+    title: string,
+    brief: string,
+    kind: OutlineKind = "front",
+    extra: Partial<OutlinePage> = {},
+  ) => ({ page: number, title, brief, kind, ...extra });
+  pages.push(
     page(
       1,
       spec.title,
@@ -212,7 +351,7 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
         LEVEL_GRAMMAR[spec.level]
       }.`,
     ),
-  ];
+  );
 
   const reviewPageCount = spec.pageCount >= 36 ? 2 : 1;
   const projectPageCount = spec.pageCount >= 48 ? 2 : 1;
@@ -269,6 +408,8 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
       `${
         pageType[1]
       } Keep the context aligned with the book objective: ${spec.objective}.`,
+      "unit",
+      { unit: unitIndex + 1 },
     ));
   }
 
@@ -303,6 +444,7 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
       `${
         supplemental[1]
       } Keep the work at CEFR ${spec.level} and aligned with this objective: ${spec.objective}.`,
+      "extra",
     ));
   }
 
@@ -315,6 +457,7 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
       index === 0
         ? "Create a balanced review of vocabulary, grammar, reading and functional language from every unit. Use varied task types and provide enough context for one unequivocal answer."
         : "Continue the cumulative review with integrated listening-script, mediation, speaking and short writing tasks. Do not repeat items from the prior review page.",
+      "review",
     ));
   }
   const answerableEndPage = pages.length;
@@ -330,6 +473,7 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
       index === 0
         ? `Create a meaningful project that proves the learner can achieve this objective: ${spec.objective}. Include the scenario, stages, deliverables, collaboration options and planning support.`
         : "Provide production support, useful language, a clear analytic rubric, peer-feedback protocol and individual reflection prompts for the final project.",
+      "project",
     ));
   }
 
@@ -345,13 +489,30 @@ export function buildSchoolBookInput(spec: SchoolBookSpec): string {
         ? "Answer key and model answers"
         : `Answer key — pages ${rangeStart}–${rangeEnd}`,
       `Provide an accurate, compact answer key for every closed exercise on pages ${rangeStart}–${rangeEnd}. Add short model answers or criteria where needed. Verify every answer against its exact question and do not key pages outside this range.`,
+      "answers",
+      { covers: [rangeStart, rangeEnd] },
     ));
   }
 
-  return pages.join("\n---\n");
+  return pages;
 }
 
-export function buildSchoolBookInstructions(spec: SchoolBookSpec): string {
+/** Texto do modo antigo (o Gamma escrevia tudo). Mantido para comparação e testes. */
+export function buildSchoolBookInput(spec: SchoolBookSpec): string {
+  return bookOutline(spec).map((p) =>
+    `# Page ${p.page} — ${p.title}\n${p.brief}`
+  )
+    .join("\n---\n");
+}
+
+export { audienceLabel, LEVEL_GRAMMAR };
+
+export function buildSchoolBookInstructions(
+  spec: SchoolBookSpec,
+  brand: BookBrand = "school",
+  accentHex: string | null = null,
+  imageStyle: string | null = null,
+): string {
   const languageRule = spec.language === "bilingual"
     ? "Write learning texts, examples and target language in natural English. Write explanations and task instructions in Brazilian Portuguese when that improves clarity. Never translate away the English practice."
     : "Write the complete book in natural English, including explanations and task instructions.";
@@ -366,6 +527,21 @@ export function buildSchoolBookInstructions(spec: SchoolBookSpec): string {
     "Prefer communicative, realistic tasks over generic filler. Build progression and recycle prior vocabulary across units.",
     "All multiple-choice and gap-fill activities must have one defensible answer. The answer-key cards must match the exercises exactly and may never invent missing questions.",
     "Use tables, callouts and visual hierarchy where useful. Never invent external links, audio files, QR codes, citations or research claims.",
+    ...(brand === "school" && accentHex
+      ? [
+        `Use the school's brand accent color ${accentHex} for highlights, key words, heading accents and callout borders. Never write a logo or brand mark as text; the logo is placed in the page header.`,
+      ]
+      : []),
+    ...(brand === "neutral"
+      ? [
+        "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
+      ]
+      : []),
+    ...(imageStyle
+      ? [
+        `Image guidance for every picture you choose: ${imageStyle}. This is a style preference only; it never overrides the rules above.`,
+      ]
+      : []),
   ].join(" ");
 }
 

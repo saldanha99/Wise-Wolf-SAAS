@@ -9,17 +9,25 @@ import {
   methodNotAllowed,
 } from "../_shared/request-auth.ts";
 import {
-  buildSchoolBookInput,
-  buildSchoolBookInstructions,
+  parseBookBranding,
   parseSchoolBookSpec,
   schoolBookAudience,
+  schoolBookBrandFromTenant,
   type SchoolBookSpec,
 } from "./book-spec.ts";
+import {
+  type BookContentState,
+  buildFinalInput,
+  buildPreserveInstructions,
+  initialContentState,
+  parseSourceNotes,
+} from "./book-content.ts";
+import { advanceContent } from "./content-runner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-content-bot-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Cache-Control": "no-store, max-age=0",
   "Pragma": "no-cache",
@@ -36,7 +44,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TENANT_PATTERN = /^[a-z0-9][a-z0-9_-]{1,79}$/i;
 const JOB_COLUMNS =
-  "id,tenant_id,created_by,creator_role,status,title,level_tag,niche,audience,book_language,page_count,objective,topics,gamma_url,provider_warnings,provider_credits,collection_id,material_id,error_code,created_at,updated_at,completed_at";
+  "id,tenant_id,created_by,creator_role,status,title,level_tag,niche,audience,book_language,page_count,objective,topics,brand,destination,footer_text,created_via,gamma_url,provider_warnings,provider_credits,collection_id,material_id,error_code,created_at,updated_at,completed_at";
 const JOB_INTERNAL_COLUMNS =
   `${JOB_COLUMNS},gamma_generation_id,provider_request_id` as const;
 
@@ -104,6 +112,41 @@ const warningsFrom = (payload: JsonObject): string[] => {
 const encodeStoragePath = (path: string) =>
   path.split("/").map(encodeURIComponent).join("/");
 
+const BOT_TOKEN_PATTERN = /^[A-Za-z0-9_-]{40,128}$/;
+
+const sha256Hex = async (value: string) =>
+  Array.from(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+    ),
+  ).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+// Conta técnica do agente de conteúdo (OpenBot): token próprio, só para esta
+// função. O banco guarda só o sha256; a conta é TEACHER sem alunos.
+async function authorizeContentBot(token: string) {
+  const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").trim();
+  const serviceRoleKey = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "")
+    .trim();
+  if (!supabaseUrl || !serviceRoleKey || !BOT_TOKEN_PATTERN.test(token)) {
+    return null;
+  }
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data, error } = await admin.rpc("content_bot_authenticate", {
+    p_token_sha256: await sha256Hex(token),
+  });
+  const row = Array.isArray(data) ? data[0] : null;
+  if (error || !isRecord(row) || typeof row.user_id !== "string") return null;
+  const profile: AuthProfile = {
+    id: row.user_id,
+    role: "TEACHER",
+    tenant_id: typeof row.tenant_id === "string" ? row.tenant_id : null,
+    lifecycle_status: "active",
+  };
+  return { admin, userId: row.user_id, profile };
+}
+
 const isStaffManager = (role: string) =>
   ["SCHOOL_ADMIN", "COORDINATOR", "MANAGER", "SUPER_ADMIN"].includes(role);
 
@@ -133,6 +176,7 @@ async function startGeneration(
   userId: string,
   profile: AuthProfile,
   body: JsonObject,
+  isBot: boolean,
 ) {
   const gammaApiKey = (Deno.env.get("GAMMA_API_KEY") ?? "").trim();
   if (!gammaApiKey) {
@@ -145,6 +189,29 @@ async function startGeneration(
   const parsed = parseSchoolBookSpec(body);
   if (!parsed.ok) return json(400, { error: parsed.code, code: parsed.code });
   const spec = parsed.spec;
+  const sourceNotes = parseSourceNotes(body.sourceNotes);
+  if (sourceNotes === false) {
+    return json(400, {
+      error: "INVALID_SOURCE_NOTES",
+      code: "INVALID_SOURCE_NOTES",
+    });
+  }
+  const brandingParsed = parseBookBranding(body);
+  if (!brandingParsed.ok) {
+    return json(400, { error: brandingParsed.code, code: brandingParsed.code });
+  }
+  const branding = brandingParsed.branding;
+  let themeId = (Deno.env.get(
+    branding.brand === "neutral" ? "GAMMA_THEME_ID_NEUTRAL" : "GAMMA_THEME_ID",
+  ) ?? "").trim();
+  // Livro neutro sem tema neutro cairia no tema padrão da conta (pode ter a
+  // logo da escola): recusa em vez de arriscar a marca.
+  if (branding.brand === "neutral" && !themeId) {
+    return json(503, {
+      error: "GAMMA_NEUTRAL_THEME_NOT_CONFIGURED",
+      code: "GAMMA_NEUTRAL_THEME_NOT_CONFIGURED",
+    });
+  }
   const tenantId = typeof body.tenantId === "string"
     ? body.tenantId.trim()
     : profile.tenant_id ?? "";
@@ -173,10 +240,15 @@ async function startGeneration(
   }
 
   const { data: tenant, error: tenantError } = await admin.from("tenants")
-    .select("id").eq("id", tenantId).maybeSingle();
+    .select("id, branding").eq("id", tenantId).maybeSingle();
   if (tenantError || !tenant) {
     return json(404, { error: "TENANT_NOT_FOUND", code: "TENANT_NOT_FOUND" });
   }
+  // brand=school: tema, logo e cor de destaque da própria escola (branding).
+  const schoolBrand = branding.brand === "school"
+    ? schoolBookBrandFromTenant(tenant.branding)
+    : { themeId: null, logoUrl: null, accentHex: null };
+  if (schoolBrand.themeId) themeId = schoolBrand.themeId;
 
   const { data: existing, error: existingError } = await admin
     .from("school_book_generations")
@@ -208,6 +280,13 @@ async function startGeneration(
       page_count: spec.pageCount,
       objective: spec.objective,
       topics: spec.topics,
+      brand: branding.brand,
+      destination: branding.destination,
+      footer_text: branding.footerText,
+      created_via: isBot ? "CONTENT_BOT" : "APP",
+      image_style: branding.imageStyle,
+      // Conteúdo escrito e validado por nós antes do Gamma (que só diagrama).
+      content: initialContentState(spec, branding.imageStyle, sourceNotes),
     })
     .select(JOB_COLUMNS)
     .single();
@@ -225,29 +304,95 @@ async function startGeneration(
     });
   }
 
+  // A escrita (blocos validados) avança a cada "status"; o Gamma entra no fim.
+  return json(202, { job, idempotent: false });
+}
+
+/** Regras de marca para o Gamma (o resto das instruções é "diagramar sem reescrever"). */
+function brandRules(brand: string, accentHex: string | null): string[] {
+  if (brand === "neutral") {
+    return [
+      "This is an unbranded edition: never write any school, company or teacher name, logo, slogan or brand mark anywhere.",
+    ];
+  }
+  return accentHex
+    ? [
+      `Use the school's brand accent color ${accentHex} for highlights, heading accents and callout borders. Never write a logo or brand mark as text; the logo is placed in the page header.`,
+    ]
+    : [];
+}
+
+/** Envia o texto pronto (conteúdo validado + gabarito montado por código) ao Gamma. */
+async function launchGamma(
+  admin: AdminClient,
+  job: JsonObject,
+  spec: SchoolBookSpec,
+  state: BookContentState,
+) {
+  const gammaApiKey = (Deno.env.get("GAMMA_API_KEY") ?? "").trim();
+  if (!gammaApiKey) return { ok: false as const, code: "GAMMA_NOT_CONFIGURED" };
+  const branding = {
+    brand: String(job.brand),
+    footerText: typeof job.footer_text === "string" ? job.footer_text : null,
+    imageStyle: state.imageStyle,
+  };
+  let themeId = (Deno.env.get(
+    branding.brand === "neutral" ? "GAMMA_THEME_ID_NEUTRAL" : "GAMMA_THEME_ID",
+  ) ?? "").trim();
+  if (branding.brand === "neutral" && !themeId) {
+    return { ok: false as const, code: "GAMMA_NEUTRAL_THEME_NOT_CONFIGURED" };
+  }
+  const { data: tenant } = await admin.from("tenants").select("id, branding")
+    .eq("id", String(job.tenant_id)).maybeSingle();
+  const schoolBrand = branding.brand === "school"
+    ? schoolBookBrandFromTenant(tenant?.branding)
+    : { themeId: null, logoUrl: null, accentHex: null };
+  if (schoolBrand.themeId) themeId = schoolBrand.themeId;
+  const inputText = buildFinalInput(spec, state);
+
   const payload: JsonObject = {
     title: spec.title,
-    inputText: buildSchoolBookInput(spec),
-    additionalInstructions: buildSchoolBookInstructions(spec),
-    textMode: "generate",
+    inputText,
+    additionalInstructions: buildPreserveInstructions(
+      brandRules(branding.brand, schoolBrand.accentHex),
+      branding.imageStyle,
+    ),
+    // O texto já está pronto e validado: o Gamma só diagrama.
+    textMode: "preserve",
     format: "document",
     cardSplit: "inputTextBreaks",
     exportAs: "pdf",
     textOptions: {
-      amount: "detailed",
       language: spec.language === "bilingual" ? "pt-br" : "en",
-      tone: "clear, warm, rigorous, practical, motivating",
       audience: schoolBookAudience(spec),
     },
+    // Pexels: licença comercial sem marca d'água. A busca "webFreeToUse
+    // Commercially" trouxe prévia de banco de imagem com marca d'água (teste de
+    // 22/11). Imagem gerada por IA fica fora (regra: imagem gerada só pelo Codex).
     imageOptions: {
-      source: "webFreeToUseCommercially",
+      source: "pexels",
     },
     cardOptions: {
       dimensions: "a4",
       headerFooter: {
         topLeft: { type: "text", value: spec.title },
+        ...(schoolBrand.logoUrl
+          ? {
+            topRight: {
+              type: "image",
+              source: "custom",
+              src: schoolBrand.logoUrl,
+              size: "md",
+            },
+          }
+          : {}),
         bottomRight: { type: "cardNumber" },
-        hideFromFirstCard: true,
+        ...(branding.footerText
+          ? { bottomLeft: { type: "text", value: branding.footerText } }
+          : {}),
+        // Com logo da escola, o cabeçalho também vai na capa (o Gamma reserva o
+        // espaço; carimbar o PDF cobria o título).
+        hideFromFirstCard: !schoolBrand.logoUrl,
       },
     },
     sharingOptions: {
@@ -255,7 +400,6 @@ async function startGeneration(
       externalAccess: "noAccess",
     },
   };
-  const themeId = (Deno.env.get("GAMMA_THEME_ID") ?? "").trim();
   const folderId = (Deno.env.get("GAMMA_FOLDER_ID") ?? "").trim();
   if (themeId) payload.themeId = themeId;
   if (folderId) payload.folderIds = [folderId];
@@ -287,7 +431,7 @@ async function startGeneration(
         provider_request_id: providerRequestId,
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
-      return json(response.status >= 500 ? 503 : 422, { error: code, code });
+      return { ok: false as const, code };
     }
     const generationId = responsePayload.generationId.trim();
     if (!generationId || generationId.length > 300) {
@@ -306,7 +450,7 @@ async function startGeneration(
       .select(JOB_COLUMNS)
       .single();
     if (updateError || !started) throw new Error("BOOK_JOB_UPDATE_FAILED");
-    return json(202, { job: started, idempotent: false });
+    return { ok: true as const, job: started };
   } catch (error) {
     const code = error instanceof Error && error.name === "AbortError"
       ? "GAMMA_TIMEOUT"
@@ -320,7 +464,7 @@ async function startGeneration(
       error_code: code,
       updated_at: new Date().toISOString(),
     }).eq("id", job.id);
-    return json(503, { error: code, code });
+    return { ok: false as const, code };
   }
 }
 
@@ -348,23 +492,42 @@ async function finalizeBook(
   }
 
   const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
-  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
-  const authorization = req.headers.get("authorization")?.trim() ?? "";
-  if (!supabaseUrl || !anonKey || !authorization) {
-    throw new Error("STORAGE_AUTH_UNAVAILABLE");
-  }
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authorization } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const botCreated = job.created_via === "CONTENT_BOT";
   const objectPath =
     `${job.tenant_id}/${job.created_by}/${crypto.randomUUID()}.pdf`;
+  let userClient: AdminClient;
+  if (botCreated) {
+    // Sem sessão humana: envia como serviço e registra a conta técnica como
+    // dona do objeto (procedência igual à de um upload de professor).
+    if (!supabaseUrl) throw new Error("STORAGE_AUTH_UNAVAILABLE");
+    userClient = admin;
+  } else {
+    const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
+    const authorization = req.headers.get("authorization")?.trim() ?? "";
+    if (!supabaseUrl || !anonKey || !authorization) {
+      throw new Error("STORAGE_AUTH_UNAVAILABLE");
+    }
+    userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
   const { error: uploadError } = await userClient.storage.from(MATERIALS_BUCKET)
     .upload(objectPath, bytes, {
       contentType: "application/pdf",
       upsert: false,
     });
   if (uploadError) throw new Error("BOOK_STORAGE_UPLOAD_FAILED");
+  if (botCreated) {
+    const { data: claimed, error: claimError } = await admin.rpc(
+      "content_bot_claim_material_object",
+      { p_user: job.created_by, p_object: objectPath },
+    );
+    if (claimError || claimed !== true) {
+      await admin.storage.from(MATERIALS_BUCKET).remove([objectPath]);
+      throw new Error("BOOK_STORAGE_OWNER_FAILED");
+    }
+  }
 
   let collectionId: string | null = null;
   let materialId: string | null = null;
@@ -385,7 +548,15 @@ async function finalizeBook(
     }
     collectionId = collection.id;
 
-    const teacherCreated = job.creator_role === "TEACHER";
+    // Nasce pendente e privado: professor, agente de conteúdo e todo livro
+    // para o Hub. Só livro da escola criado por admin no app nasce aprovado.
+    const mustReview = job.creator_role === "TEACHER" || botCreated ||
+      job.destination === "HUB";
+    const category = job.destination === "HUB"
+      ? "Livro neutro para o Hub (IA)"
+      : job.brand === "neutral"
+      ? "Livro gerado por IA (sem marca)"
+      : "Livro gerado por IA";
     const fileUrl =
       `${supabaseUrl}/storage/v1/object/authenticated/${MATERIALS_BUCKET}/${
         encodeStoragePath(objectPath)
@@ -398,10 +569,10 @@ async function finalizeBook(
         file_url: fileUrl,
         type: "PDF",
         level_tag: spec.level,
-        category: "Livro gerado por IA",
+        category,
         uploaded_by: job.created_by,
-        scope: teacherCreated ? "PRIVATE" : "TENANT",
-        approval_status: teacherCreated ? "PENDING" : "APPROVED",
+        scope: mustReview ? "PRIVATE" : "TENANT",
+        approval_status: mustReview ? "PENDING" : "APPROVED",
         niche: spec.niche,
         collection_id: collectionId,
         part_number: 1,
@@ -451,6 +622,135 @@ async function finalizeBook(
   }
 }
 
+const WRITE_LEASE_SECONDS = 150;
+
+function progressOf(state: BookContentState | null) {
+  if (!state) return null;
+  const done = state.chunks.filter((c) => c.state === "done").length;
+  return {
+    stage: "WRITING",
+    done,
+    total: state.chunks.length,
+    // Motivo da parada (bloco e problemas restantes), sem dado pessoal: só texto do livro.
+    ...(state.failure ? { failure: state.failure } : {}),
+  };
+}
+
+function specOfJob(job: JsonObject): SchoolBookSpec {
+  const parsed = parseSchoolBookSpec({
+    title: job.title,
+    level: job.level_tag,
+    niche: job.niche,
+    audience: job.audience,
+    language: job.book_language,
+    pageCount: job.page_count,
+    objective: job.objective,
+    topics: job.topics,
+  });
+  if (!parsed.ok) throw new Error("BOOK_JOB_SPEC_INVALID");
+  return parsed.spec;
+}
+
+/**
+ * Livro em STARTING com conteúdo estruturado: avança UM passo (escrever ou verificar um
+ * bloco) sob uma trava curta, para duas chamadas de "status" não escreverem o mesmo bloco.
+ * Quando todos os blocos passam, monta o texto final e chama o Gamma (status GENERATING).
+ */
+async function advanceWriting(admin: AdminClient, job: JsonObject) {
+  const jobId = String(job.id);
+  const now = new Date();
+  const { data: claimed, error: claimError } = await admin
+    .from("school_book_generations")
+    .update({
+      content_lease_until: new Date(now.getTime() + WRITE_LEASE_SECONDS * 1000)
+        .toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("status", "STARTING")
+    .not("content", "is", null)
+    .or(
+      `content_lease_until.is.null,content_lease_until.lt."${now.toISOString()}"`,
+    )
+    .select(`${JOB_COLUMNS},content`)
+    .maybeSingle();
+  if (claimError) {
+    return json(503, {
+      error: "BOOK_JOB_UNAVAILABLE",
+      code: "BOOK_JOB_UNAVAILABLE",
+    });
+  }
+  if (!claimed) {
+    // Livro antigo (sem conteúdo) ou outro "status" já está trabalhando: só devolve.
+    const { data: current } = await admin.from("school_book_generations")
+      .select(`${JOB_COLUMNS},content`).eq("id", jobId).maybeSingle();
+    const { content, ...publicJob } = (current ?? job) as JsonObject;
+    return json(200, {
+      job: publicJob,
+      progress: progressOf(content as BookContentState | null),
+    });
+  }
+  const { content: rawState, ...publicJob } = claimed as JsonObject;
+  let state = rawState as BookContentState;
+  const release = (extra: JsonObject = {}) =>
+    admin.from("school_book_generations").update({
+      content: state,
+      content_lease_until: null,
+      updated_at: new Date().toISOString(),
+      ...extra,
+    }).eq("id", jobId).select(JOB_COLUMNS).maybeSingle();
+
+  try {
+    const spec = specOfJob(publicJob);
+    const step = await advanceContent(spec, state, {
+      db: admin,
+      tenantId: String(publicJob.tenant_id),
+      userId: String(publicJob.created_by),
+    });
+    state = step.state;
+    if (step.outcome === "failed") {
+      const { data } = await release({
+        status: "FAILED",
+        error_code: step.errorCode ?? "BOOK_CONTENT_INVALID",
+      });
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    if (step.outcome !== "ready") {
+      const { data } = await release();
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    await release({
+      content_lease_until: new Date(Date.now() + WRITE_LEASE_SECONDS * 1000)
+        .toISOString(),
+    });
+    const launched = await launchGamma(admin, publicJob, spec, state);
+    if (!launched.ok) {
+      const { data } = await release({
+        status: "FAILED",
+        error_code: launched.code,
+      });
+      return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+    }
+    await admin.from("school_book_generations").update({
+      content_lease_until: null,
+    }).eq("id", jobId);
+    return json(200, {
+      job: launched.job,
+      progress: {
+        stage: "LAYOUT",
+        done: state.chunks.length,
+        total: state.chunks.length,
+      },
+    });
+  } catch (error) {
+    const code = error instanceof Error && /^(BOOK|GAMMA)_/.test(error.message)
+      ? error.message
+      : "BOOK_CONTENT_FAILED";
+    console.error("Book content step failed", { code });
+    const { data } = await release({ status: "FAILED", error_code: code });
+    return json(200, { job: data ?? publicJob, progress: progressOf(state) });
+  }
+}
+
 async function refreshGeneration(
   req: Request,
   admin: AdminClient,
@@ -475,11 +775,18 @@ async function refreshGeneration(
       code: "BOOK_JOB_ACCESS_DENIED",
     });
   }
-  if (
-    ["COMPLETED", "FAILED", "FINALIZING", "STARTING"].includes(
-      String(job.status),
-    )
-  ) {
+  if (String(job.status) === "STARTING") {
+    return await advanceWriting(admin, job);
+  }
+  if (String(job.status) === "FAILED") {
+    // Livro que parou na escrita: devolve o motivo (bloco e problemas), sem o conteúdo nem o gabarito.
+    const { data: saved } = await admin.from("school_book_generations")
+      .select("content").eq("id", jobId).maybeSingle();
+    const failure = (saved?.content as BookContentState | null)?.failure ??
+      null;
+    return json(200, { job, ...(failure ? { failure } : {}) });
+  }
+  if (["COMPLETED", "FINALIZING"].includes(String(job.status))) {
     return json(200, { job });
   }
 
@@ -582,28 +889,84 @@ async function refreshGeneration(
   }
 }
 
+async function readCredits(profile: AuthProfile, isBot: boolean) {
+  if (!isBot && !["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(profile.role)) {
+    return json(403, {
+      error: "CREDITS_ACCESS_DENIED",
+      code: "CREDITS_ACCESS_DENIED",
+    });
+  }
+  const gammaApiKey = (Deno.env.get("GAMMA_API_KEY") ?? "").trim();
+  if (!gammaApiKey) {
+    return json(503, {
+      error: "GAMMA_NOT_CONFIGURED",
+      code: "GAMMA_NOT_CONFIGURED",
+    });
+  }
+  try {
+    const response = await fetchWithTimeout(`${GAMMA_BASE_URL}/me`, {
+      headers: { "X-API-KEY": gammaApiKey, "Accept": "application/json" },
+    }, 10_000);
+    const payload: unknown = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(payload)) {
+      const code = gammaErrorCode(response.status);
+      return json(response.status >= 500 ? 503 : 422, { error: code, code });
+    }
+    return json(200, {
+      creditsRemaining: typeof payload.creditsRemaining === "number"
+        ? payload.creditsRemaining
+        : null,
+      neutralThemeConfigured: Boolean(
+        (Deno.env.get("GAMMA_THEME_ID_NEUTRAL") ?? "").trim(),
+      ),
+    });
+  } catch {
+    return json(503, { error: "GAMMA_UNAVAILABLE", code: "GAMMA_UNAVAILABLE" });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
   if (req.method !== "POST") return methodNotAllowed(corsHeaders);
 
-  const auth = await authorizeRequest(req, {
-    corsHeaders,
-    allowedRoles: ["TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"],
-  });
-  if (auth.ok === false) return auth.response;
-  if (!auth.context.userId || !auth.context.profile) {
-    return json(403, {
-      error: "AUTHORIZATION_REQUIRED",
-      code: "AUTHORIZATION_REQUIRED",
+  const botToken = req.headers.get("x-content-bot-token")?.trim() ?? "";
+  let context: { admin: AdminClient; userId: string; profile: AuthProfile };
+  let isBot = false;
+  if (botToken) {
+    const bot = await authorizeContentBot(botToken);
+    if (!bot) {
+      return json(401, {
+        error: "CONTENT_BOT_DENIED",
+        code: "CONTENT_BOT_DENIED",
+      });
+    }
+    context = bot;
+    isBot = true;
+  } else {
+    const auth = await authorizeRequest(req, {
+      corsHeaders,
+      allowedRoles: ["TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"],
     });
+    if (auth.ok === false) return auth.response;
+    if (!auth.context.userId || !auth.context.profile) {
+      return json(403, {
+        error: "AUTHORIZATION_REQUIRED",
+        code: "AUTHORIZATION_REQUIRED",
+      });
+    }
+    context = {
+      admin: auth.context.admin,
+      userId: auth.context.userId,
+      profile: auth.context.profile,
+    };
   }
 
   let body: JsonObject;
   try {
     const raw = await req.text();
-    if (new TextEncoder().encode(raw).byteLength > 12_000) {
+    if (new TextEncoder().encode(raw).byteLength > 32_000) {
       return json(413, {
         error: "REQUEST_TOO_LARGE",
         code: "REQUEST_TOO_LARGE",
@@ -620,20 +983,24 @@ serve(async (req) => {
   if (action === "create") {
     return await startGeneration(
       req,
-      auth.context.admin,
-      auth.context.userId,
-      auth.context.profile,
+      context.admin,
+      context.userId,
+      context.profile,
       body,
+      isBot,
     );
   }
   if (action === "status") {
     return await refreshGeneration(
       req,
-      auth.context.admin,
-      auth.context.userId,
-      auth.context.profile,
+      context.admin,
+      context.userId,
+      context.profile,
       body,
     );
+  }
+  if (action === "credits") {
+    return await readCredits(context.profile, isBot);
   }
   return json(400, { error: "INVALID_ACTION", code: "INVALID_ACTION" });
 });

@@ -71,7 +71,7 @@ describe('Meet prefill', () => {
         await screen.findByText('Os dados disponíveis do Meet são preenchidos automaticamente. Revise antes de registrar.');
         expect(screen.getByRole('button', { name: 'Registrar selecionadas (0)' })).toBeDisabled();
         fireEvent.change(screen.getByLabelText('Resultado da aula de Ana'), { target: { value: 'COMPLETED' } });
-        expect(screen.getByText('Preenchido pelo rascunho da reunião — confira os dados')).toBeInTheDocument();
+        expect(screen.getByText('Preenchido pelo rascunho da reunião — confira: ao lançar, o resumo da aula é aprovado com o que você deixar aqui')).toBeInTheDocument();
         expect(screen.queryByRole('textbox', { name: 'Objetivo individual trabalhado — Ana' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Registrar selecionadas (1)' }));
         expect(save.mock.calls[0][0].one).toMatchObject({ type: 'COMPLETED', ...suggestion.fields });
@@ -83,7 +83,7 @@ describe('Meet prefill', () => {
         fireEvent.change(screen.getByLabelText('Resultado da aula de Ana'), { target: { value: 'COMPLETED' } });
         fireEvent.change(screen.getByLabelText('Objetivo individual trabalhado — Ana'), { target: { value: 'Objetivo corrigido' } });
         resolve({ one: suggestion });
-        await screen.findByText('Preenchido pelo rascunho da reunião — confira os dados');
+        await screen.findByText('Preenchido pelo rascunho da reunião — confira: ao lançar, o resumo da aula é aprovado com o que você deixar aqui');
         expect(screen.getByText('Objetivo corrigido')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Editar dados preenchidos' }));
         expect(screen.getByLabelText('Objetivo individual trabalhado — Ana')).toHaveValue('Objetivo corrigido');

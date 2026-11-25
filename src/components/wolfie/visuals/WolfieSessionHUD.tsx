@@ -1,4 +1,5 @@
 import React from "react";
+import { brandText } from '../../../../lib/tutorBrand';
 import { Clock3, X } from "lucide-react";
 import type { WolfieCharacterState } from "./WolfieCharacter";
 import type { WolfieVisualSceneProfile } from "./types";
@@ -68,7 +69,7 @@ export function WolfieSessionHUD({
   controls,
   controlsLabel = "Controles da sessão",
   onClose,
-  closeLabel = "Fechar Wolfie Tutor",
+  closeLabel = brandText("Fechar Wolfie Tutor"),
   announceStatus = false,
   className = "",
 }: WolfieSessionHUDProps) {
@@ -78,7 +79,7 @@ export function WolfieSessionHUD({
   return (
     <header
       className={`pointer-events-none w-full px-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:px-5 lg:px-7 ${className}`}
-      aria-label="Informações da sessão Wolfie"
+      aria-label={brandText("Informações da sessão Wolfie")}
       data-session-state={state}
       data-hud-variant={profile.hudVariant}
       style={{ "--wolfie-hud-accent": profile.palette.accent } as React.CSSProperties}

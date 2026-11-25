@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { resolveTenantFromHostname } from '../lib/tenant-resolver';
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { mapProfileToAppUser } from '../lib/auth-user';
@@ -14,6 +15,18 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [brand, setBrand] = useState<{ name: string; logoUrl?: string | null } | null>(null);
+
+  // White label: no endereço de uma escola cliente o login mostra a marca dela.
+  // A escola da plataforma (Wise Wolf) mantém a tela de sempre.
+  useEffect(() => {
+    let alive = true;
+    resolveTenantFromHostname().then((tenant) => {
+      if (!alive || !tenant || tenant.id === 'school-wise-wolf') return;
+      setBrand({ name: tenant.name, logoUrl: tenant.branding?.logoUrl ?? null });
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent, data: { email: string, password: string }) => {
     // e.preventDefault(); // Handled in component
@@ -89,6 +102,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         onLogin={handleLogin}
         isLoading={loading}
         error={error}
+        brand={brand}
         onForgotPassword={async (email) => {
           // A resposta não revela se o e-mail existe; a página /reset-password define a senha nova.
           const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(email, {

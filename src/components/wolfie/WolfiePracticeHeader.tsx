@@ -1,3 +1,4 @@
+import { brandText } from '../../../lib/tutorBrand';
 import React from 'react';
 import { BookOpen, Sparkles } from 'lucide-react';
 import { focusRing, secondaryButton } from './WolfieActivityUI';
@@ -40,7 +41,7 @@ export function WolfiePracticeHeader({
                 isSubjectView ? 'text-white' : 'text-brand-text'
               }`}
             >
-              Wolfie Tutor
+              {brandText("Wolfie Tutor")}
             </p>
             <p
               className={`text-xs ${

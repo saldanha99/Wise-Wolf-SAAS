@@ -1,3 +1,673 @@
+### 24/11/2026 — Hub: 5 livros neutros redesenhados entram como versão nova; originais fora da vitrine
+
+- **O quê (Vinícius via Chefe, msg f120ab12: «cada livro aprovado pelo Revisor entra no hub como versão nova; o antigo
+  sai da vitrine sem ser apagado»):** 5 PDFs de `/data/OpenBot/Shared/wisewolf/conteudo/redesign-editorial/` (piloto-v4 e
+  onda-01-v3, OK do Revisor) publicados pelo trilho normal: upload em `materials` com provenance, `pedagogical_materials`
+  novo copiando metadados do original, prévia de 3 páginas separada, consentimento da diretora + 2ª aprovação
+  (`hub_approve_commercial_publications`, audit_logs cita f120ab12), `sync-hub-material` 5/5. Executou o Plataforma
+  05:26–05:28 UTC. Catálogo ativo: 21 → 24.
+- **Original → material novo → item do Hub:** 2d605ea6 → daf8611d → b83947b2 · 58316b1c → 9d3ed3ec → 5f34285e ·
+  078b5f5e → 33c9d73f → 8d5bad41 · c2f56c53 → d9a88d3d → 27275ff2 · 2192d5f7 → b4eb4d5f → ccc61434.
+- **Originais:** opt-in false, item inativo; linhas e arquivos mantidos (escola segue APPROVED). Nenhuma atribuição,
+  favorito ou link apontava para os itens antigos. ⚠️ Os itens do Hub (antigos e novos) não têm `collection_id`/`part_number`.
+- **Rollback:** `/opt/wisewolf/backup-hub-5-neutros-20261124T052439Z/` (jsonl antes, approve.sql, withdraw.sql). Novos fora:
+  como diretora, `hub_catalog_opt_in = false` nos 5 novos (o gatilho desativa o item). Originais de volta: opt-in + 2ª
+  aprovação + `sync-hub-material`.
+
+### 23/11/2026 (noite, 4) — Livros: conteúdo escrito e validado por nós; o Gamma só diagrama (gamma-book-generator)
+
+- **O quê (pedido do Chefe 87c4e46c):** o `gamma-book-generator` escreve o livro em blocos (capa/abertura, unidades,
+  revisão) com JSON estruturado por item (`book-content.ts`, `content-runner.ts`): Haiku escreve, Sonnet confere e
+  corrige (severidade blocker/minor; 4ª tentativa poda o item marcado; até 6), o código valida com o validador comum
+  `_shared/exercise-validator.ts` (mcq/gap/reorder/match/tf/transform/correct_error/open) e monta o gabarito. O Gamma
+  recebe o texto pronto com `textMode: preserve`. Estado em `school_book_generations.content` (contém gabarito: nunca
+  ao aluno), avanço de 1 passo por chamada do status com `content_lease_until`. `sourceNotes` (≤ 6000) no spec.
+- **Revisão do lote T2 (20 livros, ~US$ 0,80 cada):** múltipla escolha com a certa girando de letra (`mcqOrder`, página
+  e gabarito da mesma permutação); resposta-modelo nunca cortada (teto 1200, acima volta à IA); menos de 80% das
+  palavras pedidas volta à IA; instrução em inglês em livro bilíngue volta à IA; saída cortada pelo teto de tokens
+  repete com o dobro (até 16 mil). Revisor: 342/342 MCQ página × gabarito, 0 Bloqueia. Livros em
+  `/data/OpenBot/Shared/wisewolf/conteudo/livros-motor-novo/`.
+- **No ar (21:11 UTC):** migration `20261123140000` (aditiva: `content`, `content_lease_until`, `image_style`) marcada;
+  `gamma-book-generator` (`338de0a5…`) + `_shared/exercise-validator.ts` (novo); `docker restart supabase-edge-functions`.
+  Conferido: `action: credits` pelo token do bot = 200 (saldo Gamma 1.629 créditos em 23/11 — ⚠️ baixo).
+  `release.sh`: validador e `hub-payment-processor.ts` registrados como `_shared` (estavam fora).
+- **Rollback:** `/opt/wisewolf/backup-livros-motor-20261123T211111Z/` — copiar `functions/gamma-book-generator`, apagar
+  `volumes/functions/_shared/exercise-validator.ts`, devolver `published-functions.md5`, `docker restart
+  supabase-edge-functions`. Banco: as colunas podem ficar (livro sem `content` segue o fluxo antigo).
+- **Correção 21:26 UTC (`24237f4`, Revisor Ok), achada no 1º livro real (TOEFL B1, job `6ea0e6d5`, falhou sem gastar
+  Gamma):** o aviso de palavra extra do banco é do código (`Word bank (N extra)`; frase da IA sobre isso sai da
+  instrução); na última tentativa o bloco segue sem os itens apontados; job FAILED devolve `failure` (bloco, tentativas,
+  até 3 problemas; sem conteúdo nem gabarito). Rollback: pasta + md5 de
+  `/opt/wisewolf/backup-livros-palavra-extra-20261123T212651Z/` + restart.
+
+### 23/11/2026 (noite, 3) — Recebedor (MEI) também no Wolfie avulso; gerador do Hub v4.2
+
+- **Aviso do recebedor no Wolfie (decisão do Chefe/Vinícius, `8e4c33a`, Revisor Ok):** a mesma constante
+  `_shared/hub-payment-processor.ts` aparece no app do Wolfie (`apps/wolfie-web/.../SubscribePage.tsx`: revisão antes de
+  gerar, junto do QR e no rodapé; saiu "processada pelo Asaas") e na compra de minutos (`WolfieTopupModal`). E-mail de
+  confirmação já tinha. Site: produto `wolfie` com `payeeNotice` (institucional `a7bdce2`, Dev Next.js). Termos do
+  Wolfie (2026-08-03-v1) não mudaram.
+- **No ar (20:35–20:38 UTC):** front do sistema `index-CeZsTFPJ.js` (56 arquivos fora de `assets/` iguais); app do
+  Wolfie release `20261123T203636Z-wolfie-aviso-recebedor` (`index-PXJ9NTPT.js`, `current` → `.../20261123T203636Z-wolfie-aviso-recebedor/dist`, container recriado com
+  `docker compose up -d --force-recreate`; só restart mantém a pasta antiga montada).
+- **Rollback:** sistema: `cd /opt/wisewolf/frontend/src && mv dist dist.wolfie-aviso && mv dist.prev20-wolfie-aviso dist && cd .. &&
+  docker compose restart frontend`. Wolfie: `cd /opt/wisewolf/wolfie-frontend && ln -sfn
+  /opt/wisewolf/wolfie-frontend/releases/20261122T155909Z-hub-checkout/dist current && echo 20261122T155909Z-hub-checkout >
+  ACTIVE_RELEASE && docker compose up -d --force-recreate`.
+- **Gerador do Hub v4.2 (Dev Wise Wolf Hub, `7915976`, Revisor Ok):** a certa da múltipla escolha gira de letra. Só
+  `pedagogical-content` (`a0bb6072…`), 20:34 UTC. Rollback: pasta + `published-functions.md5` de
+  `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/` + `docker restart supabase-edge-functions`.
+
+### 23/11/2026 (noite, 2) — Hub Fase 1 no ar: teste Pro sem cartão, Google, logo/Word, atividade por link/QR e correção por IA
+
+- **O quê (pedido do Chefe d03e7683 + defeitos do E2E de 23/11):** teste **Pro de 7 dias sem cartão** (o claim dá
+  `PROFESSOR_PRO` TRIALING; ao vencer, `expire_hub_trials_internal` dá `DISCOVERY` ACTIVE até 2099, `provider = internal`,
+  metadata `hub_free_after_trial`); **entrar com Google** no `HubAuthDialog`; **logo do professor** (`hub_account_branding`,
+  data URL ≤ 400 KB) no PDF e no **Word** (`hubExport.ts`, MHTML; só o logo vira anexo); **atividade por link/QR** sem
+  cadastro (edge nova `hub-material-share`; banco guarda só o sha256 do token; 30 dias; 30 links vivos por material;
+  aluno vê `hub_strip_answer_keys`); **correção** — fechadas por código, abertas pela IA em pt-BR, cota
+  `educator_ai.correct` (Gratuito 30, Pro 600, Escola 2000, Institucional 5000/mês) **reservada antes da IA**
+  (`hub_material_share_reserve_ai`, trava por conta, reserva de 5 min, liberada na falha); por link 20 envios/min e
+  300/dia; modo do gabarito `after_submit` | `never` gravado na criação do link (`hub_material_share_create` de 4
+  argumentos). No `never` a resposta-modelo não vai à IA e o aluno não recebe esperado, explicação nem frase corrigida;
+  o professor vê tudo em "Ver respostas".
+- **Defeitos do E2E:** aluno convidado tomava **403 no Wolfie** (perfil STUDENT sem escola; gatilho
+  `hub_memberships_promote_tenantless` → NON_STUDENT, migration `190000`) e agora o Wolfie dele **abre na tarefa do
+  professor** (`hub_learner_desk`: última tarefa aberta, recado e objetivo); **cartão no checkout do Hub** (iframe do
+  formulário do site `https://wisewolflanguage.com.br/pagamento/cartao.html`; o site liberou o Hub no `frame-ancestors`,
+  commit `550ede4` do institucional); "Para escolas" fora do menu do professor; `?cadastro=1` abre o cadastro direto
+  (os "Criar conta grátis" do site apontam para lá); títulos crus da biblioteca com nome de vitrine (`hubDisplayTitle`);
+  nenhum texto do checkout cita o Asaas.
+- **No ar (19:47–19:52 UTC):** migrations `20261123150000`–`190000` (uma transação, marcadas em `.migration-checksums`);
+  funções `hub-material-share` (nova, `7dd325e3…`) e `wolf-tutor-api` (`f1f259a6…`) no `.published-functions.md5`;
+  front `index-DaTkBHa2.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Revisor: 0 Bloqueia
+  (2ª rodada). E2E em produção a 390 px: `/data/OpenBot/Shared/wisewolf/hub-fase1-20261123/`.
+- **Rollback:** backup `/opt/wisewolf/backup-hub-fase1-20261123T194728Z/` (`postgres.dump`, `functions/wolf-tutor-api`,
+  `published-functions.md5`, `migration-checksums.list`, `frontend-dist.md5`). Front: `cd /opt/wisewolf/frontend/src && mv
+  dist dist.fase1 && mv dist.prev19-hub-fase1 dist && cd .. && docker compose restart frontend`. Funções: `rm -rf
+  volumes/functions/hub-material-share`, copiar `functions/wolf-tutor-api` do backup, devolver o
+  `published-functions.md5`, `docker restart supabase-edge-functions`. Banco (aditivo; só se preciso): `drop function`
+  das `hub_material_share_*` (create de 3 e 4 argumentos, view, revoke, for_grading, reserve_ai, release_ai, record,
+  results), `drop table public.hub_material_share_ai_reservations, public.hub_material_share_submissions,
+  public.hub_material_share_links, public.hub_account_branding;` `delete from hub_plan_entitlements where feature_key =
+  'educator_ai.correct';` `drop trigger hub_memberships_promote_tenantless on public.hub_memberships;` + as 2 funções do
+  claim/expiração de volta pela definição do dump + apagar os 5 `.sha256`.
+- **Hotfix 20:22 UTC (`7010245`, Revisor Ok):** quem estava no teste Pro levava 409
+  `SUBSCRIPTION_RECONCILIATION_REQUIRED` ao assinar (o teste não tem provedor). `_shared/hub-billing-safety.ts`
+  (`9f66577e…`) isenta TRIALING sem provedor e sem id no provedor. Rollback: `cp -a
+  /opt/wisewolf/backup-hub-assinar-teste-20261123T202212Z/hub-billing-safety.ts volumes/functions/_shared/` +
+  `docker restart supabase-edge-functions`. ⚠️ Se um teste interno passar a gravar `provider = 'internal'`, aceite-o aqui.
+- **E2E em produção (390 px):** cadastro em 1 clique, teste Pro, geração, logo, link/QR, correção nos 2 modos, convite,
+  envio de material, Wolfie do aluno convidado (200, abre na tarefa) e o formulário do cartão dentro do Hub (sem pagar).
+  Asaas de teste apagado (deleted=true); 54 linhas das 2 contas apagadas, cópia em
+  `/opt/wisewolf/backup-hub-fase1-e2e-limpeza-20261123T202514Z/rows.tsv`; varredura final 0.
+
+### 23/11/2026 (noite) — Recebedor do pagamento (MEI) antes do PIX, no e-mail e nos Termos do Hub v2026-11-23
+
+- **Por quê (decisão do Vinícius):** a conta Asaas é o MEI "55.806.029 DEBORA ALVES FERNANDES", sem nome fantasia (em MEI a
+  razão social é o nome da pessoa; não muda por API). O PIX/boleto/fatura mostram esse nome e assustavam o comprador.
+- **O quê:** constante única `_shared/hub-payment-processor.ts` ("Pagamento processado por 55.806.029 Debora Alves Fernandes
+  (CNPJ 55.806.029/0001-57), empresa responsável pela Wise Wolf."): no checkout do Hub (revisão antes de gerar a cobrança e
+  junto do QR), no e-mail de confirmação (`process-hub-fulfillment`) e na cláusula 4 dos **Termos v2026-11-23** (hash
+  `890ccbc3…`; Privacidade continua 2026-08-24). ⚠️ O site (`wisewolf-institucional/components/solucoes/SolutionCheckout.tsx`)
+  fixa `termsVersion`/`termsSha256`: mudou os Termos → o site sobe junto (Dev Next.js, `feat/aviso-recebedor` ff210e0), senão
+  a venda pelo site é recusada. O Wolfie avulso usa a mesma conta Asaas e ainda NÃO mostra o aviso (decisão pendente).
+- **No ar (18:45 UTC):** `create-hub-checkout` (`7b2fc322…`) e `process-hub-fulfillment` (`dab80167…`) + `_shared/hub-payment-processor.ts`;
+  front `index-y3AJxfqv.js` (Fase 2 do Hub + aviso; 56 arquivos fora de `assets/` iguais). Revisor: 0 Bloqueia.
+- **Rollback:** funções: copiar `functions/create-hub-checkout` e `functions/process-hub-fulfillment` de
+  `/opt/wisewolf/backup-aviso-recebedor-20261123T184331Z/`, devolver `published-functions.md5`, `docker restart supabase-edge-functions`
+  (e o site volta para a versão anterior junto). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.aviso && mv
+  dist.prev18-aviso-recebedor dist && cd .. && docker compose restart frontend`.
+
+### 23/11/2026 (noite) — Hub Fase 2 no ar: ferramentas por habilidade, CEFR, adaptação, filtros e gerador endurecido (feat/hub-fase2, ce84001)
+
+- **Ferramentas (aba Educador IA → "Ferramentas", padrão):** 17 por habilidade (leitura, vocabulário, fala, escrita,
+  gramática) em `_shared/hub-tools.ts` (catálogo único, importado pelo front). O navegador manda só `toolId`; tipo e
+  preset saem do servidor (`INVALID_HUB_TOOL` para id desconhecido). 8 tipos novos no `hub-material.ts`: `matching`,
+  `gap_fill`, `true_false`, `discussion`, `writing_prompt`, `error_correction`, `sentence_transformation`,
+  `text_questions` (CHECK de `kind` ampliado; `tool_id` em `hub_educator_materials`). Gabarito dos novos fora da mesa do
+  aluno (`private.hub_strip_answer_keys`: `answer_key`, `model_answer`, `gaps`, `statements`, `sentences`, `items` e
+  `grammar_focus.watch_out`). ⚠️ O Dev Wise Wolf Plataforma vai pôr o parâmetro de "gabarito liberado" nessa função
+  (Fase 1): quem publicar depois faz rebase, sem tirar as chaves desta lista.
+- **Verificar nível (`action: cefr_check`, `hub-cefr.ts`):** métricas sem IA + nível, trechos acima do alvo (só os que
+  existem no texto) e versão simplificada; 1 chamada, sem retry. Cota `educator_ai.cefr_check` (10/150/450).
+- **Adaptar material (`action: adapt_authentic`):** texto, link ou print. Valida sem rede → reserva a cota → só então
+  busca o link (`_shared/safe-fetch.ts`: http/https 80/443, IP público em cada redirect, IPv6 lido inteiro com o
+  IPv4 mapeado na regra do IPv4, 1 MB, 10 s, só HTML/texto). Print lido pela IA e nunca guardado; ilegível conta 1
+  adaptação (a leitura já custou). Cota `educator_ai.adapt` (2/20/60). Fonte citada em `material.source`.
+- **Cotas novas** entraram pela `hub_reserve_feature_internal` por âncora (`if v_feature_key in (…generate,
+  …cefr_check, …adapt)`), migration `20261123100000`. Mudar teto = migration.
+- **Filtros da biblioteca** (habilidade, tema, idade, duração ESTIMADA): colunas em `hub_content_items` + regra
+  `private.hub_catalog_default_tags` e gatilho que só preenche o que está nulo (curadoria sobrescreve); grant por
+  coluna. Migration `20261123110000`. A leitura do catálogo (`loadHubCatalog`) cai na antiga se a coluna faltar.
+  ⚠️ O teto de leitura era 60 e o catálogo chegou a 91: o resto nunca aparecia. Agora 500.
+- **Gerador endurecido (todo material, inclusive o Educador IA e as fichas do acervo), prompt
+  `hub-material-2026-11-24.v4`:** depois dos 3 Bloqueia do Revisor no lote 1 de fichas. `hub-quality.ts`:
+  (1) regras no prompt (nível estrito, cuidados só com erros reais de brasileiro — lista curada —, grafia
+  americana, não PROMETER áudio, personagem coerente, gabarito único, distrator que não seja frase correta);
+  (2) checagens sem IA (promessa de áudio só em instrução/nota/tarefa; comparativo errado só com "than", fim de
+  frase ou predicativo — "more good people" é quantificador e passa; grafia britânica corrigida sem mexer em
+  texto-fonte nem nome próprio; cuidado igual ao certo descartado, cuidado que troca > 4 palavras é suspeito; foco
+  claramente abaixo do nível); (3) 2ª passada (`verifyHubMaterial`): o modelo revisa e devolve o material
+  corrigido no mesmo schema, com delimitador nonce e correção recusada se trouxer URL/e-mail/telefone novo;
+  2ª rodada só se sobrar problema; rodada pulada com < 25 s do orçamento de 135 s. Sobrou áudio ou comparativo
+  → 502 `MATERIAL_QUALITY_FAILED` (reserva liberada). `provider_usage.quality_check` guarda só códigos e contagens.
+  `watch_out` agora é estruturado (`wrong_en`/`right_en`/`why_pt`); `watch_out_pt` é o texto montado para a tela.
+- **Custo medido:** 2ª passada ≈ +128% sobre a geração, ~US$ 0,0024–0,004 por material no total (Haiku 5.5);
+  `ai_usage_events.feature = hub_educator_material_verify`. Bancada para medir de novo:
+  `scripts/hub/quality-harness.ts` (mesmo código, sem banco; precisa de `ANTHROPIC_API_KEY`). Antes/depois dos 20
+  casos reprovados: `/data/OpenBot/Shared/wisewolf/conteudo/fichas/gerador-v4-antes-depois.md`.
+- **Desligar só a 2ª passada:** `HUB_MATERIAL_VERIFY=off` no `.env.functions` + `docker compose up -d --no-deps
+  --force-recreate functions` (prompt v4 e checagens sem IA continuam).
+- **Tour:** `2026-11-24-hub-ferramentas-por-habilidade` (`components/hub/hubFeatureTour.ts`, mesmo `feature_tour_views`;
+  o portal do Hub não passa pelo motor do `App.tsx`).
+- **No ar (18:34–18:38 UTC, publicado pelo Dev Wise Wolf Plataforma):** teste `hub_fase2_ferramentas.sql` com
+  ROLLBACK antes; migrations numa transação e marcadas; `pedagogical-content` (pasta inteira, com `content-bot.ts`) +
+  `_shared/hub-tools.ts` e `safe-fetch.ts`; front `index-LJuyzPH2.js`. E2E: `material` + `toolId` pelo token do bot
+  (200 em 18 s, gabarito do matching conferido, `quality_check` rounds 1/status ok/0 achados no fim).
+- **v4.1 no ar (19:02 UTC, `73deeb0`, só `pedagogical-content`):** `clipText` corta campo em fim de frase ou entre
+  palavras com "…" (antes cortava no meio da palavra: "O professor lê cada fra"); `focus_pt` 300 → 800; dever com
+  IA sem marca de outra IA; lacuna de dado com pista. Backup `/opt/wisewolf/backup-gerador-v41-20261123T190155Z/`
+  (pasta + md5; devolver e `docker restart supabase-edge-functions`).
+- **v4.2 no ar (20:34 UTC, `7915976`, só `pedagogical-content`):** a resposta certa da múltipla escolha gira de letra
+  (`balanceCorrectPositions`; medido antes: 47 de 64 na B, nenhuma na D). Explicação que cita a letra fica como veio.
+  Backup `/opt/wisewolf/backup-hub-gerador-v42-20261123T203413Z/`.
+- **E2E logado (20:35 UTC, conta `qa-gerador` em Pro temporário):** tour, Ferramentas, Verificar nível (C1, 1 uso de
+  `cefr_check`, ~US$ 0,0007), Adaptar texto (v4.2, `quality_check` ok, 1 uso de `adapt`, ~US$ 0,0044) e filtros da
+  biblioteca. Prints 390 px: `/data/OpenBot/Shared/wisewolf/hub/prints-fase2-390/`. ⚠️ Magic link de QA: gerar pelo
+  admin do Auth só em arquivo e apagar depois (é credencial); o link vale uma vez.
+- **Rollback:** backup `/opt/wisewolf/backup-hub-fase2-20261123T183417Z/` (`postgres.dump`, `functions/pedagogical-content`,
+  `published-functions.md5`, `frontend-dist.md5`, `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv
+  dist dist.hub-fase2 && mv dist.prev17-hub-fase2 dist && cd .. && docker compose restart frontend`. Funções: copiar
+  `functions/pedagogical-content` do backup, apagar `volumes/functions/_shared/hub-tools.ts` e `safe-fetch.ts`, devolver
+  o md5, `docker restart supabase-edge-functions`. Banco (aditivo, só se preciso): `drop trigger
+  hub_content_items_fill_tags on public.hub_content_items; drop function private.hub_content_items_fill_tags(),
+  private.hub_catalog_default_tags(text,text,text); delete from public.hub_plan_entitlements where feature_key in
+  ('educator_ai.cefr_check','educator_ai.adapt');` + o bloco `do` da reserva com âncoras trocadas + apagar os 2 `.sha256`.
+
+### 23/11/2026 — Agente de conteúdo gera fichas no Hub (conta do acervo) e `imageStyle` no Gamma (feat/conteudo-bot-fichas)
+
+- **O quê (pedido do Chefe c90c9912):** o agente de conteúdo chama o `pedagogical-content` com o header
+  `x-content-bot-token` (o mesmo do `gamma-book-generator`, token no Vault `WISEWOLF_CONTENT_BOT_TOKEN`). Só
+  `hubMode: true` + `action: "material"` passa (`content-bot.ts`); outra ação → 403 `CONTENT_BOT_ACTION_FORBIDDEN`,
+  token inválido → 401. O `accountId` do corpo é trocado pelo da conta do acervo.
+- **Conta do acervo, não a de teste:** `content_bot_hub_identity` (service_role) reaproveita `content_bot_authenticate` e
+  leva à conta do Hub "Acervo Wise Wolf (interno)" — usuário técnico `1aea2939-bbba-45e7-a88f-b188e5d40da4`
+  (`acervo-hub-bot@…`, banido no Auth, sem senha, NON_STUDENT ativo, NÃO `is_test_account`), conta
+  `6a634db9-482e-4aac-9225-f7009cb02c0a`, assinatura ACTIVE até 2099, `provider = 'internal'`, plano
+  `CONTENT_BOT_INTERNAL` (ativo, **não público**, preço 0; cota `educator_ai.generate` **350/mês**). A `conteudo-bot` da
+  escola segue offboarded + `is_test_account`: a trava `AI_DISABLED_FOR_TEST_FIXTURE` das contas de QA não mudou.
+  ⚠️ Plano interno precisa de `is_active = true` (o `hub_user_has_educator_planner_access` exige; 1ª chamada deu 402).
+  Fica fora da venda porque vitrine e checkout exigem `is_public`. ⚠️ Contagem futura de "assinantes ativos do Hub"
+  tem de filtrar `provider <> 'internal'`. Mudar a cota = migration nova.
+- **Fichas ficam em `hub_educator_materials`** da conta do acervo (nascem privadas; o catálogo só por aprovação de
+  2º ator). O Dev Wise Wolf Hub migra pelos ids para `hub_ready_lessons`.
+- **Custo medido (23/11):** quiz A2 de 8 questões, 12,8 s, 2.228 tokens de entrada + 2.008 de saída (Haiku 5.5 pela
+  ponte, ~US$ 0,0012 por ficha; 350 fichas ≈ US$ 0,42/mês). `ai_usage_events.feature = hub_educator_material`,
+  `user_id` = usuário técnico. Replay pelo mesmo `requestKey` não cobra de novo.
+- **Gamma:** `imageStyle` opcional (≤ 120, texto puro, sem URL) vira uma linha das `additionalInstructions`
+  ("Image guidance…"), subordinada às regras; o Pexels continua a fonte (não há campo de estilo para banco de imagem).
+- **No ar (~17:00 UTC):** migrations `20261123130000` e `20261123131000` marcadas; usuário técnico pelo admin do Auth;
+  one-shot `deploy/vps/one-shots/20261123-conteudo-bot-conta-do-hub.sql`; `pedagogical-content` (`35e88b41…`) e
+  `gamma-book-generator` (`7b035412…`) no `.published-functions.md5`; `docker restart supabase-edge-functions`.
+- **Rollback:** `/opt/wisewolf/backup-conteudo-bot-fichas-20261123T165939Z/` (`postgres.dump`, `functions/` das 2 pastas,
+  `published-functions.md5`). Funções: copiar as 2 pastas do backup (e apagar `content-bot*.ts`) + devolver o md5 +
+  restart. Desligar só o bot: `delete from private.content_bot_hub_identities;`. Banco (aditivo, se preciso):
+  `update hub_plans set is_active = false where code = 'CONTENT_BOT_INTERNAL'; drop function public.content_bot_hub_identity(text);
+  drop table private.content_bot_hub_identities;` + apagar os 2 `.sha256`.
+
+### 23/11/2026 — Hotfix do Hub: nenhum material da biblioteca abria (fix/hub-biblioteca-url-publica)
+
+- **Achado no teste de ponta a ponta de 23/11 (professor novo):** a edge `hub-library-access` devolvia a URL assinada
+  do Storage com o host interno `http://kong:8000` (o cliente admin fala pela rede do Docker), que o navegador não
+  alcança — **nenhum material da biblioteca abria, em nenhum aparelho**. Agora `public-url.ts` troca só a origem pela
+  `SUPABASE_PUBLIC_URL` (mesma regra de `_shared/tenant-legal-assets.ts`; o token assina o caminho, não a origem).
+- **iPhone:** `HubPortal.openMaterial` fazia `window.open` depois do `await` — o Safari do iOS bloqueia. A aba abre no
+  toque (`window.open('', '_blank')`, título "Abrindo material…") e recebe a URL por `location.replace` com
+  `opener = null`; pedido velho ou com erro fecha a aba vazia; aba fechada pelo usuário não reabre.
+- **No ar (~16:23–16:26 UTC):** função copiada (3 arquivos, dono 501:50) + linha no `.published-functions.md5`
+  (`64504df9…`, mesmo método do `function-drift-guard.sh`), `docker restart supabase-edge-functions`; front
+  `index-BlLvJKIt.js` (56 arquivos fora de `assets/` iguais; `assets/` antigos mantidos). Conferido em produção: a aba
+  nova pede `https://api.wisewolflanguage.com.br/storage/v1/object/sign/hub-library/…` e recebe `200 application/pdf`.
+  ⚠️ No navegador sem leitor de PDF (headless) a aba fica `about:blank` e o PDF vira download — não é defeito.
+- **Rollback:** função: `cp -a /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/functions/hub-library-access/index.ts
+  /opt/wisewolf/supabase-docker/volumes/functions/hub-library-access/` + apagar `public-url.ts`/`public-url.test.ts` +
+  `cp /opt/wisewolf/backup-hub-biblioteca-url-20261123T162331Z/published-functions.md5 /opt/wisewolf/releases/.published-functions.md5`
+  + `docker restart supabase-edge-functions`. Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-biblioteca &&
+  mv dist.prev16-hub-biblioteca dist && cd .. && docker compose restart frontend`.
+
+### 22/11/2026 (noite, 15) — Celular, lote 2 (professor e aluno) e EduCore → WiseCore na tela
+
+- **Lote 2 (`6a2746d`):** 29 telas de professor e aluno sem rolagem lateral em 390/360 px; toque de 44 px,
+  `aria-label` nos botões só-ícone, rodapé do login acima do link do professor (`bottom-20 sm:bottom-6`) e as duas
+  sobras do lote 1 (Atualizar do DRE refaz a tendência; modal de reprovação com safe-area e Esc).
+- **WiseCore (`dff0d5b`):** `lib/platformBrand.ts`. Título da aba = só o nome da escola; menus do Super Admin dizem
+  WiseCore; assinatura "WiseCore — criada pela Wise Wolf" só em `school-wise-wolf` e no login sem `brand`. Nenhum
+  termo, contrato, e-mail ou PDF citava EduCore. Nomes internos e a conta `a***n@educore.io` ficam.
+- **No ar (00:01 UTC de 23/11):** front `index-B1VIN9To.js`, 56 arquivos fora de `assets/` iguais; `assets/` antigos
+  (`BNKTiySB`, `C_yXf57c`, `Dsyra5g4`, `9flpOzQs`) mantidos para quem tem a aba aberta.
+- ⚠️ **Incidente de ~2 min (403 em todo o site):** o `rsync -a` do worktree levou `dist/` com modo 700 e
+  `index.html` com 600, e o nginx não lia. Depois de copiar, rode sempre
+  `find dist -type d -exec chmod 755 {} + && find dist -type f -exec chmod 644 {} +` (ou `rsync --chmod=D755,F644`)
+  e confira `curl -s -o /dev/null -w '%{http_code}' https://system.wisewolflanguage.com.br/` = 200.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular2 && mv dist.prev15-celular2 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote2-20261123T000111Z/`.
+
+### 22/11/2026 (noite, 14) — Celular, lote 1: telas do diretor
+
+- **Medido em 390 e 360 px** (login da diretora): nenhuma das 7 telas (Início, Mapa de Aulas, Alunos, Dinheiro,
+  WhatsApp, Biblioteca/Aprovar, Relatórios) tem rolagem lateral. Corrigido: toque de 44 px no celular (setas da
+  semana e filtros do Mapa, recibo e filtros do Dinheiro, Editar/Excluir das despesas fixas), busca de Alunos que
+  passava da caixa (`min-w-0`), Aprovar Materiais sem `prompt()`/`alert()` (modal em tela cheia no celular com Esc +
+  aviso curto; o `alert()` travava a tela no iPhone) e a tendência de 6 meses do DRE, que desenhava **R$ 0 falso**
+  quando o `dre_gerencial` de um mês falhava (agora tenta de novo e tira o mês com aviso; o Atualizar refaz).
+  Lista e prints: `/data/OpenBot/Shared/wisewolf/celular/lote1-diretor/`.
+- **Números espaçados ("R$ 5 . 0 7 1")** são da fonte do navegador do servidor (CSS: fonte do aparelho,
+  letter-spacing −0,5 px). Não é defeito do sistema.
+- **No ar (23:44 UTC):** front `index-BNKTiySB.js` (commits `cfff097` + `fd36a00`), 56 arquivos fora de `assets/` iguais.
+- **Rollback:** `cd /opt/wisewolf/frontend/src && mv dist dist.celular1 && mv dist.prev14-celular1 dist && cd .. &&
+  docker compose restart frontend`. md5 do dist anterior em `/opt/wisewolf/backup-celular-lote1-20261122T234415Z/`.
+
+### 22/11/2026 (noite, 13) — Teto da Anthropic só avisa; senhas de demo fora do código; 49 do Hub aprovados
+
+- **Teto só avisa (decisão do Vinícius, substitui a "noite, 11"):** acima de `ANTHROPIC_MONTHLY_BUDGET_USD` o chat
+  **continua na Anthropic**; o `_shared/ai-gateway.ts` só grava o gasto e dá `console.warn` quando o total passa do
+  teto (sem leitura antes de cada chamada, sem desvio ao OpenRouter). `ANTHROPIC_ROUTING=off` segue como chave manual.
+  Vigia: `scripts/ops/anthropic-spend-alert.sh [host]` (somente leitura; saída 0 OK, 1 ALERTA em ≥ US$ 40 / ≥ US$ 50,
+  2 erro), cópia em `/data/OpenBot/Shared/wisewolf/ops/`. Commits `e474c4b` + `6c5898c`.
+- **No ar (22:29 UTC):** só `_shared/ai-gateway.ts` (md5 `efc9b74c…`); `functions` recriado, healthy. Sem front.
+- **Rollback:** `/opt/wisewolf/backup-teto-so-aviso-20261122T222912Z/functions/_shared/ai-gateway.ts` → volume +
+  `docker compose up -d --no-deps --force-recreate functions`.
+- **Segurança (`a3b1aba`):** saiu do código o bloco comentado de "Demo Quick Access" (`sign-in-card-2.tsx`), o
+  `MOCK_ACCOUNTS` (`constants.tsx`) e o `SupabaseSeeder.tsx` (sem uso). A senha do `SUPER_ADMIN` `a***n@educore.io` foi
+  trocada no banco por uma aleatória que ninguém guarda (a conta fica: é o `hub_rights_verified_by` do Hub). Nada muda
+  no bundle (o bloco já não chegava ao front). Ainda com 123456, por decisão do Vinícius: as contas de demo dos
+  tenants de teste e o `scripts/test-edge-functions.mjs` (aluno demo).
+- **Hub:** os 49 pendentes foram aprovados no servidor pela RPC `hub_approve_commercial_publications` (identidade da
+  conta da plataforma) + `sync-hub-material` em lotes de 5; catálogo 42 → 91. Autorização em `public.audit_logs`
+  (`action = hub_commercial_approval_bulk`). Backup: `/data/OpenBot/Shared/wisewolf/conteudo/lote/aprovacao-20261122/`.
+
+### 22/11/2026 (noite, 11) — Teto de US$ 50/mês da Anthropic e Lançador (escolher professor / só gerar link)
+
+- **Teto da Anthropic (decisão do Vinícius):** a chave é a mesma do Lei Prova (que tem contador próprio de US$ 50). O
+  `_shared/ai-gateway.ts` mede cada chat (usage × preço oficial: Haiku 5.5 0,10/0,50 por 1M, acima de 100K tokens
+  0,50/2,50; Sonnet 5.5 2/10) e soma em `private.ai_provider_monthly_spend` (mês UTC; RPCs `ai_provider_spend_add` /
+  `ai_provider_spend_month`, só service_role; migration `20261122260000`). Até `ANTHROPIC_MONTHLY_BUDGET_USD` (=50 no
+  `.env.functions`) nada muda; acima, o chat vai ao **OpenRouter** até virar o mês (o corpo original da função, como
+  antes de 19/11). `ANTHROPIC_ROUTING=off` manda tudo ao OpenRouter. Contador fora do ar = segue na Anthropic. O
+  Sonnet continua só no comercial (decisão de 22/11). `OPENROUTER_API_KEY` voltou a ser lida pelo functions (linha
+  descomentada); falha da Anthropic abaixo do teto NÃO cai no OpenRouter. Consultar: `select * from
+  private.ai_provider_monthly_spend;`. ⚠️ Antes do teto não havia medição: novembro até 22/11 só tem o registro
+  parcial do `ai_usage_events` (~US$ 0,77 em 299 chamadas registradas).
+- **Lançador → Aula experimental:** "Como disparar" com 3 opções — todos os professores ativos (como antes), escolher
+  professor (`dispatch_mode: "teacher"` + `target_teacher_id`, conferido ANTES de criar a vaga pela mesma régua,
+  `409 target_teacher_not_eligible`) e só gerar o link (`link_only`: cria a vaga, devolve o link, não manda nada).
+  O aceite segue no `accept-opportunity` (professor ativo e logado, o primeiro leva). Data/hora mostradas em pt-BR
+  24 h por cima do seletor nativo (`lib/ptBrDateTime.ts`; no iPhone vazavam e saíam em AM/PM); gaveta `z-[90]`
+  acima da barra de baixo (`z-[80]`, ModernSidebar) e botão do raio acima dela no celular. Tour
+  `2026-11-24-lancador-escolher-professor`. Prints: `/data/OpenBot/Shared/wisewolf/lancador/prints-20261122/`.
+- **No ar (21:59–22:04 UTC):** migration aplicada e marcada; `_shared/ai-gateway.ts` e `broadcast-opportunity`
+  copiados (linha do `broadcast-opportunity` no `.published-functions.md5` atualizada); `functions` recriado; front
+  `index-C_yXf57c.js` (56 arquivos fora de `assets/` iguais).
+- **Backup/rollback:** `/opt/wisewolf/backup-teto-lancador-20261122T215904Z/` (`postgres.dump`, `functions/_shared/ai-gateway.ts`,
+  `functions/broadcast-opportunity/index.ts`, `published-functions.md5`, `env.functions`, `frontend-dist.md5`). Funções:
+  copiar os 2 arquivos de volta + `published-functions.md5` → `releases/.published-functions.md5` + `env.functions` →
+  `.env.functions` e `docker compose up -d --no-deps --force-recreate functions`. Front: `src/dist.prev13-lancador`
+  (antes do Lançador) ou `src/dist.lancador-v1` (Lançador sem o ajuste de camadas). Banco (aditivo): `drop function
+  public.ai_provider_spend_add(text, numeric), public.ai_provider_spend_month(text); drop table
+  private.ai_provider_monthly_spend;` + apagar o `.sha256` de `20261122260000`.
+
+### 22/11/2026 (noite, 10) — Hub: "Aprovações do Hub" do Super Admin (aprovação comercial em lote)
+
+- **Por quê:** o `SUPER_ADMIN` só vê o `SuperAdminDashboard` (App.tsx) e a RLS de UPDATE de `pedagogical_materials` exige
+  `tenant_id = _my_tenant_id()` — ele **nunca conseguiu** dar a 2ª aprovação pela tela da Biblioteca. 49 livros neutros
+  pedidos pela diretora (prévia de 3 páginas "AMOSTRA · WISE WOLF HUB" em `/data/OpenBot/Shared/wisewolf/conteudo/lote/previas-hub/`)
+  esperavam isso.
+- **O quê:** aba "Aprovações do Hub" (`components/saas/HubBulkApproval.tsx`): lista, confirmação marcada, aprova em
+  blocos de 200 e copia ao Hub (`sync-hub-material`) em lotes de 5. RPCs `hub_pending_commercial_approvals()` e
+  `hub_approve_commercial_publications(uuid[])` (migration `20261122250000`, SECURITY DEFINER, só `is_super_admin()`);
+  o verificador continua vindo do gatilho `hub_b_guard_material_publication_consent` (`auth.uid()`), e quem pediu não aprova.
+  Teste `supabase/tests/hub_aprovacao_comercial_em_lote.sql`. ⚠️ A tela do Super Admin é só desktop (lateral fixa de 256 px).
+- **Super Admin:** uma conta só, `a***n@educore.io` (tenant `master`); senha esquecida → "Recuperar senha?" no login.
+- **No ar (21:44 UTC):** migration aplicada (supabase_admin, transação única) e marcada; teste OK; front `index-Dsyra5g4.js`
+  (`npm run build` com as `VITE_*` do `.env.production` da VPS + `VITE_HUB_PUBLIC_VIDEOS=true`; 56 arquivos fora de
+  `assets/` iguais ao dist anterior). Inclui o plural "cartões" do Dinheiro.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-aprovacao-20261122T214241Z/` (`postgres.dump`, `frontend-dist.md5`,
+  `migration-checksums.list`). Front: `cd /opt/wisewolf/frontend/src && mv dist dist.hub-aprovacao && mv
+  dist.prev12-hub-aprovacao dist && cd .. && docker compose restart frontend`. Banco (aditivo): `drop function
+  public.hub_approve_commercial_publications(uuid[]), public.hub_pending_commercial_approvals();` + apagar o `.sha256` de
+  `20261122250000`. Aprovação já feita se desfaz pela revogação normal (desligar o opt-in na Biblioteca).
+
+### 22/11/2026 (noite, 9) — DNS curinga `*.wisewolflanguage.com.br` (escolas clientes sem registro manual)
+
+- **Criado (21:01 UTC, autorizado pelo Vinícius):** Cloudflare, zona `0ee31aac9562bf09783613a7ef0a01fc`, registro
+  `12f824e703ea11797e2e0692bf3ba1c5` = `A * → 179.236.255.4`, DNS only (nuvem cinza), TTL Auto. Nenhum outro registro
+  mudou (40 antes, 41 depois; id, conteúdo e `modified_on` iguais). Nomes explícitos (hub, system, raiz, www, api, app,
+  wolfie, demo-escola, cPanel) têm prioridade sobre o curinga.
+- **Certificado:** o Caddy (`on_demand` + `ask` `tenant-domain-allowed`) só emite para escola cadastrada. Teste: um
+  subdomínio sem escola resolve para a VPS, mas recebe `tlsv1 alert internal error` / `no peer certificate`. Hub,
+  system, raiz e demo-escola seguem 200 com Let's Encrypt. Evidência: `/data/OpenBot/Shared/wisewolf/white-label/curinga/`.
+- **Escola nova:** basta cadastrar o subdomínio no tenant; não precisa mais criar registro na Cloudflare.
+- **Rollback:** apagar só esse registro (painel DNS > `*` > Delete, ou
+  `DELETE /client/v4/zones/0ee31aac9562bf09783613a7ef0a01fc/dns_records/12f824e703ea11797e2e0692bf3ba1c5`). Caddy e sistema
+  não mudaram. Depois do rollback, cada escola nova volta a precisar do seu registro A.
+
+### 22/11/2026 (noite, 8) — White label: a escola escolhe a voz do tutor (`tenants.branding.tutorVoice`)
+
+- **O quê (decisão do Vinícius):** Configurações da escola → Marca → "Voz do tutor" (`components/settings/TutorVoicePicker.tsx`):
+  femininas marin/coral/shimmer, masculinas cedar/ash/echo, prévia ~5 s de cada (gpt-4o-mini-tts, base64 em
+  `lib/tutorVoicePreviews.ts`, import dinâmico: mídia não vai como arquivo ao GitHub). Catálogo único em
+  `supabase/functions/_shared/tutor-voice.ts` (também importado pelo front). Tour `2026-11-23-voz-do-tutor`.
+- **Onde vale:** `wolfie-realtime-session` (voz da sessão + identidade de voz feminina nas instruções,
+  `applyVoiceGender`) e `wolfie-tts` (voz clássica, mesmas vozes/gênero). Sem `tutorVoice` = cedar masculina, texto
+  idêntico (Wise Wolf não muda). Demo: `demo-escola` com `tutorVoice = marin` (Luna).
+- ⚠️ **Salvar Configurações da escola estava quebrado** para quem tem chave de marca fora do formulário
+  (Wise Wolf com `gamma*`, demo com `tutorName`): o front mandava o branding inteiro e o `hasOnlyKeys` recusava; e a
+  RPC `apply_tenant_admin_settings` grava o branding INTEIRO. Agora o front manda só as chaves do formulário
+  (`brandingFormPayload`) e o `tenant-settings-admin` preserva as outras do banco. ⚠️ A `demo-escola` ainda não
+  salva: o `school_info` dela tem chaves `demo`/`nome` (one-shot do white label) fora da lista aceita.
+- **Backup/rollback:** `/opt/wisewolf/backup-voz-do-tutor-20261122T185759Z/` (`functions/` das 3 funções, `.published-functions.md5`, `frontend-dist`,
+  `branding-antes.txt`). Front anterior em `src/dist.prev11-voz`. Funções: devolver as 3 pastas + o md5, apagar
+  `volumes/functions/_shared/tutor-voice.ts`, `docker restart supabase-edge-functions`. Demo:
+  `update tenants set branding = branding - 'tutorVoice' where id = 'demo-escola';`.
+- ⚠️ **Incidente da publicação "noite, 7":** o front subiu de `vite build` puro (sem `generate-hub-static-html`) e o hub
+  e as rotas públicas estáticas do system deram 404 das 17:58 às 18:50 UTC (sem aluno afetado pelos logs). **Front
+  só com `npm run build`** e compare a lista de arquivos fora de `assets/` com o dist no ar antes de trocar.
+
+### 22/11/2026 (noite, 7) — Wolfie realtime: handoff sem turno ao vivo, clássico sem minutos, memória 23514, voz com o nome do tutor
+
+- **Handoff ao vivo → clássico:** sessão que nunca teve turno ao vivo (só âncora do clássico) levava 55000
+  `realtime_anchor_required` → 503 e "Não consegui responder agora". O `wolfie-brain` agora devolve 200
+  `notNeeded` nesse caso (a RPC barra dono/encerrada antes dessa trava).
+- **Abre no clássico sem minutos:** `WolfieTutor` lê `my_wolfie_live_balance` 1x ao montar; franquia configurada e
+  zerada → clássico. Erro na leitura não muda nada.
+- **`memory_items_upsert` 23514:** linha nova nascia com `first_seen_at` = `now()` do banco, depois do `now` do
+  início da requisição usado em `last_seen_at` (`wolfie_memory_items_dates_check`). Agora `first_seen_at` explícito.
+- **Voz ao vivo white label:** `wolfie-realtime-session/tutor-brand.ts` aplica `_shared/tutor-persona.ts` (escola com
+  `tutorName` se apresenta com ele; Wise Wolf idêntica). ⚠️ A instrução de voz continua "adult male identity" mesmo
+  com tutor "Luna" (decisão de produto pendente).
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-realtime-fix-20261122T175650Z/` (`functions/wolfie-brain`, `functions/wolfie-realtime-session`,
+  `.published-functions.md5`, `frontend-dist`). Front anterior em `src/dist.prev10-realtime`. Funções: devolver as 2
+  pastas + o md5 e `docker restart supabase-edge-functions`.
+- ⚠️ **Front enviado por tar do servidor do OpenBot chega 700/600:** nginx dá 403. Depois de trocar o `dist`:
+  `find dist -type d -exec chmod 755 {} +; find dist -type f -exec chmod 644 {} +`.
+
+### 22/11/2026 (noite, 5) — Wolfie: abertura personalizada (nome + último assunto)
+
+- **O quê:** UMA frase com o primeiro nome (grafia do perfil) e o assunto da última aula aprovada; sem aula, o
+  nome e o objetivo. Nunca erro/nota/número. Ação `opener` da `wolfie-lesson-track` (`opener.ts`): IA (Haiku pela
+  ponte) 1x por aula com cache em `public.wolfie_openers` (migration `20261122230000`, só service_role; reserva
+  PENDING: só quem cria gera, os outros usam molde); sem aula ou falha → 6 moldes variados sem IA (tópico
+  sanitizado: instrução/palavra proibida → molde genérico). Conta de teste usa a trilha `test_fixture`.
+- **Onde aparece:** balão na home do Wolfie e no início da trilha (`WolfieOpenerBubble`); legenda da tela da
+  chamada antes de começar e texto da tela inicial (`WolfieTutor`); na voz ao vivo o tutor fala primeiro
+  (`useWolfieRealtime.speakOpening`), fora do roleplay e das reuniões globais. Cache do navegador por usuário e
+  dia de São Paulo (`wolfie.opener.v2:<uid>`).
+- **White label:** nome do tutor em `tenants.branding.tutorName` (padrão "Wolfie"); a frase não cita o tutor.
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-abertura-20261122T171304Z/` (banco, `frontend-dist`,
+  `functions/wolfie-lesson-track`, md5). Front: `mv src/dist src/dist.opener && mv src/dist.prev9-opener src/dist`
+  (+ restart do frontend). Função: devolver a pasta + linha do md5 e `docker restart supabase-edge-functions`.
+  A tabela pode ficar.
+
+### 22/11/2026 (noite, 4) — Hub: camadas do professor (Gratuito, Pro R$ 59, Escola R$ 199)
+
+- Migration `20261122220000`: `DISCOVERY` vira **Gratuito** (5 gerações/mês, Wolfie texto 1 aluno);
+  novos `PROFESSOR_PRO` (R$ 59/590; 100 gerações, 5 assentos, 1.000 turnos do Wolfie) e `PROFESSOR_ESCOLA`
+  (R$ 199/1.990; 300 gerações, 33 assentos = 3 professores + 30 alunos, 6.000 turnos). `LIBRARY_SOLO`,
+  `EDUCATOR_PRO` e `HUB_COMPLETE` desativados, NÃO apagados (0 assinaturas vivas). Voz de teste, professor extra
+  (R$ 39) e voz por aluno (R$ 19) ainda NÃO existem (sem franquia de voz no hub; checkout não cobra por quantidade).
+- ⚠️ `HubPricingSection`/`HubSolutionLanding`/`HubLanding`/`HubAudienceLanding` estão SEM USO (Hub só logado) e
+  ainda citam os códigos antigos. A vitrine real é a do `HubPortal` (lê do banco).
+- `supabase/tests/wolfie_standalone_subscriptions.sql` corrigido: anual do Wolfie = 10x o mensal e os 3 pacotes
+  de minutos aprovados (o teste antigo travaria qualquer release completo).
+- ⚠️ Limpeza de conta de teste do Hub: `hub_core_legal_acceptances` é imutável por gatilho; só com
+  `set local session_replication_role = replica` dentro da transação, restrito às linhas de teste.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-camadas-20261122T170053Z/` (dump + `hub_plans.tsv` +
+  `hub_plan_entitlements.tsv`). Desfazer: `update hub_plans set is_active=true, is_public=true where code in
+  ('LIBRARY_SOLO','EDUCATOR_PRO','HUB_COMPLETE'); update hub_plans set is_active=false, is_public=false where code in
+  ('PROFESSOR_PRO','PROFESSOR_ESCOLA');` + restaurar os limites do DISCOVERY pelo `.tsv` + apagar o `.sha256` de
+  `20261122220000`. Site: publicar o commit `58ac6f6` do `wisewolf-institucional`.
+- E2E em produção (22/11): checkout PIX do Pro até o QR pela página `/para-professores`; dados de teste apagados.
+
+### 22/11/2026 (noite, 6) — White label no ar: domínio com certificado sob demanda, tutor com o nome da escola (feat/white-label)
+
+- **Domínio:** Caddy da Everglades com `on_demand_tls { ask http://supabase-kong:8000/functions/v1/tenant-domain-allowed }`
+  e o site curinga `https:// { tls { on_demand } reverse_proxy frontend-frontend-1:80 }` no fim do bloco Wise Wolf.
+  O porteiro (`tenant_domain_allowed`, service_role) só aprova `<slug>.wisewolflanguage.com.br` de escola operacional
+  (fora os reservados: www, app, system, api, hub, blog, wolfie…) ou `custom_domain` verificado fora dos nossos
+  domínios. Porteiro fora do ar = nenhum certificado novo. `/functions/v1/tenant-domain-allowed` dá 404 no
+  `api.` (só o Caddy chama, por dentro). DNS: cada subdomínio precisa de registro A → 179.236.255.4 (nuvem cinza);
+  **não há curinga `*` na Cloudflare** — escola nova = registro novo (ou o Vinícius cria o curinga).
+- **Marca:** `tenants.branding.tutorName` / `appName` (lidos também pela abertura do Wolfie do Dev Next.js).
+  Front: `lib/tutorBrand.ts` (`brandText`: "Wolfie" → nome do tutor sem artigo, "Wise Wolf" → nome da escola,
+  SÓ em escola com `tutorName`), login com a marca pelo endereço, `--brand-accent` = cor da escola
+  (`applyWhiteLabelAccent`). Wise Wolf (sem `tutorName`) fica idêntica. Prompt: `_shared/tutor-persona.ts` no
+  `wolfie-brain` (IDENTITY + troca de WOLFIE). ⚠️ **Voz ao vivo (`wolfie-realtime-session`) ainda se apresenta como
+  Wolfie** — é do Dev Next.js, avisado. ⚠️ O mascote (lobo de camisa vermelha) é o mesmo para todos: mascote por
+  escola = imagem gerada pelo Codex.
+- **Escola demo:** `demo-escola` ("Escola Demo", tutor Luna, #6D28D9), `https://demo-escola.wisewolflanguage.com.br`,
+  certificado Let's Encrypt emitido sozinho na 1ª visita. Diretora, professor e aluno `demo-*@demo-escola.wisewolflanguage.com.br`
+  (one-shot `deploy/vps/one-shots/20261122-white-label-demo-escola.sql`). O aluno NÃO é `is_test_account` (o
+  `wolfie-brain` suprime IA de conta de teste); a escola não tem Asaas, WhatsApp nem mensalidade. **Senhas não
+  guardadas:** para entrar, gere link pelo admin do Auth (`generate_link` magiclink). Desligar: `update tenants set
+  saas_status = 'inactive' where id = 'demo-escola';` (o porteiro e o login param de reconhecer o endereço).
+- **Isolamento conferido (22/11, com o JWT de cada papel do demo):** 0 linhas da Wise Wolf em profiles, class_logs,
+  student_payments, bookings, wolfie_sessions, pedagogical_materials e financial_transactions; `finance_*` e
+  `dre_gerencial` da Wise Wolf → 42501 para a diretora do demo; uso de IA do demo em `ai_usage_events.tenant_id =
+  demo-escola` (4 eventos, 0 fora). Teste `supabase/tests/white_label_dominio.sql`.
+- **Publicação:** migrations `20261122204000` (melhorias do financeiro) e `20261122240000`; funções `wolfie-brain`,
+  `tenant-domain-allowed` (nova), `gamma-book-generator` (só `deno fmt`) + `_shared/tutor-persona.ts`; front
+  `index-CyuKHjLF.js`. Backup `/opt/wisewolf/backup-white-label-20261122T173335Z/` (banco, `frontend-dist` + md5,
+  funções, `.published-functions.md5`, `migration-checksums`, `Caddyfile.before-white-label`); dist anteriores em
+  `src/dist.prev9-white-label` (antes do white label), `dist.white-label-v1`, `dist.white-label-v2`.
+- **Rollback:** Caddy: `cp /opt/wisewolf/backup-white-label-20261122T173335Z/Caddyfile.before-white-label
+  /opt/everglades/Caddyfile && docker exec everglades-proxy caddy validate --config /etc/caddy/Caddyfile --adapter
+  caddyfile && docker exec everglades-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. Front:
+  `cd /opt/wisewolf/frontend/src && mv dist dist.wl && mv dist.prev9-white-label dist && cd .. && docker compose
+  restart frontend`. Funções: copiar `functions/wolfie-brain` e `gamma-book-generator` do backup, apagar
+  `volumes/functions/tenant-domain-allowed` e `_shared/tutor-persona.ts`, devolver o `.published-functions.md5`,
+  `docker restart supabase-edge-functions`. Banco (aditivo): `drop function public.tenant_domain_allowed(text);`
+  (o `resolve_public_tenant` novo só tem chaves a mais).
+
+### 22/11/2026 (noite, 3) — Agente de conteúdo no Gamma: marca neutra, credencial técnica e views (feat/conteudo-bot-gamma)
+
+- **Gerador (`gamma-book-generator`):** novos campos `brand` (`school` | `neutral`), `destination`
+  (`SCHOOL` | `HUB`; Hub exige `neutral`) e `footerText` (≤ 60, texto puro, só no neutro → `bottomLeft`
+  do Gamma). Neutro usa `GAMMA_THEME_ID_NEUTRAL`; **sem ele, recusa** (`GAMMA_NEUTRAL_THEME_NOT_CONFIGURED`)
+  em vez de cair no tema padrão da conta. Action `credits` (admin ou agente) lê `GET /me` → `creditsRemaining`.
+- **Sempre pendente:** material nasce `PRIVATE`/`PENDING` se o criador é TEACHER, o agente
+  (`created_via=CONTENT_BOT`) ou o destino é HUB. Ir para o catálogo do Hub continua o fluxo humano de
+  sempre (opt-in do SCHOOL_ADMIN + prévia + direitos + 2º aprovador SUPER_ADMIN); o gerador nunca liga
+  `hub_catalog_opt_in`.
+- **Acesso do agente:** header `x-content-bot-token` (sem login, sem service key). O banco guarda só o
+  sha256 em `private.content_bot_credentials`; `content_bot_authenticate` (service_role) só aceita conta
+  TEACHER do tenant **sem aluno vinculado**. Conta técnica `conteudo-bot` (banida no Auth, `Inativo`/
+  `offboarded`, `is_test_account`). O PDF sobe como serviço e `content_bot_claim_material_object` grava a
+  conta como dona (procedência do Hub). Revogar: `update private.content_bot_credentials set revoked_at = now();`.
+- **Views (`openbot`, lidas por `openbot_ro`):** `conteudo_materiais` (ESCOLA / HUB_CATALOGO /
+  HUB_PROFESSOR), `conteudo_geracoes_gamma`, `conteudo_creditos_gamma_mes`, `conteudo_resumos_temas`
+  (só itens vistos com 3+ alunos), `conteudo_alunos_perfil` (profissão/finalidade com 2+ alunos). Nenhuma
+  tem nome, contato, título ou id de aluno. Migration `20261122203000`; teste `supabase/tests/conteudo_bot_gamma.sql`.
+- **Marca da escola nos livros `brand=school` (22/11, noite):** o gerador lê de `tenants.branding` o tema
+  (`gammaThemeId`), o logo do cabeçalho (`gammaLogoUrl`, só https; `topRight` imagem `sm`, fora da capa) e a cor
+  de destaque (`secondaryColor` → instrução ao Gamma). Wise Wolf: tema `qte9p85c7yez5ew` (azul-marinho), logo
+  `https://system.wisewolflanguage.com.br/assets/brand/wise-wolf-mark-trim-20261028.png` (o `logo.png` do site tem
+  fundo branco opaco), destaque #CC213B. Backup `/opt/wisewolf/backup-gamma-marca-20261122T175043Z/` (função +
+  branding anterior). Desfazer: `update tenants set branding = branding - 'gammaThemeId' - 'gammaLogoUrl' where id = 'school-wise-wolf';`.
+- **Imagens:** `imageOptions.source = "pexels"` (licença comercial, sem marca d'água). `webFreeToUseCommercially`
+  trouxe foto de banco com marca d'água na capa (teste de 22/11). Unsplash não existe no enum da API. IA do
+  Gamma (`aiGenerated`) fica fora: imagem gerada só pelo Codex.
+- **No ar (22/11, ~16:40 UTC):** migration aplicada e marcada; `gamma-book-generator` copiado + linha no
+  `releases/.published-functions.md5`; `.env.functions` ganhou `GAMMA_API_KEY` e `GAMMA_THEME_ID_NEUTRAL=default-light`
+  (tema padrão "Basic Light", sem marca) com `--force-recreate functions`. **`GAMMA_THEME_ID` (tema da escola)
+  continua vazio:** livro `school` sai no tema padrão da conta, sem logo. A conta Gamma tem 3 temas próprios
+  "Tema sem título"; o Vinícius escolhe qual é o da escola. Conta técnica `conteudo-bot@wisewolflanguage.com.br`
+  (id `8e541217-9b3f-49c0-a3e0-b70fe9aed643`); token no Vault do OpenBot (`WISEWOLF_CONTENT_BOT_TOKEN`).
+  Testes: 2 livros de 12 páginas (36 créditos cada; saldo 11.653), ambos PENDING/PRIVATE, título "Teste técnico — …".
+- **Rollback:** backup `/opt/wisewolf/backup-conteudo-20261122T163541Z/` (`postgres.dump`, `functions/gamma-book-generator`,
+  `env.functions`, `.published-functions.md5`, `migration-checksums`). Função: copiar a pasta de volta + o md5 e
+  `docker restart supabase-edge-functions`; env: devolver `env.functions` e `docker compose up -d --no-deps
+  --force-recreate functions`. Agente: `update private.content_bot_credentials set revoked_at = now();`. Banco
+  (aditivo; só se preciso): `drop view openbot.conteudo_materiais, openbot.conteudo_geracoes_gamma,
+  openbot.conteudo_creditos_gamma_mes, openbot.conteudo_resumos_temas, openbot.conteudo_alunos_perfil;`
+  (as colunas novas têm default e podem ficar).
+### 22/11/2026 (noite, 3) — Hub: checkout com cartão, anual do Wolfie e Hub só logado (branch feat/hub-checkout-cartao)
+
+- **Venda pelo site principal:** `wisewolflanguage.com.br/wolfie`, `/para-professores` e `/para-escolas`
+  (repo `wisewolf-institucional`) vendem com checkout na própria página: PIX com QR na tela e cartão no NOSSO
+  formulário (iframe com sandbox em `/pagamento/cartao.html`, CSP própria, sem Pixel/GTM). Fluxo e proteções:
+  `docs/PAGAMENTOS-CARTAO.md`.
+- **Cartão:** função nova `hub-card-payment` (única que recebe cartão; nunca grava nem loga) paga a 1ª
+  cobrança criada pelo `create-hub-checkout` (`billingType=CREDIT_CARD`, sem cartão) e, no mensal, põe o cartão
+  na assinatura (`updateCreditCard`). Conta Asaas SEM tokenização (medido 22/11). Tetos em
+  `hub_card_payment_attempts` + `hub_card_payment_gate` (migration `20261122210000`).
+- **Anual do Wolfie (2 meses grátis, à vista):** Foco 499, Ritmo 999, Performance 1.799 (`hub_plans.price_yearly`).
+  `WOLFIE_STANDALONE_CHECKOUT_ENABLED=true` no `.env.functions` (venda do Wolfie avulso ligada).
+- ⚠️ **Dois defeitos que impediam QUALQUER venda do Hub desde agosto** (0 checkouts na história):
+  (1) o Asaas avança o `nextDueDate` da assinatura um ciclo quando gera a 1ª cobrança no dia, e a conferência
+  exigia a data enviada → `hub_subscription_post_payload_conflict` sempre (`hubNextDueDateMatches`);
+  (2) cliente do hub nascia com avisos pagos do Asaas → agora `notificationDisabled: true`.
+- **Purchase (LEI 10):** Pixel com `eventID = hub_checkout:<id>` no site; CAPI com o mesmo id no `asaas-webhook`
+  (`hub-purchase-capi.ts`), só na 1ª cobrança. ⚠️ **`FB_CAPI_TOKEN` não existe na VPS**: o CAPI é no-op até o token.
+- **Hub só logado:** deslogado nas páginas de venda do Hub vai para o site principal (com UTMs); a raiz é o login.
+  HTML estático dessas páginas com `noindex` e canonical no site principal; sitemap do hub só com termos/privacidade.
+- **301 no Caddy (bloco `hub.wisewolflanguage.com.br`):** `/professores` → `/para-professores` e `/escolas` →
+  `/para-escolas` (com a query). ⚠️ `/biblioteca`, `/educador-ia`, `/wolfie` e `/saas-escolar` NÃO podem ter 301:
+  logado, abrem abas do portal (`portalTabForMarketingPage`); seguem com noindex + canonical. Backup do Caddyfile em
+  `/opt/wisewolf/backup-hub-checkout-20261122T155554Z/Caddyfile.before-hub-301`.
+- **App do Wolfie (`wolfie.wisewolflanguage.com.br`):** estava 403 desde 22/09 (`current` apontava para um build do
+  SaaS). Release nova `20261122T155909Z-hub-checkout` (build de `apps/wolfie-web` desta ponta); `current` → `.../dist`.
+- **Backup/rollback:** `/opt/wisewolf/backup-hub-checkout-20261122T155554Z/` (banco, `frontend-dist`, funções
+  `create-hub-checkout`/`asaas-webhook`, `.published-functions.md5`, `env.functions`). Front: `cd /opt/wisewolf/frontend
+  && docker compose stop frontend && mv src/dist src/dist.hub-checkout && mv src/dist.prev8-hub-checkout src/dist &&
+  docker compose start frontend`. Funções: copiar as 2 pastas do backup, apagar `volumes/functions/hub-card-payment`,
+  devolver o `.published-functions.md5` e o `env.functions`, `docker compose up -d --no-deps --force-recreate functions`.
+  Wolfie: `ln -sfn /opt/wisewolf/wolfie-frontend/releases/20260827T131532Z-139d464bd2a3/dist current` (a release de
+  agosto; a de 22/09 dava 403). Banco (só se preciso): `drop function public.hub_card_payment_gate(uuid,uuid,text),
+  public.hub_card_payment_finish(uuid,text,text,text,text); drop table public.hub_card_payment_attempts;` + apagar o
+  `.sha256` de `20261122210000` (o preço anual pode ficar).
+- **E2E em produção (22/11):** PIX até o QR e cartão recusado pelo Asaas com a mensagem certa; sem cartão em log do
+  Kong nem das funções; IP do comprador chegou público. Dados de teste apagados no Asaas e no banco.
+
+### 22/11/2026 (noite, 2) — Inteligência financeira no ar (branch feat/financeiro-inteligencia, de85803)
+
+- **O quê:** Relatórios → Financeiro ganha 4 telas, só SCHOOL_ADMIN/SUPER_ADMIN: **Margem por plano**
+  (`unit-economics`: mensalidade − repasse − IA/Wolfie − taxa Asaas − imposto, por aluno/plano/professor),
+  **Preços e equilíbrio** (`pricing`: margem por plano do catálogo, simulador de preço, ponto de equilíbrio),
+  **Caixa projetado** (`cashflow-projection`: mês atual + 6) e **DRE 12 meses** (`dre-12m`). Tour
+  `2026-11-23-margem-precos-equilibrio`.
+- **Banco (aditivo):** migrations `20261122200000`, `…201000`, `…202000`. Tabela `public.finance_settings`
+  (imposto, taxa Asaas por cobrança, US$→R$, R$/min do realtime, custos fixos extras) e as funções
+  `finance_*`. Não altera `get_cashflow` nem `dre_gerencial`: lê deles.
+- **Regras que valem:** imposto **não configurado** (`tax_mode=UNSET`) = margem e DRE sem imposto, com aviso.
+  Caixa projetado só para a escola de quem consulta (outra escola → erro 42501, sem mistura). Repasse pago
+  conta por `teacher_closings.paid_at`, não só status `PAGO`. Fechamento com mais de 2 meses sem pagamento
+  fica fora da projeção e vira aviso. Plano adiantado sai da previsão pela `student_payment_allocations`.
+- **Publicação isolada:** backup em `/opt/wisewolf/backup-financeiro-20261122T155124Z/` (`postgres.dump`,
+  `frontend-dist`, `frontend-dist.md5`, `migration-checksums`); 3 migrations numa transação e marcadas em
+  `.migration-checksums`; front anterior em `src/dist.prev7-financeiro`. Sem Edge Function nova.
+- **Rollback:** front: `cd /opt/wisewolf/frontend/src && mv dist dist.financeiro && mv dist.prev7-financeiro dist
+  && cd .. && docker compose restart frontend`. Banco (só se preciso): `drop function public.finance_cashflow_projection(int,text),
+  public.finance_dre_completo(text,text), public.finance_pricing_overview, public.finance_unit_economics,
+  public.finance_settings_get, public.finance_settings_save, private.finance_student_economics,
+  private.finance_student_plan, private.finance_settings_effective;` (confira as assinaturas com `\df finance_*`)
+  e `drop table public.finance_settings;` + apagar os 3 `.sha256` de `20261122200000/201000/202000`.
+
+### 22/11/2026 (noite) — Decisões do Vinícius: lançar aula aprova resumo, OpenRouter fora, compra de minutos
+
+- **Lançar a aula APROVA o resumo** (substitui 28/09). `private.approve_proposed_summary` (migration
+  `20261122190000`): o último PROPOSED da aula vira VERIFIED (HUMAN_REVIEW, `created_by` = professor que
+  lançou), com objetivo/próximo passo/lição do lançamento por cima, e entra em `student_learning_memories`
+  como no `summary_save`. Dois gatilhos: `class_logs` (APPROVED + COMPLETED) e `lesson_summary_versions`
+  (rascunho que nasce depois do lançamento). Não age se já houve decisão humana (VERIFIED/REJECTED), aula
+  SUPERSEDED, termo revogado ou documentação bloqueada. Exceção vira WARNING: o lançamento nunca falha.
+  Lote de 22/11: 265 aulas aprovadas pelo sistema (`created_by` nulo, `review_reason` com a decisão); 14
+  puladas por falta de objetivo/próximo passo. Backup: `private.bkp_lesson_summary_versions_20261122` e
+  `private.bkp_student_learning_memories_20261122`.
+- **OpenRouter fora da Wise Wolf.** `_shared/ai-gateway.ts`: chat só Anthropic (sem reserva; erro volta no
+  status da Anthropic), embeddings direto na OpenAI (mesmo modelo, `OPENAI_API_KEY`), outros endereços do
+  openrouter.ai → 410. Funções checam `textAiKey()` (= `ANTHROPIC_API_KEY`). `OPENROUTER_API_KEY` comentada
+  no `.env.functions`; `GOOGLE_MEET_SUMMARY_MODEL=anthropic/claude-haiku-4.5` (preço cadastrado). Bases de RAG
+  existentes seguem com rótulo OPENROUTER (imutável por `guard_ai_knowledge_embedding_config`; o rótulo só diz
+  a origem dos vetores); novas nascem OPENAI. **`.env.functions` só vale com `docker compose up -d --no-deps
+  --force-recreate functions`** — `restart` não relê variáveis.
+- **Compra de minutos no app:** `WolfieTopupModal` (PIX do `create-wolfie-topup`, QR + copia-e-cola,
+  polling do pedido até PAID), no medidor de saldo e aberto sozinho em `quota_exceeded`. Preços continuam os
+  da tabela `wolfie_topup_packages` até o Vinícius decidir.
+- **Backup/rollback:** `/opt/wisewolf/backup-ww-decisoes-20261122T145138Z/` (banco, `env.functions`, funções, md5,
+  front). Rollback das funções: copiar `functions/*` de volta + md5 e recriar o container com o
+  `env.functions` antigo; aprovação: `drop trigger zz_class_log_approves_summary on public.class_logs;
+  drop trigger zz_summary_draft_after_class_log on private.lesson_summary_versions;`.
+
+### 22/11/2026 (tarde, 2) — Resumos: falha por crédito, reprocessamento e contador do professor
+
+- **Causa dos ~65% de SUMMARY_AI_FAILED:** não era código. De 19/10 a 11/11 o OpenRouter
+  devolvia 402 (`google_summary_provider_credits`, 273 falhas). Desde 12/11 a taxa é normal e
+  desde 19/11 o resumo vai pela ponte (Haiku 5.5; OpenRouter de reserva). Se voltar a subir,
+  olhe primeiro `error_code` em `private.google_meet_summary_generations`.
+- **Reprocessamento:** ação só de serviço `retry_failed_summaries` no `google-meet` (limit ≤ 10,
+  `budgetUsd` ≤ 5 por chamada) + RPCs service_role `google_meet_summary_retry_candidates` /
+  `_retry_sources` + `retry_failed=true` aceito no `claim` do `google_meet_summary_backend`
+  (migrations `20261122180000`, `…181000`, `…182000`). Mesma esteira, teto mensal e aceites.
+  Sem limite próprio de novas tentativas: não agende sem pôr um.
+- **Professor:** "Revisar resumos (N)" ao lado de "Lançar Aulas" (`ReviewSummariesButton`, RPC
+  `get_meet_summary_review_queue`); só lembra e leva à fila — **lançar a aula continua NÃO
+  aprovando o resumo** (decisão de 28/09; mudar isso é do Vinícius). Tour
+  `2026-11-22-wolfie-trilha-revisar-resumos`.
+- **Retratos do roleplay:** `public/assets/wolfie/personagens/*.webp` (gerados pelo Codex),
+  escolhidos por papel e, quando o nome é claro, por gênero (`portraitFor`); senão, vetor.
+- **Backup do front antes desta publicação:** `/opt/wisewolf/backup-wolfie-trilha3-20261122T124958Z/frontend-dist`;
+  `google-meet` anterior em `/opt/wisewolf/backup-resumos-retry-20261122T124447Z/`.
+
+### 22/11/2026 (tarde) — Wolfie: 2ª publicação da trilha
+
+- **Professor:** em "Aulas de Hoje" (`TeacherDashboard`) aparece o check-in do aluno feito na véspera
+  (`WolfieCheckinNote`, RPC `teacher_wolfie_checkins`, migration `20261122160000`): acertos, o que ainda
+  errou e a prioridade do roleplay. Só para quem dá/deu aula ao aluno ou a coordenação. Só leitura.
+- **Realtime:** `semantic_vad` com `eagerness: "low"` (paciência com quem pensa no meio da frase) +
+  botão "Terminei de falar" (`useWolfieRealtime.finishSpeaking` = `input_audio_buffer.commit` +
+  `response.create`, só com o aluno falando e trava de 1,5 s).
+- **Cena do roleplay:** `RoleplayCounterpart` (vetor no código, sem imagem gerada) via prop
+  `roleplayCast` do `WolfieTutor`, só no roleplay da trilha. Fora dele o tutor é o mesmo.
+- **Memória de fatos:** os cartões do roleplay extraem até 5 fatos que o aluno disse de si
+  (sem dado sensível; a citação precisa estar numa fala dele) → `wolfie_memory_items`
+  (`kind` goal/professional_scenario/preferred_topic, `memory_key` `fact:*`), teto de 10 ativos.
+  O realtime já lê essa tabela; a trilha seguinte usa os fatos na rotina.
+- **Backup/rollback:** `/opt/wisewolf/backup-wolfie-trilha2-20261122T122841Z/` (banco, `frontend-dist`,
+  `functions/wolfie-realtime-session` e `wolfie-lesson-track`, `.published-functions.md5`).
+  Rollback: devolver as duas pastas de função + o md5 e `docker restart supabase-edge-functions`;
+  o front como na entrada de cima, com esta pasta.
+
+### 22/11/2026 — Wolfie: trilha da aula no ar (branch feat/wolfie-trilha-da-aula)
+
+⚠️ **Antes do próximo release completo, junte `feat/wolfie-trilha-da-aula`** (é a branch do Mac
+mais estes commits, sem reescrever nada). Release de outra branch desfaz o cartão, a função e a
+migration registrada.
+
+- **O quê:** depois de cada aula lançada e APROVADA pelo professor (`class_logs` APPROVED +
+  memória VERIFIED; rascunho PROPOSED nunca entra), o aluno vê como 1º cartão do Wolfie
+  "Sua aula de {dia}: {tema}" e faz 12–15 min: aquecimento → autocorreção das frases que errou
+  (1ª falha só dica) → prática do tema misturada com temas antigos → fala guiada → roleplay no
+  tutor existente com 3 objetivos → cartões de erro + 1 prioridade. Revisões D+1/3/7/14/30
+  (14 e 30 só com ≥70% na anterior) e check-in na véspera da próxima aula.
+- **Onde:** função `wolfie-lesson-track`; tabelas `wolfie_lesson_tracks` / `wolfie_lesson_reviews`
+  (migration `20261122140000`, só service_role: `content`/`items` guardam o GABARITO);
+  `src/components/wolfie/lessonTrack/*`; tour `2026-11-22-wolfie-trilha-da-aula`.
+- **Custo:** geração 1× por aula (unique `class_log_id` + lease), Haiku pela ponte; correção
+  por IA só em resposta livre, teto 24/trilha; cartões do roleplay 1× por trilha (reserva).
+- **QA sem aula falsa:** conta `is_test_account` usa trilha `test_fixture` (class_log nulo) com
+  `lesson_input` inventado. O wolfie-brain suprime IA para conta de teste — o roleplay de teste
+  precisa de sessão-fixture.
+- **Publicação isolada (release 20261122T114628Z):** backup do banco em
+  `/opt/wisewolf/backup-wolfie-trilha-20261122T114628Z/postgres.dump`, front anterior em
+  `.../frontend-dist` e `src/dist.prev-wolfie-trilha`; função copiada para
+  `volumes/functions/wolfie-lesson-track` e registrada em `.published-functions.md5`;
+  migration aplicada e marcada em `.migration-checksums`.
+- **Rollback:** `cd /opt/wisewolf/frontend && docker compose stop frontend && mv src/dist
+  src/dist.trilha && cp -a /opt/wisewolf/backup-wolfie-trilha-20261122T114628Z/frontend-dist src/dist &&
+  docker compose start frontend`; tirar a pasta da função + a linha no `.published-functions.md5`
+  e `docker restart supabase-edge-functions`. As tabelas novas podem ficar (aditivas, sem uso).
+
 ### 22/11/2026 — Cobrança SÓ pelo número financeiro + aviso aos alunos
 
 Decisão da direção: na escola com o número financeiro (linha em `whatsapp_instances` com
@@ -1180,6 +1850,20 @@ onClick texto → sendMessage() → unlockAudio()
   `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, `OPENAI_SAFETY_SALT`
 - ⚠️ Nenhuma delas pode ter prefixo `VITE_` nem entrar em arquivo versionado —
   elas vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root)
+
+### Monitor horário do realtime (`wolfie_health_log`) — corrigido em 24/11/2026
+- Cron `wisewolf-wolfie-health` (min 7) chama `trigger_wolfie_healthcheck()`, que dispara o
+  `wolfie-healthcheck` via pg_net e grava o id da requisição em
+  `private.wolfie_healthcheck_requests`. O cron `wisewolf-wolfie-health-collect` (min 9) chama
+  `collect_wolfie_healthcheck()`, que lê **só a resposta desse id** em `net._http_response`.
+- Bug anterior (25/10 → 24/11): o coletor lia a resposta mais nova do pg_net de **qualquer**
+  requisição. O sweeper do `wolfie-realtime-session` (a cada ~10 s) ganhava sempre, e todo check
+  saía `healthy=false`, com um WhatsApp de "Wolfie fora do ar" por dia. Era alarme falso.
+- Agora sem resposta, erro de transporte, HTTP ≠ 200 ou `healthy:false` = falha registrada.
+- Migration: `20261124040000_wolfie_health_collect_by_request_id.sql` (aditiva).
+- **Rollback:** `psql -U supabase_admin` com o `functions-before.sql` de
+  `/opt/wisewolf/backup-wolfie-health-collector-20261124T033049Z/` (publicado 24/11 03:30 UTC; recria as duas funções antigas). A tabela
+  nova pode ficar; não tem uso fora dessas funções.
 
 ---
 
@@ -3747,7 +4431,7 @@ resultado. Atualizar resumos remove sugestões que deixaram de valer sem apagar
 edições humanas. Não inventa “sem tarefa”/“nenhuma dificuldade”: botões registram
 essas declarações somente por clique. Motivo retroativo continua humano, com
 atalhos de preenchimento. Aprovação da memória continua no fluxo de revisão de
-resumos; salvar lançamento não aprova automaticamente um rascunho. Testes SQL
+resumos; salvar lançamento não aprova automaticamente um rascunho. **SUBSTITUÍDO em 22/11/2026: lançar a aula agora aprova o resumo — veja a entrada do topo.** Testes SQL
 `meet_class_log_suggestions.sql`, UI e tour `2026-09-30-meet-preenche-lancamento`.
 
 ### 28/09/2026 — Bloqueio do release por renovação no fim do mês

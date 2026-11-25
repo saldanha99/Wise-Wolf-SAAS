@@ -1,6 +1,10 @@
 /// <reference lib="deno.ns" />
-// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+// Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import {
+  applyTutorPersona,
+  tutorPersonaFromTenant,
+} from "../_shared/tutor-persona.ts";
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
@@ -4858,7 +4862,7 @@ async function analyzeAndPersistRealtimeTurn(input: {
       };
     }
 
-    const openRouterKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+    const openRouterKey = textAiKey();
     if (!openRouterKey) {
       return await finalizeFailedAnalysis("provider_unavailable");
     }
@@ -5196,6 +5200,19 @@ serve(async (req) => {
         }
         if (handoffMessage.includes("wolfie_session_not_found")) {
           throw new HttpError(404, "CONVERSATION_NOT_FOUND");
+        }
+        // Sessão que nunca teve turno ao vivo (ex.: aluno sem minutos que
+        // tocou em "voz clássica"): não há o que passar, o clássico segue na
+        // mesma sessão. A RPC já recusou sessão encerrada antes desta trava.
+        if (handoffMessage.includes("realtime_anchor_required")) {
+          return jsonResponse(200, {
+            success: true,
+            action: "handoff_realtime_to_classic",
+            conversationId: input.conversationId,
+            handedOff: true,
+            reused: true,
+            notNeeded: true,
+          });
         }
         logDatabaseError("realtime_classic_handoff", error);
         throw new HttpError(503, "SERVICE_UNAVAILABLE");
@@ -6206,7 +6223,7 @@ serve(async (req) => {
       });
     }
 
-    const openRouterKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+    const openRouterKey = textAiKey();
 
     const profileWolfieSettings = isJsonObject(profile.wolfie_settings)
       ? profile.wolfie_settings
@@ -7305,7 +7322,7 @@ serve(async (req) => {
         : effectiveConfig.previousSessionSummary ||
           wolfMemory.previous_session_summary || {},
     };
-    const systemPrompt = buildSystemPrompt(
+    const rawSystemPrompt = buildSystemPrompt(
       effectiveConfig,
       boundedString(profile.full_name, 200) || undefined,
       profileGoal,
@@ -7315,6 +7332,17 @@ serve(async (req) => {
       currentScenarioStatus,
       pendingRetry,
       transcriptionRequiresConfirmation,
+    );
+    // White label: escola cliente com tutorName próprio → o tutor se apresenta
+    // com esse nome. Falha na leitura mantém o Wolfie (nunca derruba o turno).
+    const { data: tenantBrand } = await supabase
+      .from("tenants")
+      .select("name, branding")
+      .eq("id", profile.tenant_id)
+      .maybeSingle();
+    const systemPrompt = applyTutorPersona(
+      rawSystemPrompt,
+      tutorPersonaFromTenant(tenantBrand?.name, tenantBrand?.branding),
     );
     let providerResult: OpenRouterResult;
     try {
@@ -8245,6 +8273,10 @@ serve(async (req) => {
               item,
             ]),
         );
+        // first_seen_at explícito: sem ele a linha nova nascia com o now() do
+        // banco, posterior ao `now` do início da requisição (antes da IA), e
+        // last_seen_at < first_seen_at violava wolfie_memory_items_dates_check (23514).
+        const memoryStamp = new Date().toISOString();
         const memoryRows = memoryCandidates.map((candidate) => {
           const existing = existingByKey.get(
             `${candidate.kind}:${candidate.memory_key}`,
@@ -8279,13 +8311,12 @@ serve(async (req) => {
               : null,
             source_conversation_session_id: sessionId,
             source_activity_session_id: null,
-            last_seen_at: now.toISOString(),
+            first_seen_at: existing?.first_seen_at ?? memoryStamp,
+            last_seen_at: memoryStamp,
             next_review_at: new Date(
               now.getTime() + reviewDays * 86_400_000,
             ).toISOString(),
-            mastered_at: candidate.status === "mastered"
-              ? now.toISOString()
-              : null,
+            mastered_at: candidate.status === "mastered" ? memoryStamp : null,
             expires_at: null,
           };
         });

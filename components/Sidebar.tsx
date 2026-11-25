@@ -33,6 +33,7 @@ import {
   Moon
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
+import { PLATFORM_NAME } from '../lib/platformBrand';
 
 interface SidebarProps {
   tenant: Tenant;
@@ -139,7 +140,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
           <div className="overflow-hidden">
             <h1 className="font-black text-[11px] leading-tight text-gray-800 dark:text-slate-100 truncate uppercase tracking-tight">
-              {user.role === UserRole.SUPER_ADMIN ? 'EduCore Admin' : tenant.name}
+              {user.role === UserRole.SUPER_ADMIN ? PLATFORM_NAME : tenant.name}
             </h1>
             <span className="text-[9px] text-gray-400 dark:text-brand-muted uppercase tracking-[0.2em] font-black truncate block mt-0.5">
               {user.role === UserRole.SCHOOL_ADMIN ? 'Gestor Unidade' :

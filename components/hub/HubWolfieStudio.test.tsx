@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HubBootstrap } from './types';
 
@@ -29,6 +29,9 @@ vi.mock('../../src/components/wolfie/WolfieDiscoveryHome', () => ({
     </button>
   ),
 }));
+
+const rpc = vi.hoisted(() => vi.fn(async () => ({ data: null, error: null })));
+vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }));
 
 vi.mock('../WolfieTutor', () => ({
   default: (props: Record<string, any>) => {
@@ -122,7 +125,7 @@ describe('Bridge do Wolfie nativo no Hub', () => {
     expect(bridge.tutorProps?.hubContext).not.toHaveProperty('learnerProfile');
   });
 
-  it('trata membro aluno de uma instituição como aluno, não como operador profissional', () => {
+  it('trata membro aluno de uma instituição como aluno, não como operador profissional', async () => {
     render(
       <HubWolfieStudio
         bootstrap={bootstrap({
@@ -141,7 +144,7 @@ describe('Bridge do Wolfie nativo no Hub', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo nativo do Wolfie' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Catálogo nativo do Wolfie' }));
 
     expect(bridge.tutorProps?.user).toEqual(expect.objectContaining({
       name: 'Pedro Aluno',
@@ -167,5 +170,31 @@ describe('Bridge do Wolfie nativo no Hub', () => {
     expect(screen.queryByText('Catálogo nativo do Wolfie')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Ver opções de acesso' }));
     expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
+
+  it('aluno convidado abre direto na tarefa do professor', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        learner: { id: 'l1', display_name: 'Pedro Aluno', level_tag: 'A2', objective: 'atender clientes no hotel' },
+        teacher_name: 'Marina',
+        assignments: [{ id: 'a1', note: 'Treine o check-in', status: 'ASSIGNED', material: { id: 'm1', kind: 'conversation', title: 'Check-in no hotel', topic: 'hotel check-in', material: {} } }],
+      },
+      error: null,
+    });
+    render(
+      <HubWolfieStudio
+        bootstrap={bootstrap({
+          membership: { membership_role: 'MEMBER', status: 'ACTIVE' },
+          memberProfile: { display_name: 'Pedro Aluno', subjectRole: 'LEARNER', onboarding_completed: true, level: 'A2' },
+        })}
+        onRefresh={async () => {}}
+        onUpgrade={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText('Conversa nativa do Wolfie')).toBeTruthy();
+    await waitFor(() => expect(bridge.tutorProps?.topic).toBe('Check-in no hotel'));
+    expect(String(bridge.tutorProps?.scenario)).toContain('atender clientes no hotel');
+    expect(bridge.tutorProps?.studentGoal).toBe('atender clientes no hotel');
   });
 });

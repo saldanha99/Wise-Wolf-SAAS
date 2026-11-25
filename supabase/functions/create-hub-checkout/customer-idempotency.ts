@@ -39,12 +39,42 @@ export function normalizeAsaasCustomerId(value: unknown): string | null {
     : null;
 }
 
+/**
+ * Asaas avança o `nextDueDate` da assinatura um ciclo assim que gera a 1ª
+ * cobrança (vencimento hoje → a resposta já diz o mês/ano seguinte). Aceita a
+ * data enviada ou exatamente um ciclo depois; nada além disso.
+ * (22/11/2026: sem isto, todo checkout do Hub com vencimento no dia falhava.)
+ */
+export function hubNextDueDateMatches(
+  providerDate: string,
+  expectedDate: string,
+  cycle: string,
+): boolean {
+  if (providerDate === expectedDate) return true;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expectedDate);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const [nextYear, nextMonth] = cycle === "YEARLY"
+    ? [year + 1, month]
+    : cycle === "MONTHLY"
+    ? (month === 12 ? [year + 1, 1] : [year, month + 1])
+    : [Number.NaN, Number.NaN];
+  if (!Number.isFinite(nextYear)) return false;
+  const lastDay = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+  const advanced = `${nextYear}-${String(nextMonth).padStart(2, "0")}-${
+    String(Math.min(day, lastDay)).padStart(2, "0")
+  }`;
+  return providerDate === advanced;
+}
+
 export function resolveHubAsaasSubscriptionCandidate(
   candidate: unknown,
   expected: {
     externalReference: string;
     customerId: string;
-    billingType: "PIX" | "BOLETO";
+    billingType: "PIX" | "BOLETO" | "CREDIT_CARD";
     billingCycle: "MONTHLY" | "YEARLY";
     amount: number;
     nextDueDate: string;
@@ -76,7 +106,11 @@ export function resolveHubAsaasSubscriptionCandidate(
     normalizedText(record.customer) !== expected.customerId ||
     normalizedText(record.billingType).toUpperCase() !== expected.billingType ||
     normalizedText(record.cycle).toUpperCase() !== expected.billingCycle ||
-    normalizedText(record.nextDueDate) !== expected.nextDueDate ||
+    !hubNextDueDateMatches(
+      normalizedText(record.nextDueDate),
+      expected.nextDueDate,
+      expected.billingCycle,
+    ) ||
     normalizedText(record.description) !== expected.description ||
     providerStatus !== "ACTIVE" ||
     !amountMatches ||

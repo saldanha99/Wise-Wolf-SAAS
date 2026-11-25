@@ -46,7 +46,7 @@ const MESSAGES: Record<string,string> = {
   termo_mudou_aceite_do_aluno_pendente: 'O termo mudou e o aluno (ou o responsável) ainda não aceitou a versão vigente. Mande o link do termo de novo; até a resposta, as aulas não são transcritas.',
   termo_mudou_aceite_do_professor_pendente: 'O termo mudou e o professor ainda não aceitou a versão vigente (em "Salas e continuidade"). Até lá, as aulas dele não são transcritas.',
   sem_permissao: 'Você não tem permissão para esta ação.',
-  // Resumo por IA automático (migration 20260927110000, OpenRouter).
+  // Resumo por IA automático (migration 20260927110000; pela API da Anthropic desde 22/11/2026).
   google_summary_api_usage_ack_required: 'Confirme que está ciente do custo antes de gerar o rascunho pela IA.',
   google_summary_already_generated: 'Estas mesmas fontes já têm um rascunho da IA. Um novo só sai quando chegar transcrição ou anotação nova.',
   google_summary_ai_consent_required: 'Esta aula foi registrada sem o aceite de um termo que fala do resumo por IA (termo anterior, ou autorização registrada à mão). O rascunho por IA não sai; revise as notas do Google à mão.',

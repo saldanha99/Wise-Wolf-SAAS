@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { Mail, Lock, Eye, EyeClosed, ArrowRight, ShieldCheck } from 'lucide-react';
 import { cn } from "../../lib/utils";
+import { PLATFORM_SIGNATURE } from '../../lib/platformBrand';
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
     return (
@@ -26,9 +27,12 @@ interface SignInCard2Props {
     error?: string;
     /** Envia o e-mail de redefinição de senha para o endereço digitado. */
     onForgotPassword?: (email: string) => Promise<void>;
+    /** White label: escola cliente resolvida pelo endereço (sem marca da Wise Wolf). */
+    brand?: { name: string; logoUrl?: string | null } | null;
 }
 
-export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: SignInCard2Props) {
+export function SignInCard2({ onLogin, isLoading, error, onForgotPassword, brand }: SignInCard2Props) {
+    const brandLogo = brand?.logoUrl && /^https:\/\//.test(brand.logoUrl) ? brand.logoUrl : null;
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -81,6 +85,17 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
     return (
         <div className="min-h-screen w-full bg-[#020617] relative overflow-hidden flex items-center justify-center p-4">
             {/* Brand Watermark */}
+            {brand ? (
+                <div className="absolute top-6 left-6 flex items-center gap-3" data-testid="tenant-brand">
+                    {brandLogo && (
+                        <span className="flex h-10 w-12 items-center justify-center rounded-lg bg-white p-1 shadow-lg">
+                            <img src={brandLogo} alt="" className="h-full w-full object-contain" />
+                        </span>
+                    )}
+                    <span className="text-white font-black text-lg tracking-tight leading-none">{brand.name}</span>
+                </div>
+            ) : (
+            <>
             <div className="absolute top-6 left-6 flex items-center gap-3">
                 <span className="flex h-10 w-12 items-center justify-center rounded-lg bg-white p-1 shadow-lg">
                     <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="" className="h-full w-full object-contain" />
@@ -97,6 +112,8 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                 aria-hidden="true"
                 className="pointer-events-none absolute -bottom-16 -right-24 w-[min(90vw,760px)] opacity-100 select-none"
             />
+            </>
+            )}
 
             {/* Background gradient effect - Deep Blue Theme */}
             <div className="absolute inset-0 bg-linear-to-b from-[#000F66]/25 via-[#06142D]/40 to-[#020617]" />
@@ -188,7 +205,13 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                                     animate={{ scale: 1, opacity: 1 }}
                                     className="mx-auto w-20 h-14 rounded-2xl bg-white p-2 flex items-center justify-center shadow-lg shadow-[#CC213B]/20"
                                 >
-                                    <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="Wise Wolf Languages" className="h-full w-full object-contain" />
+                                    {brand ? (
+                                        brandLogo
+                                            ? <img src={brandLogo} alt={brand.name} className="h-full w-full object-contain" />
+                                            : <span className="text-2xl font-black text-slate-900">{brand.name.slice(0, 1).toUpperCase()}</span>
+                                    ) : (
+                                        <img src="/assets/brand/wise-wolf-mark-trim-20261028.png" alt="Wise Wolf Languages" className="h-full w-full object-contain" />
+                                    )}
                                 </motion.div>
 
                                 <div>
@@ -315,7 +338,10 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                                     aria-disabled={isLoading}
                                     className="w-full relative group/btn h-12 rounded-xl overflow-hidden"
                                 >
-                                    <div className="absolute inset-0 bg-linear-to-r from-[#1A2690] to-[#CC213B] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
+                                    <div
+                                        className={`absolute inset-0 opacity-90 group-hover/btn:opacity-100 transition-opacity ${brand ? '' : 'bg-linear-to-r from-[#1A2690] to-[#CC213B]'}`}
+                                        style={brand ? { backgroundColor: 'var(--primary-color)' } : undefined}
+                                    />
                                     <div className="absolute inset-0 opacity-[0.15]" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize:'200px 200px'}} />
 
                                     <div className="relative flex items-center justify-center gap-2 text-white font-bold text-sm tracking-wide uppercase">
@@ -328,43 +354,17 @@ export function SignInCard2({ onLogin, isLoading, error, onForgotPassword }: Sig
                                 </motion.button>
                             </form>
 
-                            {/* Demo Quick Access - REMOVED FOR PRODUCTION
-267:                             {onDemoLogin && (
-268:                                 <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
-269:                                     <p className="text-[10px] uppercase font-black text-brand-muted tracking-widest text-center">Acesso Rápido (Demo)</p>
-270:                                     <div className="grid grid-cols-2 gap-2">
-271:                                         {[
-272:                                             { label: 'Diretor', email: 'diretor@wisewolf.com', pass: '123456' },
-273:                                             { label: 'Professor', email: 'professor.demo@wisewolf.com', pass: '123456' },
-274:                                             { label: 'Aluno', email: 'aluno@wisewolf.com', pass: '123456' },
-275:                                             { label: 'Super Admin', email: 'admin@educore.io', pass: '123456' }
-276:                                         ].map((demo, i) => (
-277:                                             <button
-278:                                                 key={i}
-279:                                                 type="button"
-280:                                                 onClick={() => {
-281:                                                     setEmail(demo.email);
-282:                                                     setPassword(demo.pass);
-283:                                                     // Optional: Auto submit or just fill
-284:                                                 }}
-285:                                                 className="p-2 rounded-lg bg-brand-surface/5 hover:bg-brand-surface/10 border border-white/5 text-[10px] font-bold text-slate-300 hover:text-white transition-all text-center uppercase tracking-wide"
-286:                                             >
-287:                                                 {demo.label}
-288:                                             </button>
-289:                                         ))}
-290:                                     </div>
-291:                                 </div>
-292:                             )}
-*/}
+                            
 
                         </div>
                     </div>
                 </motion.div>
             </motion.div>
 
-            <div className="absolute bottom-6 text-center w-full pointer-events-none">
-                <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50">
-                    Wise Wolf System • v1.0
+            {/* Rodapé sobe no celular: o link "Teacher: consultar histórico" do Login fica fixo em bottom-3. */}
+            <div className="absolute bottom-20 sm:bottom-6 text-center w-full pointer-events-none">
+                <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50" data-testid={brand ? undefined : 'platform-signature'}>
+                    {brand ? brand.name : PLATFORM_SIGNATURE}
                 </p>
             </div>
         </div>

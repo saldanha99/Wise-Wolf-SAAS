@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { brandText } from '../lib/tutorBrand';
 import {
   BookOpen,
   BrainCircuit,
@@ -70,12 +71,17 @@ import {
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
+import { WolfieTopupModal } from "./WolfieTopupModal";
 import {
   classicReplyCaption,
   realtimeFallbackPresentation,
   wolfieVisualState,
 } from "../lib/wolfieVisualStatus";
 import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
+import {
+  type RoleplayCast,
+  RoleplayCounterpart,
+} from "../src/components/wolfie/visuals/RoleplayCounterpart";
 import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
 import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
 import { WOLFIE_SCENARIO_UI_V2_ENABLED } from "../src/components/wolfie/visuals/featureFlags";
@@ -83,6 +89,7 @@ import { WolfieMeetingHUD } from "../src/components/wolfie/visuals/WolfieMeeting
 import { resolveScene } from "../src/components/wolfie/visuals/resolveScene";
 import { WolfieScenarioStage } from "../src/components/wolfie/visuals/WolfieScenarioStage";
 import { WolfieSessionHUD } from "../src/components/wolfie/visuals/WolfieSessionHUD";
+import { cachedWolfieOpener, getWolfieOpener, type WolfieOpener } from "../src/services/wolfieLessonTrackService";
 import { resolveMeetingVisualState } from "../src/components/wolfie/visuals/visualStateResolver";
 import {
   isWolfieTutorCloseBlocked,
@@ -116,6 +123,8 @@ interface WolfieTutorProps {
   experienceUniverse?: string;
   experienceAudiences?: string[];
   hubContext?: WolfieHubContext;
+  /** Roleplay da trilha da aula: troca o lobo por uma cena de chamada com o interlocutor. */
+  roleplayCast?: RoleplayCast;
   onClose?: (summary: WolfieTutorSessionSummary) => void;
 }
 
@@ -549,6 +558,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   experienceUniverse,
   experienceAudiences,
   hubContext,
+  roleplayCast,
   onClose,
 }) => {
   const hubModeRequested = typeof hubContext !== "undefined";
@@ -574,6 +584,24 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [subtitle, setSubtitle] = useState(
     hubModeRequested ? initialHubMessage : "",
   );
+  // Abertura personalizada (22/11/2026): 1 frase com o primeiro nome e o último assunto da aula.
+  // Chat: vira a 1ª mensagem; voz ao vivo: o tutor fala primeiro (fora do roleplay e das reuniões globais).
+  // Cache da sessão lido já na 1ª pintura: a frase está pronta quando o aluno conecta a voz.
+  const [opener, setOpener] = useState<WolfieOpener | null>(() =>
+    hubModeRequested || roleplayCast ? null : cachedWolfieOpener(user?.id)
+  );
+  const openerSpokenRef = useRef(false);
+  useEffect(() => {
+    if (hubModeRequested || roleplayCast) return;
+    let alive = true;
+    void getWolfieOpener().then((value) => {
+      if (!alive || !value) return;
+      setOpener(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hubModeRequested, roleplayCast]);
   const [error, setError] = useState<string | null>(null);
   // Aviso informativo (ex.: voz ao vivo sem crédito no provedor). Não é erro da resposta: a prática por texto segue.
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
@@ -648,6 +676,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     !hubModeRequested,
   );
   const [showTextInput, setShowTextInput] = useState(!voiceMode);
+  // Saldo de voz acabou no meio da conversa: a compra abre por cima, sem fechar nada.
+  const [topupOpen, setTopupOpen] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [restartNonce, setRestartNonce] = useState(0);
   const [isRestarting, setIsRestarting] = useState(false);
@@ -1162,10 +1192,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           setState("IDLE");
           setError(
             guidanceFailed
-              ? "O turno foi salvo, mas a orientação ao vivo não foi confirmada. O Wolfie mudou para a voz clássica."
+              ? brandText("O turno foi salvo, mas a orientação ao vivo não foi confirmada. O Wolfie mudou para a voz clássica.")
               : analysisUnavailable
-              ? "O turno foi preservado, mas a análise não concluiu após novas tentativas. O Wolfie mudou para a voz clássica."
-              : "O turno não pôde ser confirmado com segurança. O Wolfie mudou para a voz clássica.",
+              ? brandText("O turno foi preservado, mas a análise não concluiu após novas tentativas. O Wolfie mudou para a voz clássica.")
+              : brandText("O turno não pôde ser confirmado com segurança. O Wolfie mudou para a voz clássica."),
           );
           window.setTimeout(() => {
             if (isMountedRef.current) setError(null);
@@ -1229,6 +1259,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     },
     [],
   );
+
+  // Sem minutos ao vivo (franquia configurada e zerada), o tutor já abre na
+  // voz clássica: abrir no ao vivo só levava a uma recusa e a uma passagem
+  // para o clássico sem nenhum turno ao vivo. Uma vez por montagem; o aluno
+  // ainda pode escolher o ao vivo (e comprar minutos) pelo botão.
+  const liveBalanceCheckedRef = useRef(false);
+  useEffect(() => {
+    if (liveBalanceCheckedRef.current || hubModeRequested || !isRealtimeMode) return;
+    liveBalanceCheckedRef.current = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("my_wolfie_live_balance");
+      if (!isMountedRef.current || error || !data || typeof data !== "object") return;
+      const balance = data as { enforced?: boolean; allowed?: boolean; remaining?: number };
+      const exhausted = balance.enforced === true &&
+        (balance.allowed === false || (typeof balance.remaining === "number" && balance.remaining <= 0));
+      if (!exhausted) return;
+      // Sessão retomada do ao vivo passa pelo handoff de sempre (no-op se não houve turno ao vivo).
+      if (realtimeConversationIdRef.current) detachTransportSession("handoff_to_classic");
+      setVoiceTransport((current) => (current === "realtime" ? "classic" : current));
+    })();
+  }, [hubModeRequested, isRealtimeMode, detachTransportSession]);
 
   const realtime = useWolfieRealtime({
     enabled: !hubModeRequested && WOLFIE_REALTIME_ENABLED && isRealtimeMode,
@@ -1376,7 +1427,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         ) ?? 0;
         setSubtitle(
           recordedCount > 0
-            ? "Informação confirmada e salva na memória do Wolfie."
+            ? brandText("Informação confirmada e salva na memória do Wolfie.")
             : "Transcrição confirmada. Nenhum dado pessoal novo foi salvo.",
         );
         window.setTimeout(() => {
@@ -1408,7 +1459,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         setSubtitle("");
         setError(
           guidanceFailed
-            ? "A informação foi confirmada, mas a orientação ao vivo não foi aplicada. O Wolfie mudou para a voz clássica."
+            ? brandText("A informação foi confirmada, mas a orientação ao vivo não foi aplicada. O Wolfie mudou para a voz clássica.")
             : "Ainda não foi possível concluir este turno. Revise e confirme novamente; o microfone continuará pausado.",
         );
         window.setTimeout(() => {
@@ -2646,7 +2697,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setSubtitle(
         pendingTranscriptReview?.source === "realtime"
           ? "Confirme a transcrição antes de continuar."
-          : "O Wolfie está revisando este turno antes de continuar…",
+          : brandText("O Wolfie está revisando este turno antes de continuar…"),
       );
       return;
     }
@@ -2671,6 +2722,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     const result = await realtime.connect();
     if (result.ok) {
       await realtime.resumeAudio();
+      if (opener && !roleplayCast && !isGlobalMeetingScene && !openerSpokenRef.current) {
+        openerSpokenRef.current = realtime.speakOpening(opener.opener);
+      }
     }
   };
 
@@ -3171,7 +3225,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       }
       if (!realtime.connected) {
         setError(
-          "Toque no Wolfie para iniciar a conversa ao vivo antes de enviar texto.",
+          brandText("Toque no Wolfie para iniciar a conversa ao vivo antes de enviar texto."),
         );
         setTimeout(() => setError(null), 5000);
         return;
@@ -3703,7 +3757,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           ? "A conversa ao vivo ainda está finalizando este turno. Tente enviar novamente em alguns instantes."
           : errorName === "AbortError" ||
           /abort|timeout|timed out/i.test(errorMessage)
-          ? "O Wolfie demorou mais que o esperado. Tente novamente."
+          ? brandText("O Wolfie demorou mais que o esperado. Tente novamente.")
           : "Não consegui responder agora. Tente novamente.",
       );
       setState("IDLE");
@@ -3752,6 +3806,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     messages.length,
     restartNonce,
   ]);
+
+  // Sessão reiniciada: a voz volta a abrir com a frase personalizada.
+  useEffect(() => {
+    openerSpokenRef.current = false;
+  }, [restartNonce]);
 
   const invalidatePendingRequest = () => {
     requestVersionRef.current += 1;
@@ -3815,7 +3874,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
     if (processingPending) {
       setError(
-        "Aguarde o Wolfie confirmar este turno antes de fechar a conversa.",
+        brandText("Aguarde o Wolfie confirmar este turno antes de fechar a conversa."),
       );
       window.setTimeout(() => {
         if (isMountedRef.current) setError(null);
@@ -3973,6 +4032,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   // VISUAL HELPERS
   // ============================================================
+  useEffect(() => {
+    if (realtime.fallbackReason === "quota_exceeded") setTopupOpen(true);
+  }, [realtime.fallbackReason]);
+
   const realtimeSubtitle = realtime.isAssistantSpeaking
     ? realtime.assistantTranscript || realtime.lastAssistantTranscript
     : realtime.userTranscript || realtime.lastUserTranscript || subtitle;
@@ -4008,11 +4071,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       case "LISTENING":
         return "Ouvindo...";
       case "THINKING":
-        return "Wolfie Pensando...";
+        return brandText("Wolfie Pensando...");
       case "SYNTHESIZING":
         return "Preparando a Voz...";
       case "SPEAKING":
-        return "Wolfie Falando";
+        return brandText("Wolfie Falando");
     }
   };
 
@@ -4120,7 +4183,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           <button
             type="button"
             onClick={handleClose}
-            aria-label="Fechar Wolfie Tutor"
+            aria-label={brandText("Fechar Wolfie Tutor")}
             className="absolute right-5 top-5 z-20 rounded-full border border-white/10 bg-white/5 p-3 text-white/70"
           >
             <X size={20} />
@@ -4170,7 +4233,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         {onClose && (
           <button
             onClick={handleClose}
-            aria-label="Fechar Wolfie Tutor"
+            aria-label={brandText("Fechar Wolfie Tutor")}
             className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group"
           >
             <X
@@ -4185,14 +4248,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 mb-4 sm:mb-6">
               <BrainCircuit size={14} />
               <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                Wolfie AI · Wise Wolf
+                {opener && opener.tutorName !== "Wolfie" ? opener.tutorName : "Wolfie AI · Wise Wolf"}
               </span>
             </div>
             <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-linear-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
               Olá, {(user?.full_name || user?.name)?.split(" ")[0] || "Aluno"}!
             </h1>
             <p className="text-slate-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
-              Como você prefere praticar o seu inglês hoje?
+              {/* Abertura personalizada (sem repetir a saudação do título): retoma a última aula. */}
+              {opener
+                ? `${opener.opener.replace(/^(Oi|Olá|E aí),\s*[^!]{1,40}!\s*/u, "") || opener.opener} Como você prefere praticar?`
+                : "Como você prefere praticar o seu inglês hoje?"}
             </p>
           </div>
 
@@ -4201,7 +4267,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 text-left">
               {voiceReplies === true
                 ? "Prática livre · ilimitada"
-                : "Wolfie gratuito · ilimitado"}
+                : (brandText("Wolfie") === "Wolfie" ? "Wolfie gratuito · ilimitado" : `${brandText("Wolfie")} · prática gratuita e ilimitada`)}
             </p>
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {!hubModeRequested && <button
@@ -4220,8 +4286,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 </h3>
                 <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
                   {voiceReplies === true
-                    ? "Você fala, o Wolfie responde por voz e texto."
-                    : "Você fala, o Wolfie ouve, corrige e responde por escrito."}
+                    ? brandText("Você fala, o Wolfie responde por voz e texto.")
+                    : brandText("Você fala, o Wolfie ouve, corrige e responde por escrito.")}
                 </p>
               </button>}
 
@@ -4274,8 +4340,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                       Fala natural, sem esperar: o Wolfie ouve e responde
                       enquanto você fala.
                       {voiceReplies === true
-                        ? " Também é o que dá voz ao Wolfie na prática livre."
-                        : " É aqui que o Wolfie fala com você."}
+                        ? brandText(" Também é o que dá voz ao Wolfie na prática livre.")
+                        : brandText(" É aqui que o Wolfie fala com você.")}
                     </p>
                     {
                       /* Saldo à vista ANTES de entrar — o aluno não pode descobrir
@@ -4444,12 +4510,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           ? -1
           : 0}
         aria-label={hubModeRequested
-          ? "Wolfie Tutor. Use o campo de texto para praticar."
+          ? brandText("Wolfie Tutor. Use o campo de texto para praticar.")
           : isRealtimeMode
           ? realtime.connected
-            ? "Wolfie ao vivo. Toque para pausar ou interromper."
-            : "Toque no Wolfie para iniciar a conversa ao vivo"
-          : "Pressione e segure o Wolfie para falar"}
+            ? brandText("Wolfie ao vivo. Toque para pausar ou interromper.")
+            : brandText("Toque no Wolfie para iniciar a conversa ao vivo")
+          : brandText("Pressione e segure o Wolfie para falar")}
         onClick={!hubModeRequested && isRealtimeMode
           ? () => void startRealtimeConversation()
           : undefined}
@@ -4496,7 +4562,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70 motion-reduce:animate-none" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-400" />
             </span>
-            Wolfie · conversa pessoal
+            {brandText("Wolfie · conversa pessoal")}
           </span>
           <span className="hidden rounded-full border border-white/15 bg-slate-950/72 px-3 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/90 shadow-2xl backdrop-blur-xl sm:inline-flex">
             {getStatusLabel()}
@@ -4514,7 +4580,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               : "Toque para iniciar"
             : state === "LISTENING"
             ? "Solte para enviar"
-            : "Olhe para o Wolfie e segure para falar"}
+            : brandText("Olhe para o Wolfie e segure para falar")}
         </span>
       </div>
     );
@@ -4968,13 +5034,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               onChange={(event) => setInputText(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && sendMessage(inputText)}
               placeholder={isRealtimeMode && !realtime.connected
-                ? "Inicie a conversa ao vivo no Wolfie…"
+                ? brandText("Inicie a conversa ao vivo no Wolfie…")
                 : "Digite em inglês ou português…"}
               disabled={state === "THINKING" ||
                 (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
               className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-hidden placeholder:text-slate-400 disabled:opacity-50"
-              aria-label="Mensagem para o Wolfie"
+              aria-label={brandText("Mensagem para o Wolfie")}
             />
             <button
               type="button"
@@ -4990,6 +5056,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 : <Send size={17} aria-hidden="true" />}
             </button>
           </div>
+        )}
+        {isRealtimeMode && realtime.connected && !realtime.muted && (
+          // "Terminei de falar": quem está aprendendo pensa no meio da frase;
+          // o corte por silêncio ficou paciente e este botão fecha o turno na hora.
+          <button
+            type="button"
+            data-testid="wolfie-finish-speaking"
+            onClick={() => realtime.finishSpeaking()}
+            disabled={!realtime.isUserSpeaking}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-4 text-sm font-black text-emerald-50 shadow-xl backdrop-blur-2xl transition hover:bg-emerald-400/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-default disabled:opacity-45"
+          >
+            <CheckCircle2 size={17} aria-hidden="true" />
+            {realtime.isUserSpeaking ? "Terminei de falar" : brandText("Fale no seu ritmo — o Wolfie espera")}
+          </button>
         )}
         <div className="flex min-h-16 items-center gap-2 rounded-[1.35rem] border border-white/12 bg-slate-950/82 p-2 shadow-2xl backdrop-blur-2xl">
           {primaryCallControl}
@@ -5070,7 +5150,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   dir="auto"
                 >
                   {visualCoachResponse ||
-                    "O apoio específico aparecerá aqui assim que o Wolfie concluir a resposta."}
+                    brandText("O apoio específico aparecerá aqui assim que o Wolfie concluir a resposta.")}
                 </p>
                 {correction?.corrected && (
                   <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3">
@@ -5096,6 +5176,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
     return (
       <div className="fixed inset-0 z-200 overflow-hidden bg-slate-950 font-sans">
+        <WolfieTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} />
         <WolfieScenarioStage
           profile={visualSceneProfile}
           presentation="ugc"
@@ -5119,23 +5200,41 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               onClose={onClose ? handleClose : undefined}
             />
           }
-          character={
-            <WolfieCharacter
-              profile={visualSceneProfile}
-              state={visualCharacterState}
-              inputLevel={avatarInputLevel}
-              outputLevel={avatarOutputLevel}
-              fallbackImageSrc={null}
-              framing="ugc"
-              className="pt-1 sm:pt-2"
-            />
-          }
+          character={roleplayCast
+            ? (
+              <RoleplayCounterpart
+                cast={roleplayCast}
+                speaker={state === "LISTENING" || realtime.isUserSpeaking
+                  ? "learner"
+                  : state === "SPEAKING" || realtime.isAssistantSpeaking
+                  ? "counterpart"
+                  : "idle"}
+                inputLevel={avatarInputLevel}
+                outputLevel={avatarOutputLevel}
+              />
+            )
+            : (
+              <WolfieCharacter
+                profile={visualSceneProfile}
+                state={visualCharacterState}
+                inputLevel={avatarInputLevel}
+                outputLevel={avatarOutputLevel}
+                fallbackImageSrc={null}
+                framing="ugc"
+                className="pt-1 sm:pt-2"
+              />
+            )}
           sceneContent={visualInteraction}
           context={shouldShowVisualContext ? visualContext : undefined}
           caption={
             <WolfieCaptionBar
-              text={displaySubtitle}
-              speaker={state === "LISTENING" ? "Você" : "Wolfie Tutor"}
+              text={displaySubtitle ||
+                (state === "IDLE" && messages.length === 0 && opener && !roleplayCast ? opener.opener : displaySubtitle)}
+              speaker={state === "LISTENING" ||
+                  (isRealtimeMode && realtime.isUserSpeaking && !realtime.isAssistantSpeaking)
+                ? "Você"
+                : roleplayCast?.name ||
+                  (opener && opener.tutorName !== "Wolfie" ? opener.tutorName : brandText("Wolfie Tutor"))}
               language={assistantLanguage}
               state={visualCharacterState}
               isFinal={state !== "LISTENING"}
@@ -5145,7 +5244,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           }
           actions={visualActions}
           modal={visualModal}
-          stageLabel="Área interativa do Wolfie"
+          stageLabel={brandText("Área interativa do Wolfie")}
           contextLabel={isGlobalMeetingScene
             ? "Checkpoint e apoio da reunião"
             : "Contexto e apoio da prática"}
@@ -5159,6 +5258,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   return (
     <div className="fixed inset-0 z-200 bg-slate-950 flex flex-col items-center justify-center overflow-hidden font-sans">
+      <WolfieTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} />
       {/* BACKGROUND EFFECTS */}
       <div
         className={`absolute inset-0 transition-colors duration-1000 ${
@@ -5187,7 +5287,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       {onClose && (
         <button
           onClick={handleClose}
-          aria-label="Fechar Wolfie Tutor"
+          aria-label={brandText("Fechar Wolfie Tutor")}
           className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group"
         >
           <X
@@ -5281,7 +5381,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           {!hubModeRequested && !isRealtimeMode && (
             <span
               className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-violet-200"
-              title="O Wolfie reconhece português e inglês automaticamente a cada fala."
+              title={brandText("O Wolfie reconhece português e inglês automaticamente a cada fala.")}
               aria-label="Idioma do microfone: automático, português e inglês"
             >
               <Mic size={11} aria-hidden="true" />
@@ -5408,7 +5508,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 ? realtime.muted
                   ? "Toque em retomar para continuar"
                   : "Conversa ao vivo · fale naturalmente"
-                : "Toque no Wolfie para iniciar ao vivo"
+                : brandText("Toque no Wolfie para iniciar ao vivo")
               : "Pressione o mascote para falar"}
           </div>
         )}
@@ -5493,12 +5593,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             ? -1
             : 0}
           aria-label={hubModeRequested
-            ? "Wolfie Tutor. Use o campo de texto para praticar."
+            ? brandText("Wolfie Tutor. Use o campo de texto para praticar.")
             : isRealtimeMode
             ? realtime.connected
-              ? "Wolfie ao vivo. Toque para pausar ou interromper."
-              : "Toque no Wolfie para iniciar a conversa ao vivo"
-            : "Pressione e segure o mascote para falar com o Wolfie"}
+              ? brandText("Wolfie ao vivo. Toque para pausar ou interromper.")
+              : brandText("Toque no Wolfie para iniciar a conversa ao vivo")
+            : brandText("Pressione e segure o mascote para falar com o Wolfie")}
           onClick={!hubModeRequested && isRealtimeMode
             ? () => void startRealtimeConversation()
             : undefined}
@@ -5544,7 +5644,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             inputLevel={avatarInputLevel}
             outputLevel={avatarOutputLevel}
             className="h-full w-full"
-            accessibleLabel="Wolfie, tutor virtual da Wise Wolf"
+            accessibleLabel={brandText("Wolfie") === "Wolfie" ? "Wolfie, tutor virtual da Wise Wolf" : `${brandText("Wolfie")}, tutor virtual`}
           />
 
           {/* Hover Hint */}
@@ -5609,7 +5709,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage(inputText)}
               placeholder={isRealtimeMode && !realtime.connected
-                ? "Inicie o modo ao vivo no Wolfie..."
+                ? brandText("Inicie o modo ao vivo no Wolfie...")
                 : "Type in English..."}
               disabled={state === "THINKING" ||
                 (isRealtimeMode && isRealtimePostTurnPending) ||

@@ -10,7 +10,8 @@ import { FEATURE_TOURS, flattenFeatureTour, latestFeatureTourFor, pendingFeature
  * ninguém veria.
  */
 const ROOT = join(__dirname, '..');
-const SOURCE_DIRS = ['components', 'App.tsx'];
+// src/components entrou em 22/11/2026: o Wolfie mora lá.
+const SOURCE_DIRS = ['components', 'src/components', 'App.tsx'];
 
 function* tsxFiles(path: string): Generator<string> {
   const st = statSync(path);
@@ -93,9 +94,9 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
   });
 
   it('"Novidades" reabre o tour mais recente do papel; papel sem novidade não tem entrada', () => {
-    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-11-12-preparar-aula-com-a-ia');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-11-21-cobranca-visualizada');
-    expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-11-02-links-das-aulas-e-aviso');
+    expect(latestFeatureTourFor('TEACHER')?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN')?.id).toBe('2026-11-24-lancador-escolher-professor');
+    expect(latestFeatureTourFor('STUDENT', { recordingMode: null, linkedAffiliate: false })?.id).toBe('2026-11-22-wolfie-trilha-da-aula');
     expect(latestFeatureTourFor('SALESPERSON')?.id).toBe('2026-10-01-z-confirmacao-de-repasses-afiliado');
   });
 
@@ -188,10 +189,10 @@ describe('pendingFeatureTours / latestFeatureTourFor', () => {
     expect(next?.id).toBe('2026-09-29-registro-autorizado-pela-escola-professor');
 
     // "Novidades" também segue o modo.
-    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-11-12-preparar-aula-com-a-ia');
-    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-11-12-preparar-aula-com-a-ia');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-11-21-cobranca-visualizada');
-    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-11-21-cobranca-visualizada');
+    expect(latestFeatureTourFor('TEACHER', school)?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
+    expect(latestFeatureTourFor('TEACHER', individual)?.id).toBe('2026-11-22-wolfie-trilha-revisar-resumos');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', individual)?.id).toBe('2026-11-24-lancador-escolher-professor');
+    expect(latestFeatureTourFor('SCHOOL_ADMIN', unknown)?.id).toBe('2026-11-24-lancador-escolher-professor');
   });
 
   it('tour que pede aceite, link ou envio do termo é só do aceite individual', () => {

@@ -4,6 +4,7 @@ import {
   observeBoundPayment,
 } from "./bound-payment-observation.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sendHubPurchaseCapi } from "./hub-purchase-capi.ts";
 import {
   createClient,
   type SupabaseClient,
@@ -1654,6 +1655,20 @@ async function processHubPaymentEvent(
           if (replacementError) throw replacementError;
         },
       );
+      // Purchase no CAPI com o mesmo event_id do Pixel (o Meta deduplica reenvios).
+      // Nunca derruba a liberação: falha aqui só fica no log.
+      // Só a 1ª cobrança da sessão é a compra; as mensalidades seguintes não viram Purchase.
+      const capiResult = payment.id !== checkout.asaas_payment_id ? "SKIPPED" : await sendHubPurchaseCapi(
+        {
+          checkoutId,
+          amount: Number(checkout.amount),
+          metadata: checkout.metadata as Record<string, unknown> | null,
+        },
+        { pixelId: FB_PIXEL_ID, token: FB_CAPI_TOKEN },
+      ).catch(() => "FAILED" as const);
+      if (capiResult === "FAILED") {
+        console.warn("[asaas-webhook] Purchase do hub não chegou ao CAPI", { checkoutId });
+      }
     } else if (HUB_REVERSAL_EVENTS.has(event)) {
       if (!providerSubscriptionId) {
         throw new Error("hub_provider_subscription_required_for_reversal");

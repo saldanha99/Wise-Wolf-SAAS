@@ -1,4 +1,5 @@
 import type { ElementType } from 'react';
+import { brandText } from './tutorBrand';
 import {
   Activity, AlertCircle, Bell, Book, BookOpen, Brain, Calendar, CalendarClock, CreditCard,
   DollarSign, FileText, Gift, Globe, GraduationCap, LayoutDashboard, Mic, Repeat, Settings,
@@ -135,7 +136,7 @@ export const salespersonMenuItems: NavItem[] = [
 export function buildMenuItems(role: UserRole | string, opts: { pendingLessonsCount: number }): NavItem[] {
   if (role === UserRole.SUPER_ADMIN) return superAdminMenuItems;
   if (role === UserRole.SCHOOL_ADMIN) return schoolAdminMenuItems;
-  if (role === UserRole.STUDENT) return studentMenuItems;
+  if (role === UserRole.STUDENT) return studentMenuItems.map((item) => ({ ...item, label: brandText(item.label) }));
   if (role === UserRole.SALESPERSON) return salespersonMenuItems;
   return teacherMenuItems(opts.pendingLessonsCount);
 }

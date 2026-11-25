@@ -444,6 +444,7 @@ node --test scripts/generate-hub-static-html.test.mjs
 node --test scripts/operational-tracking-privacy.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
+  supabase/functions/wolfie-lesson-track \
   supabase/functions/_shared/student-billing-link.ts \
   supabase/functions/_shared/student-billing-link.test.ts \
   supabase/functions/student-card-notify \
@@ -713,12 +714,42 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/pedagogical-content/content-bot.ts \
+  supabase/functions/pedagogical-content/content-bot.test.ts \
+  supabase/functions/hub-material-share/core.ts \
+  supabase/functions/hub-material-share/core.test.ts \
+  supabase/functions/hub-material-share/grade.ts \
+  supabase/functions/hub-material-share/grade.test.ts \
+  supabase/functions/hub-material-share/index.ts \
   supabase/functions/gamma-book-generator/book-spec.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
   supabase/functions/gamma-book-generator/index.ts \
+  supabase/functions/tenant-domain-allowed/index.ts \
+  supabase/functions/tenant-domain-allowed/host.ts \
+  supabase/functions/tenant-domain-allowed/host.test.ts \
+  supabase/functions/_shared/tutor-persona.ts \
+  supabase/functions/_shared/tutor-persona.test.ts \
+  supabase/functions/_shared/tutor-voice.ts \
+  supabase/functions/_shared/exercise-validator.ts \
+  supabase/functions/_shared/hub-payment-processor.ts \
+  supabase/functions/_shared/exercise-validator.test.ts \
+  supabase/functions/gamma-book-generator/book-content.ts \
+  supabase/functions/gamma-book-generator/book-content.test.ts \
+  supabase/functions/gamma-book-generator/content-runner.ts \
+  supabase/functions/_shared/tutor-voice.test.ts \
+  supabase/functions/_shared/hub-tools.ts \
+  supabase/functions/_shared/safe-fetch.ts \
+  supabase/functions/_shared/safe-fetch.test.ts \
+  supabase/functions/pedagogical-content/hub-cefr.ts \
+  supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-quality.ts \
+  supabase/functions/pedagogical-content/hub-quality.test.ts \
+  supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
+  supabase/functions/wolfie-realtime-session/tutor-brand.ts \
+  supabase/functions/wolfie-realtime-session/tutor-brand.test.ts \
   supabase/functions/wolfie-live-proxy/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
@@ -917,6 +948,13 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
+  supabase/functions/wolfie-realtime-session/tutor-brand.test.ts \
+  supabase/functions/wolfie-lesson-track/core.test.ts \
+  supabase/functions/wolfie-lesson-track/opener.test.ts \
+  supabase/functions/hub-card-payment/core.test.ts \
+  supabase/functions/hub-material-share/core.test.ts \
+  supabase/functions/hub-material-share/grade.test.ts \
+  supabase/functions/asaas-webhook/hub-purchase-capi.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
   scripts/tests/contract-dates.test.ts \
@@ -937,7 +975,17 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/pedagogical-content/safety.test.ts \
   supabase/functions/pedagogical-content/hub-material.test.ts \
+  supabase/functions/pedagogical-content/content-bot.test.ts \
   supabase/functions/gamma-book-generator/book-spec.test.ts \
+  supabase/functions/tenant-domain-allowed/host.test.ts \
+  supabase/functions/_shared/tutor-persona.test.ts \
+  supabase/functions/_shared/exercise-validator.test.ts \
+  supabase/functions/gamma-book-generator/book-content.test.ts \
+  supabase/functions/_shared/tutor-voice.test.ts \
+  supabase/functions/_shared/safe-fetch.test.ts \
+  supabase/functions/pedagogical-content/hub-cefr.test.ts \
+  supabase/functions/pedagogical-content/hub-quality.test.ts \
+  supabase/functions/pedagogical-content/hub-material-fase2.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -1012,6 +1060,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
+  supabase/functions/tenant-domain-allowed/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
   supabase/functions/wolfie-tts/index.ts \
   supabase/functions/create-wolfie-topup/provider-safety.ts \
@@ -1029,6 +1078,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/submit-quiz/index.ts \
   supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/hub-library-access/index.ts \
+  supabase/functions/hub-material-share/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
   supabase/functions/create-hub-checkout/due-date.ts \
@@ -1103,6 +1153,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/sync-payments/index.ts \
   supabase/functions/sync-payments/safety.test.ts \
   supabase/functions/whatsapp-hr-welcome/index.ts \
+  supabase/functions/wolfie-lesson-track/index.ts \
   supabase/functions/generate-student-insights/index.ts \
   supabase/functions/send-rejection-email/index.ts \
   supabase/functions/send-welcome-contract/index.ts \
@@ -1639,6 +1690,35 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261119120000_avisos_da_escola_no_lugar_do_asaas.sql"
   "supabase/migrations/20261121120000_cobranca_visualizada_e_email_aberto.sql"
   "supabase/migrations/20261122120000_aviso_do_numero_financeiro.sql"
+  "supabase/migrations/20261122140000_wolfie_trilha_da_aula.sql"
+  "supabase/migrations/20261122160000_wolfie_checkin_para_o_professor.sql"
+  "supabase/migrations/20261122180000_resumos_que_falharam_por_credito.sql"
+  "supabase/migrations/20261122181000_resumo_retry_no_claim.sql"
+  "supabase/migrations/20261122182000_retry_sources_so_falha_de_credito.sql"
+  "supabase/migrations/20261122190000_lancar_aula_aprova_resumo.sql"
+  "supabase/migrations/20261122191000_rag_sem_openrouter.sql"
+  "supabase/migrations/20261122200000_financeiro_margem_por_aluno_plano_professor.sql"
+  "supabase/migrations/20261122201000_financeiro_precificacao_e_equilibrio.sql"
+  "supabase/migrations/20261122202000_financeiro_fluxo_projetado_e_dre_completo.sql"
+  "supabase/migrations/20261122203000_conteudo_bot_gamma_marca_e_views.sql"
+  "supabase/migrations/20261122204000_financeiro_melhorias_fuso_e_bordas.sql"
+  "supabase/migrations/20261122210000_hub_cartao_no_checkout.sql"
+  "supabase/migrations/20261122220000_hub_camadas_do_professor.sql"
+  "supabase/migrations/20261122230000_wolfie_abertura_personalizada.sql"
+  "supabase/migrations/20261122240000_white_label_dominio_e_tutor.sql"
+  "supabase/migrations/20261122250000_hub_aprovacao_comercial_em_lote.sql"
+  "supabase/migrations/20261122260000_ia_teto_mensal_anthropic.sql"
+  "supabase/migrations/20261123100000_hub_fase2_ferramentas.sql"
+  "supabase/migrations/20261123110000_hub_fase2_filtros_biblioteca.sql"
+  "supabase/migrations/20261123130000_conteudo_bot_fichas_no_hub.sql"
+  "supabase/migrations/20261123131000_conteudo_bot_plano_ativo.sql"
+  "supabase/migrations/20261123140000_livros_conteudo_estruturado.sql"
+  "supabase/migrations/20261123150000_hub_teste_pro_e_gratuito_permanente.sql"
+  "supabase/migrations/20261123160000_hub_logo_do_professor.sql"
+  "supabase/migrations/20261123170000_hub_atividade_por_link.sql"
+  "supabase/migrations/20261123180000_hub_correcao_por_ia.sql"
+  "supabase/migrations/20261123190000_hub_aluno_convidado_sem_escola.sql"
+  "supabase/migrations/20261124040000_wolfie_health_collect_by_request_id.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
@@ -1832,6 +1912,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/cobertura_do_dia_oportunidade_para_varios.sql"
   "supabase/tests/lead_de_professor_avisa_gestao_e_ativacao_do_tenant.sql"
   "supabase/tests/gerador_de_material_do_hub.sql"
+  "supabase/tests/hub_fase2_ferramentas.sql"
   "supabase/tests/gamma_school_book_generator.sql"
   "supabase/tests/assentos_de_aluno_no_hub.sql"
   "supabase/tests/substituto_enxerga_o_aluno_que_cobre.sql"
@@ -1852,6 +1933,17 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/baixa_manual_de_aulas.sql"
   "supabase/tests/atendente_espera_a_ia_voltar.sql"
   "supabase/tests/guarda_de_agenda.sql"
+  "supabase/tests/financeiro_inteligencia.sql"
+  "supabase/tests/conteudo_bot_gamma.sql"
+  "supabase/tests/white_label_dominio.sql"
+  "supabase/tests/hub_aprovacao_comercial_em_lote.sql"
+  "supabase/tests/ia_teto_mensal_anthropic.sql"
+  "supabase/tests/conteudo_bot_fichas_no_hub.sql"
+  "supabase/tests/hub_teste_pro_e_gratuito.sql"
+  "supabase/tests/hub_logo_do_professor.sql"
+  "supabase/tests/hub_atividade_por_link.sql"
+  "supabase/tests/hub_correcao_por_ia.sql"
+  "supabase/tests/hub_aluno_convidado_sem_escola.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1897,6 +1989,12 @@ SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_PAYMENT_EMAIL_RELATIVE="supabase/functions/_shared/payment-email.ts"
 SHARED_AI_GATEWAY_RELATIVE="supabase/functions/_shared/ai-gateway.ts"
+SHARED_TUTOR_PERSONA_RELATIVE="supabase/functions/_shared/tutor-persona.ts"
+SHARED_TUTOR_VOICE_RELATIVE="supabase/functions/_shared/tutor-voice.ts"
+SHARED_EXERCISE_VALIDATOR_RELATIVE="supabase/functions/_shared/exercise-validator.ts"
+SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE="supabase/functions/_shared/hub-payment-processor.ts"
+SHARED_HUB_TOOLS_RELATIVE="supabase/functions/_shared/hub-tools.ts"
+SHARED_SAFE_FETCH_RELATIVE="supabase/functions/_shared/safe-fetch.ts"
 SHARED_PAYMENT_NOTICE_CORE_RELATIVE="supabase/functions/_shared/payment-notice-core.ts"
 SHARED_PAYMENT_NOTICE_RELATIVE="supabase/functions/_shared/payment-notice.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
@@ -1978,6 +2076,7 @@ HARDENED_FUNCTIONS=(
   generate-student-insights
   kiwify-webhook
   resend-webhook
+  tenant-domain-allowed
   manage-hub-account-status
   cancel-hub-subscription
   expire-hub-abandoned-checkouts
@@ -2008,10 +2107,12 @@ HARDENED_FUNCTIONS=(
   weekly-director-digest
   whatsapp-evolution-proxy
   whatsapp-hr-welcome
+  wolfie-lesson-track
   whatsapp-notificacao-matricula
   whatsapp-notificacao-wise
   wolfie-healthcheck
   gamma-book-generator
+  hub-material-share
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -2074,6 +2175,12 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_PAYMENT_EMAIL_RELATIVE" ]] || die "envio de e-mail dos avisos de cobrança ausente"
 [[ -s "$SHARED_AI_GATEWAY_RELATIVE" ]] || die "ponte de IA compartilhada ausente"
+[[ -s "$SHARED_TUTOR_PERSONA_RELATIVE" ]] || die "persona do tutor compartilhada ausente"
+[[ -s "$SHARED_TUTOR_VOICE_RELATIVE" ]] || die "voz do tutor compartilhada ausente"
+[[ -s "$SHARED_EXERCISE_VALIDATOR_RELATIVE" ]] || die "validador de exercícios compartilhado ausente"
+[[ -s "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" ]] || die "aviso do recebedor compartilhado ausente"
+[[ -s "$SHARED_HUB_TOOLS_RELATIVE" ]] || die "catálogo de ferramentas do Hub compartilhado ausente"
+[[ -s "$SHARED_SAFE_FETCH_RELATIVE" ]] || die "busca segura de links compartilhada ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2203,6 +2310,12 @@ append_release_input_checksum() {
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_PAYMENT_EMAIL_RELATIVE" \
     "$SHARED_AI_GATEWAY_RELATIVE" \
+    "$SHARED_TUTOR_PERSONA_RELATIVE" \
+    "$SHARED_TUTOR_VOICE_RELATIVE" \
+    "$SHARED_EXERCISE_VALIDATOR_RELATIVE" \
+    "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" \
+    "$SHARED_HUB_TOOLS_RELATIVE" \
+    "$SHARED_SAFE_FETCH_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
@@ -2388,6 +2501,18 @@ rsync -a -- "$SHARED_PAYMENT_EMAIL_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-email.ts"
 rsync -a -- "$SHARED_AI_GATEWAY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-gateway.ts"
+rsync -a -- "$SHARED_TUTOR_PERSONA_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-persona.ts"
+rsync -a -- "$SHARED_TUTOR_VOICE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tutor-voice.ts"
+rsync -a -- "$SHARED_EXERCISE_VALIDATOR_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/exercise-validator.ts"
+rsync -a -- "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-payment-processor.ts"
+rsync -a -- "$SHARED_HUB_TOOLS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-tools.ts"
+rsync -a -- "$SHARED_SAFE_FETCH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/safe-fetch.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-notice-core.ts"
 rsync -a -- "$SHARED_PAYMENT_NOTICE_RELATIVE" \
@@ -2594,6 +2719,12 @@ hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 payment_email_shared_swapped=0
 ai_gateway_shared_swapped=0
+tutor_persona_shared_swapped=0
+tutor_voice_shared_swapped=0
+exercise_validator_shared_swapped=0
+hub_payment_processor_shared_swapped=0
+hub_tools_shared_swapped=0
+safe_fetch_shared_swapped=0
 payment_notice_core_shared_swapped=0
 payment_notice_shared_swapped=0
 lead_contact_shared_swapped=0
@@ -2773,6 +2904,12 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-email.ts" ]]
 [[ -s "$release_dir/functions/_shared/ai-gateway.ts" ]]
+[[ -s "$release_dir/functions/_shared/tutor-persona.ts" ]]
+[[ -s "$release_dir/functions/_shared/tutor-voice.ts" ]]
+[[ -s "$release_dir/functions/_shared/exercise-validator.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-payment-processor.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-tools.ts" ]]
+[[ -s "$release_dir/functions/_shared/safe-fetch.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice-core.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-notice.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
@@ -3068,6 +3205,54 @@ restore_previous_release() {
         "$functions_dir/_shared/ai-gateway.ts"
     else
       rm -f -- "$functions_dir/_shared/ai-gateway.ts"
+    fi
+  fi
+  if [[ "$tutor_persona_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/tutor-persona.ts" ]]; then
+      cp -a -- "$backup_dir/tutor-persona.ts" \
+        "$functions_dir/_shared/tutor-persona.ts"
+    else
+      rm -f -- "$functions_dir/_shared/tutor-persona.ts"
+    fi
+  fi
+  if [[ "$tutor_voice_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/tutor-voice.ts" ]]; then
+      cp -a -- "$backup_dir/tutor-voice.ts" \
+        "$functions_dir/_shared/tutor-voice.ts"
+    else
+      rm -f -- "$functions_dir/_shared/tutor-voice.ts"
+    fi
+  fi
+  if [[ "$exercise_validator_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/exercise-validator.ts" ]]; then
+      cp -a -- "$backup_dir/exercise-validator.ts" \
+        "$functions_dir/_shared/exercise-validator.ts"
+    else
+      rm -f -- "$functions_dir/_shared/exercise-validator.ts"
+    fi
+  fi
+  if [[ "$hub_payment_processor_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/hub-payment-processor.ts" ]]; then
+      cp -a -- "$backup_dir/hub-payment-processor.ts" \
+        "$functions_dir/_shared/hub-payment-processor.ts"
+    else
+      rm -f -- "$functions_dir/_shared/hub-payment-processor.ts"
+    fi
+  fi
+  if [[ "$hub_tools_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/hub-tools.ts" ]]; then
+      cp -a -- "$backup_dir/hub-tools.ts" \
+        "$functions_dir/_shared/hub-tools.ts"
+    else
+      rm -f -- "$functions_dir/_shared/hub-tools.ts"
+    fi
+  fi
+  if [[ "$safe_fetch_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/safe-fetch.ts" ]]; then
+      cp -a -- "$backup_dir/safe-fetch.ts" \
+        "$functions_dir/_shared/safe-fetch.ts"
+    else
+      rm -f -- "$functions_dir/_shared/safe-fetch.ts"
     fi
   fi
   if [[ "$payment_notice_core_shared_swapped" = "1" ]]; then
@@ -4471,6 +4656,49 @@ ai_gateway_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/ai-gateway.ts" \
   "$functions_dir/_shared/ai-gateway.ts"
 
+if [[ -f "$functions_dir/_shared/tutor-persona.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/tutor-persona.ts" \
+    "$backup_dir/tutor-persona.ts"
+fi
+tutor_persona_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/tutor-persona.ts" \
+  "$functions_dir/_shared/tutor-persona.ts"
+if [[ -f "$functions_dir/_shared/tutor-voice.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/tutor-voice.ts" \
+    "$backup_dir/tutor-voice.ts"
+fi
+tutor_voice_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/tutor-voice.ts" \
+  "$functions_dir/_shared/tutor-voice.ts"
+if [[ -f "$functions_dir/_shared/exercise-validator.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/exercise-validator.ts" \
+    "$backup_dir/exercise-validator.ts"
+fi
+exercise_validator_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/exercise-validator.ts" \
+  "$functions_dir/_shared/exercise-validator.ts"
+if [[ -f "$functions_dir/_shared/hub-payment-processor.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/hub-payment-processor.ts" \
+    "$backup_dir/hub-payment-processor.ts"
+fi
+hub_payment_processor_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/hub-payment-processor.ts" \
+  "$functions_dir/_shared/hub-payment-processor.ts"
+if [[ -f "$functions_dir/_shared/hub-tools.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/hub-tools.ts" \
+    "$backup_dir/hub-tools.ts"
+fi
+hub_tools_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/hub-tools.ts" \
+  "$functions_dir/_shared/hub-tools.ts"
+if [[ -f "$functions_dir/_shared/safe-fetch.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/safe-fetch.ts" \
+    "$backup_dir/safe-fetch.ts"
+fi
+safe_fetch_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/safe-fetch.ts" \
+  "$functions_dir/_shared/safe-fetch.ts"
+
 if [[ -f "$functions_dir/_shared/payment-notice-core.ts" ]]; then
   cp -a -- "$functions_dir/_shared/payment-notice-core.ts" \
     "$backup_dir/payment-notice-core.ts"
@@ -4765,6 +4993,12 @@ wait_for_http_status 401 "autenticação da biblioteca do Hub" \
   -X POST "$api_url/functions/v1/hub-library-access" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_http_status 200 "preflight da atividade por link do Hub" \
+  -X OPTIONS "$api_url/functions/v1/hub-material-share"
+wait_for_http_status 404 "link inválido da atividade do Hub" \
+  -X POST "$api_url/functions/v1/hub-material-share" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"view","token":"invalido"}'
 wait_for_http_status 200 "preflight da sincronização de materiais do Hub" \
   -X OPTIONS "$api_url/functions/v1/sync-hub-material"
 wait_for_http_status 401 "autenticação da sincronização de materiais do Hub" \
@@ -4874,6 +5108,7 @@ for protected_function in \
   reconcile-whatsapp-webhooks \
   whatsapp-lead-notification \
   whatsapp-hr-welcome \
+  wolfie-lesson-track \
   transfer-teacher-pay \
   update-student-billing-method; do
   wait_for_http_status 401 "autenticação de $protected_function" \

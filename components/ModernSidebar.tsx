@@ -18,6 +18,7 @@ import {
     UserRole,
 } from '../types';
 import { activeMenuIdFor, buildMenuItems, type NavItem } from '../lib/navModel';
+import { PLATFORM_NAME, PLATFORM_SIGNATURE, showsPlatformSignature } from '../lib/platformBrand';
 
 export interface ModernSidebarProps {
     tenant: Tenant;
@@ -294,7 +295,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                             {expanded && (
                                 <div className={`overflow-hidden flex-1 ${tenant.branding?.logoUrl && user.role !== UserRole.SUPER_ADMIN ? 'hidden' : ''}`}>
                                     <h3 className="block text-sm font-bold text-brand-text truncate max-w-[120px]">
-                                        {user.role === UserRole.SUPER_ADMIN ? 'EduCore SaaS' : tenant.name}
+                                        {user.role === UserRole.SUPER_ADMIN ? PLATFORM_NAME : tenant.name}
                                     </h3>
                                     <span className="block text-[10px] uppercase font-black tracking-widest text-brand-muted truncate">
                                         {tenantMemberships.length > 1 ? 'Trocar instituição' : contextLabel || user.role.replace('_', ' ')}
@@ -492,6 +493,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                             <Compass className="h-5 w-5 shrink-0" />
                             {expanded && <span className="text-sm font-bold ml-2">Tour guiado</span>}
                         </button>
+                    )}
+                    {expanded && showsPlatformSignature(tenant.id) && (
+                        <p className="px-3 pt-2 text-[10px] font-semibold text-brand-muted" data-testid="platform-signature">{PLATFORM_SIGNATURE}</p>
                     )}
                 </div>
             </nav>

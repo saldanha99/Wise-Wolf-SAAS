@@ -103,6 +103,14 @@ export function hubReplacementNeedsProviderReconciliation(
   ) {
     return false;
   }
+  // Teste Pro de 7 dias sem cartão (Fase 1): só existe no nosso banco, sem cobrança nem
+  // agenda no provedor. Não há o que conciliar; a ativação paga encerra o teste.
+  if (
+    subscription.status === "TRIALING" && !subscription.provider?.trim() &&
+    !subscription.providerSubscriptionId?.trim()
+  ) {
+    return false;
+  }
   return subscription.provider !== "ASAAS" ||
     !subscription.providerSubscriptionId?.trim();
 }

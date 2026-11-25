@@ -22,6 +22,9 @@ import {
 } from "../_shared/wolfie-global-meeting-policy.ts";
 import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
 import { buildRealtimeCallForm } from "./realtime-call-form.ts";
+import { applyVoiceGender, brandRealtimeInstructions } from "./tutor-brand.ts";
+import { tutorVoiceFromBranding } from "../_shared/tutor-voice.ts";
+import { tutorPersonaFromTenant } from "../_shared/tutor-persona.ts";
 import { realtimeProviderFallback } from "./provider-fallback.ts";
 import { buildSafetyIdentifier } from "./safety-identifier.ts";
 import {
@@ -264,7 +267,7 @@ async function loadStudentContext(
       db.from("ai_knowledge_bases").select(
         "id,embedding_model,embedding_dimensions,retrieval_config",
       ).eq("tenant_id", tenantId).eq("purpose", "WOLFIE_TUTOR")
-        .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
+        .in("provider", ["OPENAI", "OPENROUTER"]).eq("status", "ACTIVE")
         .order("version", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
@@ -371,7 +374,7 @@ async function loadStudentContext(
     db.from("ai_knowledge_bases").select(
       "id,embedding_model,embedding_dimensions,retrieval_config",
     ).eq("tenant_id", tenantId).eq("purpose", "WOLFIE_TUTOR")
-      .eq("provider", "OPENROUTER").eq("status", "ACTIVE")
+      .in("provider", ["OPENAI", "OPENROUTER"]).eq("status", "ACTIVE")
       .order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
@@ -1046,8 +1049,11 @@ function openAiSession(
         turn_detection: {
           type: "semantic_vad",
           // "high" respondia a quase qualquer ruído e gerava turnos pagos que
-          // o aluno nunca pediu. "medium" ainda deixa a conversa fluida.
-          eagerness: "medium",
+          // o aluno nunca pediu. "medium" cortava quem pensa no meio da frase
+          // (aluno aprendendo). 22/11/2026: "low" espera a pausa de pensamento,
+          // e o botão "Terminei de falar" (input_audio_buffer.commit) fecha o
+          // turno na hora quando o aluno quiser.
+          eagerness: "low",
           create_response: true,
           interrupt_response: true,
         },
@@ -1682,29 +1688,48 @@ serve(async (req) => {
     req.signal,
     setupDeadlineAt,
   );
-  const instructions = buildInstructions({
-    profile: loadedContext.profile,
-    session: loadedSession.session,
-    pendingRetry: loadedSession.pendingRetry,
-    intelligence: loadedContext.intelligence,
-    facts: loadedContext.facts,
-    memories: loadedContext.memories,
-    globalMeetingMemories: isGlobalMeeting
-      ? selectGlobalMeetingMemories(
-        globalMeetingMemoryRows,
-        tenantId,
-        userId,
-      )
-      : [],
-    knowledge,
-  });
+  // White label: escola com tutorName próprio → a voz ao vivo se apresenta com
+  // esse nome. Falha na leitura mantém o Wolfie (nunca derruba a chamada).
+  const { data: tenantBrand } = await auth.context.admin
+    .from("tenants")
+    .select("name, branding")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const tutorPersona = tutorPersonaFromTenant(
+    tenantBrand?.name,
+    tenantBrand?.branding,
+  );
+  // Voz escolhida pela escola (tenants.branding.tutorVoice); sem ela, a de sempre.
+  const schoolVoice = tutorVoiceFromBranding(tenantBrand?.branding);
+  const instructions = applyVoiceGender(
+    brandRealtimeInstructions(
+      buildInstructions({
+        profile: loadedContext.profile,
+        session: loadedSession.session,
+        pendingRetry: loadedSession.pendingRetry,
+        intelligence: loadedContext.intelligence,
+        facts: loadedContext.facts,
+        memories: loadedContext.memories,
+        globalMeetingMemories: isGlobalMeeting
+          ? selectGlobalMeetingMemories(
+            globalMeetingMemoryRows,
+            tenantId,
+            userId,
+          )
+          : [],
+        knowledge,
+      }),
+      tutorPersona,
+    ),
+    schoolVoice?.gender ?? "male",
+  );
 
   const model = configuredIdentifier(
     "OPENAI_REALTIME_MODEL",
     DEFAULT_REALTIME_MODEL,
     /^[a-zA-Z0-9._:-]{1,100}$/,
   );
-  const voice = configuredIdentifier(
+  const voice = schoolVoice?.voice ?? configuredIdentifier(
     "OPENAI_REALTIME_VOICE",
     DEFAULT_VOICE,
     /^[a-zA-Z0-9_-]{1,40}$/,

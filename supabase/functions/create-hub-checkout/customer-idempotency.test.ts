@@ -194,6 +194,7 @@ Deno.test("reuses a subscription only when every immutable billing field matches
       { value: 100 },
       { externalReference: "hub:other" },
       { nextDueDate: "2026-08-26" },
+      { nextDueDate: "2026-10-25" },
       { description: "Changed provider schedule" },
       { status: "INACTIVE" },
       { status: "EXPIRED" },
@@ -332,4 +333,23 @@ Deno.test({
       );
     }
   },
+});
+
+Deno.test("Asaas que já gerou a 1ª cobrança devolve o vencimento um ciclo adiante (22/11/2026)", async () => {
+  const { hubNextDueDateMatches } = await import("./customer-idempotency.ts");
+  const checks: [string, string, string, boolean][] = [
+    ["2026-11-22", "2026-11-22", "MONTHLY", true],
+    ["2026-12-22", "2026-11-22", "MONTHLY", true],
+    ["2027-01-22", "2026-12-22", "MONTHLY", true],
+    ["2027-02-28", "2027-01-31", "MONTHLY", true],
+    ["2027-11-22", "2026-11-22", "YEARLY", true],
+    ["2027-01-22", "2026-11-22", "MONTHLY", false],
+    ["2026-12-22", "2026-11-22", "YEARLY", false],
+    ["2026-11-23", "2026-11-22", "MONTHLY", false],
+  ];
+  for (const [provider, expected, cycle, ok] of checks) {
+    if (hubNextDueDateMatches(provider, expected, cycle) !== ok) {
+      throw new Error(`${provider} x ${expected} (${cycle}) deveria ser ${ok}`);
+    }
+  }
 });

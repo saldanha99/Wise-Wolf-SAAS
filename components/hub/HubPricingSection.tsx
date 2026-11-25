@@ -1,3 +1,6 @@
+// ⚠️ SEM USO desde 22/11/2026: o Hub virou área logada e o HubApp não renderiza mais as landings
+// públicas (venda no site principal). Os códigos abaixo (LIBRARY_SOLO/EDUCATOR_PRO/HUB_COMPLETE) foram
+// desativados pela migration 20261122220000; se este componente voltar, troque para PROFESSOR_PRO/ESCOLA.
 import React, { useMemo, useState } from 'react';
 import {
   ArrowRight,

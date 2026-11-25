@@ -61,11 +61,24 @@ const replaceTitle = (html, title) => replaceRequired(
 
 const hubCanonicalPath = (segment) => segment ? `/${segment}` : '/';
 
-const renderMarketingHtml = (template, metadata, canonicalUrl) => {
-  const socialImageUrl = new URL(metadata.imagePath, new URL(canonicalUrl).origin).toString();
+// 22/11/2026 (Fase 1 do Hub): o Hub virou área logada. As páginas de venda moram no site
+// principal; aqui elas ficam fora do índice e apontam o canonical para a página de lá.
+export const HUB_SALES_PAGE_FOR_SEGMENT = {
+  '': 'https://wisewolflanguage.com.br/para-professores',
+  professores: 'https://wisewolflanguage.com.br/para-professores',
+  biblioteca: 'https://wisewolflanguage.com.br/para-professores',
+  'educador-ia': 'https://wisewolflanguage.com.br/para-professores',
+  escolas: 'https://wisewolflanguage.com.br/para-escolas',
+  'saas-escolar': 'https://wisewolflanguage.com.br/para-escolas',
+  wolfie: 'https://wisewolflanguage.com.br/wolfie',
+};
+const isHubLegalSegment = (segment) => segment === 'termos' || segment === 'privacidade';
+
+const renderMarketingHtml = (template, metadata, canonicalUrl, robots = 'index, follow', imageOrigin = new URL(canonicalUrl).origin) => {
+  const socialImageUrl = new URL(metadata.imagePath, imageOrigin).toString();
   let html = replaceTitle(template, metadata.title);
   html = upsertMeta(html, 'name', 'description', metadata.description);
-  html = upsertMeta(html, 'name', 'robots', 'index, follow');
+  html = upsertMeta(html, 'name', 'robots', robots);
   html = upsertMeta(html, 'name', 'theme-color', '#070d1a');
   html = upsertMeta(html, 'property', 'og:type', 'website');
   html = upsertMeta(html, 'property', 'og:url', canonicalUrl);
@@ -85,6 +98,9 @@ const renderMarketingHtml = (template, metadata, canonicalUrl) => {
 };
 
 export const renderHubMarketingHtml = (template, metadata) => {
+  if (!isHubLegalSegment(metadata.segment) && HUB_SALES_PAGE_FOR_SEGMENT[metadata.segment]) {
+    return renderMarketingHtml(template, metadata, HUB_SALES_PAGE_FOR_SEGMENT[metadata.segment], 'noindex, follow', HUB_MARKETING_ORIGIN);
+  }
   const canonicalUrl = new URL(hubCanonicalPath(metadata.segment), HUB_MARKETING_ORIGIN).toString();
   return renderMarketingHtml(template, metadata, canonicalUrl);
 };
@@ -155,7 +171,7 @@ const renderLocationsSitemapXml = (locations) => {
 };
 
 export const renderHubSitemapXml = (pages) => renderLocationsSitemapXml(
-  Object.values(pages).map((metadata) => new URL(
+  Object.values(pages).filter((metadata) => isHubLegalSegment(metadata.segment)).map((metadata) => new URL(
     hubCanonicalPath(metadata.segment),
     HUB_MARKETING_ORIGIN,
   ).toString()),

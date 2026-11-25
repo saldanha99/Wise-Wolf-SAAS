@@ -1100,6 +1100,47 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'payments-view-signal',view:'student-payments',title:'Cobrança visualizada',text:'Em Mensalidades, abaixo do status, aparece "Visualizada em" quando o aluno ou responsável abre a fatura ou o boleto no Asaas, pelo link do WhatsApp ou do e-mail. No mesmo dia, o grupo do Financeiro recebe um aviso por fatura. "E-mail aberto (provável)" é só um indício: alguns aplicativos de e-mail abrem a mensagem sozinhos.'},
     ],
   },
+  {
+    id:'2026-11-22-wolfie-trilha-da-aula',title:'Trilha da sua aula no Wolfie',roles:['STUDENT'],
+    steps:[
+      {target:'wolfie-lesson-track',view:'ai-tutor',title:'Novidade: a trilha da sua aula',text:'Depois de cada aula que o seu professor registrar, o Wolfie monta uma prática de 12 a 15 minutos com o que vocês viram: as palavras da aula, as frases que você errou para você mesmo corrigir, exercícios do tema no contexto da sua rotina e uma conversa com o Wolfie com 3 objetivos. Nos dias seguintes aparecem revisões curtas de 3 minutos. Ninguém além de você vê os seus erros.'},
+    ],
+  },
+  {
+    id:'2026-11-22-wolfie-trilha-professor-checkin',title:'Check-in do Wolfie antes da aula',roles:['TEACHER'],
+    steps:[
+      {target:'wolfie-checkin-note',view:'dashboard',title:'Novidade: o check-in do aluno',text:'Na véspera da aula, o aluno faz um check-in de 3 minutos no Wolfie sobre a aula anterior. Em Aulas de Hoje aparece o resultado: quanto acertou, o que ainda errou e a prioridade que o Wolfie percebeu na conversa. É só leitura e aparece apenas para os seus alunos.'},
+    ],
+  },
+  {
+    id:'2026-11-22-wolfie-trilha-revisar-resumos',title:'Lançar a aula aprova o resumo',roles:['TEACHER'],
+    steps:[
+      {target:'teacher-review-summaries',view:'dashboard',title:'Novidade: lançar a aula aprova o resumo',text:'Novidade: ao lançar a aula, o resumo da aula gravada é aprovado com o que você confirmar no lançamento (objetivo, próximo passo e lição) e passa a alimentar a memória do aluno, o Planner e a trilha do Wolfie. Este botão mostra só o que ainda falta: aulas não lançadas ou rascunhos sem objetivo e próximo passo. Revisar por aqui é opcional.'},
+    ],
+  },
+  {
+    id:'2026-11-23-margem-precos-equilibrio',title:'Margem por plano, preços e ponto de equilíbrio',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'unit-economics-kpis',view:'unit-economics',title:'Novidade: quanto cada plano deixa',text:'Em Relatórios → Margem por plano, cada mensalidade aparece descontada do professor, da IA do Wolfie, da taxa do Asaas e do imposto. Dá para ver por plano, por professor e por aluno, e achar quem dá prejuízo. No mês em andamento, os custos são projetados pelo ritmo dos dias que já passaram.'},
+      {target:'finance-settings',view:'unit-economics',title:'Informe o imposto',text:'Em Configurar, informe o regime de imposto da escola (DAS fixo do MEI ou % da receita) e os custos fixos pagos por fora do sistema. Enquanto o imposto não for informado, a margem aparece sem ele e o painel avisa.'},
+      {target:'pricing-plans',view:'pricing',title:'Simule um preço novo',text:'Em Preços e equilíbrio, cada plano do catálogo mostra custo, margem e preço mínimo. Digite um preço para ver na hora se dá lucro ou prejuízo. A simulação não muda o preço de verdade.'},
+      {target:'break-even',view:'pricing',title:'Ponto de equilíbrio',text:'Quantos alunos pagantes cobrem os custos fixos do mês e quanto sobra com os alunos de hoje. Os custos fixos saem das despesas lançadas no caixa nos últimos 3 meses, mais os extras informados em Configurar.'},
+      {target:'cashflow-projection',view:'cashflow-projection',title:'Caixa dos próximos meses',text:'Em Caixa projetado, o mês atual soma o que já entrou e saiu com o que ainda falta, e os meses seguintes usam as cobranças já geradas, as assinaturas dos alunos ativos e a média de professores e despesas. Inadimplência vencida fica fora das entradas.'},
+      {target:'dre-12-meses',view:'dre-12m',title:'DRE de 12 meses',text:'O DRE 12 meses mostra o resultado de cada mês já descontando as taxas do Asaas, o imposto (estimado pela configuração quando não foi lançado) e o custo de IA do Wolfie. Exporte em CSV para a contabilidade.'},
+    ],
+  },
+  {
+    id:'2026-11-23-voz-do-tutor',title:'A escola escolhe a voz do tutor',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'settings-branding',view:'settings_school',title:'Novidade: voz do tutor',text:'Em Configurações da escola → Marca, a escola escolhe a voz do tutor entre vozes femininas e masculinas, com uma prévia de 5 segundos de cada. A voz escolhida vale para a conversa ao vivo e para as respostas faladas, depois de salvar. Sem escolha, fica a voz de sempre.'},
+    ],
+  },
+  {
+    id:'2026-11-24-lancador-escolher-professor',title:'Lançador: escolher o professor ou só gerar o link',roles:['SCHOOL_ADMIN'],
+    steps:[
+      {target:'smart-finder-launch',view:'dashboard',title:'Novidade no Lançador',text:'No botão laranja do raio, em Aula experimental → Como disparar, agora há três jeitos: convite para todos os professores ativos, convite só para o professor que você escolher (com busca) ou só gerar o link, sem mandar nada, para você copiar e colar na conversa com um professor. Em todos, só professor ativo e logado aceita, e o primeiro que aceitar leva a aula.'},
+    ],
+  },
 ];
 
 /**

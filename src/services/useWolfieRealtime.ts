@@ -148,7 +148,15 @@ export interface WolfieRealtimeController {
   connect: () => Promise<WolfieRealtimeConnectResult>;
   disconnect: (forgetPreparedSession?: boolean) => void;
   interrupt: () => boolean;
+  /**
+   * "Terminei de falar": fecha o turno do aluno na hora, sem esperar o
+   * silêncio. Só age enquanto o detector ainda acha que o aluno está falando
+   * (senão o turno já foi fechado e a resposta já está a caminho).
+   */
+  finishSpeaking: () => boolean;
   sendText: (text: string) => boolean;
+  /** O tutor fala primeiro: diz exatamente a frase de abertura (1ª frase da conversa) e espera o aluno. */
+  speakOpening: (text: string) => boolean;
   applyServerGuidance: (
     guidance: WolfieRealtimeServerGuidance,
   ) => Promise<boolean>;
@@ -1536,6 +1544,25 @@ export function useWolfieRealtime(
     }
   }, []);
 
+  // Trava de 1,5 s: o responseId demora a voltar do servidor, e dois toques
+  // seguidos (ou um toque no instante em que o VAD já fechou o turno) não
+  // podem mandar dois commits/response.create.
+  const finishSpeakingAtRef = useRef(0);
+  const finishSpeaking = useCallback((): boolean => {
+    if (!protocol.isUserSpeaking) return false;
+    if (protocol.responseId || protocol.isAssistantSpeaking) return false;
+    const now = Date.now();
+    if (now - finishSpeakingAtRef.current < 1500) return false;
+    finishSpeakingAtRef.current = now;
+    if (!sendEvent("input_audio_buffer.commit")) return false;
+    return sendEvent("response.create");
+  }, [
+    protocol.isAssistantSpeaking,
+    protocol.isUserSpeaking,
+    protocol.responseId,
+    sendEvent,
+  ]);
+
   const interrupt = useCallback((): boolean => {
     if (!protocol.responseId && !protocol.isAssistantSpeaking) return false;
     const cancelled = protocol.responseId
@@ -1549,6 +1576,17 @@ export function useWolfieRealtime(
     }
     return cancelled || cleared;
   }, [protocol.isAssistantSpeaking, protocol.responseId, sendEvent]);
+
+  const speakOpening = useCallback((rawText: string): boolean => {
+    const text = rawText.replace(/["\n\r]/g, " ").trim().slice(0, 220);
+    if (!text) return false;
+    return sendEvent("response.create", {
+      response: {
+        instructions:
+          `Start the conversation now. Say exactly this sentence in Brazilian Portuguese, with a warm tone, and nothing else: "${text}" Then stop and wait for the learner to answer.`,
+      },
+    });
+  }, [sendEvent]);
 
   const sendText = useCallback((rawText: string): boolean => {
     const text = rawText.trim().slice(0, MAX_TEXT_INPUT_LENGTH);
@@ -1695,7 +1733,9 @@ export function useWolfieRealtime(
     connect,
     disconnect,
     interrupt,
+    finishSpeaking,
     sendText,
+    speakOpening,
     applyServerGuidance,
     setMuted,
     toggleMuted,

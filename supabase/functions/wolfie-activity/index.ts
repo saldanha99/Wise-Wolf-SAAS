@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
-// Chat de IA vai para a Anthropic (Haiku 5.5) com o OpenRouter como reserva; ver _shared/ai-gateway.ts.
-import { aiFetch as fetch } from "../_shared/ai-gateway.ts";
+// Chat de IA vai para a Anthropic (Haiku 5.5); o OpenRouter saiu em 22/11/2026. Ver _shared/ai-gateway.ts.
+import { aiFetch as fetch, textAiKey } from "../_shared/ai-gateway.ts";
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
@@ -4185,7 +4185,7 @@ async function handleGenerate(
       generationSource = "test_fixture";
       generated = fallbackForRequest();
     } else {
-      const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+      const apiKey = textAiKey();
       try {
         if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
         generated = await callOpenRouterJson(
@@ -5055,7 +5055,7 @@ async function handleSubmitText(
     if (profile.is_test_account) {
       evaluation = fixtureEvaluation(text, session.cefr_level, meetingKind);
     } else {
-      const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+      const apiKey = textAiKey();
       if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
       evaluation = normalizeEvaluation(
         await callOpenRouterJson(
@@ -5269,7 +5269,7 @@ async function handleValidateMeetingRecall(
     if (profile.is_test_account) {
       evaluation = fixtureMeetingRecallEvaluation();
     } else {
-      const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+      const apiKey = textAiKey();
       if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
       evaluation = normalizeMeetingRecallEvaluation(
         await callOpenRouterJson(
