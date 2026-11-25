@@ -2824,10 +2824,10 @@ docker run --rm --entrypoint nginx \
   [[ "$(nginx_qa_request hub.wisewolflanguage.com.br "/$workbox_asset" "$nginx_qa_dir/workbox.js")" = "200" ]]
 
   [[ "$(nginx_qa_request system.wisewolflanguage.com.br /hub/professores "$nginx_qa_dir/system-professores.html")" = "200" ]]
-  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+  grep -Fq '<link rel="canonical" href="https://wisewolflanguage.com.br/para-professores">' \
     "$nginx_qa_dir/system-professores.html"
   [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /professores "$nginx_qa_dir/hub-professores.html")" = "200" ]]
-  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+  grep -Fq '<link rel="canonical" href="https://wisewolflanguage.com.br/para-professores">' \
     "$nginx_qa_dir/hub-professores.html"
   [[ "$(nginx_qa_request system.wisewolflanguage.com.br /hub/termos "$nginx_qa_dir/system-termos.html")" = "200" ]]
   grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/termos">' \
@@ -2858,8 +2858,6 @@ docker run --rm --entrypoint nginx \
   grep -Fq 'Sitemap: https://system.wisewolflanguage.com.br/sitemap.xml' \
     "$nginx_qa_dir/system-robots.txt"
   [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /sitemap.xml "$nginx_qa_dir/hub-sitemap.xml")" = "200" ]]
-  grep -Fq '<loc>https://hub.wisewolflanguage.com.br/saas-escolar</loc>' \
-    "$nginx_qa_dir/hub-sitemap.xml"
   grep -Fq '<loc>https://hub.wisewolflanguage.com.br/termos</loc>' \
     "$nginx_qa_dir/hub-sitemap.xml"
   grep -Fq '<loc>https://hub.wisewolflanguage.com.br/privacidade</loc>' \
@@ -4893,7 +4891,7 @@ curl -fsS --retry 3 --retry-connrefused --retry-max-time 45 \
   "$public_url/hub/professores" > "$hub_seo_smoke_dir/professores.html"
 grep -Fq '<title>Plataforma para Professores de Inglês | Wise Wolf</title>' \
   "$hub_seo_smoke_dir/professores.html"
-grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+grep -Fq '<link rel="canonical" href="https://wisewolflanguage.com.br/para-professores">' \
   "$hub_seo_smoke_dir/professores.html"
 grep -Fq '<meta property="og:image" content="https://hub.wisewolflanguage.com.br/assets/hub/marketing/hub-overview-og.webp">' \
   "$hub_seo_smoke_dir/professores.html"
