@@ -1724,7 +1724,6 @@ MIGRATION_RELATIVES=(
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/saida_do_professor.sql"
-  "supabase/tests/feriados_e_recesso_remunerados.sql"
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
   "supabase/tests/frequencia_pretendida_do_lead.sql"
   "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"

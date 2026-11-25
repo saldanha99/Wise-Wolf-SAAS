@@ -1,4 +1,5 @@
 -- Aviso do número financeiro: só aluno logado vê, e só na escola cadastrada.
+begin;
 do $$
 declare v_tenant text; v_student uuid; v_admin uuid; v_result jsonb;
 begin
@@ -9,7 +10,7 @@ begin
     raise exception 'o telefone do financeiro não pode ser lido direto';
   end if;
 
-  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claims', '', true); perform set_config('request.jwt.claim.sub', '', true);
   if public.my_finance_whatsapp_notice() is not null then
     raise exception 'sem login não há aviso';
   end if;
@@ -26,7 +27,7 @@ begin
   on conflict (tenant_id) do update set phone = excluded.phone,
     notice_starts_on = excluded.notice_starts_on, notice_until = null;
 
-  perform set_config('request.jwt.claims', json_build_object('sub', v_student, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_student, 'role', 'authenticated')::text, true); perform set_config('request.jwt.claim.sub', v_student::text, true);
   v_result := public.my_finance_whatsapp_notice();
   if v_result is null or v_result->>'phone' <> '5511900000000' then
     raise exception 'aluno da escola cadastrada deveria ver o aviso: %', v_result;
@@ -40,10 +41,11 @@ begin
   select p.id into v_admin from public.profiles p
   where p.tenant_id = v_tenant and p.role = 'SCHOOL_ADMIN' limit 1;
   if v_admin is not null then
-    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true); perform set_config('request.jwt.claim.sub', v_admin::text, true);
     if public.my_finance_whatsapp_notice() is not null then
       raise exception 'o aviso é só para aluno';
     end if;
   end if;
-  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claims', '', true); perform set_config('request.jwt.claim.sub', '', true);
 end $$;
+rollback;
