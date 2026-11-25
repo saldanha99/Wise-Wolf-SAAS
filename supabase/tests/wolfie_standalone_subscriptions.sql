@@ -496,6 +496,11 @@ select pg_temp.assert_true(
   'reversed standalone subscriptions must remain denied'
 );
 
+-- A fixture abaixo é criada pelo banco, sem a identidade de d002 que ficou na sessão:
+-- desde 20261123190000 o vínculo do Hub mexe no perfil, e o guarda de aluno barraria.
+select pg_catalog.set_config('request.jwt.claims', '', true);
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+
 -- A Hub account may own both product families. Legacy Hub RPCs must only
 -- bootstrap, trial and meter HUB_CORE even when the active Wolfie subscription
 -- is newer.
@@ -591,7 +596,7 @@ select pg_temp.assert_true(
   ) -> 'plan' ->> 'product_family' = 'HUB_CORE'
   and public.hub_bootstrap(
     '40000000-0000-4000-8000-00000000d003'
-  ) -> 'plan' ->> 'code' = 'DISCOVERY',
+  ) -> 'plan' ->> 'code' = 'PROFESSOR_PRO', -- desde 20261123150000 o teste do Hub é o Pro
   'Hub bootstrap must ignore a coexisting Wolfie subscription'
 );
 
