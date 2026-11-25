@@ -1,3 +1,15 @@
+### 25/11/2026 — Contrato geral obrigatório para professor novo
+
+Professor criado direto pela direção (Gestão Profs → Novo Professor, `create-teacher-account`) nasce sem
+contrato e só via uma faixa no Início; o Teacher Daniel (sem MEI, exceção da direção) navegava sem assinar.
+`TeacherContractGate` (App, depois do pop-up do Google e antes do termo por aluno): conta criada a partir de
+25/11/2026 (`private.teacher_contract_gate_since`), sem `contract_accepted` e sem dispensa abre pop-up
+obrigatório; primeiro CPF/RG/nascimento/endereço (`save_my_teacher_contract_identity`, só enquanto não
+assinou), depois o `TeacherContractAccept mandatory` (com "Sou autônomo, sem CNPJ" → v2 PF). Só "Sair da
+conta" fecha. Contas antigas (Débora) seguem pela faixa; Mateus tem dispensa. Falha de leitura não prende.
+Migration `20261125140000`, teste `contrato_obrigatorio_do_professor.sql`. ⚠️ O convite (`register-teacher`)
+ainda exige CNPJ com o contrato v3: professor sem MEI entra pelo cadastro direto + este pop-up.
+
 ### 25/11/2026 — Saída do professor: alunos repassados a quem tem os horários livres e multa calculada
 
 Caso da Teacher Bruna (avisou em 25/11 que saía em 27/11). Ficha do professor (Gestão Profs) → aba **Saída**

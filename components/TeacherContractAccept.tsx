@@ -23,9 +23,11 @@ interface TeacherContractAcceptProps {
     onClose?: () => void;
     /** Quando true, o professor não pode fechar sem aceitar (uso como gate obrigatório). */
     mandatory?: boolean;
+    /** No modo obrigatório, a única saída é sair da conta. */
+    onLogout?: () => void;
 }
 
-const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, onAccepted, onClose, mandatory }) => {
+const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, onAccepted, onClose, mandatory, onLogout }) => {
     const [profile, setProfile] = useState<any>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
     // Versão do contrato que a escola do professor oferece: esta tela mostra e
@@ -329,6 +331,11 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                             <p className="text-[11px] text-brand-muted">Regularização obrigatória para receber alunos</p>
                         </div>
                     </div>
+                    {mandatory && onLogout && (
+                        <button type="button" onClick={onLogout} className="px-3 py-2 rounded-xl text-xs font-bold text-brand-muted hover:bg-brand-surface transition-colors">
+                            Sair da conta
+                        </button>
+                    )}
                     {!mandatory && onClose && (
                         <button
                             type="button"
