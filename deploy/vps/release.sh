@@ -1245,8 +1245,7 @@ for hub_seo_file in \
 done
 grep -Fq 'https://system.wisewolflanguage.com.br/new-saas' dist/sitemap.xml \
   || die "sitemap do sistema sem a landing de diagnóstico"
-grep -Fq 'https://hub.wisewolflanguage.com.br/saas-escolar' dist/__hub_host/sitemap.xml \
-  || die "sitemap do Hub sem a landing do SaaS Escolar"
+# Desde 22/11/2026 (f53b7446) o Hub é área logada: o sitemap dele só tem Termos e Privacidade.
 grep -Fq 'https://hub.wisewolflanguage.com.br/termos' dist/__hub_host/sitemap.xml \
   || die "sitemap do Hub sem os Termos de Uso"
 grep -Fq 'https://hub.wisewolflanguage.com.br/privacidade' dist/__hub_host/sitemap.xml \
