@@ -2177,6 +2177,8 @@ done
 [[ -s "$SHARED_TUTOR_VOICE_RELATIVE" ]] || die "voz do tutor compartilhada ausente"
 [[ -s "$SHARED_EXERCISE_VALIDATOR_RELATIVE" ]] || die "validador de exercícios compartilhado ausente"
 [[ -s "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" ]] || die "aviso do recebedor compartilhado ausente"
+[[ -s "$SHARED_HUB_TOOLS_RELATIVE" ]] || die "catálogo de ferramentas do Hub compartilhado ausente"
+[[ -s "$SHARED_SAFE_FETCH_RELATIVE" ]] || die "busca segura de links compartilhada ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" ]] || die "núcleo dos avisos de cobrança ausente"
 [[ -s "$SHARED_PAYMENT_NOTICE_RELATIVE" ]] || die "avisos de cobrança da escola ausentes"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
@@ -2310,6 +2312,8 @@ append_release_input_checksum() {
     "$SHARED_TUTOR_VOICE_RELATIVE" \
     "$SHARED_EXERCISE_VALIDATOR_RELATIVE" \
     "$SHARED_HUB_PAYMENT_PROCESSOR_RELATIVE" \
+    "$SHARED_HUB_TOOLS_RELATIVE" \
+    "$SHARED_SAFE_FETCH_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_CORE_RELATIVE" \
     "$SHARED_PAYMENT_NOTICE_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
