@@ -63,7 +63,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                 const [profileResult, privateProfile, payResult, terms] = await Promise.all([
                     supabase
                     .from('profiles')
-                    .select(`${PROFILE_SAFE_COLS},cnpj,cnpj_company_name`)
+                    .select(PROFILE_SAFE_COLS) // cnpj vem do get_authorized_profile_private: a coluna não é legível pelo professor (403)
                     .eq('id', userId)
                     .single(),
                     loadAuthorizedProfilePrivate(userId),

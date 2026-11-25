@@ -379,9 +379,11 @@ const App: React.FC = () => {
   const [hasLinkedAffiliate, setHasLinkedAffiliate] = useState(false);
   const [teacherGoogleRequired, setTeacherGoogleRequired] = useState(false);
   // Termo por aluno pendente do próprio professor: pop-up obrigatório.
-  const [teacherTermsRequired, setTeacherTermsRequired] = useState(false);
-  // Contrato geral obrigatório do professor novo (25/11/2026).
+  const [teacherStudentTermsActive, setTeacherTermsRequired] = useState(false);
+  // Contrato geral obrigatório do professor novo (25/11/2026): segura os mesmos
+  // avisos e tours que o pop-up do termo por aluno.
   const [teacherContractRequired, setTeacherContractRequired] = useState(false);
+  const teacherTermsRequired = teacherStudentTermsActive || teacherContractRequired;
   // Pop-up do feriado nacional aberto: segura o tour de novidade até fechar.
   const [holidayNoticeActive, setHolidayNoticeActive] = useState(false);
   const [financeNoticeActive, setFinanceNoticeActive] = useState(false);
@@ -1979,7 +1981,7 @@ const App: React.FC = () => {
           <TeacherStudentTermsGate key={user.id} blocked={teacherGoogleRequired || teacherContractRequired} onActiveChange={setTeacherTermsRequired} onLogout={handleLogout} />
         </Suspense>
       )}
-      {tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
+      {tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && TOUR_ROLES.includes(user.role as string) && (
         <Suspense fallback={null}>
           <GuidedTour
             steps={flattenTour(user.role as TourRole)}
@@ -1995,7 +1997,7 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {!tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !dossierLink.holdsTours && (
+      {!tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <NationalHolidayNotice key={user.id} userId={user.id} onActiveChange={setHolidayNoticeActive} />
         </Suspense>
@@ -2007,24 +2009,24 @@ const App: React.FC = () => {
         </Suspense>
       )}
       {/* Aviso da escola (pop-up com "Entendi" gravado no servidor), depois do feriado e da aula começando. */}
-      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !holidayNoticeActive && !financeNoticeActive && !lessonSoonActive && !dossierLink.holdsTours && (
+      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !financeNoticeActive && !lessonSoonActive && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <PlatformNotice key={user.id} userId={user.id} onActiveChange={setPlatformNoticeActive} />
         </Suspense>
       )}
       {/* Aula começando: aviso 10 min antes, com o link da aula (aluno e professor). */}
-      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !holidayNoticeActive && (
+      {(user.role === UserRole.STUDENT || user.role === UserRole.TEACHER) && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && (
         <Suspense fallback={null}>
           <LessonStartingSoon key={user.id} userId={user.id} role={user.role === UserRole.STUDENT ? 'STUDENT' : 'TEACHER'} onActiveChange={setLessonSoonActive} />
         </Suspense>
       )}
       {/* Sugestão de plano: 60 a 10 min antes de cada aula, o professor abre o plano da IA. */}
-      {user.role === UserRole.TEACHER && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !holidayNoticeActive && !lessonSoonActive && !featureTour && !dossierLink.holdsTours && (
+      {user.role === UserRole.TEACHER && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !lessonSoonActive && !featureTour && !dossierLink.holdsTours && (
         <Suspense fallback={null}>
           <LessonPlanSuggestion key={user.id} userId={user.id} onOpenPlanner={() => setActiveTab('lesson-planner-ai')} onActiveChange={setPlanSuggestionActive} />
         </Suspense>
       )}
-      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !teacherContractRequired && !holidayNoticeActive && !dossierLink.holdsTours && !financeNoticeActive && !lessonSoonActive && !planSuggestionActive && !platformNoticeActive && (
+      {featureTour && !tourOpen && !teacherGoogleRequired && !teacherTermsRequired && !holidayNoticeActive && !dossierLink.holdsTours && !financeNoticeActive && !lessonSoonActive && !planSuggestionActive && !platformNoticeActive && (
         <Suspense fallback={null}>
           <GuidedTour
             key={featureTour.id}
