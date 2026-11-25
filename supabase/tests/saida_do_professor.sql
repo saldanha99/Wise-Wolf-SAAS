@@ -95,6 +95,12 @@ begin
   perform pg_temp.assert_true((closed->>'offers_cancelled')::int=1,'open offers cancelled on close');
 end $$;
 
+-- Aluno com troca já marcada saindo do professor não volta a ser oferecido.
+select pg_temp.as_user('f9250000-0000-4000-8000-000000000001');
+do $$begin
+  perform pg_temp.assert_true(not exists(select 1 from jsonb_array_elements(public.teacher_departure_preview('f9250000-0000-4000-8000-000000000003', now(), (now() at time zone 'America/Sao_Paulo')::date + 2)->'students') x
+    where x->>'student_id'='f9250000-0000-4000-8000-000000000002'),'student with a scheduled transfer is not offered again');
+end $$;
 select pg_temp.assert_true(not has_function_privilege('anon','public.claim_departure_offer(uuid)','execute'),'anon cannot claim');
 select pg_temp.assert_true(not has_function_privilege('anon','public.open_teacher_departure(uuid,timestamptz,date,text)','execute'),'anon cannot open');
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.teacher_departure_offers','select'),'offers only through RPC');
