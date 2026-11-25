@@ -29,7 +29,7 @@ begin
  select substring(message_body from 't=([0-9a-f]{64})') into t_tok from public.notification_queue where tenant_id=tenant and idempotency_key=format('student-term-link:%s:teacher:1',term);
  select substring(message_body from 't=([0-9a-f]{64})') into s_tok from public.notification_queue where tenant_id=tenant and idempotency_key=format('student-term-link:%s:school:1',term);
  perform pg_temp.tl_assert(t_tok is not null and s_tok is not null,'links da proposta nao enfileirados');
- perform pg_temp.tl_assert(not exists(select 1 from public.notification_queue where tenant_id=tenant and (message_body like '%777%' or message_body ilike '%mensalidade%')),'mensagem com valor do aluno');
+ perform pg_temp.tl_assert(not exists(select 1 from public.notification_queue where tenant_id=tenant and (message_body ~ '(^|[^0-9a-fA-F])777([^0-9a-fA-F]|$)' or message_body ilike '%mensalidade%')),'mensagem com valor do aluno');
  perform pg_temp.tl_assert((select student_phone from public.notification_queue where idempotency_key=format('student-term-link:%s:teacher:1',term))='5511988887771','link do professor fora do WhatsApp dele');
  perform pg_temp.tl_assert(exists(select 1 from public.notification_queue where idempotency_key=format('student-term-link:%s:teacher:1',term) and message_body like '%Terça 18:00 (1h)%'),'agenda ilegivel na mensagem');
  perform pg_temp.tl_assert(not exists(select 1 from private.student_term_links where token_hash in(t_tok,s_tok)),'token guardado em claro');
