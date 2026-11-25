@@ -75,15 +75,6 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         } catch (err: any) { alert('Erro: ' + err.message); }
     };
 
-    const openMural = async (teacherId: string) => {
-        if (!confirm('Publicar os alunos deste professor no Mural de Oportunidades? Todos os professores ativos serão avisados e o primeiro a aceitar fica com o aluno.')) return;
-        try {
-            const { data, error } = await supabase.rpc('open_reallocation_for_teacher', { p_teacher: teacherId });
-            if (error) throw error;
-            alert(`Mural aberto: ${data?.oportunidades_criadas ?? 0} aluno(s) publicados, ${data?.professores_avisados ?? 0} professor(es) avisados por WhatsApp.`);
-            load();
-        } catch (err: any) { alert('Erro: ' + err.message); }
-    };
 
     const finalize = async (teacherId: string) => {
         if (!confirm('Finalizar a saída deste professor? (todos os alunos precisam estar reatribuídos)')) return;
@@ -122,11 +113,6 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 italic">"{t.offboarding_reason}"</p>
                             </div>
                             <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-                                <button onClick={() => openMural(t.id)} disabled={students.length === 0}
-                                    className="w-full shrink-0 whitespace-nowrap rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto sm:py-1.5"
-                                    title="Publica os alunos no mural para os professores aceitarem sozinhos">
-                                    🎓 Abrir mural
-                                </button>
                                 <button onClick={() => finalize(t.id)} disabled={students.length > 0}
                                     className="w-full shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto sm:py-1.5">
                                     Finalizar saída
@@ -135,6 +121,7 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                         </div>
                         <div className="p-4 space-y-2">
                             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{students.length} aluno{students.length === 1 ? '' : 's'} para reatribuir:</p>
+                            {students.length > 0 && <p className="text-xs text-slate-500">Para oferecer os alunos aos professores com horários livres (o primeiro que aceitar fica), use a aba <b>Saída</b> na ficha do professor, em Gestão Profs.</p>}
                             {students.length === 0 && <p className="text-xs text-emerald-600 font-bold">✓ Todos alunos já foram reatribuídos. Pode finalizar.</p>}
                             {students.map(s => (
                                 <div key={s.student_id} className="flex flex-col items-stretch gap-2 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/50 sm:flex-row sm:items-center">

@@ -1,3 +1,22 @@
+### 25/11/2026 — Saída do professor: alunos repassados a quem tem os horários livres e multa calculada
+
+Caso da Teacher Bruna (avisou em 25/11 que saía em 27/11). Ficha do professor (Gestão Profs) → aba **Saída**
+(`components/TeacherDeparturePanel.tsx`): direção informa quando o aviso chegou e o último dia, vê cada aluno com os
+horários fixos, quem tem TODOS livres (`private.transfer_slot_available`, a mesma régua da transferência) e a multa.
+"Abrir para os professores" (`open_teacher_departure`) avisa por WhatsApp quem cabe; no Início do professor aparece
+**Alunos disponíveis** (`StudentOpportunitiesBoard`, RPCs `my_departure_offers`/`claim_departure_offer`, só primeiro
+nome + inicial antes do aceite). Primeiro que aceita leva, sem aula experimental (a primeira aula é a de conhecimento).
+O aceite chama a MESMA `admin_schedule_student_transfer` agindo como a direção (`trial_closing_act_as` com
+`management_group_default_actor`): histórico preservado; com termo por aluno a troca fica PENDING e o gatilho
+`zz_departure_apply_on_term_executed` aplica sozinho quando o termo vira EXECUTED e avisa a família. Direção também
+atribui direto (`assign_departure_offer`). Aluno com financeiro suspenso aparece "precisa de decisão" e não é oferecido.
+**Multa só calculada, nunca cobrada** (`private.teacher_departure_penalty`): contrato geral 6.4 (v1/v2) ou 6.5 (v3) =
+média dos até 3 fechamentos anteriores ao mês do aviso × dias não cumpridos ÷ 30; termo modelo ≥ 2 (cláusula 5.2) = 2
+meses do aluno (sem mês completo: referência × aulas/semana × 8,6), e esse aluno sai da base do contrato geral. Mostra o
+crédito a receber (fechamentos não pagos + mês corrente) para compensar por acordo escrito. Bruna: R$ 290,11 + R$ 275,20
+= R$ 565,31, crédito R$ 695,50. O mural de julho (`open_reallocation_for_teacher`/`claim_student_opportunity`, 0 usos,
+reescrevia os agendamentos antigos) ficou sem EXECUTE. Migration `20261125120000`, teste `saida_do_professor.sql`.
+
 ### 24/11/2026 — Hub: 5 livros neutros redesenhados entram como versão nova; originais fora da vitrine
 
 - **O quê (Vinícius via Chefe, msg f120ab12: «cada livro aprovado pelo Revisor entra no hub como versão nova; o antigo

@@ -1721,8 +1721,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261123190000_hub_aluno_convidado_sem_escola.sql"
   "supabase/migrations/20261124040000_wolfie_health_collect_by_request_id.sql"
   "supabase/migrations/20261124120000_feriados_e_recesso_remunerados.sql"
+  "supabase/migrations/20261125120000_saida_do_professor.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/saida_do_professor.sql"
   "supabase/tests/feriados_e_recesso_remunerados.sql"
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
   "supabase/tests/frequencia_pretendida_do_lead.sql"

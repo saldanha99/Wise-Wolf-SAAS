@@ -5,6 +5,7 @@ import {
   UserX, BookOpen, CheckCircle, XCircle, Phone, Wallet, FileDown
 } from 'lucide-react';
 import TeacherActivityReport from './TeacherActivityReport';
+import TeacherDeparturePanel from './TeacherDeparturePanel';
 import { isSchoolClosedLog, schoolClosedLabel, SCHOOL_CLOSED_BADGE_CLASS } from '../lib/schoolClosure';
 
 interface Props { teacherId: string; onClose: () => void; }
@@ -19,7 +20,7 @@ const PRESENCE: Record<string, { txt: string; cls: string }> = {
 const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState<any>(null);
-  const [tab, setTab] = useState<'overview' | 'students' | 'classes' | 'financial' | 'history'>('overview');
+  const [tab, setTab] = useState<'overview' | 'students' | 'classes' | 'financial' | 'history' | 'departure'>('overview');
   const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
   const money = (v: any) => v != null ? `R$ ${Number(v).toFixed(2).replace('.', ',')}` : '—';
 
   const p = d?.profile; const m = d?.metrics;
-  const tabs: [string, string][] = [['overview', 'Visão Geral'], ['students', 'Alunos'], ['classes', 'Aulas'], ['financial', 'Fechamentos'], ['history', 'Histórico']];
+  const tabs: [string, string][] = [['overview', 'Visão Geral'], ['students', 'Alunos'], ['classes', 'Aulas'], ['financial', 'Fechamentos'], ['history', 'Histórico'], ['departure', 'Saída']];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
@@ -136,6 +137,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
                 </div>
               )}
 
+              {tab === 'departure' && <TeacherDeparturePanel teacherId={teacherId} teacherName={p.full_name || ''} />}
               {tab === 'history' && (
                 <div className="space-y-2">
                   {(d.audit || []).length === 0 ? <Empty txt="Nenhuma alteração registrada." /> :
