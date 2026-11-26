@@ -1,3 +1,16 @@
+### 26/11/2026 — Troca de professor com os mesmos horários só avisa a família
+
+Decisão da direção: a família não confirma uma agenda que não mudou. Termo de troca (TRANSFER) cuja
+agenda proposta é igual à agenda fixa atual do aluno com o professor anterior
+(`private.student_term_same_schedule`) nasce com a família dispensada (gatilho BEFORE INSERT,
+`family_confirmation.kind = SAME_SCHEDULE_NOTICE`), executa com escola + professor e, ao executar, a família
+recebe só um aviso (`student-term:<id>:same-schedule-notice`; silenciar com
+`app.student_term_family_notice_silent = on` quando a direção avisa por conta própria). Agenda nova
+(matrícula, dia/horário diferente, aula com data) segue pedindo a confirmação pelo link. Defeito corrigido
+junto: com a família confirmando pelo link (age como o aluno), aplicar a troca era recusado por
+`protect_student_sensitive_profile_fields` e a troca ficava PENDING; a aplicação agora roda sem a identidade
+da requisição. Migration `20261126010000`, teste `troca_com_mesma_agenda_so_avisa_a_familia.sql`.
+
 ### 25/11/2026 — Família confirma a agenda pelo WhatsApp e a troca se aplica sozinha
 
 Caso Amábile: escola e Laís assinaram e a troca parou, porque a confirmação da família só existia no portal
