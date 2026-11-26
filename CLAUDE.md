@@ -1,3 +1,21 @@
+### 26/11/2026 — Material da aula, lançamento mais rápido e resumo do Meet na hora
+
+Caso: na troca dos alunos da Teacher Bruna ninguém sabia em que livro/parte cada um parou (o sistema só
+guardava assunto e lição). Agora o lançamento (`ClassLogForm`) tem "Material da aula": livro da biblioteca ou
+escrito + onde parou (unidade/página). Grava em `public.class_log_materials` (uma linha por `class_log`, só por
+RPC: `save_class_log_materials`, chamada DEPOIS de `log_teacher_classes` com os ids devolvidos — falha no
+material não desfaz a aula). `last_class_materials(uuid[])` (quem lê o dossiê) devolve onde cada aluno parou:
+pré-preenche o próximo lançamento, aparece no dossiê ("Onde parou no material") e vai no aviso ao professor
+novo da troca (`teacher_transfer_applied_notify_teachers`, linha "📘 Parou em"). O resumo da IA ganhou
+`material_reference` (prompt `meet-pedagogical-v3`), sugerido no campo "Onde parou". Tela: resultado em botões
+de um toque e "Todas ocorreram". Resumo mais rápido: medido em 30 dias, o 1º rascunho saía ~15 min depois do
+fim (p90 70 min) porque `wisewolf-meet-document-sync` rodava a cada 15 min: agora a cada 5. Quem lança logo
+depois da aula vê "Buscar o resumo agora" (`get_class_log_meet_drafts` devolve `status: PENDING` com a sessão;
+edge `google-meet` ação `summary_now` = sincroniza a sessão + gera o rascunho pelas regras da fila — aceite,
+teto, sem pagar duas vezes). O Google ainda leva alguns minutos para entregar a transcrição depois que a
+reunião termina; isso não depende de nós. Migration `20261126030000`, teste `material_da_aula.sql`
+(`meet_class_log_suggestions.sql` passou a esperar PENDING sem resumo), tours `2026-11-26-material-*`.
+
 ### 26/11/2026 — Troca de professor com os mesmos horários só avisa a família
 
 Decisão da direção: a família não confirma uma agenda que não mudou. Termo de troca (TRANSFER) cuja

@@ -168,7 +168,7 @@ Deno.test("automático: reserva, chama, descarta a citação falsa e grava o ras
   assert(finish.payload.cost_usd === 0.0019);
   assert(finish.payload.cost_source === "PROVIDER");
   assert(finish.payload.reasoning_tokens === 250);
-  assert(finish.payload.prompt_version === "meet-pedagogical-v2");
+  assert(finish.payload.prompt_version === "meet-pedagogical-v3");
   assert(
     h.usages.length === 1 && h.usages[0].reasoningTokens === 250 &&
       h.usages[0].inputTokens === 1200,

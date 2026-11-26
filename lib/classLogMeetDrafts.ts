@@ -1,8 +1,10 @@
 import { supabase } from './supabase';
 import type { ClassLogItem, ClassLogDraft } from '../components/ClassLogForm';
 export interface ClassLogMeetSuggestion {
-  sessionId: string; summaryId: string; status: 'PROPOSED' | 'VERIFIED';
+  sessionId: string; summaryId: string; status: 'PROPOSED' | 'VERIFIED' | 'PENDING';
   fields: Partial<ClassLogDraft>; uncertainties: string[];
+  // Livro/unidade/página citados na aula (só quando a IA achou na transcrição).
+  materialReference?: string;
 }
 const text = (value: unknown) => typeof value === 'string' ? value.trim().slice(0, 4000) : '';
 const list = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string').map(text).filter(Boolean) : [];
@@ -24,9 +26,15 @@ export async function loadClassLogMeetDrafts(items: ClassLogItem[]): Promise<Rec
     const { data, error } = await supabase.rpc('get_class_log_meet_drafts', { p_entries: entries.slice(i,i+100) });
     if (error) throw new Error('Não foi possível buscar o resumo da reunião. Você pode preencher manualmente ou tentar novamente.');
     for (const [ref, row] of Object.entries(data || {}) as [string, any][]) {
+      // Aula que terminou na sala oficial e ainda não tem resumo: a tela oferece "Buscar o resumo agora".
+      if (row.status === 'PENDING' && typeof row.sessionId === 'string') {
+        result[ref] = { sessionId: row.sessionId, summaryId: '', status: 'PENDING', fields: {}, uncertainties: [] };
+        continue;
+      }
       if (row.status !== 'PROPOSED' && row.status !== 'VERIFIED') continue;
       result[ref] = { sessionId: row.sessionId, summaryId: row.summaryId, status: row.status,
-        fields: meetSuggestionFields(row.content || {}), uncertainties: list(row.content?.uncertainties) };
+        fields: meetSuggestionFields(row.content || {}), uncertainties: list(row.content?.uncertainties),
+        materialReference: text(row.content?.material_reference).slice(0, 300) };
     }
   }
   return result;

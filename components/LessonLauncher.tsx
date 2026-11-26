@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertCircle, RefreshCw, Clock, Calendar, ClipboardCheck } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
 import { loadClassLogMeetDrafts } from '../lib/classLogMeetDrafts';
+import { loadMaterialCatalog, loadLastMaterials, saveClassLogMaterials, requestSummaryNow, type LastMaterial, type MaterialOption } from '../lib/classLogMaterials';
 import TrialFeedbackForm from './TrialFeedbackForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
@@ -76,6 +77,15 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
+  // Material e parte do livro: catálogo da biblioteca e onde cada aluno parou na última aula.
+  const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [lastMaterials, setLastMaterials] = useState<Record<string, LastMaterial>>({});
+  useEffect(() => { loadMaterialCatalog().then(setMaterials).catch(() => setMaterials([])); }, []);
+  const studentKey = [...new Set(todayLessons.map(l => l.studentId).filter(Boolean))].sort().join(',');
+  useEffect(() => {
+    if (!studentKey) return;
+    loadLastMaterials(studentKey.split(',')).then(setLastMaterials).catch(() => setLastMaterials({}));
+  }, [studentKey]);
   // Agendamentos que existem mas cuja matrícula ainda não começou: uma linha por
   // agendamento, não uma por dia da janela.
   const [notStarted, setNotStarted] = useState<NotStartedRow[]>([]);
@@ -520,6 +530,10 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       if (entries.length === 0) return;
 
       const result = await logTeacherClasses(entries);
+      // O material vai depois da aula: falha aqui não desfaz o lançamento.
+      const materialSaved = await saveClassLogMaterials(result, Object.fromEntries(Object.entries(formData).map(([ref, d]: [string, any]) =>
+        [ref, { materialId: d.materialId || '', materialTitle: d.materialTitle || '', materialRef: d.materialRef || '', fromMeet: !!d.materialFromMeet }])));
+      if (!materialSaved) alert('As aulas foram lançadas, mas o material não foi salvo. Confira em Histórico de aulas.');
 
       // XP só das que realmente entraram (celebrar aula ignorada seria mentira).
       const lancadas = new Set(result.entries.filter(e => e.status === 'lancada').map(e => e.ref));
@@ -726,6 +740,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                         sourceType: String(item.id).startsWith('repo-') ? 'reschedule' : String(item.id).startsWith('trial-') ? 'appointment' : String(item.id).startsWith('advance-') ? 'advance' : 'booking',
                         sourceId: String(item.id).replace(/^(repo-|trial-|advance-)/, '').split('|')[0] }))}
                       loadSuggestions={loadClassLogMeetDrafts}
+                      materials={materials}
+                      lastMaterials={lastMaterials}
+                      onSummaryNow={requestSummaryNow}
                       onSave={handleBulkSave}
                       title="Aulas Programadas para Hoje"
                       loading={isSubmitting}
@@ -745,6 +762,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                       <ClassLogForm
                         items={repos.map(item => ({ ...item, classDate: item.dateObj, sourceType: 'reschedule', sourceId: String(item.id).replace(/^repo-/, '') }))}
                         loadSuggestions={loadClassLogMeetDrafts}
+                        materials={materials}
+                        lastMaterials={lastMaterials}
+                        onSummaryNow={requestSummaryNow}
                         onSave={handleBulkSave}
                         title="Lançamento de Reposições"
                         loading={isSubmitting}

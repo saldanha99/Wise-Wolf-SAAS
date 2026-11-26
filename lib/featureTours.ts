@@ -1153,6 +1153,19 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'sidebar-nav',view:'dashboard',title:'Novidade: troca sem passo manual',text:'Quando o novo professor assina o termo do aluno, a família recebe um link no WhatsApp para confirmar a agenda, sem precisar entrar no portal (e um lembrete em 24 h). Com escola, professor e família de acordo, a troca se aplica sozinha na data marcada e os dois professores são avisados: não é mais preciso tocar em "Concluir atribuição da transferência".'},
     ],
   },
+  {
+    id:'2026-11-26-material-da-aula',title:'Lançamento mais rápido e material da aula',roles:['TEACHER'],
+    steps:[
+      {target:'class-log-meet-prefill',view:'lessons',title:'Novidade: lançar ficou mais rápido',text:'O resultado de cada aula agora é um toque ("Aula ocorreu", "Aluno faltou", "Professor faltou"), e "Todas ocorreram" marca a lista inteira. Se você lança logo depois da aula e o resumo ainda não chegou do Google, toque em "Buscar o resumo agora": ele vem em poucos minutos, já preenchido.'},
+      {target:'class-log-meet-prefill',view:'lessons',title:'Onde o aluno parou no material',text:'Em "Material da aula", informe o livro (da biblioteca ou escrito) e onde parou: unidade, página ou exercício. O livro da última aula já vem preenchido, e a IA sugere a página quando ela foi citada na aula. É o que o próximo professor vê no dossiê e no aviso de uma troca.'},
+    ],
+  },
+  {
+    id:'2026-11-26-material-no-dossie',title:'Onde o aluno parou no material',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'sidebar-nav',view:'dashboard',title:'Novidade: material de cada aula',text:'O professor agora informa no lançamento o livro e onde parou (unidade, página). O último registro aparece no dossiê do aluno ("Onde parou no material") e vai junto no aviso ao professor novo de uma troca. O resumo do Meet também chega mais rápido: a busca no Google passou de 15 para 5 minutos.'},
+    ],
+  },
 ];
 
 /**

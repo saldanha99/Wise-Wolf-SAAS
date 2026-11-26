@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, RefreshCw } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
 import { loadClassLogMeetDrafts } from '../lib/classLogMeetDrafts';
+import { loadMaterialCatalog, loadLastMaterials, saveClassLogMaterials, requestSummaryNow, type LastMaterial, type MaterialOption } from '../lib/classLogMaterials';
 import {
   fetchPendingLessons as fetchPendingLessonsRule,
   PendingLesson,
@@ -60,6 +61,14 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [lastMaterials, setLastMaterials] = useState<Record<string, LastMaterial>>({});
+  const formOpen = !!selectedLesson || isBulkRegularizing;
+  useEffect(() => {
+    if (!formOpen) return;
+    if (!materials.length) loadMaterialCatalog().then(setMaterials).catch(() => setMaterials([]));
+    loadLastMaterials(pending.map(p => p.studentId || '')).then(setLastMaterials).catch(() => setLastMaterials({}));
+  }, [formOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async (formData: any) => {
     if (isSubmitting) return;
@@ -100,6 +109,10 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       if (entries.length === 0) return;
 
       const result = await logTeacherClasses(entries);
+      // O material vai depois da aula: falha aqui não desfaz o lançamento.
+      const materialSaved = await saveClassLogMaterials(result, Object.fromEntries(Object.entries(formData).map(([ref, d]: [string, any]) =>
+        [ref, { materialId: d.materialId || '', materialTitle: d.materialTitle || '', materialRef: d.materialRef || '', fromMeet: !!d.materialFromMeet }])));
+      if (!materialSaved) alert('As aulas foram lançadas, mas o material não foi salvo. Confira em Histórico de aulas.');
       const lancadas = new Set(result.entries.filter(e => e.status === 'lancada').map(e => e.ref));
       const xp = calcularXp(entries.map((e, i) => lateFlags[i]).filter((_, i) => lancadas.has(entries[i].ref)));
 
@@ -236,6 +249,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
                 sourceType: selectedLesson.lessonAdvanceId ? 'advance' : selectedLesson.rescheduleId ? 'reschedule' : 'booking',
                 sourceId: selectedLesson.lessonAdvanceId || selectedLesson.rescheduleId || selectedLesson.bookingId,
                 name: selectedLesson.student,
+                studentId: selectedLesson.studentId,
                 date: `${selectedLesson.date} às ${selectedLesson.time}`,
                 isLate: true,
                 level: selectedLesson.module.split('•')[0].trim() || 'N/A'
@@ -243,6 +257,9 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               onCancel={() => setSelectedLesson(null)}
               onSave={handleSave}
               loadSuggestions={loadClassLogMeetDrafts}
+              materials={materials}
+              lastMaterials={lastMaterials}
+              onSummaryNow={requestSummaryNow}
               title="Regularizar Aula"
               loading={isSubmitting}
             />
@@ -261,6 +278,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
                 sourceType: p.lessonAdvanceId ? 'advance' : p.rescheduleId ? 'reschedule' : 'booking',
                 sourceId: p.lessonAdvanceId || p.rescheduleId || p.bookingId,
                 name: p.student,
+                studentId: p.studentId,
                 date: `${p.date} às ${p.time}`,
                 isLate: true,
                 level: p.module.split('•')[0].trim() || 'N/A'
@@ -268,6 +286,9 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               onCancel={() => setIsBulkRegularizing(false)}
               onSave={handleSave}
               loadSuggestions={loadClassLogMeetDrafts}
+              materials={materials}
+              lastMaterials={lastMaterials}
+              onSummaryNow={requestSummaryNow}
               title="Regularizar Todas as Pendências"
               loading={isSubmitting}
             />

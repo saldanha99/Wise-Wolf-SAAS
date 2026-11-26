@@ -2009,6 +2009,54 @@ serve(async (req: Request) => {
         ),
       );
     }
+    if (action === "summary_now") {
+      // Professor que lança logo depois da aula: busca a transcrição no Google
+      // agora (sem esperar a rodada de 5 min) e, se ela já chegou, gera o
+      // rascunho na hora pelas MESMAS regras da fila (aceite, teto do mês,
+      // conteúdo já resumido não é pago de novo). A resposta leva só o estado:
+      // o texto chega à tela pelo get_class_log_meet_drafts.
+      const sessionId = uuid(body.sessionId);
+      const detail = await storage(
+        db,
+        "session_detail",
+        tenantId,
+        actorId,
+        sessionId,
+      );
+      if (!detail?.session?.documentation_consent) {
+        return json({ ok: false, status: "NOT_RECORDED" });
+      }
+      if (detail.raw_access === false) {
+        throw new Error("google_meet_raw_access_required");
+      }
+      let synced = false;
+      try {
+        const sync = await syncSession(db, cfg, tenantId, actorId, sessionId, {
+          force: true,
+        });
+        synced = isRecord(sync) && sync.ok !== false;
+      } catch (_error) {
+        synced = false;
+      }
+      const outcome = await runAutoSummaryJob({
+        sessionId,
+        aiEnabled: cfg.aiEnabled,
+        key: cfg.aiKey,
+        model: cfg.aiModel,
+        loadPricing: () => loadSummaryPricing(db, cfg.aiModel),
+        deadline: Date.now() + JOB_DEADLINE_MS,
+      }, summaryDeps(db, cfg, tenantId, null));
+      return json({
+        ok: outcome.status !== "FAILED",
+        synced,
+        status: outcome.status,
+        ...(outcome.status === "FAILED"
+          ? { error: outcome.error }
+          : outcome.status === "SUCCEEDED"
+          ? {}
+          : { reason: outcome.reason }),
+      });
+    }
     if (action === "sync_artifacts") {
       return json(
         await syncSession(db, cfg, tenantId, actorId, uuid(body.sessionId), {

@@ -574,7 +574,7 @@ Deno.test("modelo do resumo aceita barra e recusa variante gratuita; schema estr
     >;
   };
   assert(
-    schema.additionalProperties === false && schema.required.length === 9,
+    schema.additionalProperties === false && schema.required.length === 10,
   );
   assert(schema.properties.content_practiced.type === "array");
   const evidence = schema.properties.evidence.items as {
@@ -1140,4 +1140,17 @@ Deno.test("sala pronta com a conta do professor trocada: acerta o coanfitrião s
     }) === "RECONCILE",
     "dois links sem a direção",
   );
+});
+
+Deno.test("resumo guarda onde a aula parou no material, sem passar de 300 letras", () => {
+  const summary = normalizeSummary({
+    lesson_objective: "Horas",
+    recommended_next_step: "Revisar",
+    material_reference: "Book A1 Part 2, Unit 3, página 34 " + "x".repeat(400),
+  }, []);
+  assert(
+    summary.material_reference.startsWith("Book A1 Part 2, Unit 3, página 34"),
+  );
+  assert(summary.material_reference.length <= 300);
+  assert(normalizeSummary({}, []).material_reference === "");
 });

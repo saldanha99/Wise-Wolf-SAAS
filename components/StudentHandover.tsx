@@ -4,6 +4,7 @@ import { readLearningCard } from '../lib/studentLearningCard';
 import StudentLearningCard from './StudentLearningCard';
 import { DOSSIER_LINK_DENIED } from '../lib/studentDossierLink';
 import StudentCardSuggestions from './StudentCardSuggestions';
+import { loadLastMaterials, type LastMaterial } from '../lib/classLogMaterials';
 
 type Evidence = { id: string; occurred_at?: string; class_date?: string; lesson_objective?: string; content_practiced?: string[]; content_covered?: string; recurring_errors?: string[]; student_difficulties?: string; homework_assigned?: string; recommended_next_step?: string };
 // viaLink: aberto pelo link com login do WhatsApp (substituto ou novo titular).
@@ -13,6 +14,13 @@ export default function StudentHandover({ studentId, viaLink = false }: { studen
   const [error, setError] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Onde o aluno parou no material (último lançamento com livro/parte).
+  const [lastMaterial, setLastMaterial] = useState<LastMaterial | null>(null);
+  useEffect(() => {
+    let active = true;
+    loadLastMaterials([studentId]).then(map => { if (active) setLastMaterial(map[studentId] || null); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [studentId]);
   const load = useCallback(async (acknowledge = false) => {
     setBusy(true); setError('');
     try {
@@ -48,6 +56,12 @@ export default function StudentHandover({ studentId, viaLink = false }: { studen
       {learningCard?.can_edit && <StudentCardSuggestions studentId={studentId} cardVersion={learningCard.version}
         onCardSaved={raw => setData(current => current ? { ...current, learning_card: raw } : current)}
         onReload={() => void load()} />}
+      <div data-tour="dossier-last-material" className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <h4 className="font-semibold">Onde parou no material</h4>
+        {lastMaterial?.label
+          ? <p className="mt-1 text-sm"><b>{lastMaterial.label}</b>{lastMaterial.classDate ? ` · aula de ${lastMaterial.classDate.slice(0, 10).split('-').reverse().join('/')}` : ''}{lastMaterial.teacherName ? ` · ${lastMaterial.teacherName}` : ''}</p>
+          : <p className="mt-1 text-sm text-slate-500">Nenhuma aula registrou o material ainda. O professor informa no lançamento da aula.</p>}
+      </div>
       <h4 className="font-semibold">Memória revisada</h4>
       {data.memories.length ? data.memories.map(m => evidence(m, 'Memória revisada')) : <p className="text-sm text-slate-500">Ainda não há memória revisada.</p>}
       <h4 className="font-semibold">Lançamentos recentes — relato docente</h4>

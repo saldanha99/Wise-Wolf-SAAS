@@ -44,11 +44,13 @@ begin
     raise exception 'Suggestion source/scope/unknown fields incorrect: %',result; end if;
   if exists(select 1 from public.class_logs where teacher_id=teacher) then raise exception 'Suggestion invented attendance'; end if;
   update private.meeting_artifact_revisions set expires_at=now()-interval '1 minute' where id=artifact_id;
-  if public.get_class_log_meet_drafts(request)<>'{}'::jsonb then raise exception 'Expired draft exposed'; end if;
+  result := public.get_class_log_meet_drafts(request);
+  if result->'own'->>'status' is distinct from 'PENDING' or result->'own' ? 'summaryId' or result->'own' ? 'content' then raise exception 'Expired draft exposed: %',result; end if;
   update private.meeting_artifact_revisions set expires_at=now()+interval '1 day' where id=artifact_id;
   insert into private.lesson_summary_versions(tenant_id,lesson_session_id,version,status,origin,content)
     values('meet-log-fixture',session_id,2,'REJECTED','HUMAN_REVIEW','{}');
-  if public.get_class_log_meet_drafts(request)<>'{}'::jsonb then raise exception 'Rejected summary reused'; end if;
+  result := public.get_class_log_meet_drafts(request);
+  if result->'own'->>'status' is distinct from 'PENDING' or result->'own' ? 'summaryId' or result->'own' ? 'content' then raise exception 'Rejected summary reused: %',result; end if;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',other_teacher,'role','authenticated')::text,true);
   if public.get_class_log_meet_drafts(request)<>'{}'::jsonb then raise exception 'Other teacher read draft'; end if;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',student,'role','authenticated')::text,true);

@@ -1725,12 +1725,14 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20261125140000_contrato_obrigatorio_do_professor.sql"
   "supabase/migrations/20261125150000_familia_confirma_agenda_por_link.sql"
   "supabase/migrations/20261126010000_troca_com_mesma_agenda_so_avisa_a_familia.sql"
+  "supabase/migrations/20261126030000_material_da_aula_e_resumo_na_hora.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/saida_do_professor.sql"
   "supabase/tests/contrato_obrigatorio_do_professor.sql"
   "supabase/tests/familia_confirma_agenda_por_link.sql"
   "supabase/tests/troca_com_mesma_agenda_so_avisa_a_familia.sql"
+  "supabase/tests/material_da_aula.sql"
   "supabase/tests/troca_de_horario_com_termo_vigente.sql"
   "supabase/tests/frequencia_pretendida_do_lead.sql"
   "supabase/tests/notificacao_de_reposicao_pela_data_real.sql"
