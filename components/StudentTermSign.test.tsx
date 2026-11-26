@@ -64,4 +64,19 @@ describe('aceite do termo pelo link do WhatsApp', () => {
     window.history.pushState({}, '', '/aceitar-termo?t=curto');
     rpc.mockReset();
   });
+
+  it('família só confere a agenda e confirma, sem valor nem termo', async () => {
+    const family = { ok: true, signer: 'FAMILY', signer_name: 'Ivone Fixture', school_name: 'Escola Fixture Ltda',
+      student_name: 'Ivone Fixture', teacher_name: 'Daniel Fixture', agenda: 'Segunda 16:30 (30 min)', starts_on: '2026-11-26',
+      ends_on: null, term_id: 't1', expires_at: '2026-12-02T00:00:00Z' };
+    rpc.mockResolvedValueOnce({ data: family, error: null }).mockResolvedValueOnce({ data: { ok: true }, error: null });
+    render(<StudentTermSign />);
+    const summary = await screen.findByTestId('family-summary');
+    expect(summary.textContent).toContain('Daniel Fixture');
+    expect(summary.textContent).toContain('Segunda 16:30');
+    expect(summary.textContent).not.toMatch(/R\$|Ler o termo/);
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar minha agenda/i }));
+    await waitFor(() => expect(screen.getByText('Agenda confirmada ✅')).toBeTruthy());
+    expect(rpc).toHaveBeenLastCalledWith('student_term_link_act', { p_token: TOKEN, p_action: 'confirm', p_payload: {} });
+  });
 });

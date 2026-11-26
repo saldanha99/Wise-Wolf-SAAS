@@ -1147,6 +1147,12 @@ export const FEATURE_TOURS: FeatureTour[] = [
       {target:'sidebar-nav',view:'dashboard',title:'Novidade: feriado e recesso',text:'Nos feriados nacionais e no recesso de fim de ano não há aula. Na escola que adotou a regra, cada aula que estava na agenda nesses dias entra sozinha como "Feriado (remunerada)" ou "Recesso (remunerada)": o professor não lança nada e recebe por ela. Ela aparece separada de aula dada e de falta, não gera reposição, lembrete nem confirmação, e conta como aula do período do aluno.'},
     ],
   },
+  {
+    id:'2026-11-25-familia-confirma-pelo-whatsapp',title:'Troca de professor: família confirma pelo WhatsApp',roles:['SCHOOL_ADMIN','COORDINATOR'],
+    steps:[
+      {target:'sidebar-nav',view:'dashboard',title:'Novidade: troca sem passo manual',text:'Quando o novo professor assina o termo do aluno, a família recebe um link no WhatsApp para confirmar a agenda, sem precisar entrar no portal (e um lembrete em 24 h). Com escola, professor e família de acordo, a troca se aplica sozinha na data marcada e os dois professores são avisados: não é mais preciso tocar em "Concluir atribuição da transferência".'},
+    ],
+  },
 ];
 
 /**

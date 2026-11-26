@@ -4,7 +4,8 @@
 export type TermLinkView = {
     ok: boolean;
     reason?: string;
-    signer: 'SCHOOL' | 'TEACHER';
+    // FAMILY: o aluno (ou responsável) só confirma a agenda; não recebe valor nem texto do termo.
+    signer: 'SCHOOL' | 'TEACHER' | 'FAMILY';
     signer_name: string;
     school_name: string;
     student_name: string;
@@ -12,13 +13,13 @@ export type TermLinkView = {
     agenda: string;
     starts_on: string;
     ends_on: string | null;
-    unit_rate: number;
-    needs_identity: boolean;
-    other_signed: boolean;
-    body: string;
-    content_hash: string;
+    unit_rate?: number;
+    needs_identity?: boolean;
+    other_signed?: boolean;
+    body?: string;
+    content_hash?: string;
     term_id: string;
-    version: number;
+    version?: number;
     expires_at: string;
 };
 

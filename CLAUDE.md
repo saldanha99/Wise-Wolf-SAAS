@@ -1,3 +1,15 @@
+### 25/11/2026 — Família confirma a agenda pelo WhatsApp e a troca se aplica sozinha
+
+Caso Amábile: escola e Laís assinaram e a troca parou, porque a confirmação da família só existia no portal
+(com login) e ninguém avisava. Agora (migration `20261125150000`): o professor assina → a família recebe link
+pessoal `/aceitar-termo?t=` (signer `FAMILY` em `private.student_term_links`, telefone do aluno ou do
+responsável se kids, `private.student_term_family_phone`), vê só aluno, professor, agenda e início (nunca valor
+nem texto do termo) e confirma pela MESMA `teacher_student_terms('family_confirm')` agindo como o aluno; lembrete
+em 24 h pela rotina de sempre. Termo de troca EXECUTED → transferência ACCEPTED e aplicada (já, ou pela rotina das
+6h na data); saída do professor segue pelo gatilho dela. Troca APPLIED → aviso ao professor anterior e ao novo
+(`teacher-transfer:<id>:applied:from|to`). Teste `familia_confirma_agenda_por_link.sql`; tour
+`2026-11-25-familia-confirma-pelo-whatsapp`.
+
 ### 25/11/2026 — Contrato geral obrigatório para professor novo
 
 Professor criado direto pela direção (Gestão Profs → Novo Professor, `create-teacher-account`) nasce sem

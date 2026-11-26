@@ -20,7 +20,7 @@ const StudentTermSign: React.FC = () => {
     const [blocked, setBlocked] = useState('');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
-    const [done, setDone] = useState<'signed' | 'declined' | null>(null);
+    const [done, setDone] = useState<'signed' | 'declined' | 'confirmed' | null>(null);
     const [showBody, setShowBody] = useState(false);
     const [typedName, setTypedName] = useState('');
     const [accepted, setAccepted] = useState(false);
@@ -46,7 +46,7 @@ const StudentTermSign: React.FC = () => {
         void load();
     }, [token, load]);
 
-    const act = async (action: 'identity' | 'sign' | 'decline', payload: Record<string, unknown>) => {
+    const act = async (action: 'identity' | 'sign' | 'decline' | 'confirm', payload: Record<string, unknown>) => {
         setError('');
         setBusy(true);
         const { data, error: rpcError } = await supabase.rpc('student_term_link_act', { p_token: token, p_action: action, p_payload: payload });
@@ -95,6 +95,52 @@ const StudentTermSign: React.FC = () => {
                 <AlertCircle size={44} className="text-amber-500 mx-auto mb-4" />
                 <p className="text-slate-700 text-sm font-semibold">{blocked}</p>
             </div>,
+        );
+    }
+
+    if (done === 'confirmed') {
+        return shell(
+            <div className="bg-white p-8 rounded-3xl shadow-xl text-center">
+                <CheckCircle2 size={48} className="text-emerald-500 mx-auto mb-4" />
+                <h2 className="text-xl font-black text-slate-800 mb-2">Agenda confirmada ✅</h2>
+                <p className="text-slate-500 text-sm">Obrigado! Suas aulas com {view?.teacher_name} estão confirmadas. Você pode fechar esta página.</p>
+            </div>,
+        );
+    }
+
+    // Família (aluno ou responsável): só confere e confirma a agenda.
+    if (view.signer === 'FAMILY') {
+        return shell(
+            <>
+                <div className="text-center">
+                    <CheckCircle2 size={32} className="text-[#002366] mx-auto mb-2" />
+                    <h1 className="text-xl font-black text-slate-800">Confirme sua agenda</h1>
+                    <p className="text-slate-500 text-xs font-medium mt-1">{view.school_name}</p>
+                </div>
+                <div className="bg-white rounded-3xl shadow-xs border border-slate-200 p-6 space-y-4" data-testid="family-summary">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Aluno</p>
+                        <p className="text-lg font-black text-slate-800">{view.student_name}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Teacher</p>
+                        <p className="text-sm font-bold text-slate-700">{view.teacher_name}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Aulas</p>
+                        <p className="text-sm font-bold text-slate-700">{view.agenda}</p>
+                        <p className="text-xs text-slate-500">A partir de {dateBr(view.starts_on)}{view.ends_on ? ` até ${dateBr(view.ends_on)}` : ''}</p>
+                    </div>
+                    {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
+                    <button type="button" disabled={busy} onClick={async () => { if (await act('confirm', {})) setDone('confirmed'); }}
+                        className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest disabled:opacity-40 flex items-center justify-center gap-2">
+                        {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Confirmar minha agenda
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                        Algum dia ou horário errado? Não confirme e responda à escola no WhatsApp. Link pessoal, vale até {new Date(view.expires_at).toLocaleDateString('pt-BR')}.
+                    </p>
+                </div>
+            </>,
         );
     }
 
